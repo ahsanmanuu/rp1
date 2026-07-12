@@ -71,15 +71,15 @@ export async function GET(req: NextRequest) {
       ]);
 
       // Get today's usage for these users
-      const userIds = users.map((u) => u.id);
+      const userIds = users.map((u: any) => u.id);
       const todayUsage = await prisma.aiUsageDailySummary.findMany({
         where: { userId: { in: userIds }, date: today },
         select: { userId: true, totalTokens: true },
       });
       const usageMap: Record<string, number> = {};
-      todayUsage.forEach((u) => { usageMap[u.userId] = u.totalTokens; });
+      todayUsage.forEach((u: any) => { usageMap[u.userId] = u.totalTokens; });
 
-      const enriched = users.map((u) => {
+      const enriched = users.map((u: any) => {
         const dailyCap = u.aiDailyCapOverride || u.aiCapPlan?.dailyTokenCap || 0;
         const used = usageMap[u.id] || 0;
         const isCapped = u.aiAgentReactivatesAt && new Date(u.aiAgentReactivatesAt) > new Date();
@@ -148,10 +148,10 @@ export async function GET(req: NextRequest) {
         select: { userId: true, totalTokens: true },
       });
       const usageMap: Record<string, number> = {};
-      todaySummaries.forEach((s) => { usageMap[s.userId] = s.totalTokens; });
+      todaySummaries.forEach((s: any) => { usageMap[s.userId] = s.totalTokens; });
 
       const approaching = allUsersWithPlans
-        .map((u) => {
+        .map((u: any) => {
           const effectiveCap = u.aiDailyCapOverride || u.aiCapPlan?.dailyTokenCap || 0;
           if (effectiveCap <= 0) return null;
           const used = usageMap[u.id] || 0;
@@ -201,7 +201,7 @@ export async function GET(req: NextRequest) {
         prisma.aiUsageDailySummary.count({ where: { date: today } }),
       ]);
 
-      const enriched = summaries.map((s) => {
+      const enriched = summaries.map((s: any) => {
         const u = s.user;
         const dailyCap = u.aiDailyCapOverride || u.aiCapPlan?.dailyTokenCap || 0;
         return {

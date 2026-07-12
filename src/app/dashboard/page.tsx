@@ -12,6 +12,7 @@ import Sidebar from "@/components/Sidebar";
 import { StudioFS } from "@/lib/studio-fs";
 import { usePbRealtimeReports, usePbRealtimeProjects } from "@/hooks/usePbRealtime";
 import { useMembershipRealtime } from "@/hooks/useMembershipRealtime";
+import { useUserLocation } from "@/hooks/useUserLocation";
 const ProjectStats = dynamic(() => import("@/components/ProjectStats").then(m => m.ProjectStats), { ssr: false });
 const ChatWidget = dynamic(() => import("@/components/ChatWidget"), { ssr: false });
 import ProLoader from "@/components/ProLoader";
@@ -55,6 +56,15 @@ export default function DashboardPage() {
     },
     onError: (err) => console.warn('[Membership] Poll error:', err),
   });
+  const {
+    location: userLocation,
+    loading: locationLoading,
+    permissionDenied,
+  } = useUserLocation({
+    pollIntervalMs: 30000,
+    enabled: !!session?.user,
+  });
+
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [reminderInfo, setReminderInfo] = useState<any>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
@@ -886,6 +896,42 @@ export default function DashboardPage() {
                       <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0"></span>
                       <span className="text-[10px] uppercase tracking-wider font-bold text-green-500">Live</span>
                     </div>
+                  </div>
+                )}
+
+                {(userLocation || locationLoading) && (
+                  <div className="mt-6 pt-4 border-t border-outline/10 grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10 text-xs font-semibold text-secondary">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-primary text-[18px] shrink-0">location_on</span>
+                      <span>
+                        Location:{' '}
+                        <strong className="text-on-surface">
+                          {locationLoading ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="w-3 h-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                              Detecting…
+                            </span>
+                          ) : userLocation?.locationName ? (
+                            userLocation.locationName
+                          ) : permissionDenied ? (
+                            'Permission denied'
+                          ) : (
+                            'Unknown'
+                          )}
+                        </strong>
+                      </span>
+                    </div>
+                    {userLocation?.latitude != null && (
+                      <div className="flex items-center gap-2 sm:justify-end">
+                        <span className="material-symbols-outlined text-primary text-[18px] shrink-0">pin_drop</span>
+                        <span>
+                          Coordinates:{' '}
+                          <strong className="text-on-surface font-mono">
+                            {userLocation.latitude.toFixed(4)}, {userLocation.longitude.toFixed(4)}
+                          </strong>
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
                 

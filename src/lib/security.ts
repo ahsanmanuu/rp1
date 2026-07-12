@@ -104,8 +104,8 @@ export async function checkUserAnomaly(
       select: { ipAddress: true, location: true }
     });
 
-    const uniqueIps = new Set(activities.map(a => a.ipAddress));
-    const uniqueLocations = new Set(activities.map(a => a.location).filter(Boolean));
+    const uniqueIps = new Set(activities.map((a: any) => a.ipAddress));
+    const uniqueLocations = new Set(activities.map((a: any) => a.location).filter(Boolean));
 
     if (uniqueIps.size > 5 || uniqueLocations.size > 3) {
       const blockExpiry = new Date(now.getTime() + 2 * 60 * 60 * 1000);
@@ -139,7 +139,7 @@ export async function checkUserAnomaly(
   });
 
   const aiRequestCount = recentAiLogs.length;
-  const aiTokensCount = recentAiLogs.reduce((sum, log) => sum + log.totalTokens, 0);
+  const aiTokensCount = recentAiLogs.reduce((sum: any, log: any) => sum + log.totalTokens, 0);
 
   if (aiRequestCount > 25 || aiTokensCount > 200000) {
     const blockExpiry = new Date(now.getTime() + 2 * 60 * 60 * 1000);

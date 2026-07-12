@@ -61,6 +61,8 @@ export async function GET(req: NextRequest) {
           select: {
             ipAddress: true,
             location: true,
+            latitude: true,
+            longitude: true,
             createdAt: true,
           },
         },
@@ -107,6 +109,8 @@ export async function GET(req: NextRequest) {
         blockedUntil: u.blockedUntil || null,
         lastIp: lastSession?.ipAddress || "127.0.0.1",
         lastLocation: lastSession?.location || "Localhost",
+        lastLatitude: lastSession?.latitude ?? null,
+        lastLongitude: lastSession?.longitude ?? null,
         joiningDate: u.createdAt,
         paidTransactions: u.membershipTransactions || [],
         role: u.role || "user",

@@ -126,7 +126,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Plan not found" }, { status: 404 });
     }
 
-    const plan = await prisma.$transaction(async (tx) => {
+    const plan = await prisma.$transaction(async (tx: any) => {
       // Remove references in User model
       await tx.user.updateMany({
         where: { aiCapPlanId: id },

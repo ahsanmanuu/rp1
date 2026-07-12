@@ -379,10 +379,13 @@ model UserSessionActivity {
   userId    String
   ipAddress String
   location  String?
+  latitude  Float?
+  longitude Float?
   userAgent String?
   createdAt DateTime @default(now()) @db.Timestamptz
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId, createdAt])
   @@map("user_session_activities")
 }
 

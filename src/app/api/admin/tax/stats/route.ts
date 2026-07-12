@@ -38,7 +38,7 @@ export async function GET() {
     const currentTotal = aggregated._sum.taxAmount || 0;
     const changePercent = prevTotal > 0 ? ((currentTotal - prevTotal) / prevTotal) * 100 : 12.4;
 
-    const regionCollection = regionData.map(r => ({
+    const regionCollection = regionData.map((r: any) => ({
       region: r.region,
       taxAmount: r._sum.taxAmount || 0,
       amount: r._sum.amount || 0,
@@ -56,7 +56,7 @@ export async function GET() {
       stats: {
         totalVatCollected: currentTotal,
         exemptCount,
-        pendingAudits: filings.filter(f => f.status === 'pending').length,
+        pendingAudits: filings.filter((f: any) => f.status === 'pending').length,
         changePercent: parseFloat(changePercent.toFixed(1)),
         grossRevenue: aggregated._sum.amount || 0,
         estimatedLiability: (aggregated._sum.amount || 0) * 0.18,

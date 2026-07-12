@@ -56,6 +56,8 @@ async function buildUserDetail(u: any, aiTokenMap: Record<string, number>) {
     // Last session
     lastIp: lastSession?.ipAddress || null,
     lastLocation: lastSession?.location || null,
+    lastLatitude: lastSession?.latitude || null,
+    lastLongitude: lastSession?.longitude || null,
     lastSeenAt: lastSession?.createdAt || null,
     // Nested collections (for deep-dive tab)
     sessions: u.sessionActivities || [],
@@ -86,7 +88,7 @@ export async function GET(req: NextRequest) {
           sessionActivities: {
             orderBy: { createdAt: "desc" },
             take: 20,
-            select: { id: true, ipAddress: true, location: true, userAgent: true, createdAt: true },
+            select: { id: true, ipAddress: true, location: true, latitude: true, longitude: true, userAgent: true, createdAt: true },
           },
           membershipTransactions: {
             orderBy: { createdAt: "desc" },

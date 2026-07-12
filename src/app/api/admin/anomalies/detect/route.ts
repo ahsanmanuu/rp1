@@ -88,7 +88,7 @@ async function detectIPHopping() {
     _count: { location: true },
     having: { location: { _count: { gt: 3 } } },
   });
-  const ids = multiLoc.map((u) => u.userId).filter(Boolean) as string[];
+  const ids = multiLoc.map((u: any) => u.userId).filter(Boolean) as string[];
   if (ids.length === 0) return;
   const users = await prisma.user.findMany({
     where: { id: { in: ids } },
@@ -114,20 +114,20 @@ async function detectUsageSpikes() {
     where: { createdAt: { gte: daysAgo(7) }, userId: { not: null } },
     _sum: { totalTokens: true },
   });
-  const dailyTotals = dailyStats.map((d) => d._sum.totalTokens || 0).filter(Boolean);
+  const dailyTotals = dailyStats.map((d: any) => d._sum.totalTokens || 0).filter(Boolean);
   if (dailyTotals.length < 2) return;
-  const mean = dailyTotals.reduce((s, v) => s + v, 0) / dailyTotals.length;
-  const stdDev = Math.sqrt(dailyTotals.reduce((s, v) => s + (v - mean) ** 2, 0) / dailyTotals.length);
+  const mean = dailyTotals.reduce((s: any, v: any) => s + v, 0) / dailyTotals.length;
+  const stdDev = Math.sqrt(dailyTotals.reduce((s: any, v: any) => s + (v - mean) ** 2, 0) / dailyTotals.length);
   const threshold = mean + 3 * stdDev;
-  const spikeUsers = dailyStats.filter((d) => (d._sum.totalTokens || 0) > threshold && d.userId);
+  const spikeUsers = dailyStats.filter((d: any) => (d._sum.totalTokens || 0) > threshold && d.userId);
   if (spikeUsers.length === 0) return;
-  const ids = spikeUsers.map((u) => u.userId).filter(Boolean) as string[];
+  const ids = spikeUsers.map((u: any) => u.userId).filter(Boolean) as string[];
   const users = await prisma.user.findMany({
     where: { id: { in: ids } },
     select: { id: true, name: true, email: true },
   });
   const userMap: Record<string, any> = {};
-  users.forEach((u) => { userMap[u.id] = u; });
+  users.forEach((u: any) => { userMap[u.id] = u; });
   for (const su of spikeUsers) {
     if (!su.userId) continue;
     const u = userMap[su.userId];
@@ -154,15 +154,15 @@ async function detectRateAbuse() {
     _count: { id: true },
     where: { createdAt: { gte: oneMinuteAgo }, userId: { not: null } },
   });
-  const abusers = groups.filter((g) => g._count.id > 5 && g.userId);
+  const abusers = groups.filter((g: any) => g._count.id > 5 && g.userId);
   if (abusers.length === 0) return;
-  const ids = abusers.map((u) => u.userId).filter(Boolean) as string[];
+  const ids = abusers.map((u: any) => u.userId).filter(Boolean) as string[];
   const users = await prisma.user.findMany({
     where: { id: { in: ids } },
     select: { id: true, name: true, email: true, status: true },
   });
   for (const u of users) {
-    const count = abusers.find((a) => a.userId === u.id)?._count.id || 0;
+    const count = abusers.find((a: any) => a.userId === u.id)?._count.id || 0;
     await ensureAlert("user_rate_abuse_" + u.id, {
       type: "api_rate",
       severity: "medium",
@@ -292,7 +292,7 @@ async function detectFailedPayments() {
     select: { id: true, name: true, email: true },
   });
   const userMap: Record<string, any> = {};
-  users.forEach((u) => { userMap[u.id] = u; });
+  users.forEach((u: any) => { userMap[u.id] = u; });
   for (const [userId, info] of abusers) {
     const u = userMap[userId];
     await ensureAlert("billing_failed_payments_" + userId, {
@@ -314,10 +314,10 @@ async function detectLargeTransactions() {
     where: { paymentStatus: "paid", createdAt: { gte: daysAgo(30) } },
     select: { amount: true },
   });
-  const amounts = allTx.map((t) => t.amount);
+  const amounts = allTx.map((t: any) => t.amount);
   if (amounts.length < 5) return;
-  const mean = amounts.reduce((s, v) => s + v, 0) / amounts.length;
-  const stdDev = Math.sqrt(amounts.reduce((s, v) => s + (v - mean) ** 2, 0) / amounts.length);
+  const mean = amounts.reduce((s: any, v: any) => s + v, 0) / amounts.length;
+  const stdDev = Math.sqrt(amounts.reduce((s: any, v: any) => s + (v - mean) ** 2, 0) / amounts.length);
   const threshold = mean + 3 * stdDev;
   const large = await prisma.membershipTransaction.findMany({
     where: { paymentStatus: "paid", amount: { gt: threshold }, createdAt: { gte: hoursAgo(24) } },
@@ -325,13 +325,13 @@ async function detectLargeTransactions() {
     select: { id: true, userId: true, amount: true, planType: true },
   });
   if (large.length === 0) return;
-  const userIds = large.map((t) => t.userId).filter(Boolean) as string[];
+  const userIds = large.map((t: any) => t.userId).filter(Boolean) as string[];
   const users = await prisma.user.findMany({
     where: { id: { in: userIds } },
     select: { id: true, name: true, email: true },
   });
   const userMap: Record<string, any> = {};
-  users.forEach((u) => { userMap[u.id] = u; });
+  users.forEach((u: any) => { userMap[u.id] = u; });
   for (const tx of large) {
     if (!tx.userId) continue;
     const u = userMap[tx.userId];
@@ -371,7 +371,7 @@ async function detectRapidTransactions() {
     select: { id: true, name: true, email: true },
   });
   const userMap: Record<string, any> = {};
-  users.forEach((u) => { userMap[u.id] = u; });
+  users.forEach((u: any) => { userMap[u.id] = u; });
   for (const [userId, info] of rapid) {
     const u = userMap[userId];
     await ensureAlert("billing_rapid_transactions_" + userId, {
@@ -407,7 +407,7 @@ async function detectRepeatedCapHits() {
       select: { date: true, totalTokens: true },
       orderBy: { date: "desc" },
     });
-    const hits = summaries.filter((s) => s.totalTokens >= (u.aiDailyCapOverride || 0) * 0.95);
+    const hits = summaries.filter((s: any) => s.totalTokens >= (u.aiDailyCapOverride || 0) * 0.95);
     if (hits.length > 5) {
       await ensureAlert("cap_repeated_hits_" + u.id, {
         type: "cap_abuse",
@@ -417,7 +417,7 @@ async function detectRepeatedCapHits() {
         entityType: "user",
         entityId: u.id,
         entityLabel: u.email,
-        metadata: { capHits: hits.length, dailyCap: u.aiDailyCapOverride, dates: hits.map((h) => h.date) },
+        metadata: { capHits: hits.length, dailyCap: u.aiDailyCapOverride, dates: hits.map((h: any) => h.date) },
       });
     }
   }

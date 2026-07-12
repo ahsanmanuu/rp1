@@ -64,11 +64,11 @@ async function main() {
         userMap[user.id] = existing.items[0].id; // Use the PB ID
       } else {
         // Create new user
-        payload.id = newId;
-        payload.email = user.email;
+        (payload as any).id = newId;
+        (payload as any).email = user.email;
         // Generate a random password for migrated users
-        payload.password = crypto.randomBytes(8).toString('hex');
-        payload.passwordConfirm = payload.password;
+        (payload as any).password = crypto.randomBytes(8).toString('hex');
+        (payload as any).passwordConfirm = (payload as any).password;
         
         await pb.collection('users').create(payload);
       }

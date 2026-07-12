@@ -32,7 +32,7 @@ export async function PUT(req: Request) {
     }
 
     // Find admin in PocketBase _superusers
-    const adminPb = pbAdmin();
+    const adminPb = await pbAdmin();
     const records = await adminPb.collection("_superusers").getFullList({
       filter: `email = "${email}"`,
     });

@@ -160,8 +160,8 @@ export async function GET(req: NextRequest) {
     });
 
     // Determine overall system operational status
-    const anyDown = services.some(s => s.status === "down");
-    const anyDegraded = services.some(s => s.status === "degraded");
+    const anyDown = services.some((s: any) => s.status === "down");
+    const anyDegraded = services.some((s: any) => s.status === "degraded");
     const overallStatus = anyDown ? "degraded" : anyDegraded ? "degraded" : "operational";
 
     // Mock graph data (slight randomisation each poll)

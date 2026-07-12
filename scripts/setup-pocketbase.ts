@@ -350,6 +350,8 @@ export const COLLECTIONS: CollectionDef[] = [
       { name: 'userId', type: 'relation', required: true, options: { collectionId: '_pb_users_collection_', cascadeDelete: true } },
       { name: 'ipAddress', type: 'text', required: true },
       { name: 'location', type: 'text' },
+      { name: 'latitude', type: 'number' },
+      { name: 'longitude', type: 'number' },
       { name: 'userAgent', type: 'text' },
     ],
   },

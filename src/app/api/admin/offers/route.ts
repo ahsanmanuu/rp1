@@ -24,7 +24,7 @@ async function seedDemoOffers() {
     try {
       const targetUser = await prisma.user.findFirst({ where: { email: "demo.arjun@latexify.io" }, select: { id: true } });
       if (targetUser) {
-        offers.push({ title: "Premium Welcome Offer", code: "WELCOME50", description: "Exclusive 50% off for premium users.", discountPercent: 50, discountAmount: null, offerType: "USER", userEmail: "demo.arjun@latexify.io", expiresAt: sixtyDays, isActive: true });
+        offers.push({ title: "Premium Welcome Offer", code: "WELCOME50", description: "Exclusive 50% off for premium users.", discountPercent: 50, discountAmount: null, offerType: "USER", userEmail: "demo.arjun@latexify.io", expiresAt: sixtyDays, isActive: true } as any);
       }
     } catch { /* skip user-targeted */ }
 
@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
         });
         
         if (activeUsers.length > 0) {
-          const notificationsPayload = activeUsers.map(u => ({
+          const notificationsPayload = activeUsers.map((u: any) => ({
             userId: u.id,
             type: "offer_created",
             title: `🎉 New Offer: ${offer.code}`,

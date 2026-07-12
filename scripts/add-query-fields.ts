@@ -39,7 +39,7 @@ async function main() {
         name: 'status',
         type: 'text',
         required: false
-      });
+      } as any);
       console.log('Adding field "status" to general_queries collection.');
       modified = true;
     }
@@ -49,7 +49,7 @@ async function main() {
         name: 'reply',
         type: 'text',
         required: false
-      });
+      } as any);
       console.log('Adding field "reply" to general_queries collection.');
       modified = true;
     }

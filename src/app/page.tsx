@@ -213,7 +213,7 @@ export default function Home() {
           const statsRes = await fetch('/api/platform-stats');
           const statsData = await statsRes.json();
           if (statsData?.stats) {
-            setRealStats(prev => ({ ...prev, ...statsData.stats }));
+            setRealStats((prev: any) => ({ ...prev, ...statsData.stats }));
           }
         } catch {}
       } catch (e) {

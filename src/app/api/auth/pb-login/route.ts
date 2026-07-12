@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
           error: "ALREADY_LOGGED_IN",
           message: "Active session detected on another device.",
           existingSessionCount: existingSessions.length,
-          sessionDetails: existingSessions.map(s => ({
+          sessionDetails: existingSessions.map((s: any) => ({
             ipAddress: s.ipAddress || "Unknown IP",
             location: s.location || "Unknown Location",
             machineId: s.machineId || "Unknown Machine",

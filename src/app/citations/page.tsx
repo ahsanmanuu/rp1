@@ -106,6 +106,8 @@ export default function CitationGeneratorPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<Citation[] | null>(null);
 
+  const [activeRowMenu, setActiveRowMenu] = useState<string | null>(null);
+
   // Manual Entry / Edit State
   const [manualData, setManualData] = useState<Partial<Citation>>({
     sourceType: "journal",

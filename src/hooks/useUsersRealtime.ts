@@ -19,6 +19,8 @@ export interface AdminUser {
   blockedUntil: string | null;
   lastIp: string;
   lastLocation: string;
+  lastLatitude: number | null;
+  lastLongitude: number | null;
   joiningDate: string;
   paidTransactions: any[];
   role: string;

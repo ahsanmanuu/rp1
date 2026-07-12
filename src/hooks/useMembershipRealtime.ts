@@ -173,7 +173,7 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
 
           // Subscribe to user record changes
           try {
-            const unsubUser = await pb.collection('users').subscribe(userIdRef.current, () => { onEvent(); });
+            const unsubUser = await pb.collection('users').subscribe(userIdRef.current!, () => { onEvent(); });
             unsubFns.push(unsubUser);
           } catch {}
 

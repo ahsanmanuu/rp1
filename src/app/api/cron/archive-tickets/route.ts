@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
         targetId: `batch_${result.count}`,
         newValue: JSON.stringify({
           count: result.count,
-          ticketIds: candidates.map((t) => t.ticketId),
+          ticketIds: candidates.map((t: any) => t.ticketId),
         }),
       },
     });
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       archived: result.count,
-      tickets: candidates.map((t) => t.ticketId),
+      tickets: candidates.map((t: any) => t.ticketId),
     });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

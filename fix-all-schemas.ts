@@ -1,17 +1,17 @@
 import Database from 'better-sqlite3';
-import { COLLECTIONS } from './scripts/setup-pocketbase.ts';
+import { COLLECTIONS } from './scripts/setup-pocketbase';
 
 const db = new Database('./pb_data/data.db');
 
-function fieldId(type) {
+function fieldId(type: string) {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
   let id = "";
   for (let i = 0; i < 8; i++) id += chars[Math.floor(Math.random() * chars.length)];
   return id;
 }
 
-function convertTo027Fields(schema) {
-  return schema.map(f => {
+function convertTo027Fields(schema: any[]) {
+  return schema.map((f: any) => {
     const base = {
       id: fieldId(f.type),
       name: f.name,
@@ -66,12 +66,12 @@ for (const def of COLLECTIONS) {
     const newFields = convertTo027Fields(def.schema);
     
     // Check if fields are empty or missing custom fields
-    const currentFields = JSON.parse(row.fields || '[]');
-    const customFields = currentFields.filter(f => !f.system);
+    const currentFields = JSON.parse((row as any).fields || '[]');
+    const customFields = currentFields.filter((f: any) => !f.system);
     
     if (customFields.length === 0 || def.name === 'users') {
       console.log(`Fixing schema for ${def.name}...`);
-      const allFields = [...currentFields.filter(f => f.system), ...newFields];
+      const allFields = [...currentFields.filter((f: any) => f.system), ...newFields];
       db.prepare("UPDATE _collections SET fields = ? WHERE name = ?").run(JSON.stringify(allFields), def.name);
     }
   }
@@ -83,8 +83,8 @@ if (usersDef) {
   const usersRow = db.prepare("SELECT * FROM _collections WHERE name = 'users'").get();
   if (usersRow) {
     const newFields = convertTo027Fields(usersDef.schema);
-    const currentFields = JSON.parse(usersRow.fields || '[]');
-    const allFields = [...currentFields.filter(f => f.system), ...newFields];
+    const currentFields = JSON.parse((usersRow as any).fields || '[]');
+    const allFields = [...currentFields.filter((f: any) => f.system), ...newFields];
     db.prepare("UPDATE _collections SET fields = ? WHERE name = 'users'").run(JSON.stringify(allFields));
   }
 }

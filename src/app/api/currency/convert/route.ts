@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
       premium_6m: 1000,
       premium_12m: 2200,
     };
-    dbPlans.forEach(p => {
+    dbPlans.forEach((p: any) => {
       basePrices[p.planId] = p.priceINR;
     });
 
@@ -116,7 +116,7 @@ export async function GET(req: NextRequest) {
     });
 
     // Formulate complete details of each plan with converted prices
-    const plansList = dbPlans.map(p => {
+    const plansList = dbPlans.map((p: any) => {
       const converted = p.priceINR * rate;
       let convertedPrice = 0;
       if (currencyInfo.code === "JPY") {

@@ -81,17 +81,17 @@ export async function GET(req: NextRequest) {
       const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
       const dayEnd = new Date(dayStart.getTime() + 86_400_000);
 
-      const dayRecharges = rechargeTx.filter(tx => {
+      const dayRecharges = rechargeTx.filter((tx: any) => {
         const t = new Date(tx.createdAt);
         return t >= dayStart && t < dayEnd;
       });
-      const dayRevenue = dayRecharges.reduce((s, tx) => s + estimateRevenue(tx.amount), 0);
+      const dayRevenue = dayRecharges.reduce((s: any, tx: any) => s + estimateRevenue(tx.amount), 0);
 
-      const dayMemberships = paidMemberships.filter(m => {
+      const dayMemberships = paidMemberships.filter((m: any) => {
         const t = new Date(m.createdAt);
         return t >= dayStart && t < dayEnd;
       });
-      const dayMRev = dayMemberships.reduce((s, m) => s + m.amount, 0);
+      const dayMRev = dayMemberships.reduce((s: any, m: any) => s + m.amount, 0);
 
       const dayTokens = await prisma.aiUsageLog.aggregate({
         where: { createdAt: { gte: dayStart, lt: dayEnd } },
@@ -135,8 +135,8 @@ export async function GET(req: NextRequest) {
     });
 
     const combinedActive30d = new Set([
-      ...activeUserIds30d.map(u => u.userId).filter(Boolean),
-      ...usersWithSessions30d.map(u => u.userId),
+      ...activeUserIds30d.map((u: any) => u.userId).filter(Boolean),
+      ...usersWithSessions30d.map((u: any) => u.userId),
     ]);
 
     // Churned: users registered >30 days ago but no activity in last 30 days
@@ -197,17 +197,17 @@ export async function GET(req: NextRequest) {
       take: 10,
     });
 
-    const puIds = powerUserGroups.map(g => g.userId).filter((id): id is string => !!id);
+    const puIds = powerUserGroups.map((g: any) => g.userId).filter((id: any): id is string => !!id);
     const puUsers = await prisma.user.findMany({
       where: { id: { in: puIds } },
       select: { id: true, name: true, email: true, membership: true, points: true, createdAt: true },
     });
     const puMap: Record<string, any> = {};
-    puUsers.forEach(u => { puMap[u.id] = u; });
+    puUsers.forEach((u: any) => { puMap[u.id] = u; });
 
     // Last active date for each power user
     const puLastActiveRaw = await Promise.all(
-      puIds.map(id =>
+      puIds.map((id: any) =>
         prisma.aiUsageLog.findFirst({
           where: { userId: id },
           orderBy: { createdAt: 'desc' },
@@ -221,7 +221,7 @@ export async function GET(req: NextRequest) {
     });
 
     const powerUsers = powerUserGroups
-      .map(g => {
+      .map((g: any) => {
         if (!g.userId || !puMap[g.userId]) return null;
         return {
           id: g.userId,
@@ -255,17 +255,17 @@ export async function GET(req: NextRequest) {
       where: { createdAt: { gte: daysAgo(7) }, userId: { not: null } },
       _sum: { totalTokens: true },
     });
-    const dailyTotals = dailyStats.map(d => d._sum.totalTokens || 0).filter(Boolean);
+    const dailyTotals = dailyStats.map((d: any) => d._sum.totalTokens || 0).filter(Boolean);
     const mean = dailyTotals.length > 0
-      ? dailyTotals.reduce((s, v) => s + v, 0) / dailyTotals.length
+      ? dailyTotals.reduce((s: any, v: any) => s + v, 0) / dailyTotals.length
       : 0;
     const stdDev = dailyTotals.length > 1
-      ? Math.sqrt(dailyTotals.reduce((s, v) => s + (v - mean) ** 2, 0) / dailyTotals.length)
+      ? Math.sqrt(dailyTotals.reduce((s: any, v: any) => s + (v - mean) ** 2, 0) / dailyTotals.length)
       : 0;
     const spikeThreshold = mean + 3 * stdDev;
 
-    const spikeUsers = dailyStats.filter(d => (d._sum.totalTokens || 0) > spikeThreshold && d.userId);
-    const spikeUserIds = spikeUsers.map(u => u.userId).filter(Boolean) as string[];
+    const spikeUsers = dailyStats.filter((d: any) => (d._sum.totalTokens || 0) > spikeThreshold && d.userId);
+    const spikeUserIds = spikeUsers.map((u: any) => u.userId).filter(Boolean) as string[];
     const spikeUserDetails = spikeUserIds.length > 0
       ? await prisma.user.findMany({
           where: { id: { in: spikeUserIds } },
@@ -273,7 +273,7 @@ export async function GET(req: NextRequest) {
         })
       : [];
     const spikeMap: Record<string, any> = {};
-    spikeUserDetails.forEach(u => { spikeMap[u.id] = u; });
+    spikeUserDetails.forEach((u: any) => { spikeMap[u.id] = u; });
 
     const anomalies: any[] = [];
 
@@ -310,7 +310,7 @@ export async function GET(req: NextRequest) {
       _count: { location: true },
       having: { location: { _count: { gt: 3 } } },
     });
-    const multiLocIds = multiLocationUsers.map(u => u.userId).filter(Boolean) as string[];
+    const multiLocIds = multiLocationUsers.map((u: any) => u.userId).filter(Boolean) as string[];
     if (multiLocIds.length > 0) {
       const multiLocDetails = await prisma.user.findMany({
         where: { id: { in: multiLocIds } },
@@ -359,7 +359,7 @@ export async function GET(req: NextRequest) {
       _count: { id: true },
       orderBy: { _sum: { totalTokens: 'desc' } },
     });
-    const tokenByAgent = agentGroups.map(g => ({
+    const tokenByAgent = agentGroups.map((g: any) => ({
       agent: g.agent || 'unknown',
       tokens: g._sum.totalTokens || 0,
       requests: g._count.id,
@@ -382,7 +382,7 @@ export async function GET(req: NextRequest) {
       _count: { id: true },
     });
     // Collect all unique userIds across all agents
-    const allAgentUserIds = [...new Set(allAgentUserGroups.map(g => g.userId).filter(Boolean))] as string[];
+    const allAgentUserIds = [...new Set(allAgentUserGroups.map((g: any) => g.userId).filter(Boolean))] as string[];
     const allAgentUsers = allAgentUserIds.length > 0
       ? await prisma.user.findMany({
           where: { id: { in: allAgentUserIds } },
@@ -390,15 +390,15 @@ export async function GET(req: NextRequest) {
         })
       : [];
     const allAgentUserMap: Record<string, any> = {};
-    allAgentUsers.forEach(u => { allAgentUserMap[u.id] = u; });
+    allAgentUsers.forEach((u: any) => { allAgentUserMap[u.id] = u; });
 
     const agentUsageByUser: Record<string, { userId: string; name: string; email: string; totalTokens: number; promptTokens: number; completionTokens: number; requestCount: number; share: number }[]> = {};
     const agentTotals: Record<string, number> = {};
     for (const agent of AGENT_KEYS) {
-      const groups = allAgentUserGroups.filter(g => g.agent === agent && g.userId);
-      const totalTokens = groups.reduce((s, g) => s + (g._sum.totalTokens || 0), 0);
+      const groups = allAgentUserGroups.filter((g: any) => g.agent === agent && g.userId);
+      const totalTokens = groups.reduce((s: any, g: any) => s + (g._sum.totalTokens || 0), 0);
       agentTotals[agent] = totalTokens;
-      agentUsageByUser[agent] = groups.map(g => {
+      agentUsageByUser[agent] = groups.map((g: any) => {
         const u = allAgentUserMap[g.userId!];
         return {
           userId: g.userId!,
@@ -420,7 +420,7 @@ export async function GET(req: NextRequest) {
       _count: { id: true },
       orderBy: { _sum: { totalTokens: 'desc' } },
     });
-    const tokenByModel = modelGroups.map(g => ({
+    const tokenByModel = modelGroups.map((g: any) => ({
       model: g.model || 'unknown',
       tokens: g._sum.totalTokens || 0,
       requests: g._count.id,

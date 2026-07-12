@@ -114,7 +114,7 @@ export async function runHardenedPipeline(
                                 console.log(`[OMEGA] Non-Ghost Asset Transformed: ${f.path} -> ${newPath}`);
                             }
                             return { ...f, path: newPath, content: `data:image/png;base64,${processedBuffer.toString('base64')}` };
-                        } catch {
+                        } catch (e) {
                             console.error('[OMEGA] Non-Ghost normalization fail:', f.path, e);
                         }
                     }
@@ -179,7 +179,7 @@ export async function runHardenedPipeline(
                         console.log(`[OMEGA] Asset Transformed: ${f.path} -> ${newPath}`);
                     }
                     return { ...f, path: newPath, content: `data:${mime};base64,${processedBuffer.toString('base64')}` };
-                } catch {
+                } catch (e) {
                     console.error('[OMEGA] Normalization fail, dropping corrupt asset:', f.path, e);
                     // Return a 1x1 transparent PNG instead of a corrupt file that crashes the compiler
                     const transparent1x1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";

@@ -42,6 +42,8 @@ interface AdminUser {
   blockedUntil: string | null;
   lastIp: string;
   lastLocation: string;
+  lastLatitude: number | null;
+  lastLongitude: number | null;
   joiningDate: string;
   paidTransactions: PaidTransaction[];
   role: string;
@@ -1718,10 +1720,18 @@ export default function AdminUsersPage() {
 
                       <div className="flex justify-between items-center text-xs">
                         <span style={{ color: 'var(--color-admin-on-surface-variant)' }}>Geo Location:</span>
-                        <span className="font-semibold truncate max-w-[120px]" style={{ color: 'var(--color-admin-on-surface)' }} title={selectedUser.lastLocation}>
+                        <span className="font-semibold truncate max-w-[140px]" style={{ color: 'var(--color-admin-on-surface)' }} title={selectedUser.lastLocation}>
                           {selectedUser.lastLocation || 'Localhost'}
                         </span>
                       </div>
+                      {(selectedUser.lastLatitude != null || selectedUser.lastLongitude != null) && (
+                        <div className="flex justify-between items-center text-xs">
+                          <span style={{ color: 'var(--color-admin-on-surface-variant)' }}>Coordinates:</span>
+                          <span className="font-semibold font-mono text-[11px]" style={{ color: 'var(--color-admin-on-surface)' }}>
+                            {selectedUser.lastLatitude != null ? selectedUser.lastLatitude.toFixed(4) : '?'}, {selectedUser.lastLongitude != null ? selectedUser.lastLongitude.toFixed(4) : '?'}
+                          </span>
+                        </div>
+                      )}
 
                       <div className="flex justify-between items-center text-xs">
                         <span style={{ color: 'var(--color-admin-on-surface-variant)' }}>Subscriptions:</span>

@@ -56,8 +56,8 @@ export async function GET(req: NextRequest) {
       total,
       page,
       limit,
-      severityCounts: Object.fromEntries(severityCounts.map((s) => [s.severity, s._count.id])),
-      typeCounts: Object.fromEntries(typeCounts.map((t) => [t.type, t._count.id])),
+      severityCounts: Object.fromEntries(severityCounts.map((s: any) => [s.severity, s._count.id])),
+      typeCounts: Object.fromEntries(typeCounts.map((t: any) => [t.type, t._count.id])),
     });
   } catch (error: any) {
     console.error("[ANOMALIES] GET Error:", error);

@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     });
 
     const total = rules.length;
-    const activeCount = rules.filter(r => r.isActive).length;
+    const activeCount = rules.filter((r: any) => r.isActive).length;
 
     return NextResponse.json({
       success: true,

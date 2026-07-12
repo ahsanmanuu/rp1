@@ -21,7 +21,7 @@ export async function POST() {
 
     let updated = 0;
     for (const tx of transactions) {
-      const rule = rules.find(r => r.region === tx.region) || rules[0];
+      const rule = rules.find((r: any) => r.region === tx.region) || rules[0];
       const taxAmount = parseFloat((tx.amount * rule.rate / 100).toFixed(2));
       await prisma.taxTransaction.update({
         where: { id: tx.id },
@@ -39,7 +39,7 @@ export async function POST() {
     let created = 0;
     for (const m of memberships) {
       const region = 'IN';
-      const rule = rules.find(r => r.region === region) || rules[0];
+      const rule = rules.find((r: any) => r.region === region) || rules[0];
       const amount = m.amount || 0;
       const taxAmount = parseFloat((amount * rule.rate / 100).toFixed(2));
       await prisma.taxTransaction.create({

@@ -32,12 +32,12 @@ export async function GET(req: NextRequest) {
     ]);
 
     const grossRevenue = aggregated._sum.amount || 0;
-    const avgRate = rules.length > 0 ? rules.reduce((s, r) => s + r.rate, 0) / rules.length : 18;
+    const avgRate = rules.length > 0 ? rules.reduce((s: any, r: any) => s + r.rate, 0) / rules.length : 18;
     const exemptRatio = exemptionList.length > 0 ? exemptionList.length / (exemptionList.length + 1) : 0;
     const effectiveRate = avgRate * (1 - exemptRatio * 0.5);
 
-    const regionBreakdown = regionData.map(r => {
-      const rule = rules.find(ru => ru.region === r.region);
+    const regionBreakdown = regionData.map((r: any) => {
+      const rule = rules.find((ru: any) => ru.region === r.region);
       return { region: r.region, amount: r._sum.amount || 0, rate: rule?.rate || avgRate };
     });
 

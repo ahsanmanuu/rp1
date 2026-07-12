@@ -42,8 +42,8 @@ export async function GET(req: NextRequest) {
       take: 10,
     });
 
-    const uniqueIps = new Set(sessionActivities.map(a => a.ipAddress));
-    const uniqueLocations = new Set(sessionActivities.map(a => a.location).filter(Boolean));
+    const uniqueIps = new Set(sessionActivities.map((a: any) => a.ipAddress));
+    const uniqueLocations = new Set(sessionActivities.map((a: any) => a.location).filter(Boolean));
 
     let securityStatus = "clean";
     let securityMessage = "No security alerts in the past 24 hours.";
@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
     });
 
     const aiRequestsCount = aiLogs.length;
-    const totalAiTokens = aiLogs.reduce((sum, log) => sum + log.totalTokens, 0);
+    const totalAiTokens = aiLogs.reduce((sum: any, log: any) => sum + log.totalTokens, 0);
 
     let aiStatus = "clean";
     let aiMessage = "AI API resource usage levels normal.";
@@ -100,8 +100,8 @@ export async function GET(req: NextRequest) {
     let billingStatus = "clean";
     let billingMessage = "No financial transaction warnings.";
 
-    const failedCount = recentTransactions.filter(t => t.type === 'failed').length;
-    const refundsCount = recentTransactions.filter(t => t.type === 'refund').length;
+    const failedCount = recentTransactions.filter((t: any) => t.type === 'failed').length;
+    const refundsCount = recentTransactions.filter((t: any) => t.type === 'refund').length;
 
     if (failedCount > 2) {
       billingStatus = "critical";
@@ -129,7 +129,7 @@ export async function GET(req: NextRequest) {
           message: securityMessage,
           uniqueIps: uniqueIps.size,
           uniqueLocations: uniqueLocations.size,
-          recent: sessionActivities.slice(0, 3).map(a => ({
+          recent: sessionActivities.slice(0, 3).map((a: any) => ({
             ip: a.ipAddress,
             location: a.location || "Unknown",
             time: a.createdAt
@@ -149,7 +149,7 @@ export async function GET(req: NextRequest) {
         billing: {
           status: billingStatus,
           message: billingMessage,
-          recent: recentTransactions.map(t => ({
+          recent: recentTransactions.map((t: any) => ({
             amount: t.amount,
             type: t.type,
             time: t.createdAt

@@ -704,7 +704,7 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
       const isBypassedImage = ['heic', 'heif', 'tiff', 'tif', 'bmp', 'avif', 'eps', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext || '');
       if (!isText && file.type.startsWith('image/') && !isBypassedImage && !['image/jpeg', 'image/png'].includes(file.type)) {
         content = await new Promise<string>((resolve) => {
-          const img = new Image();
+          const img = new (window as any).Image();
           img.onload = () => {
             const canvas = document.createElement('canvas');
             canvas.width = img.width; canvas.height = img.height;
