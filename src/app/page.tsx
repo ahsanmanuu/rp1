@@ -260,12 +260,13 @@ export default function Home() {
     };
   }, []);
 
-  // Auto-rotate banners
+  // Auto-rotate banners (uses fallback if PB has none)
+  const effectiveBannerCount = banners.length > 0 ? banners.length : DEFAULT_BANNERS.length;
   useEffect(() => {
-    if (banners.length <= 1) return;
-    const timer = setInterval(() => setBannerIndex(i => (i + 1) % banners.length), 5000);
+    if (effectiveBannerCount <= 1) return;
+    const timer = setInterval(() => setBannerIndex(i => (i + 1) % effectiveBannerCount), 5000);
     return () => clearInterval(timer);
-  }, [banners.length]);
+  }, [effectiveBannerCount]);
 
   if ((!mounted || status === "authenticated") && !proloaderTimeout) {
     return <ProLoader />;
@@ -291,12 +292,12 @@ export default function Home() {
 
         <div className="max-w-[1440px] mx-auto px-6 md:px-12 lg:px-16 w-full py-12 md:py-16 lg:py-20">
 
-          {/* Banner Carousel */}
-          {banners.length > 0 && (
+          {/* Banner Carousel — uses PB banners if available, otherwise falls back to hardcoded defaults */}
+          {(banners.length > 0 ? banners : DEFAULT_BANNERS).length > 0 && (
             <div className="relative w-full overflow-hidden rounded-2xl mb-8">
               <div className="flex transition-transform duration-500" style={{ transform: `translateX(-${bannerIndex * 100}%)` }}>
-                {banners.map(banner => (
-                  <div key={banner.id} className="w-full flex-shrink-0 relative">
+                {(banners.length > 0 ? banners : DEFAULT_BANNERS).map((banner, idx) => (
+                  <div key={banner.id || `fb-${idx}`} className="w-full flex-shrink-0 relative">
                     {banner.linkUrl ? (
                       <a href={banner.linkUrl} target="_blank" rel="noopener noreferrer">
                         <Image src={banner.imageUrl} alt={banner.title} width={1200} height={400} className="w-full h-[300px] md:h-[400px] object-cover rounded-2xl" />
@@ -312,10 +313,9 @@ export default function Home() {
                   </div>
                 ))}
               </div>
-              {/* Dots indicator */}
-              {banners.length > 1 && (
+              {(banners.length > 0 ? banners : DEFAULT_BANNERS).length > 1 && (
                 <div className="absolute bottom-4 right-4 flex gap-2">
-                  {banners.map((_, i) => (
+                  {(banners.length > 0 ? banners : DEFAULT_BANNERS).map((_, i) => (
                     <button key={i} onClick={() => setBannerIndex(i)} className={`w-2.5 h-2.5 rounded-full transition-all ${i === bannerIndex ? 'bg-white w-6' : 'bg-white/50'}`} />
                   ))}
                 </div>
@@ -424,8 +424,8 @@ export default function Home() {
                     {[...GALLERY_ITEMS, ...GALLERY_ITEMS].map((item, i) => (
                       <div key={i} className="flex-shrink-0 w-56 h-full rounded-2xl overflow-hidden relative group"
                         style={{ border: '1px solid var(--border)' }}>
-                        <Image src={item.image} alt={item.title} loading="lazy" width={0} height={0} sizes="100%"
-                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                        <Image src={item.image} alt={item.title} loading="lazy" fill
+                          className="object-cover transition-transform duration-700 group-hover:scale-105" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
                         <div className="absolute bottom-0 left-0 right-0 p-4 flex items-center gap-3">
                           <div className="w-8 h-8 rounded-xl flex items-center justify-center"
@@ -928,13 +928,18 @@ export default function Home() {
 }
 
 /* ─── DATA ─────────────────────────────────────────────────── */
+const DEFAULT_BANNERS = [
+  { id: 'fallback-1', title: 'Welcome to Latexify', subtitle: 'The modern, intelligent platform for the entire research writing lifecycle.', imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAfrx0rEK6VFLoe2g-XBz3W3v-F9ySny3wIO0GvOU4er61lUuTBVHvwYLUuqIs0AJoAKS007oi-Eol9Htta-GTRBF4xxAzzuqQgAhgqDtjr8p6Z7Q6hg2CSB3wQNqCGWWMQXkcp8v6Lso_Le622A3nyeH7Lev3cMioXKpnxZKCMHLPVS0ExSKUiPxYmzKIWcN6Coo758Jx_tmEY5RDPLzN1a48mBPKfpqaAgI6i5xGtO4pQLyEzyTTvYn2VnmuYr49zlqcD5RuJ2VLq', linkUrl: '/latex-studio' },
+  { id: 'fallback-2', title: 'AI Peer Reviewer', subtitle: 'Get instant, scholarly feedback on clarity, argumentation, and methodology.', imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAfrx0rEK6VFLoe2g-XBz3W3v-F9ySny3wIO0GvOU4er61lUuTBVHvwYLUuqIs0AJoAKS007oi-Eol9Htta-GTRBF4xxAzzuqQgAhgqDtjr8p6Z7Q6hg2CSB3wQNqCGWWMQXkcp8v6Lso_Le622A3nyeH7Lev3cMioXKpnxZKCMHLPVS0ExSKUiPxYmzKIWcN6Coo758Jx_tmEY5RDPLzN1a48mBPKfpqaAgI6i5xGtO4pQLyEzyTTvYn2VnmuYr49zlqcD5RuJ2VLq', linkUrl: '/reviewer' },
+  { id: 'fallback-3', title: 'Create TikZ Diagrams visually', subtitle: 'Create beautiful TikZ diagrams with an intuitive visual canvas.', imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCOfpdp7avfxHVymJ06UtjZny3PXYwWBlHy4rpi8PV7-YGXFfygei_YZV65NdCKAQfE4DuhwJVAdCrE4-JoRKmljz10dSgkNXgv5F3blSGIPbm-6vQRe0_OrtZzV49Mxi7nwF-XXZzkzf8YjZrLYr2o4KLZflRtfrY3WY0NNTblCY-q7F0rLGOfjwoHMxC6LNP6KqqBj_jnRgs7NOX4Me-ldmMJtt38-V4YCjxpmuUxTRgfP3TncR6coVeklb0q5ABJYPH4zCIbqmoe', linkUrl: '/diagrams' },
+];
 const GALLERY_ITEMS = [
   { title: "Latexify Dashboard", image: "https://lh3.googleusercontent.com/aida-public/AB6AXuAfrx0rEK6VFLoe2g-XBz3W3v-F9ySny3wIO0GvOU4er61lUuTBVHvwYLUuqIs0AJoAKS007oi-Eol9Htta-GTRBF4xxAzzuqQgAhgqDtjr8p6Z7Q6hg2CSB3wQNqCGWWMQXkcp8v6Lso_Le622A3nyeH7Lev3cMioXKpnxZKCMHLPVS0ExSKUiPxYmzKIWcN6Coo758Jx_tmEY5RDPLzN1a48mBPKfpqaAgI6i5xGtO4pQLyEzyTTvYn2VnmuYr49zlqcD5RuJ2VLq", icon: FileEdit },
   { title: "Doc2Latex Dashboard", image: "https://lh3.googleusercontent.com/aida-public/AB6AXuDFtYyOpkpxGhljL4YEO1ZBLJZMbOn9gPHP8fXetmJnFR08eYC253o5M68i_jcmYGp_5iIjQ-JcBvvPO2alyZtkmAQ9nUYWjTd93LI_3N2A-FX8hLaCsZj-SLMSfhLToozbAF84ghM2FjYb4cnBUrA3DL-8YbTm4JPkf2ykIRWS461AjyRuzsmLCfQRunK5eOGjPJt5kFsqPzc3IF5aWizqmst_t4ttOirs6mspuA6M1RDIUXBrfirHyzXDyIaZJ5vtvRC3UkZz_A_o", icon: Wand2 },
   { title: "Diagram Studio", image: "https://lh3.googleusercontent.com/aida-public/AB6AXuCOfpdp7avfxHVymJ06UtjZny3PXYwWBlHy4rpi8PV7-YGXFfygei_YZV65NdCKAQfE4DuhwJVAdCrE4-JoRKmljz10dSgkNXgv5F3blSGIPbm-6vQRe0_OrtZzV49Mxi7nwF-XXZzkzf8YjZrLYr2o4KLZflRtfrY3WY0NNTblCY-q7F0rLGOfjwoHMxC6LNP6KqqBj_jnRgs7NOX4Me-ldmMJtt38-V4YCjxpmuUxTRgfP3TncR6coVeklb0q5ABJYPH4zCIbqmoe", icon: PenTool },
   { title: "Template Migrator", image: "https://lh3.googleusercontent.com/aida-public/AB6AXuAvQz491UjMaxItAqkAnkLEZDgbYQ9z3q4zdYq38xoFSNUtLSnoZEOYC584Bvw7070Yl5ia_mk8-wXycVUgmpjy6ZlOR6rh7vzwgjoolh01S0287jDHSpx6jQRhXuoo6B5SD7y4-MHAERQDO1wARSXJLiGs6dkIMw3gnQHs8Jlvr5c888M_d6SJ3VZIJVy69OKgQ2F7064lqQ1EtLt8PJIq-QQNF-enp8jKqJpjS1A9yNc61ktBXG8LfIZV7x6MET473uxu1fQKjpDl", icon: Layout },
   { title: "Citation Studio", image: "https://lh3.googleusercontent.com/aida-public/AB6AXuDXqWg4r7vKDSzOnA0vncm3Wcm8hiUnA9ngYcljj07eIpRK1_hbIL48t5ZMclJE_UHSwtLaKqtgC2X-457idjJlXGAtQnmbg9Kb0q5B4XzhowAyZXfRN4mFH_7aHmOOky0uti0CXVHCteoBw8TiLZVjkqa-acr8ayfGU3zI-lFqdMZaib4Gc5ZzR7Pad7NVXJpW8hokDNJvZYX30qVrX5sR6Uc9OE8nJHJOHkRH-9uIoq6HLMBZxEmozks34yZZRKMtb_IkwqULnDop", icon: Library },
-  { title: "AI Peer Reviewer", image: "/ai_peer_reviewer_dashboard_1777058436599.png", icon: Brain },
+  { title: "AI Peer Reviewer", image: "https://lh3.googleusercontent.com/aida-public/AB6AXuAfrx0rEK6VFLoe2g-XBz3W3v-F9ySny3wIO0GvOU4er61lUuTBVHvwYLUuqIs0AJoAKS007oi-Eol9Htta-GTRBF4xxAzzuqQgAhgqDtjr8p6Z7Q6hg2CSB3wQNqCGWWMQXkcp8v6Lso_Le622A3nyeH7Lev3cMioXKpnxZKCMHLPVS0ExSKUiPxYmzKIWcN6Coo758Jx_tmEY5RDPLzN1a48mBPKfpqaAgI6i5xGtO4pQLyEzyTTvYn2VnmuYr49zlqcD5RuJ2VLq", icon: Brain },
 ];
 
 const TRUST_LOGOS = [
