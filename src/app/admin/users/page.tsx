@@ -504,6 +504,7 @@ export default function AdminUsersPage() {
   const [filterStatus, setFilterStatus] = useState('Active / All');
   const [filterBehavior, setFilterBehavior] = useState('All Behaviors');
   const [showExpiryPanel, setShowExpiryPanel] = useState(false);
+  const [activeFilterType, setActiveFilterType] = useState<string | null>(null);
 
   // ── Conflict Audit State ──────────────────────────────────────────────────
   const [auditData, setAuditData] = useState<any>(null);
@@ -720,6 +721,25 @@ export default function AdminUsersPage() {
   };
 
   const _closeUserModal = () => { setUModalOpen(null); setUModalDetailUser(null); };
+
+  const activeFilterColor = (() => {
+    const colorMap: Record<string, string> = {
+      total: 'var(--color-admin-primary)',
+      active: '#10b981',
+      abnormal: '#f59e0b',
+      ai_overaccess: '#6366f1',
+      temp_locked: '#ec4899',
+      banned: 'var(--color-admin-error)',
+      expiring_soon: '#f59e0b',
+      expired: 'var(--color-admin-error)',
+    };
+    return activeFilterType ? colorMap[activeFilterType] || 'var(--color-admin-primary)' : null;
+  })();
+
+  const activeFilters: { label: string; onClear: () => void }[] = [];
+  if (filterTier !== 'All Tiers') activeFilters.push({ label: `Tier: ${filterTier}`, onClear: () => setFilterTier('All Tiers') });
+  if (filterStatus !== 'Active / All') activeFilters.push({ label: `Status: ${filterStatus}`, onClear: () => setFilterStatus('Active / All') });
+  if (filterBehavior !== 'All Behaviors') activeFilters.push({ label: `Behavior: ${filterBehavior}`, onClear: () => setFilterBehavior('All Behaviors') });
 
   const filteredUsers = users.filter(u => {
     const matchesSearch =
@@ -1169,130 +1189,144 @@ export default function AdminUsersPage() {
 
           {/* Stats summary bar */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-8">
-            {[
-              {
-                label: 'Total Users',
-                value: users.length,
-                type: 'total',
-                icon: 'group',
-                color: 'var(--color-admin-primary)',
-                bg: 'rgba(99,102,241,0.06)',
-                onClick: () => {
-                  setFilterTier('All Tiers');
-                  setFilterStatus('Active / All');
-                  setFilterBehavior('All Behaviors');
-                  openUserModal('total', 'Total Users', 'group', '#a5b4fc');
-                }
-              },
-              {
-                label: 'Active Users',
-                value: users.filter(u => u.status !== 'blacklisted').length,
-                type: 'active',
-                icon: 'check_circle',
-                color: '#10b981',
-                bg: 'rgba(16,185,129,0.06)',
-                onClick: () => {
-                  setFilterStatus('Active / All');
-                  setFilterBehavior('All Behaviors');
-                  openUserModal('active', 'Active Users', 'check_circle', '#10b981');
-                }
-              },
-              {
-                label: 'Abnormal Users',
-                value: users.filter(u => u.status === 'abnormal').length,
-                type: 'abnormal',
-                icon: 'warning',
-                color: '#f59e0b',
-                bg: 'rgba(245,158,11,0.06)',
-                onClick: () => {
-                  setFilterBehavior('Abnormal Activity');
-                  setFilterStatus('Active / All');
-                  openUserModal('abnormal', 'Abnormal Activity Users', 'warning', '#f59e0b');
-                }
-              },
-              {
-                label: 'AI Over-Access',
-                value: users.filter(u => u.aiTokensUsed > 50000).length,
-                type: 'ai_overaccess',
-                icon: 'psychology',
-                color: '#6366f1',
-                bg: 'rgba(99,102,241,0.06)',
-                onClick: () => {
-                  setFilterBehavior('Over-access AI (>50k tokens)');
-                  openUserModal('ai_overaccess', 'AI Over-Access Users (>50k tokens)', 'psychology', '#6366f1');
-                }
-              },
-              {
-                label: 'Temp Locked',
-                value: users.filter(u => u.status !== 'blacklisted' && !!(u.blockedUntil && new Date(u.blockedUntil) > new Date())).length,
-                type: 'temp_locked',
-                icon: 'gavel',
-                color: '#ec4899',
-                bg: 'rgba(236,72,153,0.06)',
-                onClick: () => {
-                  setFilterStatus('Temporarily Blocked');
-                  openUserModal('temp_locked', 'Temporarily Locked Users', 'gavel', '#ec4899');
-                }
-              },
-              {
-                label: 'Banned Users',
-                value: users.filter(u => u.status === 'blacklisted').length,
-                type: 'banned',
-                icon: 'block',
-                color: 'var(--color-admin-error)',
-                bg: 'rgba(239,68,68,0.06)',
-                onClick: () => {
-                  setFilterStatus('Blacklisted / Banned');
-                  openUserModal('banned', 'Blacklisted / Banned Users', 'block', '#ef4444');
-                }
-              },
-              {
-                label: 'Expiring Soon',
-                value: expiringSoon.length,
-                type: 'expiring_soon',
-                icon: 'hourglass_top',
-                color: '#f59e0b',
-                bg: 'rgba(245,158,11,0.06)',
-                onClick: () => {
-                  openUserModal('expiring_soon', 'Expiring Soon (≤7 days)', 'hourglass_top', '#f59e0b');
-                }
-              },
-              {
-                label: 'Expired',
-                value: expiredMemberships.length,
-                type: 'expired',
-                icon: 'timer_off',
-                color: 'var(--color-admin-error)',
-                bg: 'rgba(239,68,68,0.06)',
-                onClick: () => {
-                  openUserModal('expired', 'Expired Memberships', 'timer_off', '#ef4444');
-                }
-              },
-            ].map(s => (
-              <div
-                key={s.label}
-                onClick={s.onClick}
-                className="p-4 rounded-xl border flex flex-col justify-between gap-3 cursor-pointer hover:-translate-y-1 hover:shadow-lg transition-all duration-300 active:scale-[0.97] group select-none"
-                style={{
-                  backgroundColor: 'var(--color-admin-surface-container)',
-                  borderColor: 'var(--color-admin-outline-variant)',
-                  borderBottomWidth: '3px',
-                  borderBottomColor: s.color
-                }}>
-                <div className="flex justify-between items-center">
-                  <span className="material-symbols-outlined text-[24px] p-2 rounded-lg shrink-0 transition-transform group-hover:scale-110"
-                    style={{ color: s.color, backgroundColor: s.bg, fontVariationSettings: "'FILL' 1" }}>
-                    {s.icon}
-                  </span>
-                  <span className="text-2xl font-black" style={{ color: 'var(--color-admin-on-surface)' }}>
-                    {s.value}
-                  </span>
-                </div>
-                <p className="text-[11px] font-bold uppercase tracking-wider opacity-85" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
-                  {s.label}
-                </p>
-              </div>
-            ))}
+            {(() => {
+              const rawCards = [
+                {
+                  label: 'Total Users',
+                  value: users.length,
+                  type: 'total',
+                  icon: 'group',
+                  color: 'var(--color-admin-primary)',
+                  bg: 'rgba(99,102,241,0.06)',
+                  onClick: () => {
+                    setActiveFilterType('total');
+                    setFilterTier('All Tiers');
+                    setFilterStatus('Active / All');
+                    setFilterBehavior('All Behaviors');
+                    openUserModal('total', 'Total Users', 'group', '#a5b4fc');
+                  }
+                },
+                {
+                  label: 'Active Users',
+                  value: users.filter(u => u.status !== 'blacklisted').length,
+                  type: 'active',
+                  icon: 'check_circle',
+                  color: '#10b981',
+                  bg: 'rgba(16,185,129,0.06)',
+                  onClick: () => {
+                    setActiveFilterType('active');
+                    setFilterStatus('Active / All');
+                    setFilterBehavior('All Behaviors');
+                    openUserModal('active', 'Active Users', 'check_circle', '#10b981');
+                  }
+                },
+                {
+                  label: 'Abnormal Users',
+                  value: users.filter(u => u.status === 'abnormal').length,
+                  type: 'abnormal',
+                  icon: 'warning',
+                  color: '#f59e0b',
+                  bg: 'rgba(245,158,11,0.06)',
+                  onClick: () => {
+                    setActiveFilterType('abnormal');
+                    setFilterBehavior('Abnormal Activity');
+                    setFilterStatus('Active / All');
+                    openUserModal('abnormal', 'Abnormal Activity Users', 'warning', '#f59e0b');
+                  }
+                },
+                {
+                  label: 'AI Over-Access',
+                  value: users.filter(u => u.aiTokensUsed > 50000).length,
+                  type: 'ai_overaccess',
+                  icon: 'psychology',
+                  color: '#6366f1',
+                  bg: 'rgba(99,102,241,0.06)',
+                  onClick: () => {
+                    setActiveFilterType('ai_overaccess');
+                    setFilterBehavior('Over-access AI (>50k tokens)');
+                    openUserModal('ai_overaccess', 'AI Over-Access Users (>50k tokens)', 'psychology', '#6366f1');
+                  }
+                },
+                {
+                  label: 'Temp Locked',
+                  value: users.filter(u => u.status !== 'blacklisted' && !!(u.blockedUntil && new Date(u.blockedUntil) > new Date())).length,
+                  type: 'temp_locked',
+                  icon: 'gavel',
+                  color: '#ec4899',
+                  bg: 'rgba(236,72,153,0.06)',
+                  onClick: () => {
+                    setActiveFilterType('temp_locked');
+                    setFilterStatus('Temporarily Blocked');
+                    openUserModal('temp_locked', 'Temporarily Locked Users', 'gavel', '#ec4899');
+                  }
+                },
+                {
+                  label: 'Banned Users',
+                  value: users.filter(u => u.status === 'blacklisted').length,
+                  type: 'banned',
+                  icon: 'block',
+                  color: 'var(--color-admin-error)',
+                  bg: 'rgba(239,68,68,0.06)',
+                  onClick: () => {
+                    setActiveFilterType('banned');
+                    setFilterStatus('Blacklisted / Banned');
+                    openUserModal('banned', 'Blacklisted / Banned Users', 'block', '#ef4444');
+                  }
+                },
+                {
+                  label: 'Expiring Soon',
+                  value: expiringSoon.length,
+                  type: 'expiring_soon',
+                  icon: 'hourglass_top',
+                  color: '#f59e0b',
+                  bg: 'rgba(245,158,11,0.06)',
+                  onClick: () => {
+                    setActiveFilterType('expiring_soon');
+                    openUserModal('expiring_soon', 'Expiring Soon (≤7 days)', 'hourglass_top', '#f59e0b');
+                  }
+                },
+                {
+                  label: 'Expired',
+                  value: expiredMemberships.length,
+                  type: 'expired',
+                  icon: 'timer_off',
+                  color: 'var(--color-admin-error)',
+                  bg: 'rgba(239,68,68,0.06)',
+                  onClick: () => {
+                    setActiveFilterType('expired');
+                    openUserModal('expired', 'Expired Memberships', 'timer_off', '#ef4444');
+                  }
+                },
+              ];
+              return rawCards.map(s => {
+                const isActive = activeFilterType === s.type;
+                return (
+                  <div
+                    key={s.label}
+                    onClick={s.onClick}
+                    className={`p-4 rounded-xl border flex flex-col justify-between gap-3 cursor-pointer group select-none ${isActive ? 'shadow-lg' : 'hover:-translate-y-1 hover:shadow-lg'} transition-all duration-300 active:scale-[0.97]`}
+                    style={{
+                      backgroundColor: isActive ? s.color : 'var(--color-admin-surface-container)',
+                      borderColor: isActive ? s.color : 'var(--color-admin-outline-variant)',
+                      borderBottomWidth: '3px',
+                      borderBottomColor: s.color,
+                    }}>
+                    <div className="flex justify-between items-center">
+                      <span className="material-symbols-outlined text-[24px] p-2 rounded-lg shrink-0 transition-transform group-hover:scale-110"
+                        style={{ color: isActive ? '#fff' : s.color, backgroundColor: isActive ? 'rgba(255,255,255,0.2)' : s.bg, fontVariationSettings: "'FILL' 1" }}>
+                        {s.icon}
+                      </span>
+                      <span className="text-2xl font-black" style={{ color: isActive ? '#fff' : 'var(--color-admin-on-surface)' }}>
+                        {s.value}
+                      </span>
+                    </div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: isActive ? 'rgba(255,255,255,0.9)' : 'var(--color-admin-on-surface-variant)' }}>
+                      {isActive ? 'Active Filter' : s.label}
+                    </p>
+                  </div>
+                );
+              });
+            })()}
           </div>
 
           {/* Filters */}
@@ -1312,7 +1346,7 @@ export default function AdminUsersPage() {
                 </select>
               </div>
             ))}
-            <div onClick={() => { setFilterTier('All Tiers'); setFilterStatus('Active / All'); setFilterBehavior('All Behaviors'); setSearchQuery(''); }}
+            <div onClick={() => { setFilterTier('All Tiers'); setFilterStatus('Active / All'); setFilterBehavior('All Behaviors'); setSearchQuery(''); setActiveFilterType(null); }}
               className="flex items-center justify-center border border-dashed p-4 rounded-xl cursor-pointer hover:bg-black/5 transition-all group"
               style={{ backgroundColor: 'var(--color-admin-surface-container-high)', borderColor: 'var(--color-admin-primary)' }}>
               <span className="material-symbols-outlined mr-2 group-hover:scale-110 transition-transform" style={{ color: 'var(--color-admin-primary)' }}>filter_list_off</span>
@@ -1320,10 +1354,40 @@ export default function AdminUsersPage() {
             </div>
           </div>
 
+          {/* Active Filter Chips */}
+          {activeFilters.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-admin-on-surface-variant)' }}>Active Filters:</span>
+              {activeFilters.map((f, i) => (
+                <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold transition-all"
+                  style={{
+                    backgroundColor: 'var(--color-admin-surface-container-high)',
+                    borderColor: 'var(--color-admin-outline-variant)',
+                    color: 'var(--color-admin-on-surface)',
+                  }}>
+                  <span>{f.label}</span>
+                  <button onClick={f.onClear} className="hover:opacity-70 transition-opacity ml-0.5">
+                    <span className="material-symbols-outlined text-[14px]" style={{ color: 'var(--color-admin-on-surface-variant)' }}>close</span>
+                  </button>
+                </div>
+              ))}
+              <button onClick={() => { setFilterTier('All Tiers'); setFilterStatus('Active / All'); setFilterBehavior('All Behaviors'); setActiveFilterType(null); }}
+                className="text-[10px] font-bold uppercase tracking-wider hover:opacity-70 transition-opacity"
+                style={{ color: 'var(--color-admin-on-surface-variant)' }}>
+                Clear all
+              </button>
+            </div>
+          )}
+
           <div className="flex gap-6">
             {/* Main Table */}
             <div className="flex-1 border rounded-xl overflow-hidden flex flex-col"
-              style={{ backgroundColor: 'var(--color-admin-surface-container)', borderColor: 'var(--color-admin-outline-variant)' }}>
+              style={{
+                backgroundColor: 'var(--color-admin-surface-container)',
+                borderColor: activeFilterColor || 'var(--color-admin-outline-variant)',
+                borderLeftWidth: activeFilterColor ? '4px' : '1px',
+                borderLeftColor: activeFilterColor || 'var(--color-admin-outline-variant)',
+              }}>
               {(loading && users.length === 0) ? (
                 <div className="flex-1 flex flex-col items-center justify-center py-20 gap-3">
                   <div className="w-8 h-8 rounded-full border-2 border-indigo-500/10 border-t-indigo-500 animate-spin" style={{ borderTopColor: 'var(--color-admin-primary)' }}></div>
@@ -1338,7 +1402,10 @@ export default function AdminUsersPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="border-b" style={{ backgroundColor: 'var(--color-admin-surface-container-high)', borderColor: 'var(--color-admin-outline-variant)' }}>
+                      <tr className="border-b" style={{
+                        backgroundColor: activeFilterColor ? `${activeFilterColor}15` : 'var(--color-admin-surface-container-high)',
+                        borderColor: 'var(--color-admin-outline-variant)',
+                      }}>
                         {['User Identity', 'Plan', 'Expiry', 'Days Remaining', 'AI Usage', 'Projects', 'Email', 'Status', 'Actions'].map(h => (
                           <th key={h} className="px-4 py-4 uppercase tracking-wider text-xs font-bold"
                             style={{ color: 'var(--color-admin-on-surface-variant)', whiteSpace: 'nowrap' }}>{h}</th>
@@ -1348,7 +1415,8 @@ export default function AdminUsersPage() {
                     <tbody className="divide-y" style={{ borderColor: 'var(--color-admin-outline-variant)' }}>
                       {filteredUsers.map(u => (
                         <tr key={u.id} onClick={() => { setSelectedUser(u); setIsEditingPoints(false); }}
-                          className={`hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer ${selectedUser?.id === u.id ? 'bg-black/10 dark:bg-white/10' : ''}`}>
+                          className={`hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer ${selectedUser?.id === u.id ? `bg-black/10 dark:bg-white/10` : ''}`}
+                          style={selectedUser?.id === u.id && activeFilterColor ? { backgroundColor: `${activeFilterColor}12` } : undefined}>
                           {/* Identity */}
                           <td className="px-4 py-4">
                             <div className="flex items-center gap-3">
