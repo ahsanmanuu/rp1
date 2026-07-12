@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useLayoutSync } from "@/hooks/useLayoutSync";
+import { useAdminRealtime } from "@/hooks/useAdminRealtime";
 import Link from "next/link";
 import Image from "next/image";
-import { createPb } from "@/lib/pb";
 import { motion, AnimatePresence } from "framer-motion";
 
 type Theme = "indigo" | "emerald" | "rose" | "violet" | "amber" | "cyan";
@@ -595,55 +595,23 @@ export default function AdminDashboardPage() {
     };
     fetchRates();
 
-    // Initial statistics load
     fetchStats(true);
     fetchTickets();
     fetchTicketNotifications();
-
-    // Refresh platform statistics and tickets every 10 seconds
-    const interval = setInterval(() => { fetchStats(false); fetchTickets(); fetchTicketNotifications(); }, 10000);
-
-    // PocketBase real-time subscription for instant stats refreshes
-    let unsubscribeAll: (() => void) | null = null;
-    try {
-      const pb = createPb();
-      const token = typeof window !== 'undefined' ? localStorage.getItem('latexify-admin-token') : null;
-      if (token) {
-        pb.authStore.save(token, null);
-      }
-      const triggerRefresh = () => {
-        fetchStats(false);
-        fetchTickets();
-        fetchTicketNotifications();
-      };
-
-      Promise.all([
-        pb.collection('users').subscribe('*', triggerRefresh),
-        pb.collection('projects').subscribe('*', triggerRefresh),
-        pb.collection('support_tickets').subscribe('*', triggerRefresh),
-        pb.collection('ai_usage_logs').subscribe('*', triggerRefresh),
-        pb.collection('admin_tasks').subscribe('*', triggerRefresh),
-        pb.collection('announcements').subscribe('*', triggerRefresh)
-      ]).then(unsubs => {
-        unsubscribeAll = () => {
-          unsubs.forEach(unsub => {
-            try { unsub(); } catch {}
-          });
-        };
-      }).catch(err => {
-        console.warn("[AdminDashboard Realtime] Subscription failed:", err);
-      });
-    } catch (err) {
-      console.warn("[AdminDashboard Realtime] Initialisation failed:", err);
-    }
-
-    return () => {
-      clearInterval(interval);
-      if (unsubscribeAll) {
-        unsubscribeAll();
-      }
-    };
   }, []);
+
+  // ── Centralized Realtime Sync ──
+  const refreshAll = useCallback(() => {
+    fetchStats(false);
+    fetchTickets();
+    fetchTicketNotifications();
+  }, []);
+  useAdminRealtime({
+    triggerCollections: ['users', 'projects', 'support_tickets', 'ai_usage_logs', 'admin_tasks', 'announcements', 'ai_usage_daily_summaries'],
+    onRefresh: refreshAll,
+    pollIntervalMs: 10000,
+    onPoll: refreshAll,
+  });
 
   // Save theme selection changes
   useEffect(() => {

@@ -649,6 +649,84 @@ export const COLLECTIONS: CollectionDef[] = [
     ],
     indexes: ['CREATE INDEX idx_acr_active_priority ON ai_cap_rules (isActive, priority);'],
   },
+  // ─── Anomaly Alerts ───────────────────────────────────────────────
+  {
+    name: 'anomaly_alerts',
+    type: 'base',
+    schema: [
+      { name: 'type', type: 'text', required: true },
+      { name: 'severity', type: 'select', required: true, options: { values: ['low', 'medium', 'high', 'critical'] } },
+      { name: 'title', type: 'text', required: true },
+      { name: 'description', type: 'text' },
+      { name: 'entityType', type: 'text' },
+      { name: 'entityId', type: 'text' },
+      { name: 'entityLabel', type: 'text' },
+      { name: 'metadata', type: 'json' },
+      { name: 'source', type: 'select', required: true, options: { values: ['auto_detect', 'admin_report', 'system'] } },
+      { name: 'status', type: 'select', required: true, options: { values: ['open', 'investigating', 'resolved', 'dismissed'] } },
+      { name: 'detectorKey', type: 'text' },
+      { name: 'resolvedBy', type: 'text' },
+      { name: 'resolvedAt', type: 'date' },
+    ],
+    indexes: [
+      'CREATE INDEX idx_aa_type_status ON anomaly_alerts (type, status);',
+      'CREATE INDEX idx_aa_severity_status ON anomaly_alerts (severity, status);',
+    ],
+  },
+  // ─── Tax Rules ──────────────────────────────────────────────────────
+  {
+    name: 'tax_rules',
+    type: 'base',
+    schema: [
+      { name: 'region', type: 'text', required: true },
+      { name: 'jurisdiction', type: 'text' },
+      { name: 'taxType', type: 'text', required: true },
+      { name: 'rate', type: 'number', required: true },
+      { name: 'threshold', type: 'text' },
+      { name: 'status', type: 'text' },
+      { name: 'isActive', type: 'bool' },
+      { name: 'createdBy', type: 'text' },
+    ],
+  },
+  // ─── Tax Transactions ──────────────────────────────────────────────
+  {
+    name: 'tax_transactions',
+    type: 'base',
+    schema: [
+      { name: 'userId', type: 'text', required: true },
+      { name: 'transactionId', type: 'text' },
+      { name: 'amount', type: 'number', required: true },
+      { name: 'taxAmount', type: 'number', required: true },
+      { name: 'taxRate', type: 'number', required: true },
+      { name: 'taxType', type: 'text', required: true },
+      { name: 'region', type: 'text', required: true },
+      { name: 'jurisdiction', type: 'text' },
+      { name: 'isExempt', type: 'bool' },
+      { name: 'exemptionReason', type: 'text' },
+      { name: 'transactionDate', type: 'date' },
+    ],
+    indexes: [
+      'CREATE INDEX idx_tt_userId ON tax_transactions (userId);',
+      'CREATE INDEX idx_tt_region ON tax_transactions (region);',
+    ],
+  },
+  // ─── Tax Filings ────────────────────────────────────────────────────
+  {
+    name: 'tax_filings',
+    type: 'base',
+    schema: [
+      { name: 'region', type: 'text', required: true },
+      { name: 'jurisdiction', type: 'text' },
+      { name: 'taxType', type: 'text', required: true },
+      { name: 'dueDate', type: 'date', required: true },
+      { name: 'status', type: 'text' },
+      { name: 'totalTax', type: 'number' },
+      { name: 'totalAmount', type: 'number' },
+      { name: 'dataValidation', type: 'number' },
+      { name: 'filedAt', type: 'date' },
+    ],
+    indexes: ['CREATE INDEX idx_tf_region ON tax_filings (region);'],
+  },
   // ─── User Sessions ─────────────────────────────────────────────────
   {
     name: 'user_sessions',

@@ -78,24 +78,28 @@ export async function GET(req: NextRequest) {
         select: { agentBreakdown: true },
       }),
 
-      // All users with assigned plans (for approaching-cap check)
-      prisma.user.findMany({
-        where: { aiCapPlanId: { not: null } },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          aiCapPlanId: true,
-          aiDailyCapOverride: true,
-          aiCapPlan: {
-            select: { dailyTokenCap: true, name: true },
-          },
-        },
-      }),
+      // Users with non-free plans (for approaching-cap check)
+      cappedPlanIds.length > 0
+        ? prisma.user.findMany({
+            where: { aiCapPlanId: { in: cappedPlanIds } },
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              aiCapPlanId: true,
+              aiDailyCapOverride: true,
+              aiCapPlan: {
+                select: { dailyTokenCap: true, name: true },
+              },
+            },
+          })
+        : Promise.resolve([]),
     ]);
 
-    const usersWithPlan = allUsersWithPlans.length;
-    const usersWithoutPlan = totalUsers - allUsersWithPlans.length;
+    const usersWithPlan = cappedPlanIds.length > 0
+      ? await prisma.user.count({ where: { aiCapPlanId: { in: cappedPlanIds } } })
+      : 0;
+    const usersWithoutPlan = totalUsers - usersWithPlan;
 
     // Merge agent breakdowns
     const mergedAgentBreakdown: Record<string, number> = {};

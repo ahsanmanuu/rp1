@@ -130,9 +130,11 @@ export async function GET(req: NextRequest) {
     }
 
     if (type === "approaching") {
-      // Users approaching cap (80-100%)
+      // Users on non-free plans approaching cap (80-100%)
       const allUsersWithPlans = await prisma.user.findMany({
-        where: { aiCapPlanId: { not: null }, ...searchFilter },
+        where: cappedPlanIds.length > 0
+          ? { aiCapPlanId: { in: cappedPlanIds }, ...searchFilter }
+          : { aiCapPlanId: null, ...searchFilter }, // dummy impossible condition
         select: {
           id: true,
           name: true,

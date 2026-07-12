@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPb } from '@/lib/pb';
+import { useAdminRealtime } from '@/hooks/useAdminRealtime';
 import {
   Shield, Users, Zap, AlertTriangle, BarChart3, Settings, Plus, Search,
   RefreshCw, X, Check, TrendingUp, Clock,
@@ -564,46 +565,23 @@ export default function AdminAiCapsPage() {
     fetchRules();
   }, [fetchDashboard, fetchPlans, fetchUsers, fetchRules]);
 
-  // ── PB Realtime Subscriptions ──
-  useEffect(() => {
-    const pb = createPb();
-    const unsubFns: (() => void)[] = [];
-
-    const setupSubscriptions = async () => {
-      try {
-        const unsubUsers = await pb.collection('users').subscribe('*', (e) => {
-          if (e.action === 'update') {
-            fetchUsers();
-            fetchDashboard(true);
-          }
-        });
-        unsubFns.push(unsubUsers);
-      } catch {}
-
-      try {
-        const unsubPlans = await pb.collection('aiCapPlans').subscribe('*', (e) => {
-          fetchPlans();
-          fetchDashboard(true);
-        });
-        unsubFns.push(unsubPlans);
-      } catch {}
-
-      try {
-        const unsubRules = await pb.collection('aiCapRules').subscribe('*', () => {
-          fetchRules();
-        });
-        unsubFns.push(unsubRules);
-      } catch {}
-    };
-
-    setupSubscriptions();
-
-    return () => {
-      for (const unsub of unsubFns) {
-        try { unsub(); } catch {}
-      }
-    };
-  }, [fetchUsers, fetchDashboard, fetchPlans, fetchRules]);
+  // ── Centralized Realtime Sync ──
+  useAdminRealtime({
+    triggerCollections: ['users', 'aiCapPlans', 'aiCapRules', 'ai_usage_daily_summaries', 'user_ai_caps'],
+    onRefresh: useCallback(() => {
+      fetchDashboard(true);
+      fetchPlans();
+      fetchRules();
+      fetchUsers();
+    }, [fetchDashboard, fetchPlans, fetchRules, fetchUsers]),
+    pollIntervalMs: 15000,
+    onPoll: useCallback(() => {
+      fetchDashboard(true);
+      fetchPlans();
+      fetchRules();
+      fetchUsers();
+    }, [fetchDashboard, fetchPlans, fetchRules, fetchUsers]),
+  });
 
   // Cleanup card search timeout on unmount
   useEffect(() => {
@@ -635,17 +613,6 @@ export default function AdminAiCapsPage() {
     }
     setCardModalLoading(false);
   }, []);
-
-  // Auto-refresh
-  useEffect(() => {
-    const timer = setInterval(() => {
-      fetchDashboard(true);
-      fetchUsers();
-      fetchPlans();
-      fetchRules();
-    }, 15000);
-    return () => clearInterval(timer);
-  }, [fetchDashboard, fetchUsers, fetchPlans, fetchRules]);
 
   // ── Plan Actions ──
   const handleSavePlan = async (planId: string) => {
