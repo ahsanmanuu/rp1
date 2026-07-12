@@ -814,6 +814,12 @@ export default function DashboardPage() {
                           ? new Date(membership.membershipExpiresAt).toLocaleDateString()
                           : "Never (Free)"}
                       </span>
+                      {membership.membershipExpiresAt && (() => {
+                        const diff = Math.ceil((new Date(membership.membershipExpiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                        if (diff <= 0) return <span className="block text-[10px] font-bold text-rose-500 mt-0.5">Expired</span>;
+                        if (diff <= 3) return <span className="block text-[10px] font-bold text-amber-500 mt-0.5">{diff}d remaining</span>;
+                        return <span className="block text-[10px] font-bold text-emerald-500 mt-0.5">{diff}d remaining</span>;
+                      })()}
                     </div>
                   </div>
 
@@ -862,19 +868,23 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Sub-row: Customer Life Cycle Stats */}
-                {membership.joiningDate && (
-                  <div className="mt-6 pt-4 border-t border-outline/10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10 text-xs font-semibold text-secondary">
+                  {(membership.joiningDate || membership.memberSince) && (
+                  <div className="mt-6 pt-4 border-t border-outline/10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10 text-xs font-semibold text-secondary">
                     <div className="flex items-center gap-2">
                       <span className="material-symbols-outlined text-primary text-[18px] shrink-0">calendar_month</span>
-                      <span>Member since: <strong className="text-on-surface">{new Date(membership.joiningDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</strong> ({membership.totalDays} day{membership.totalDays > 1 ? 's' : ''} active)</span>
+                      <span>Joined: <strong className="text-on-surface">{new Date(membership.joiningDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</strong></span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-primary text-[18px] shrink-0">verified</span>
+                      <span>Plan activated: <strong className="text-on-surface">{new Date(membership.memberSince).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</strong> ({membership.totalDays} day{membership.totalDays > 1 ? 's' : ''} active)</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="material-symbols-outlined text-primary text-[18px] shrink-0">autorenew</span>
-                      <span>Total Renewals / Activations: <strong className="text-on-surface">{membership.subscriptionCount || 0} time{membership.subscriptionCount !== 1 ? 's' : ''}</strong></span>
+                      <span>Renewals: <strong className="text-on-surface">{membership.subscriptionCount || 0} time{membership.subscriptionCount !== 1 ? 's' : ''}</strong></span>
                     </div>
                     <div className="flex items-center gap-2 lg:justify-end">
                       <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0"></span>
-                      <span className="text-[10px] uppercase tracking-wider font-bold text-green-500">Live Realtime Synced</span>
+                      <span className="text-[10px] uppercase tracking-wider font-bold text-green-500">Live</span>
                     </div>
                   </div>
                 )}
