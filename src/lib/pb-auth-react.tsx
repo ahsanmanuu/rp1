@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { createPb } from "@/lib/pb";
 
 export interface PbSessionUser {
   id: string;
@@ -35,13 +36,14 @@ interface SessionProviderProps {
   refetchOnWindowFocus?: boolean;
 }
 
-export function SessionProvider({ children, refetchInterval, refetchOnWindowFocus = false }: SessionProviderProps) {
+export function SessionProvider({ children, refetchInterval = 30, refetchOnWindowFocus = false }: SessionProviderProps) {
   const [data, setData] = useState<PbServerSession | null>(null);
   const [status, setStatus] = useState<SessionStatus>("loading");
   
   const isFetching = useRef(false);
+  const sessionTokenRef = useRef<string | null>(null);
 
-  const update = useCallback(async (data?: any) => {
+  const update = useCallback(async () => {
     if (isFetching.current) return;
     isFetching.current = true;
     try {
@@ -51,17 +53,21 @@ export function SessionProvider({ children, refetchInterval, refetchOnWindowFocu
         if (json.user) {
           setData(json);
           setStatus("authenticated");
+          sessionTokenRef.current = json.token || null;
         } else {
           setData(null);
           setStatus("unauthenticated");
+          sessionTokenRef.current = null;
         }
       } else {
         setData(null);
         setStatus("unauthenticated");
+        sessionTokenRef.current = null;
       }
-    } catch (err) {
+    } catch {
       setData(null);
       setStatus("unauthenticated");
+      sessionTokenRef.current = null;
     } finally {
       isFetching.current = false;
     }
@@ -71,18 +77,60 @@ export function SessionProvider({ children, refetchInterval, refetchOnWindowFocu
     update();
   }, [update]);
 
+  // Heartbeat poll every refetchInterval seconds
   useEffect(() => {
-    if (!refetchInterval) return;
     const interval = setInterval(update, refetchInterval * 1000);
     return () => clearInterval(interval);
   }, [refetchInterval, update]);
 
+  // Re-fetch on window focus
   useEffect(() => {
     if (!refetchOnWindowFocus) return;
     const onFocus = () => update();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [refetchOnWindowFocus, update]);
+
+  // PocketBase real-time subscription — auto sign-out when session is deleted remotely
+  useEffect(() => {
+    if (status !== "authenticated" || !sessionTokenRef.current) return;
+
+    let unsub: (() => void) | null = null;
+    let mounted = true;
+
+    const setupSubscription = async () => {
+      try {
+        const pb = createPb();
+        const token = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+        if (token) pb.authStore.save(token, null);
+        const currentToken = sessionTokenRef.current;
+
+        unsub = await pb.collection("user_sessions").subscribe("*", (e) => {
+          if (!mounted) return;
+          // If session was deleted (force logout from another device)
+          if (e.action === "delete") {
+            const deletedToken = e.record?.sessionToken;
+            if (deletedToken === currentToken) {
+              setData(null);
+              setStatus("unauthenticated");
+              sessionTokenRef.current = null;
+              // Clear cookie via logout endpoint
+              fetch("/api/auth/pb-logout", { method: "POST" }).catch(() => {});
+            }
+          }
+        });
+      } catch {
+        // Subscription failed — fallback to polling
+      }
+    };
+
+    setupSubscription();
+
+    return () => {
+      mounted = false;
+      if (unsub) try { unsub(); } catch {}
+    };
+  }, [status]);
 
   return (
     <SessionContext.Provider value={{ data, status, update }}>
