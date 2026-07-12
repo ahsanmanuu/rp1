@@ -104,7 +104,7 @@ function PlanBadge({ membership: _membership, membershipRaw }: { membership: str
 // ── Expiry Cell ───────────────────────────────────────────────────────────────
 function ExpiryCell({ membershipRaw, membershipExpiresAt }: { membershipRaw: string; membershipExpiresAt: string | null }) {
   if (membershipRaw === 'free') {
-    return <span className="text-xs" style={{ color: 'var(--color-admin-on-surface-variant)' }}>—</span>;
+    return <span className="text-xs" style={{ color: 'var(--color-admin-on-surface-variant)' }}>Never (Free)</span>;
   }
   if (!membershipExpiresAt) {
     return <span className="text-xs" style={{ color: 'var(--color-admin-on-surface-variant)' }}>No expiry set</span>;
@@ -805,6 +805,17 @@ export default function AdminUsersPage() {
     );
   }
 
+  const nowStats = new Date();
+  const expiringSoon = users.filter((u: AdminUser) => {
+    if (u.membershipRaw === 'free' || !u.membershipExpiresAt) return false;
+    const d = new Date(u.membershipExpiresAt).getTime() - nowStats.getTime();
+    return d > 0 && d <= 7 * 24 * 60 * 60 * 1000;
+  });
+  const expiredMemberships = users.filter((u: AdminUser) => {
+    if (u.membershipRaw === 'free' || !u.membershipExpiresAt) return false;
+    return new Date(u.membershipExpiresAt).getTime() <= nowStats.getTime();
+  });
+
   return (
     <div className={`min-h-screen ${isDarkMode ? 'dark' : ''} transition-colors duration-500`}
       style={{ backgroundColor: 'var(--color-admin-background)', color: 'var(--color-admin-on-background)' }}>
@@ -1157,7 +1168,7 @@ export default function AdminUsersPage() {
           )}
 
           {/* Stats summary bar */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-8">
             {[
               {
                 label: 'Total Users',
@@ -1235,6 +1246,28 @@ export default function AdminUsersPage() {
                   openUserModal('banned', 'Blacklisted / Banned Users', 'block', '#ef4444');
                 }
               },
+              {
+                label: 'Expiring Soon',
+                value: expiringSoon.length,
+                type: 'expiring_soon',
+                icon: 'hourglass_top',
+                color: '#f59e0b',
+                bg: 'rgba(245,158,11,0.06)',
+                onClick: () => {
+                  openUserModal('expiring_soon', 'Expiring Soon (≤7 days)', 'hourglass_top', '#f59e0b');
+                }
+              },
+              {
+                label: 'Expired',
+                value: expiredMemberships.length,
+                type: 'expired',
+                icon: 'timer_off',
+                color: 'var(--color-admin-error)',
+                bg: 'rgba(239,68,68,0.06)',
+                onClick: () => {
+                  openUserModal('expired', 'Expired Memberships', 'timer_off', '#ef4444');
+                }
+              },
             ].map(s => (
               <div
                 key={s.label}
@@ -1306,7 +1339,7 @@ export default function AdminUsersPage() {
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="border-b" style={{ backgroundColor: 'var(--color-admin-surface-container-high)', borderColor: 'var(--color-admin-outline-variant)' }}>
-                        {['User Identity', 'Plan', 'Expiry', 'AI Usage', 'Projects', 'Email', 'Status', 'Actions'].map(h => (
+                        {['User Identity', 'Plan', 'Expiry', 'Days Remaining', 'AI Usage', 'Projects', 'Email', 'Status', 'Actions'].map(h => (
                           <th key={h} className="px-4 py-4 uppercase tracking-wider text-xs font-bold"
                             style={{ color: 'var(--color-admin-on-surface-variant)', whiteSpace: 'nowrap' }}>{h}</th>
                         ))}
@@ -1338,6 +1371,26 @@ export default function AdminUsersPage() {
                           {/* Expiry */}
                           <td className="px-4 py-4">
                             <ExpiryCell membershipRaw={u.membershipRaw} membershipExpiresAt={u.membershipExpiresAt} />
+                          </td>
+                          {/* Days Remaining */}
+                          <td className="px-4 py-4">
+                            {(() => {
+                              if (u.membershipRaw === 'free' || !u.membershipExpiresAt) {
+                                return <span className="text-xs" style={{ color: 'var(--color-admin-on-surface-variant)' }}>—</span>;
+                              }
+                              const now = new Date();
+                              const expiry = new Date(u.membershipExpiresAt);
+                              const diffMs = expiry.getTime() - now.getTime();
+                              const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                              const expired = daysLeft <= 0;
+                              return (
+                                <span className="text-sm font-bold" style={{
+                                  color: expired ? 'var(--color-admin-error)' : daysLeft <= 3 ? '#f59e0b' : 'var(--color-admin-on-surface)'
+                                }}>
+                                  {expired ? 'Expired' : `${daysLeft}d`}
+                                </span>
+                              );
+                            })()}
                           </td>
                           {/* AI Usage */}
                           <td className="px-4 py-4 text-center">
@@ -1411,7 +1464,7 @@ export default function AdminUsersPage() {
                       ))}
                       {filteredUsers.length === 0 && (
                         <tr>
-                          <td colSpan={8} className="text-center py-8 text-sm" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
+                          <td colSpan={9} className="text-center py-8 text-sm" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
                             no entries are available
                           </td>
                         </tr>

@@ -145,6 +145,17 @@ export async function GET(req: NextRequest) {
       };
     } else if (type === "banned") {
       whereClause = { status: "blacklisted" };
+    } else if (type === "expiring_soon") {
+      const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      whereClause = {
+        membership: { not: "free" },
+        membershipExpiresAt: { gte: now, lte: sevenDaysLater },
+      };
+    } else if (type === "expired") {
+      whereClause = {
+        membership: { not: "free" },
+        membershipExpiresAt: { lt: now },
+      };
     }
 
     const users = await prisma.user.findMany({
