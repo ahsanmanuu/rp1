@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from "@/lib/pb-auth-react";
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -13,6 +13,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
+import { createPb } from '@/lib/pb';
 import Sidebar from '@/components/Sidebar';
 import ProLoader from "@/components/ProLoader";
 
@@ -82,6 +83,9 @@ export default function AiUsagePage() {
     } catch {}
   }, [days]);
 
+  // Track mounted state for cleanup
+  const mountedRef = useRef(true);
+
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login');
     if (status === 'authenticated') {
@@ -99,6 +103,43 @@ export default function AiUsagePage() {
     await Promise.all([fetchStatus(), fetchHistory()]);
     setRefreshing(false);
   };
+
+  // Real-time PB subscription + auto-poll every 15s
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+
+    const refreshAll = () => {
+      fetchStatus();
+      fetchHistory();
+    };
+
+    // Auto-poll every 15s
+    const pollInterval = setInterval(refreshAll, 15000);
+
+    // PocketBase real-time subscription
+    let unsubSummaries: (() => void) | null = null;
+    let unsubUsers: (() => void) | null = null;
+
+    try {
+      const pb = createPb();
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth-token') : null;
+      if (token) pb.authStore.save(token, null);
+
+      const triggerRefresh = () => {
+        if (mountedRef.current) refreshAll();
+      };
+
+      pb.collection('ai_usage_daily_summaries').subscribe('*', triggerRefresh).then(u => { unsubSummaries = u; }).catch(() => {});
+      pb.collection('users').subscribe('*', triggerRefresh).then(u => { unsubUsers = u; }).catch(() => {});
+    } catch {}
+
+    return () => {
+      mountedRef.current = false;
+      clearInterval(pollInterval);
+      if (unsubSummaries) try { unsubSummaries(); } catch {}
+      if (unsubUsers) try { unsubUsers(); } catch {}
+    };
+  }, [status, fetchStatus, fetchHistory]);
 
   if (status === 'loading' || loading) {
     return <ProLoader />;

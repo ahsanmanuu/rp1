@@ -70,11 +70,6 @@ export async function seedUsersDemoData() {
           data: { userId: uid, ipAddress: loc.ip, location: loc.loc, userAgent: "Mozilla/5.0", createdAt: new Date(now.getTime() - Math.floor(Math.random() * 24) * 60 * 60 * 1000) },
         });
       } catch { /* skip */ }
-      try {
-        await prisma.aiUsageLog.create({
-          data: { userId: uid, totalTokens: Math.floor(Math.random() * 15000) + 500, agent: "latex-review", model: "gpt-4o", durationMs: Math.floor(Math.random() * 5000) + 500, createdAt: new Date(now.getTime() - Math.floor(Math.random() * 48) * 60 * 60 * 1000) },
-        });
-      } catch { /* skip */ }
     }
 
     // Point transactions for specific users

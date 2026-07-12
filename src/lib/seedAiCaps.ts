@@ -62,16 +62,11 @@ export async function seedAiCapsDemoData() {
     if (allUsers.length === 0) return;
 
     // ── 3. Assign "free" plan to every user who has no plan ──
-    const agents = ["latex-review", "chat", "ai-fix", "diagram", "extract", "doc2latex"];
-    const today = new Date();
-    const todayStr = today.toISOString().split("T")[0];
-
     for (const user of allUsers) {
       const needsPlan = !user.aiCapPlanId && freePlanId;
 
       if (needsPlan) {
         try {
-          // Assign plan in user_ai_caps
           const existingAssign = await pb.collection("user_ai_caps").getList(1, 1, {
             filter: `userId = "${user.id}" && planId = "${freePlanId}"`,
             requestKey: `seed_assgn_chk_${user.id}_${uid()}`,
@@ -84,69 +79,14 @@ export async function seedAiCapsDemoData() {
               assignedBy: "auto-seed",
             }, { requestKey: `seed_assgn_${user.id}_${uid()}` });
           }
-          // Update user record
           await pb.collection("users").update(user.id, {
             aiCapPlanId: freePlanId,
           }, { requestKey: `seed_user_upd_${user.id}_${uid()}` });
         } catch {}
       }
-
-      // ── 4. Seed 30 days of AiUsageDailySummary for users without today's data ──
-      try {
-        const todaySummary = await pb.collection("ai_usage_daily_summaries").getList(1, 1, {
-          filter: `userId = "${user.id}" && date = "${todayStr}"`,
-          requestKey: `seed_today_chk_${user.id}_${uid()}`,
-        });
-        const hasTodayData = todaySummary.items.length > 0;
-
-        if (!hasTodayData) {
-          for (let d = 29; d >= 0; d--) {
-            const day = new Date(today);
-            day.setDate(day.getDate() - d);
-            const dateStr = day.toISOString().split("T")[0];
-
-            const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-            const baseTokens = isWeekend ? Math.floor(Math.random() * 2000) + 500 : Math.floor(Math.random() * 8000) + 1000;
-
-            const breakdown: Record<string, number> = {};
-            let remaining = baseTokens;
-            for (let i = 0; i < agents.length; i++) {
-              if (i === agents.length - 1) {
-                breakdown[agents[i]] = remaining;
-              } else {
-                const chunk = Math.floor(remaining * (0.1 + Math.random() * 0.3));
-                breakdown[agents[i]] = chunk;
-                remaining -= chunk;
-              }
-            }
-
-            const promptTokens = Math.floor(baseTokens * 0.35);
-            const completionTokens = baseTokens - promptTokens;
-            const requestCount = Math.max(1, Math.floor(baseTokens / 500));
-
-            try {
-              const existingSummary = await pb.collection("ai_usage_daily_summaries").getList(1, 1, {
-                filter: `userId = "${user.id}" && date = "${dateStr}"`,
-                requestKey: `seed_sum_chk_${user.id}_${dateStr}_${uid()}`,
-              });
-              if (existingSummary.items.length === 0) {
-                await pb.collection("ai_usage_daily_summaries").create({
-                  userId: user.id,
-                  date: dateStr,
-                  totalTokens: baseTokens,
-                  promptTokens,
-                  completionTokens,
-                  requestCount,
-                  agentBreakdown: JSON.stringify(breakdown),
-                }, { requestKey: `seed_sum_${user.id}_${dateStr}_${uid()}` });
-              }
-            } catch {}
-          }
-        }
-      } catch {}
     }
 
-    // ── 5. Seed demo AiCapRules (only if none exist) ──
+    // ── Seed AiCapRules (only if none exist) ──
     const existingRules = await pb.collection("ai_cap_rules").getList(1, 1, {
       requestKey: `seed_rules_count_${uid()}`,
     });
