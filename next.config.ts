@@ -91,8 +91,8 @@ const nextConfig: NextConfig = {
       // Note: /_next/* is NOT matched because the pattern requires /_/ (literal slash-underscore-slash),
       // while /_next/* starts with /_next/ — no conflict with Next.js internals.
       {
-        source: '/_:path*',
-        destination: '/api/pb-proxy?pbpath=_:path*',
+        source: '/_/:path*',
+        destination: '/api/pb-proxy?pbpath=_/:path*',
       },
       {
         source: '/_',
