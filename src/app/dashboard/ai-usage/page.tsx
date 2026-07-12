@@ -145,7 +145,10 @@ export default function AiUsagePage() {
     return <ProLoader />;
   }
 
-  if (!session) return null;
+  if (!session) {
+    router.replace("/register");
+    return <ProLoader />;
+  }
 
   const dailyCap = capStatus?.dailyCap || 0;
   const usedToday = capStatus?.usedToday || 0;

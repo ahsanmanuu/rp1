@@ -162,7 +162,7 @@ export const COLLECTIONS: CollectionDef[] = [
     schema: [
       { name: 'userId', type: 'relation', required: true, options: { collectionId: '_pb_users_collection_', cascadeDelete: true } },
       { name: 'amount', type: 'number', required: true },
-      { name: 'type', type: 'select', required: true, options: { values: ['recharge', 'deduct', 'exchange'] } },
+      { name: 'type', type: 'select', required: true, options: { values: ['recharge', 'deduct', 'exchange', 'pending', 'refund', 'refund_pending', 'failed'] } },
       { name: 'description', type: 'text' },
     ],
     indexes: ['CREATE INDEX idx_pt_userId ON point_transactions (userId);'],
@@ -374,11 +374,24 @@ export const COLLECTIONS: CollectionDef[] = [
       { name: 'amount', type: 'number', required: true },
       { name: 'currency', type: 'text' },
       { name: 'durationMonths', type: 'number', required: true },
-      { name: 'paymentStatus', type: 'select', required: true, options: { values: ['pending', 'paid', 'failed'] } },
+      { name: 'paymentStatus', type: 'select', required: true, options: { values: ['pending', 'paid', 'failed', 'refunded', 'refund_pending'] } },
       { name: 'startsAt', type: 'date', required: true },
       { name: 'expiresAt', type: 'date', required: true },
     ],
     indexes: ['CREATE INDEX idx_mt_userId ON membership_transactions (userId);'],
+  },
+  // ─── User Membership Logs (Lifecycle) ──────────────────────────────
+  {
+    name: 'user_membership_logs',
+    type: 'base',
+    schema: [
+      { name: 'userId', type: 'relation', required: true, options: { collectionId: '_pb_users_collection_', cascadeDelete: true } },
+      { name: 'fromPlan', type: 'text', required: true },
+      { name: 'toPlan', type: 'text', required: true },
+      { name: 'eventType', type: 'select', required: true, options: { values: ['activation', 'renewal', 'upgrade', 'downgrade', 'expiry', 'cancellation'] } },
+      { name: 'source', type: 'select', required: true, options: { values: ['payment', 'admin', 'points_exchange', 'auto_expiry', 'promo'] } },
+      { name: 'metadata', type: 'json' },
+    ],
   },
   // ─── Blacklist Records ─────────────────────────────────────────────
   {

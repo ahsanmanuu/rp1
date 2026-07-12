@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { createPb } from '@/lib/pb';
 import { motion } from 'framer-motion';
+import { useBillingRealtime } from '@/hooks/useBillingRealtime';
 
 // ── Currency System ────────────────────────────────────────────────────────
 interface CurrencyDef { code: string; symbol: string; rate: number; label: string; }
@@ -93,29 +93,23 @@ export default function AdminBillingsPage() {
     };
     const currencySymbol = CURRENCIES[activeCurrency]?.symbol ?? '₹';
 
-    // Billings database states
-    const [transactions, setTransactions] = useState<any[]>([]);
-    const [metrics, setMetrics] = useState({
-        monthlyRevenue: 0,
-        pendingPayments: 0,
-        totalRefunds: 0,
-        pendingRefunds: 0,
-        failedPaymentsCount: 0,
-        failedPaymentsAmount: 0,
-        totalPointsCredited: 0,
-        successfulCheckoutsCount: 0,
-        averageOrderValue: 0,
-        renewedCount: 0,
-        churnedCount: 0
+    // Billings database states — powered by realtime hook with PB subscriptions + polling
+    const { data: billingData, loading, error, refetch: fetchBillings } = useBillingRealtime({
+        pollIntervalMs: 10000,
+        onError: (msg) => console.warn('[Billings] Realtime error:', msg),
     });
-    const [charts, setCharts] = useState<any>({
+    const transactions = useMemo(() => billingData?.transactions || [], [billingData]);
+    const metrics = useMemo(() => billingData?.metrics || {
+        monthlyRevenue: 0, pendingPayments: 0, totalRefunds: 0, pendingRefunds: 0,
+        failedPaymentsCount: 0, failedPaymentsAmount: 0, totalPointsCredited: 0,
+        successfulCheckoutsCount: 0, averageOrderValue: 0, renewedCount: 0, churnedCount: 0
+    }, [billingData]);
+    const charts = useMemo(() => billingData?.charts || {
         revenue: { "7D": [], "30D": [], "ALL": [] },
         userGrowth: { "7D": [], "30D": [], "ALL": [] }
-    });
+    }, [billingData]);
     const [selectedRevenueInterval, setSelectedRevenueInterval] = useState<"7D" | "30D" | "ALL">("30D");
     const [selectedGrowthInterval, setSelectedGrowthInterval] = useState<"7D" | "30D" | "ALL">("30D");
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
 
     // Search and filter states
     const [searchQuery, setSearchQuery] = useState("");
@@ -161,83 +155,6 @@ export default function AdminBillingsPage() {
         localStorage.setItem('latexify-admin-currency', activeCurrency);
     }, [currentTheme, isDarkMode, activeCurrency]);
 
-    const fetchBillings = async (silent = false) => {
-        try {
-            if (!silent) setLoading(true);
-            const res = await fetch("/api/admin/billings");
-            const data = await res.json();
-            if (data.success) {
-                setTransactions(data.transactions || []);
-                setMetrics(data.metrics || {
-                    monthlyRevenue: 0,
-                    pendingPayments: 0,
-                    totalRefunds: 0,
-                    pendingRefunds: 0,
-                    failedPaymentsCount: 0,
-                    failedPaymentsAmount: 0,
-                    totalPointsCredited: 0,
-                    successfulCheckoutsCount: 0,
-                    averageOrderValue: 0,
-                    renewedCount: 0,
-                    churnedCount: 0
-                });
-                setCharts(data.charts || {
-                    revenue: { "7D": [], "30D": [], "ALL": [] },
-                    userGrowth: { "7D": [], "30D": [], "ALL": [] }
-                });
-                setError(null);
-            } else {
-                setError(data.error || "Failed to load billing history");
-            }
-        } catch (err: any) {
-            setError(err.message || "Failed to load billing history");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchBillings(false);
-        const intervalId = setInterval(() => {
-            fetchBillings(true);
-        }, 10000);
-
-        // PocketBase real-time subscription for instant stats refreshes
-        let unsubscribeAll: (() => void) | null = null;
-        try {
-            const pb = createPb();
-            const token = typeof window !== 'undefined' ? localStorage.getItem('latexify-admin-token') : null;
-            if (token) {
-                pb.authStore.save(token, null);
-            }
-            const triggerRefresh = () => {
-                fetchBillings(true);
-            };
-
-            Promise.all([
-                pb.collection('point_transactions').subscribe('*', triggerRefresh),
-                pb.collection('membership_transactions').subscribe('*', triggerRefresh),
-                pb.collection('users').subscribe('*', triggerRefresh)
-            ]).then(unsubs => {
-                unsubscribeAll = () => {
-                    unsubs.forEach(unsub => {
-                        try { unsub(); } catch {}
-                    });
-                };
-            }).catch(err => {
-                console.warn("[AdminBillings Realtime] Subscription failed:", err);
-            });
-        } catch (err) {
-            console.warn("[AdminBillings Realtime] Initialisation failed:", err);
-        }
-
-        return () => {
-            clearInterval(intervalId);
-            if (unsubscribeAll) {
-                unsubscribeAll();
-            }
-        };
-    }, []);
     const generatePathD = (data: { value: number }[]) => {
         if (!data || data.length === 0) return "";
         const values = data.map(d => d.value);
@@ -1038,7 +955,7 @@ export default function AdminBillingsPage() {
                                                     {tx.amountCredits} pts
                                                   </td>
                                                   <td className="px-6 py-4 text-sm font-medium" style={{ color: "var(--color-admin-on-surface)" }}>
-                                                    {fmtCurrency(tx.amount ?? tx.amountDollars ?? 0)}
+                                                    {fmtCurrency(tx.amount ?? 0)}
                                                   </td>
                                                   <td className="px-6 py-4">
                                                       <span className="flex items-center gap-1.5 text-[12px] font-semibold" style={tx.status === "Completed" ? { color: "var(--color-admin-primary)" } : tx.status === "Pending" ? { color: "var(--color-admin-secondary)" } : { color: "var(--color-admin-error)" }}>

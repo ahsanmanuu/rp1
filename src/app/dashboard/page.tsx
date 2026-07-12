@@ -687,7 +687,10 @@ export default function DashboardPage() {
   if (status === "loading" || _loading) {
     return <ProLoader />;
   }
-  if (!session) return null;
+  if (!session) {
+    router.replace("/register");
+    return <ProLoader />;
+  }
 
   return (
     <div className="flex h-screen bg-background text-on-background font-body-md overflow-hidden transition-colors duration-500">

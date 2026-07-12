@@ -8,122 +8,11 @@ function getISODateStr(d: Date): string {
   return d.toISOString().split("T")[0];
 }
 
-async function seedBillingDemoData() {
-  try {
-    const txCount = await prisma.pointTransaction.count();
-    if (txCount > 5) return;
-
-    // Check if we have users in the system.
-    const allUsers = await prisma.user.findMany({
-      take: 10,
-      select: { id: true }
-    });
-
-    const existingUserIds = allUsers.map(u => u.id);
-
-    // If no users exist, let's create a couple of demo users with valid fields for PocketBase
-    if (existingUserIds.length === 0) {
-      const demoUsersData = [
-        { email: "arjun@researchlab.in", name: "Arjun Sharma", password: "password123", passwordConfirm: "password123", verified: true, points: 100, status: "active", role: "user", membership: "free" },
-        { email: "priya@university.edu", name: "Priya Patel", password: "password123", passwordConfirm: "password123", verified: true, points: 50, status: "active", role: "user", membership: "free" },
-        { email: "rajesh@phdguide.com", name: "Dr. Rajesh Kumar", password: "password123", passwordConfirm: "password123", verified: true, points: 200, status: "active", role: "user", membership: "free" }
-      ];
-
-      for (const userData of demoUsersData) {
-        try {
-          const newUser = await prisma.user.create({ data: userData });
-          existingUserIds.push(newUser.id);
-        } catch (err: any) {
-          console.warn("[BILLINGS SEED] Failed to create demo user:", err.message || err);
-        }
-      }
-    }
-
-    if (existingUserIds.length === 0) {
-      console.warn("[BILLINGS SEED] No users available to link transactions. Seeding skipped.");
-      return;
-    }
-
-    const now = new Date();
-    // PointTransaction demo records over the last 30 days
-    for (let i = 0; i < 30; i++) {
-      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-      try {
-        await prisma.pointTransaction.create({
-          data: {
-            userId: existingUserIds[i % existingUserIds.length],
-            amount: [50, 200, 1000, 50, 200][i % 5],
-            type: "recharge",
-            description: i % 3 === 0 ? "Gold Points Pack" : i % 3 === 1 ? "Silver Points Pack" : "Bronze Points Pack",
-            createdAt: d,
-          },
-        });
-      } catch (err: any) {
-        console.warn("[BILLINGS SEED] Failed to create point transaction:", err.message || err);
-      }
-    }
-
-    // Non-recharge transaction types
-    const extraTxs = [
-      { userId: existingUserIds[0 % existingUserIds.length], amount: 200, type: "pending", desc: "Pending recharge", hoursAgo: 2 },
-      { userId: existingUserIds[1 % existingUserIds.length], amount: -50, type: "refund", desc: "Refund - Bronze Pack", hoursAgo: 24 },
-      { userId: existingUserIds[2 % existingUserIds.length], amount: -200, type: "refund_pending", desc: "Refund requested - Silver", hoursAgo: 4 },
-      { userId: existingUserIds[3 % existingUserIds.length] || existingUserIds[0], amount: 1000, type: "failed", desc: "Failed - Gold transaction", hoursAgo: 6 },
-    ];
-    for (const tx of extraTxs) {
-      try {
-        await prisma.pointTransaction.create({
-          data: { userId: tx.userId, amount: tx.amount, type: tx.type, description: tx.desc, createdAt: new Date(now.getTime() - tx.hoursAgo * 60 * 60 * 1000) }
-        });
-      } catch (err: any) {
-        console.warn("[BILLINGS SEED] Failed to create extra point transaction:", err.message || err);
-      }
-    }
-
-    // MembershipTransaction demo records
-    const membershipRecords = [
-      { userId: existingUserIds[0 % existingUserIds.length], orderId: "CF-ORD-A1B2C3", planType: "premium_12m", amount: 4150, dur: 12, status: "paid", daysAgo: 45 },
-      { userId: existingUserIds[0 % existingUserIds.length], orderId: "CF-ORD-D4E5F6", planType: "premium_12m", amount: 4150, dur: 12, status: "paid", daysAgo: 15 },
-      { userId: existingUserIds[1 % existingUserIds.length], orderId: "CF-ORD-G7H8I9", planType: "premium_6m", amount: 2490, dur: 6, status: "paid", daysAgo: 60 },
-      { userId: existingUserIds[2 % existingUserIds.length], orderId: "CF-ORD-J1K2L3", planType: "premium_3m", amount: 1245, dur: 3, status: "paid", daysAgo: 20 },
-      { userId: existingUserIds[4 % existingUserIds.length] || existingUserIds[0], orderId: "CF-ORD-M4N5O6", planType: "premium_12m", amount: 4150, dur: 12, status: "paid", daysAgo: 90 },
-      { userId: existingUserIds[3 % existingUserIds.length] || existingUserIds[0], orderId: "CF-ORD-P7Q8R9", planType: "premium_1m", amount: 415, dur: 1, status: "paid", daysAgo: 10 },
-      { userId: existingUserIds[2 % existingUserIds.length], orderId: "CF-ORD-FAILED", planType: "premium_6m", amount: 2490, dur: 6, status: "failed", daysAgo: 3 },
-      { userId: existingUserIds[1 % existingUserIds.length], orderId: "CF-ORD-PENDING", planType: "premium_3m", amount: 1245, dur: 3, status: "pending", daysAgo: 1 },
-      { userId: existingUserIds[0 % existingUserIds.length], orderId: "CF-ORD-REFUNDED", planType: "premium_1m", amount: 415, dur: 1, status: "refunded", daysAgo: 14 },
-      { userId: existingUserIds[1 % existingUserIds.length], orderId: "CF-ORD-REF-PEND", planType: "premium_6m", amount: 2490, dur: 6, status: "refund_pending", daysAgo: 7 },
-    ];
-    for (const m of membershipRecords) {
-      try {
-        const expires = new Date(now.getTime() - m.daysAgo * 24 * 60 * 60 * 1000);
-        expires.setMonth(expires.getMonth() + m.dur);
-        await prisma.membershipTransaction.create({
-          data: {
-            userId: m.userId, orderId: m.orderId, planType: m.planType, amount: m.amount,
-            currency: "INR",
-            durationMonths: m.dur, paymentStatus: m.status,
-            createdAt: new Date(now.getTime() - m.daysAgo * 24 * 60 * 60 * 1000),
-            startsAt: new Date(now.getTime() - m.daysAgo * 24 * 60 * 60 * 1000),
-            expiresAt: expires,
-          },
-        });
-      } catch (err: any) {
-        console.warn("[BILLINGS SEED] Failed to create membership transaction:", err.message || err);
-      }
-    }
-  } catch (err) {
-    console.warn("[BILLINGS] Demo seed error (non-fatal):", err);
-  }
-}
-
 export async function GET(req: NextRequest) {
   const session = await getAdminSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    // 0. Seed demo data if PocketBase is empty
-    await seedBillingDemoData();
-
     // 1. Point/Credit transactions
     const pointTxs = await prisma.pointTransaction.findMany({
       orderBy: { createdAt: "desc" },
@@ -242,9 +131,9 @@ export async function GET(req: NextRequest) {
       _count: { id: true },
     });
 
-    const renewedUserIds = userTxCounts.filter(u => u._count.id >= 2).map(u => u.userId);
+    const renewedUserIds = userTxCounts.filter((u: any) => u._count.id >= 2).map((u: any) => u.userId);
     const renewedCount = renewedUserIds.length;
-    const transactingUserIds = userTxCounts.map(u => u.userId);
+    const transactingUserIds = userTxCounts.map((u: any) => u.userId);
     const churnedCount = await prisma.user.count({
       where: { id: { in: transactingUserIds }, membership: "free" }
     });
@@ -279,7 +168,7 @@ export async function GET(req: NextRequest) {
         }
       });
 
-      const growthCount = allUsers.filter(u => u.createdAt <= d).length;
+      const growthCount = allUsers.filter((u: any) => u.createdAt <= d).length;
       const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       const itemRev = { label, value: Math.round(dayRevenue) };
       const itemGrowth = { label, value: growthCount || totalUsersCount };
@@ -296,7 +185,7 @@ export async function GET(req: NextRequest) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const monthLabel = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
       monthlyRevMap[monthLabel] = 0;
-      monthlyGrowthMap[monthLabel] = allUsers.filter(u => u.createdAt <= new Date(d.getFullYear(), d.getMonth() + 1, 0)).length;
+      monthlyGrowthMap[monthLabel] = allUsers.filter((u: any) => u.createdAt <= new Date(d.getFullYear(), d.getMonth() + 1, 0)).length;
     }
 
     pointTxs.forEach((tx: any) => {
