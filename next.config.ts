@@ -87,6 +87,17 @@ const nextConfig: NextConfig = {
         source: '/api/options/:path*',
         destination: '/api/pb-proxy?pbpath=api/options/:path*',
       },
+      // Proxy PocketBase admin UI pages and assets (/_/ serves the admin dashboard)
+      // Note: /_next/* is NOT matched because the pattern requires /_/ (literal slash-underscore-slash),
+      // while /_next/* starts with /_next/ — no conflict with Next.js internals.
+      {
+        source: '/_:path*',
+        destination: '/api/pb-proxy?pbpath=_:path*',
+      },
+      {
+        source: '/_',
+        destination: '/api/pb-proxy?pbpath=_',
+      },
     ];
   },
 

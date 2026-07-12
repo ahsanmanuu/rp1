@@ -4,9 +4,10 @@ const PB_URL = process.env.POCKETBASE_URL || 'http://127.0.0.1:8090';
 
 async function handler(request: NextRequest) {
   try {
-    // Next.js rewrites preserve the original URL path in request.nextUrl.pathname.
-    // We map the path directly: /pb/... maps to /..., /api/... maps to /api/...
-    let pbPath = request.nextUrl.pathname;
+    // Next.js rewrites: request.nextUrl.pathname may be the rewrite destination
+    // (e.g. /api/pb-proxy) rather than the original path. We prefer the pbpath
+    // query param (set by the rewrite rule) as the original path.
+    let pbPath = request.nextUrl.searchParams.get('pbpath') || request.nextUrl.pathname;
     if (pbPath.startsWith('/pb')) {
       pbPath = pbPath.substring(3); // strip '/pb' prefix
     }
