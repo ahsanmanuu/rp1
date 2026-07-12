@@ -12,13 +12,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    // Fetch all sessions that are not expired
+    // Fetch sessions active within last 15 minutes
+    const activeThreshold = new Date(Date.now() - 15 * 60 * 1000);
     const activeSessions = await prisma.userSession.findMany({
       where: {
-        expiresAt: { gte: new Date() },
+        lastActiveAt: { gte: activeThreshold },
       },
       orderBy: {
-        createdAt: "desc",
+        lastActiveAt: "desc",
       },
     });
 
@@ -44,6 +45,7 @@ export async function GET(req: NextRequest) {
         ip: s.ipAddress || "Unknown IP",
         location: s.location || "Unknown Location",
         sessionStartTime: s.createdAt ? new Date(s.createdAt).toISOString() : new Date().toISOString(),
+        lastActiveAt: s.lastActiveAt ? new Date(s.lastActiveAt).toISOString() : null,
         machineId: s.machineId || "",
       });
     }

@@ -9,6 +9,7 @@ import InternetMonitor from "@/components/InternetMonitor";
 import BroadcastBanner from "@/components/BroadcastBanner";
 import SecurityBlockOverlay from "@/components/SecurityBlockOverlay";
 import AiCapWarning from "@/components/AiCapWarning";
+import { Heartbeat } from "@/components/Heartbeat";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -80,6 +81,7 @@ export default function RootLayout({
             />
             <ConditionalNavbar />
             <AiCapWarning />
+            <Heartbeat />
             <main>
               {children}
             </main>

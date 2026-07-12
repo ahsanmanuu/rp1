@@ -68,12 +68,11 @@ export async function POST(req: NextRequest) {
     const userAgent = geo.userAgent || req.headers.get("user-agent") || "unknown";
     const clientMachineId = machineId || "unknown";
 
-    // Check for existing active sessions from a different machine
+    // Check for any existing active sessions for this user
     const existingSessions = await prisma.userSession.findMany({
       where: {
         userId,
         expiresAt: { gte: new Date() },
-        machineId: { not: clientMachineId },
       },
     });
 
@@ -106,6 +105,7 @@ export async function POST(req: NextRequest) {
         ipAddress,
         location,
         userAgent,
+        lastActiveAt: new Date(),
         expiresAt,
       },
     });
@@ -120,6 +120,7 @@ export async function POST(req: NextRequest) {
         ipAddress,
         location,
         userAgent,
+        lastActiveAt: new Date().toISOString(),
         expiresAt: expiresAt.toISOString(),
       });
     } catch (pbErr: any) {

@@ -607,7 +607,7 @@ export default function AdminDashboardPage() {
     fetchTicketNotifications();
   }, []);
   useAdminRealtime({
-    triggerCollections: ['users', 'projects', 'support_tickets', 'ai_usage_logs', 'admin_tasks', 'announcements', 'ai_usage_daily_summaries'],
+    triggerCollections: ['users', 'projects', 'support_tickets', 'ai_usage_logs', 'admin_tasks', 'announcements', 'ai_usage_daily_summaries', 'user_sessions'],
     onRefresh: refreshAll,
     pollIntervalMs: 10000,
     onPoll: refreshAll,

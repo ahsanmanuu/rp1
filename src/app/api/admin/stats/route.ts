@@ -227,15 +227,17 @@ export async function GET(_req: NextRequest) {
     });
     const realTokensUsed = tokensAgg._sum.totalTokens || 0;
 
-    // Active scholars: active user sessions
-    const activeSessionsCount = await prisma.userSession.count({
-      where: { expiresAt: { gte: new Date() } }
+    // Active scholars: distinct users active within last 15 minutes
+    const activeThreshold = new Date(Date.now() - 15 * 60 * 1000);
+    const activeUserIds = await prisma.userSession.groupBy({
+      by: ['userId'],
+      where: { lastActiveAt: { gte: activeThreshold } },
+      _count: { id: true },
     });
-
     let displayTotalUsers = realUserCount;
     let displayTotalRevenue = Math.round(totalRevenue * 100) / 100;
     let displayAIUsage = realTokensUsed;
-    let displayActiveNow = activeSessionsCount;
+    let displayActiveNow = activeUserIds.length;
     
     // Premium vs Free distribution — match all premium_* plan variants
     const premiumUsersCount = await prisma.user.count({
@@ -366,7 +368,7 @@ export async function GET(_req: NextRequest) {
     });
 
     // Fallbacks to guarantee a fully populated feed
-    const now = new Date();
+    let now = new Date();
     if (feedItems.length < 4) {
       feedItems.push(
         {
@@ -589,12 +591,18 @@ export async function GET(_req: NextRequest) {
     const aiUsageTrend = await calculateWeeklyTrend("aiUsageLog");
     
     const activeNowTrend = [];
+    now = new Date();
     for (let i = 3; i >= 0; i--) {
-      const start = new Date(Date.now() - (i + 1) * 60 * 60 * 1000);
-      const activeSessions = await prisma.userSession.count({
-        where: { expiresAt: { gte: start } }
+      const windowEnd = new Date(now.getTime() - i * 60 * 60 * 1000);
+      const windowStart = new Date(now.getTime() - (i + 1) * 60 * 60 * 1000);
+      const activeUsers = await prisma.userSession.groupBy({
+        by: ['userId'],
+        where: {
+          lastActiveAt: { gte: windowStart, lt: windowEnd },
+        },
+        _count: { id: true },
       });
-      activeNowTrend.push(activeSessions);
+      activeNowTrend.push(activeUsers.length);
     }
 
     const premiumTrend = await calculateWeeklyTrend("user", {

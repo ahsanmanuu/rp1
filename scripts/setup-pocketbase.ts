@@ -50,8 +50,10 @@ export const COLLECTIONS: CollectionDef[] = [
       { name: 'ipAddress', type: 'text' },
       { name: 'location', type: 'text' },
       { name: 'userAgent', type: 'text' },
+      { name: 'lastActiveAt', type: 'date' },
       { name: 'expiresAt', type: 'date', required: true },
     ],
+    indexes: ['CREATE INDEX idx_us_userId_lastActive ON user_sessions (userId, lastActiveAt);'],
     listRule: '@request.auth.id != "" && userId = @request.auth.id',
     viewRule: '@request.auth.id != "" && userId = @request.auth.id',
     createRule: '@request.auth.id != "" && userId = @request.auth.id',
@@ -738,9 +740,10 @@ export const COLLECTIONS: CollectionDef[] = [
       { name: 'ipAddress', type: 'text' },
       { name: 'location', type: 'text' },
       { name: 'userAgent', type: 'text' },
+      { name: 'lastActiveAt', type: 'date' },
       { name: 'expiresAt', type: 'date', required: true },
     ],
-    indexes: ['CREATE INDEX idx_us_userId ON user_sessions (userId);'],
+    indexes: ['CREATE INDEX idx_us_userId_lastActive ON user_sessions (userId, lastActiveAt);'],
   },
 
   // ─── Verification Tokens (Password Recovery) ───────────────
