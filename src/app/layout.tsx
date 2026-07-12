@@ -4,6 +4,7 @@ import { NextAuthProvider } from "@/components/Auth/NextAuthProvider";
 import { PocketBaseProvider } from "@/components/Auth/PocketBaseProvider";
 import { ConditionalNavbar } from "@/components/ConditionalNavbar";
 import { Toaster } from "react-hot-toast";
+import Script from "next/script";
 import InternetMonitor from "@/components/InternetMonitor";
 import BroadcastBanner from "@/components/BroadcastBanner";
 import SecurityBlockOverlay from "@/components/SecurityBlockOverlay";
@@ -55,6 +56,9 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${outfit.variable} ${jetbrains.variable} ${newsreader.variable}`} suppressHydrationWarning>
       <head>
         <link rel="preload" href="/fonts/material-symbols-outlined.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <Script id="chunk-retry" strategy="afterInteractive">
+          {`(function(){var origCreateElement=document.createElement.bind(document);document.createElement=function(tagName,options){var el=origCreateElement(tagName,options);if(tagName&&tagName.toLowerCase()==='script'&&el.src&&el.src.includes('/_next/static/chunks/')){var origSrc=el.src;var retries=0;el.addEventListener('error',function errorHandler(){if(retries<3){retries++;var newEl=origCreateElement('script',options);newEl.src=origSrc+(origSrc.includes('?')?'&':'?')+'retry='+retries;newEl.onload=function(){el.onerror=null;el.parentNode&&el.parentNode.replaceChild(newEl,el);};newEl.onerror=errorHandler;el.parentNode&&el.parentNode.insertBefore(newEl,el.nextSibling);}else{el.onerror=null;}});}return el;};})()`}
+        </Script>
       </head>
       <body className="antialiased font-body" suppressHydrationWarning>
         <PocketBaseProvider>
