@@ -1,0 +1,162 @@
+import Database from 'better-sqlite3';
+
+const db = new Database('./prisma/dev.db');
+const projectId = 'cmpip151c00gngcg4dfehfner';
+
+// ─── FIX main.tex (stored in Project.latexContent) ────────────────────────────
+// Remove: duplicate \usepackage{nature} (line 97), duplicate packages (143-153)
+// Fix: nature.sty to be empty/safe
+
+const fixedMainTex = `\\documentclass{nature}
+\\catcode\`\\@=11
+\\ifdefined\\DeclareUnicodeCharacter
+  \\DeclareUnicodeCharacter{207B}{\\ensuremath{^{-}}}
+  \\DeclareUnicodeCharacter{025B}{\\ensuremath{\\epsilon}}
+  \\DeclareUnicodeCharacter{2126}{\\ensuremath{\\Omega}}
+  \\DeclareUnicodeCharacter{2013}{--}
+  \\DeclareUnicodeCharacter{2014}{---}
+  \\DeclareUnicodeCharacter{2212}{-}
+\\fi
+\\ifdefined\\DeclareUnicodeCharacter\\else\\long\\def\\DeclareUnicodeCharacter#1#2{}\\fi
+\\providecommand{\\botrule}{\\midrule}
+\\providecommand{\\toprule}{\\hline}
+\\providecommand{\\equalcont}[1]{}
+\\providecommand{\\bmhead}[1]{\\section*{#1}}
+\\providecommand{\\backmatter}{}
+\\providecommand{\\jnlcitation}[1]{}
+\\providecommand{\\authormark}[1]{}
+\\providecommand{\\address}[2]{}
+\\providecommand{\\corres}[1]{}
+\\providecommand{\\presentaddress}[1]{}
+\\providecommand{\\articletype}[1]{}
+\\@ifundefined{set@color}{\\providecommand{\\set@color}{}}{} 
+\\@ifundefined{reset@color}{\\providecommand{\\reset@color}{}}{} 
+\\providecommand{\\letterspace}[1]{#1}
+\\providecommand{\\naturalwidth}{0.9\\textwidth}
+\\providecommand{\\@abstract}{}
+\\providecommand{\\institute}[1]{\\thanks{#1}}
+\\providecommand{\\inst}[1]{$^{#1}$}
+\\catcode\`\\@=12
+\\ifdefined\\newtheoremstyle
+  \\ifdefined\\thmstyleone \\else \\newtheoremstyle{thmstyleone}{}{}{\\itshape}{}{\\bfseries}{.}{.5em}{} \\fi
+  \\ifdefined\\thmstyletwo \\else \\newtheoremstyle{thmstyletwo}{}{}{}{}{\\bfseries}{.}{.5em}{} \\fi
+  \\ifdefined\\thmstylethree \\else \\newtheoremstyle{thmstylethree}{}{}{}{}{\\itshape}{.}{.5em}{} \\fi
+\\fi
+\\ifdefined\\theorem \\else \\newtheorem{theorem}{Theorem} \\fi
+\\ifdefined\\proposition \\else \\newtheorem{proposition}{Proposition} \\fi
+\\ifdefined\\definition \\else \\newtheorem{definition}{Definition} \\fi
+\\ifdefined\\remark \\else \\newtheorem{remark}{Remark} \\fi
+\\usepackage{amsmath,amsfonts,amssymb,mathrsfs}
+\\allowdisplaybreaks
+\\usepackage{graphicx}
+\\usepackage{parskip}
+\\usepackage{booktabs,multirow,array,tabularx}
+\\usepackage{float,caption}
+\\PassOptionsToPackage{export}{adjustbox}
+\\usepackage{adjustbox}
+\\usepackage{placeins}
+\\usepackage{enumitem}
+\\usepackage{rotating,pdflscape}
+\\makeatletter
+\\let\\c@algorithm\\relax
+\\let\\algorithm\\relax
+\\let\\endalgorithm\\relax
+\\makeatother
+\\usepackage{algorithm,algpseudocode}
+\\providecommand{\\algorithmicrequire}{\\textbf{Require:}}
+\\providecommand{\\algorithmicensure}{\\textbf{Ensure:}}
+\\renewcommand{\\algorithmicrequire}{\\textbf{Input:}}
+\\renewcommand{\\algorithmicensure}{\\textbf{Output:}}
+\\usepackage[final]{microtype}
+\\usepackage{url}
+\\usepackage{xurl}
+\\usepackage[unicode,colorlinks=true,allcolors=blue,bookmarksnumbered]{hyperref}
+\\usepackage{textcomp}
+\\usepackage{gensymb}
+\\usepackage{bm}
+\\usepackage{listings}
+\\usepackage{pifont}
+\\usepackage{appendix}
+\\usepackage{cleveref}
+\\usepackage{xcolor}
+\\usepackage{siunitx}
+\\ifdefined\\DeclareUnicodeCharacter\\DeclareUnicodeCharacter{200B}{}\\fi
+\\ifdefined\\DeclareUnicodeCharacter\\DeclareUnicodeCharacter{202F}{ }\\fi
+\\ifdefined\\DeclareUnicodeCharacter\\DeclareUnicodeCharacter{00A0}{ }\\fi
+\\providecommand{\\keywords}[1]{\\par\\vspace{0.5em}\\noindent\\textbf{Keywords---} #1}
+\\let\\Bbbk\\relax
+\\ifdefined\\setlist\\setlist{nosep}\\fi
+% --- NUCLEAR TRACKER (zimg Support) ---
+\\ifdefined\\zimg\\else
+  \\newcommand{\\zimg}[4]{%
+    \\leavevmode
+    \\IfFileExists{\\detokenize{#1}}{%
+      \\includegraphics[#2,max height=0.85\\textheight]{\\detokenize{#1}}%
+    }{%
+      \\fbox{\\parbox{6cm}{\\centering Missing Image: \\detokenize{#1}}}%
+    }%
+  }
+\\fi
+\\PassOptionsToPackage{unicode}{hyperref}
+\\PassOptionsToPackage{final}{microtype}
+\\nonstopmode
+\\usepackage[utf8]{inputenc}
+\\usepackage[T1]{fontenc}
+\\makeatletter
+\\usepackage{iftex}
+\\makeatother
+\\graphicspath{{./}{./assets/}{../}}
+\\DeclareGraphicsExtensions{.pdf,.eps,.png,.PNG,.jpg,.JPG,.jpeg,.JPEG,.tif,.tiff,.bmp,.gif,.webp,.avif,.svg,.ico}
+% --- UNIVERSAL SUBFIGURE FALLBACK ---
+\\makeatletter
+\\@ifclassloaded{IEEEtran}{}{%
+\\@ifclassloaded{acmart}{}{%
+\\@ifclassloaded{elsarticle}{}{%
+\\@ifundefined{subfigure}{\\usepackage{subcaption}}{}%
+}%
+}%
+}
+\\makeatother
+\\input{metadata/title.tex}
+\\input{metadata/authors.tex}
+\\begin{document}
+\\sloppy
+\\raggedbottom
+\\emergencystretch=3em
+\\hbadness=10000
+\\tolerance=1000
+\\ifdefined\\urlstyle\\urlstyle{same}\\fi
+\\ifdefined\\Urlmuskip\\Urlmuskip=0mu plus 1mu\\fi
+\\ifdefined\\setkeys\\setkeys{Gin}{max width=\\linewidth,max height=0.75\\textheight,keepaspectratio}\\fi
+
+  \\maketitle
+  \\input{metadata/affiliations.tex}
+  \\input{metadata/abstract.tex}
+  \\input{metadata/keywords.tex}
+  \\input{sections/01_introduction.tex}
+  \\input{sections/02_methodology.tex}
+  \\input{sections/03_conclusion_and_compa.tex}
+  \\input{sections/04_ethics_statement.tex}
+  \\input{sections/05_funding_statement.tex}
+  \\input{references/bibliography.tex}
+
+\\end{document}
+`;
+
+db.prepare("UPDATE Project SET latexContent = ? WHERE id = ?")
+  .run(fixedMainTex, projectId);
+console.log('Fixed: Project.latexContent (main.tex)');
+
+// ─── FIX nature.sty — remove the broken \RequirePackage{packages} ────────────
+const fixedNatureSty = `\\NeedsTeXFormat{LaTeX2e}
+\\ProvidesPackage{nature}[2026/04/30 Publisher Style]
+% Placeholder — nature.cls is the document class; this style file is intentionally minimal.
+\\endinput
+`;
+
+db.prepare("UPDATE ProjectFile SET content = ? WHERE projectId = ? AND filename = ?")
+  .run(fixedNatureSty, projectId, 'nature.sty');
+console.log('Fixed: nature.sty');
+
+db.close();
+console.log('\nDone! main.tex and nature.sty fixed.');

@@ -1,0 +1,33 @@
+/* Shared App Layer Styles - Static and Build-time processed */
+
+/* Recharge Page */
+.popular-plan {
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+/* Shop Page */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spin-slow 20s linear infinite;
+}
+
+/* Template Migrator */
+.toolbar-btn {
+  background: transparent;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+.toolbar-btn:hover { background: rgba(255,255,255,0.1); }
+
+.spinner { animation: spin 2s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.hover-scale { transition: transform 0.2s; }
+.hover-scale:hover { transform: translateY(-4px); border-color: var(--accent-primary) !important; }
+.file-item:hover .delete-btn { opacity: 1 !important; }

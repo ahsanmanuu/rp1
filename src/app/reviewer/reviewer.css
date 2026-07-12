@@ -1,0 +1,344 @@
+/* Reviewer Page Static Styles */
+
+@keyframes laser {
+  0% { top: 0%; }
+  100% { top: 100%; }
+}
+
+.animate-laser {
+  animation: laser 2.5s linear infinite alternate;
+}
+
+.glass-panel {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.scanning-line {
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #006a61, transparent);
+    position: absolute;
+    width: 100%;
+    top: 0;
+    animation: scan 3s linear infinite;
+}
+
+@keyframes scan {
+    0% { top: 0%; opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { top: 100%; opacity: 0; }
+}
+
+.shimmer-progress {
+    background: linear-gradient(90deg, #006a61 0%, #89f5e7 50%, #006a61 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+}
+
+@keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.shimmer-bg {
+    background: linear-gradient(90deg, #006a61 0%, #131b2e 100%);
+}
+
+.reviewer-material-icons {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* ─── Universal text justification for the reviewer report (screen only) ─────
+   Justified text in narrow print columns compresses word/character spacing
+   unevenly, which renders as "characters merging".  Print uses left-aligned
+   text with explicit kerning controls for crisp character separation.
+   Applies to all prose elements (paragraphs, list items, spans, plain divs).
+   Headings (h1–h6), buttons, labels, badges, and icon containers are excluded
+   because centered / left-aligned layout is intentional for those elements.   */
+@media screen {
+  .reviewer-page-root p,
+  .reviewer-page-root li,
+  .reviewer-page-root blockquote,
+  .reviewer-page-root td,
+  .reviewer-page-root th,
+  .reviewer-page-root span,
+  #review-report-content span,
+  #review-report-content p,
+  #review-report-content li {
+      text-align: justify !important;
+      text-justify: inter-word !important;
+      hyphens: auto;
+  }
+}
+
+/* === PRINT DIALOG RESILIENCE === */
+@media print {
+  @page {
+    margin: 12mm;
+    size: A4;
+  }
+
+  /* ── 1. Unconstrain ancestors so nothing clips the report ──────────── */
+  html, body, #__next, [data-reactroot],
+  .reviewer-page-root,
+  .reviewer-page-root main,
+  main {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    max-width: none !important;
+    overflow: visible !important;
+    position: static !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 0 !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+
+  /* ── 2. Hide non-printable UI ──────────────────────────────────────── */
+  nav, header, footer, button, .no-print,
+  .reviewer-page-root > *:not(main),
+  .reviewer-page-root main main > div:not(#review-report-content) {
+    display: none !important;
+  }
+
+  /* ── 3. Report container – block flow, readable print scale ────────── */
+  #review-report-content {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-family: "Inter", "Segoe UI", Arial, Helvetica, sans-serif !important;
+    color: #000 !important;
+    background: #fff !important;
+  }
+
+  /* ── 4. Body text – consistent readable size ────────────────────────── */
+  #review-report-content,
+  #review-report-content p,
+  #review-report-content li,
+  #review-report-content span,
+  #review-report-content td,
+  #review-report-content th {
+    font-size: 11pt !important;
+    line-height: 1.55 !important;
+  }
+  #review-report-content h1,
+  #review-report-content h2,
+  #review-report-content h3,
+  #review-report-content .text-xl,
+  #review-report-content .text-2xl {
+    font-size: 14pt !important;
+    line-height: 1.3 !important;
+    margin: 0 0 4pt 0 !important;
+    font-weight: 700 !important;
+  }
+  #review-report-content .text-\[56px\],
+  #review-report-content .text-\[40px\] {
+    font-size: 28pt !important;
+    line-height: 1 !important;
+  }
+  #review-report-content .text-\[11px\],
+  #review-report-content .text-\[10px\],
+  #review-report-content .text-xs {
+    font-size: 9pt !important;
+  }
+  #review-report-content .text-sm {
+    font-size: 10pt !important;
+  }
+
+  /* ── 5. Cards – compact padding, sensible page breaks ────────────────── */
+  #review-report-content > * {
+    margin-bottom: 10pt !important;
+  }
+  #review-report-content .bg-white,
+  #review-report-content .rounded-xl,
+  #review-report-content .rounded-lg {
+    padding: 10pt 12pt !important;
+    border: 0.5pt solid #bbb !important;
+    border-radius: 4pt !important;
+    break-inside: auto !important;
+  }
+  #review-report-content .bg-primary-container {
+    padding: 10pt 12pt !important;
+    border-radius: 4pt !important;
+    break-inside: avoid !important;
+    background: #00685f !important;
+    color: #fff !important;
+    min-height: 0 !important;
+  }
+  #review-report-content .bg-primary-container * {
+    color: #fff !important;
+  }
+
+  /* ── 6. Gauges – shrink, keep percentage text ABSOLUTE (centred) ────── */
+  #review-report-content .w-32.h-32 {
+    width: 72px !important;
+    height: 72px !important;
+  }
+  #review-report-content .grid-cols-2.md\:grid-cols-4 {
+    display: flex !important;
+    flex-flow: row wrap !important;
+    justify-content: space-around !important;
+    gap: 4pt !important;
+  }
+  #review-report-content .grid-cols-2.md\:grid-cols-4 > div {
+    flex: 0 0 90px !important;
+    max-width: 90px !important;
+  }
+  #review-report-content svg {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+  #review-report-content [class*="md:grid-cols-4"] svg {
+    width: 72px !important;
+    height: 72px !important;
+    max-width: 72px !important;
+  }
+  #review-report-content .grid-cols-2.md\:grid-cols-4 span {
+    font-size: 6.5pt !important;
+    font-weight: 700 !important;
+    display: block !important;
+    margin-top: 2px !important;
+    line-height: 1.2 !important;
+    letter-spacing: 0.02em !important;
+  }
+  #review-report-content .grid-cols-2.md\:grid-cols-4 .absolute {
+    font-size: 9pt !important;
+    line-height: 1 !important;
+  }
+  #review-report-content circle.text-slate-200 {
+    stroke: #cbd5e1 !important;
+  }
+  #review-report-content .bg-primary-container circle.text-slate-200 {
+    stroke: rgba(255, 255, 255, 0.25) !important;
+  }
+
+  /* ── 7. Summary bento – 3‑column flex ────────────────────────────────── */
+  #review-report-content .grid-cols-1.md\:grid-cols-3 {
+    display: flex !important;
+    flex-flow: row wrap !important;
+    gap: 6pt !important;
+  }
+  #review-report-content .grid-cols-1.md\:grid-cols-3 > * {
+    flex: 1 1 30% !important;
+    min-width: 130px !important;
+  }
+
+  /* ── 8. Accordion compact ────────────────────────────────────────────── */
+  #review-report-content .space-y-4 > .bg-white {
+    padding: 0 !important;
+    border: none !important;
+  }
+  #review-report-content .space-y-4 > .bg-white > button {
+    padding: 6pt 12pt !important;
+    font-size: 10pt !important;
+  }
+  #review-report-content .space-y-4 > .bg-white > div {
+    padding: 4pt 12pt 8pt !important;
+  }
+
+  /* ── 9. Journal sidebar – compact, static, readable ──────────────────── */
+  #review-report-content aside .bg-white {
+    padding: 6pt 8pt !important;
+    break-inside: auto !important;
+  }
+  #review-report-content aside .grid-cols-2 {
+    gap: 2pt 4pt !important;
+    padding: 4pt 6pt !important;
+  }
+  #review-report-content aside a {
+    font-size: 9pt !important;
+    padding: 3pt 6pt !important;
+  }
+  #review-report-content aside .sticky {
+    position: static !important;
+  }
+
+  /* ── 10. Spacing – reduce gaps, margins, padding ─────────────────────── */
+  #review-report-content .gap-\[24px\],
+  #review-report-content .gap-\[16px\] {
+    gap: 8pt !important;
+  }
+  #review-report-content .p-\[24px\],
+  #review-report-content .p-\[40px\],
+  #review-report-content .p-6,
+  #review-report-content .p-10 {
+    padding: 10pt 12pt !important;
+  }
+  #review-report-content .px-4,
+  #review-report-content .px-8 {
+    padding-left: 6pt !important;
+    padding-right: 6pt !important;
+  }
+  #review-report-content .py-4,
+  #review-report-content .py-3 {
+    padding-top: 4pt !important;
+    padding-bottom: 4pt !important;
+  }
+  #review-report-content .mb-\[40px\],
+  #review-report-content .mb-8,
+  #review-report-content .mb-6,
+  #review-report-content .mb-4 {
+    margin-bottom: 8pt !important;
+  }
+  #review-report-content .mt-6,
+  #review-report-content .mt-4 {
+    margin-top: 4pt !important;
+  }
+  #review-report-content [class*="space-y-"] > * + * {
+    margin-top: 8pt !important;
+  }
+  #review-report-content .flex-wrap {
+    gap: 4pt !important;
+  }
+  #review-report-content .w-8.h-8 {
+    width: 22pt !important;
+    height: 22pt !important;
+    font-size: 9pt !important;
+  }
+
+  /* ── 11. Material icons – match text size ────────────────────────────── */
+  .material-symbols-outlined {
+    font-size: 11pt !important;
+    width: auto !important;
+    height: auto !important;
+  }
+  #review-report-content span[class*="material"] {
+    font-size: 11pt !important;
+  }
+
+  /* ── 12. Text alignment & kerning (left-aligned in print) ──────────────── */
+  #review-report-content p,
+  #review-report-content li {
+    text-align: left !important;
+    hyphens: none !important;
+    text-rendering: optimizeLegibility !important;
+    font-kerning: normal !important;
+    letter-spacing: 0.01em !important;
+    word-spacing: 0.02em !important;
+  }
+
+  /* ── 13. Force backgrounds to print ──────────────────────────────────── */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* ── 14. Prevent empty trailing pages globally ───────────────────────── */
+  button, nav, footer, header, .no-print {
+    display: none !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  #review-report-content > *:last-child {
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+  }
+}
+

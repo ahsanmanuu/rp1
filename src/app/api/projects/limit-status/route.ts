@@ -1,0 +1,38 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getServerSession } from "@/lib/auth-pb";
+
+export const runtime = "nodejs";
+
+/**
+ * GET /api/projects/limit-status
+ * Returns whether the current free-tier user has reached the 5-project cap.
+ */
+export async function GET() {
+  try {
+    const session = await getServerSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { membership: true },
+    });
+
+    const membership = user?.membership || "free";
+    if (membership !== "free") {
+      return NextResponse.json({ limitReached: false, count: 0, max: null });
+    }
+
+    const count = await prisma.project.count({
+      where: { userId: session.user.id },
+    });
+
+    const MAX = 5;
+    return NextResponse.json({ limitReached: count >= MAX, count, max: MAX, membership });
+  } catch (error: any) {
+    console.error("Limit status error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

@@ -1,0 +1,900 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String             @id @default(cuid())
+  name          String?
+  email         String             @unique
+  emailVerified DateTime? @db.Timestamptz
+  image         String?
+  password      String?
+  points        Int                @default(50)
+  theme         String             @default("dark")
+  status        String             @default("active") // active, blacklisted, abnormal
+  role          String             @default("user") // user, admin, editor
+  blockedUntil  DateTime? @db.Timestamptz
+  blacklistReason String?
+  membership    String             @default("free") // free, premium_1m, premium_3m, premium_6m, premium_12m
+  membershipExpiresAt DateTime?    @db.Timestamptz
+  memberSince   DateTime?          @db.Timestamptz  // first membership activation date
+  aiDailyCapOverride Int?          // null = use plan default, number = custom daily token cap
+  aiAgentReactivatesAt DateTime? @db.Timestamptz // when AI reactivates after cap hit (null = not capped)
+  createdAt     DateTime @db.Timestamptz           @default(now())
+  updatedAt     DateTime @db.Timestamptz           @updatedAt
+  accounts      Account[]
+  transactions  PointTransaction[]
+  projects      Project[]
+  sessions      Session[]
+  citationProjects CitationProject[]
+  paperReviews  PaperReview[]
+  reportHistory ReportHistory[]
+  sessionActivities UserSessionActivity[]
+  toolUsageLogs     ToolUsageLog[]
+  membershipTransactions MembershipTransaction[]
+  membershipLifecycleLogs MembershipLifecycleLog[]
+  blacklistRecords  BlacklistRecord[]
+  tickets      SupportTicket[] @relation("CustomerTickets")
+  notifications Notification[]
+  chatSessions  ChatSession[]
+  syncLogs      SyncLog[]
+  aiCapPlanId   String?
+  aiCapPlan     AiCapPlan?   @relation(fields: [aiCapPlanId], references: [id])
+  aiCaps        UserAiCap[]
+  aiUsageDailySummaries AiUsageDailySummary[]
+  userSessions  UserSession[]
+  layoutSettings LayoutSettings?
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime @db.Timestamptz
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime @db.Timestamptz
+
+  @@unique([identifier, token])
+}
+
+model Project {
+  id                 String                @id @default(cuid())
+  userId             String
+  title              String
+  originalFilename   String?
+  templateName       String?
+  latexContent       String?               @default("")
+  bibContent         String?               @default("")
+  status             String                @default("draft")
+  projectType        String                @default("LATEX_STUDIO")
+  wordCount          Int                   @default(0)
+  charCount          Int                   @default(0)
+  imageCount         Int                   @default(0)
+  chartCount         Int                   @default(0)
+  tableCount         Int                   @default(0)
+  equationCount      Int                   @default(0)
+  citationCount      Int                   @default(0)
+  referenceCount     Int                   @default(0)
+  pseudocodeCount    Int                   @default(0)
+  content            String?               @default("")
+  structuredContent  String?               @default("{}")
+  firstPdfDownloaded Boolean               @default(false)
+  createdAt          DateTime @db.Timestamptz              @default(now())
+  updatedAt          DateTime @db.Timestamptz              @updatedAt
+  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collaborators      ProjectCollaborator[]
+  files              ProjectFile[]
+  shareLinks         ShareLink[]
+}
+
+model ProjectCollaborator {
+  id        String   @id @default(cuid())
+  projectId String
+  userEmail String
+  role      String   @default("viewer")
+  createdAt DateTime @db.Timestamptz @default(now())
+  updatedAt DateTime @db.Timestamptz @updatedAt
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userEmail])
+}
+
+model ProjectFile {
+  id        String   @id @default(cuid())
+  projectId String
+  filename  String
+  filePath  String?
+  fileType  String?
+  size      Int?     @default(0)
+  createdAt DateTime @db.Timestamptz @default(now())
+  updatedAt DateTime @db.Timestamptz @default(now()) @updatedAt
+  content   String?  @default("")
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, filename])
+}
+
+model Template {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  category        String
+  thumbnailUrl    String?
+  templateContent String
+  clsContent      String?
+  bstContent      String?
+  assetsJson      String?
+  isBuiltin       Boolean  @default(true)
+  userId          String?
+  createdAt       DateTime @db.Timestamptz @default(now())
+}
+
+model ShareLink {
+  id         String    @id @default(cuid())
+  projectId  String
+  shareToken String    @unique
+  expiresAt  DateTime? @db.Timestamptz
+  createdAt  DateTime @db.Timestamptz  @default(now())
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model PointTransaction {
+  id          String   @id @default(cuid())
+  userId      String
+  amount      Int
+  type        String
+  description String?
+  createdAt   DateTime @db.Timestamptz @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CitationProject {
+  id          String     @id @default(cuid())
+  userId      String
+  name        String     @default("My Bibliography")
+  style       String     @default("apa-7")
+  createdAt   DateTime @db.Timestamptz   @default(now())
+  updatedAt   DateTime @db.Timestamptz   @updatedAt
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  citations   Citation[]
+}
+
+model Citation {
+  id          String   @id @default(cuid())
+  projectId   String
+  sourceType  String   // journal, book, website, film, podcast, patent, thesis, etc.
+  rawData     String   // JSON blob of all metadata fields
+  cslJson     String   // CSL-JSON normalized representation
+  doi         String?
+  isbn        String?
+  url         String?
+  title       String
+  authors     String   // JSON array of author objects
+  year        String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @db.Timestamptz @default(now())
+  updatedAt   DateTime @db.Timestamptz @updatedAt
+  project     CitationProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model PaperReview {
+  id              String   @id @default(cuid())
+  userId          String
+  title           String
+  fileType        String
+  overallScore    Int
+  reviewJson      String
+  journalsJson    String
+  createdAt       DateTime @db.Timestamptz @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ReportHistory {
+  id                String   @id @default(cuid())
+  userId            String
+  projectId         String
+  title             String
+  statsJson         String   // JSON blob of all stats
+  authorsJson       String   // JSON array of author objects
+  affiliationsJson  String   // JSON array of strings
+  keywordsJson      String   // JSON array of strings
+  status            String   @default("verified")
+  pdfUrl            String?
+  latexUrl          String?
+  zipUrl            String?
+  createdAt         DateTime @db.Timestamptz @default(now())
+  updatedAt         DateTime @db.Timestamptz @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String?
+  role         String   @default("editor") // superadmin, editor, billing
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @db.Timestamptz @default(now())
+  updatedAt    DateTime @db.Timestamptz @updatedAt
+
+  @@map("admin_users")
+}
+
+
+model JournalRegistry {
+  id                   String   @id @default(cuid())
+  name                 String   @unique
+  publisher            String
+  quartile             String   // Q1, Q2, Q3, Q4
+  accessType           String   // Open Access, Subscription, Hybrid
+  apc                  Int?
+  impactFactor         Float
+  indexing             String   @default("[]") // stored as JSON string of indexing platforms
+  reviewTimeWeeks      String
+  publicationTimeWeeks String
+  latexTemplateUrl     String
+  homeUrl              String
+  domains              String   @default("[]") // stored as JSON string of domain areas
+  sjrScore             Float
+  keywords             String   @default("[]") // stored as JSON string of keywords
+  scopeText            String
+  minRecommendedScore  Int      @default(60)
+  methodologyFocus     String   @default("[]") // stored as JSON string of focus types
+  createdAt            DateTime @db.Timestamptz @default(now())
+  updatedAt            DateTime @db.Timestamptz @updatedAt
+
+  @@map("journal_registry")
+}
+
+model PlatformStat {
+  date               String   @id // YYYY-MM-DD format
+  totalUsers         Int      @default(0)
+  activeUsers24h     Int      @default(0)
+  totalProjects      Int      @default(0)
+  totalReviews       Int      @default(0)
+  creditsDistributed Int      @default(0)
+  creditsSpent       Int      @default(0)
+  updatedAt          DateTime @db.Timestamptz @updatedAt
+
+  @@map("platform_stats")
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  adminId       String
+  action        String
+  targetTable   String
+  targetId      String?
+  previousValue String?  // JSON string
+  newValue      String?  // JSON string
+  ipAddress     String?
+  createdAt     DateTime @db.Timestamptz @default(now())
+
+  @@map("audit_log")
+}
+
+model FeatureFlag {
+  id                String   @id @default(cuid())
+  key               String   @unique
+  description       String?
+  isEnabled         Boolean  @default(false)
+  rolloutPercentage Int      @default(100)
+  createdAt         DateTime @db.Timestamptz @default(now())
+  updatedAt         DateTime @db.Timestamptz @updatedAt
+
+  @@map("feature_flags")
+}
+
+model Announcement {
+  id        String    @id @default(cuid())
+  title     String
+  content   String
+  priority  String    @default("info") // info, warning, critical
+  startsAt  DateTime @db.Timestamptz  @default(now())
+  endsAt    DateTime? @db.Timestamptz
+  isActive  Boolean   @default(true)
+  createdAt DateTime @db.Timestamptz  @default(now())
+  updatedAt DateTime @db.Timestamptz  @updatedAt
+
+  @@map("announcements")
+}
+
+model Profile {
+  id         String    @id @db.Uuid
+  points     Int       @default(50)
+  createdAt  DateTime  @default(now()) @db.Timestamptz @map("created_at")
+  fullName   String?   @map("full_name")
+  membership String?   @default("free")
+
+  @@map("profiles")
+}
+
+model AiUsageLog {
+  id               String   @id @default(cuid())
+  userId           String?
+  agent            String
+  model            String
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  totalTokens      Int      @default(0)
+  durationMs       Int      @default(0)
+  createdAt        DateTime @default(now()) @db.Timestamptz
+
+  @@map("ai_usage_logs")
+}
+
+model AdminTask {
+  id        String   @id @default(cuid())
+  label     String
+  completed Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@map("admin_tasks")
+}
+
+model MarketingCampaign {
+  id        String   @id @default(cuid())
+  title     String
+  code      String   @unique
+  status    String   @default("active") // active, paused
+  clicks    Int      @default(0)
+  expiry    DateTime @db.Timestamptz
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@map("marketing_campaigns")
+}
+
+model UserSessionActivity {
+  id        String   @id @default(cuid())
+  userId    String
+  ipAddress String
+  location  String?
+  userAgent String?
+  createdAt DateTime @default(now()) @db.Timestamptz
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_session_activities")
+}
+
+model ToolUsageLog {
+  id        String   @id @default(cuid())
+  userId    String
+  toolName  String
+  action    String
+  createdAt DateTime @default(now()) @db.Timestamptz
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("tool_usage_logs")
+}
+
+model MembershipTransaction {
+  id            String   @id @default(cuid())
+  userId        String
+  orderId       String   @unique
+  planType      String
+  amount        Float
+  currency      String   @default("INR")
+  durationMonths Int
+  paymentStatus String   // pending, paid, failed
+  startsAt      DateTime @default(now()) @db.Timestamptz
+  expiresAt     DateTime @db.Timestamptz
+  createdAt     DateTime @default(now()) @db.Timestamptz
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("membership_transactions")
+}
+
+model MembershipLifecycleLog {
+  id            String   @id @default(cuid())
+  userId        String
+  fromPlan      String   // previous plan
+  toPlan        String   // new plan
+  eventType     String   // 'activation' | 'renewal' | 'upgrade' | 'downgrade' | 'expiry' | 'cancellation'
+  source        String   // 'payment' | 'admin' | 'points_exchange' | 'auto_expiry' | 'promo'
+  metadata      String?  @db.Text // JSON string with extra info (orderId, amount, etc.)
+  createdAt     DateTime @default(now()) @db.Timestamptz
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_membership_logs")
+}
+
+model BlacklistRecord {
+  id          String   @id @default(cuid())
+  userId      String
+  action      String   // 'blacklisted' | 'reactivated'
+  reason      String?
+  adminEmail  String?
+  adminId     String?
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("blacklist_records")
+}
+
+model MembershipPlan {
+  id             String   @id @default(cuid())
+  planId         String   @unique // e.g. "premium_1m", "premium_3m", "premium_6m", "premium_12m"
+  name           String
+  description    String?
+  priceINR       Float
+  durationMonths Int
+  pointsExchange Int
+  createdAt      DateTime @default(now()) @db.Timestamptz
+  updatedAt      DateTime @updatedAt @db.Timestamptz
+
+  @@map("membership_plans")
+}
+
+model SupportTicket {
+  id             String   @id @default(cuid())
+  ticketId       String   @unique // e.g. "LX-4902"
+  subject        String
+  description    String
+  status         String   @default("open") // "open", "in_progress", "resolved"
+  priority       String   @default("P4") // "P1", "P2", "P3", "P4"
+  userName       String
+  userEmail      String
+  customerId     String?  // Links to User account if matched
+  reason         String?  @db.Text // Resolution reason/internal notes
+  ipAddress      String?  // Client IP at ticket creation
+  location       String?  // City, Region, Country
+  country        String?  // Country code (e.g. "IN", "US")
+  userAgent      String?  // Browser/device user agent
+  createdAt      DateTime @default(now()) @db.Timestamptz
+  updatedAt      DateTime @updatedAt @db.Timestamptz
+  archivedAt     DateTime? @db.Timestamptz // Auto-set after 30 days of resolution
+
+  customer       User?           @relation("CustomerTickets", fields: [customerId], references: [id])
+  messages       TicketMessage[]
+
+  @@map("support_tickets")
+}
+
+model TicketMessage {
+  id           String   @id @default(cuid())
+  ticketId     String
+  senderId     String
+  senderType   String   // "customer" | "admin"
+  message      String   @db.Text
+  createdAt    DateTime @default(now()) @db.Timestamptz
+
+  ticket       SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@map("ticket_messages")
+}
+
+model UserFAQ {
+  id        String   @id @default(cuid())
+  question  String
+  answer    String
+  views     Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@map("user_faqs")
+}
+
+model ServiceHealth {
+  id               String    @id @default(cuid())
+  serviceKey       String    @unique // e.g. "latex_editor", "doc2latex", "template_migrator", "ai_diagram"
+  name             String
+  status           String    // "stable", "normal", "high_load", "degraded", "down"
+  uptime           Float     @default(99.9)
+  latencyMs        Int       @default(100)
+  queueJobs        Int       @default(0)
+  usagePercent     Int       @default(0)
+  manualOverrideAt DateTime? @db.Timestamptz // tracks last manual edit; auto-eval skips for 5 min
+  createdAt        DateTime  @default(now()) @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @db.Timestamptz
+
+  @@map("service_health")
+}
+
+model AdminDocumentation {
+  id        String   @id @default(cuid())
+  title     String
+  content   String   @db.Text
+  category  String   @default("General")
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@map("admin_documentations")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // "ticket_status_change", "ticket_reply", "ticket_created"
+  title     String
+  body      String
+  ticketId  String?  // link to SupportTicket
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model AdminNotification {
+  id        String   @id @default(cuid())
+  type      String   // "customer_message", "new_ticket", "ticket_status_change"
+  title     String
+  body      String
+  ticketId  String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([isRead])
+  @@map("admin_notifications")
+}
+
+model Offer {
+  id              String   @id @default(cuid())
+  title           String
+  code            String   @unique
+  description     String?
+  discountPercent Float?   // Percentage discount (e.g. 20 for 20%)
+  discountAmount  Float?   // Flat discount in INR (e.g. 100 for ₹100)
+  offerType       String   @default("GLOBAL") // "GLOBAL" | "USER"
+  userEmail       String?  // Target user email for USER offers
+  expiresAt       DateTime @db.Timestamptz
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now()) @db.Timestamptz
+  updatedAt       DateTime @updatedAt @db.Timestamptz
+
+  @@map("offers")
+}
+
+model AnomalyAlert {
+  id          String   @id @default(cuid())
+  type        String
+  severity    String   // low | medium | high | critical
+  title       String
+  description String
+  entityType  String?  // user | admin | transaction | bill | plan | promocode | cap_rule | api
+  entityId    String?
+  entityLabel String?
+  metadata    String?  // JSON
+  source      String   // auto_detect | admin_report | system
+  status      String   // open | investigating | resolved | dismissed
+  detectorKey String?
+  resolvedBy  String?
+  resolvedAt  DateTime?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([type, status])
+  @@index([severity, status])
+  @@index([entityType, entityId])
+  @@map("anomaly_alerts")
+}
+
+model AdminLiveStatus {
+  id         String   @id @default("singleton")
+  isLive     Boolean  @default(false)
+  lastSeenAt DateTime @default(now()) @db.Timestamptz
+
+  @@map("admin_live_status")
+}
+
+model ChatSession {
+  id          String        @id @default(cuid())
+  userId      String
+  status      String        @default("open") // "open", "closed", "terminated", "aborted"
+  userName    String
+  userEmail   String
+  location    String?
+  ipAddress   String?
+  createdAt   DateTime      @default(now()) @db.Timestamptz
+  updatedAt   DateTime      @updatedAt @db.Timestamptz
+  messages    ChatMessage[]
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id            String       @id @default(cuid())
+  sessionId     String
+  senderType    String       // "user" | "admin"
+  content       String       @db.Text
+  attachmentUrl String?      // URL to attachment (image, document, etc.)
+  attachmentName String?     // Filename of the attachment
+  createdAt     DateTime     @default(now()) @db.Timestamptz
+
+  session       ChatSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("chat_messages")
+}
+
+model SyncLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  status    String
+  details   String?
+  createdAt DateTime @default(now()) @db.Timestamptz
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sync_logs")
+}
+
+model EmailLog {
+  id        String   @id @default(cuid())
+  to        String
+  toName    String?
+  subject   String
+  body      String   @db.Text
+  emailType String   // recovery, blacklist, reactivation, expiry_reminder, ticket_created, ticket_status, ticket_reply
+  status    String   @default("sent") // sent, failed
+  userId    String?
+  errorMsg  String?  @db.Text
+  sentAt    DateTime @default(now()) @db.Timestamptz
+
+  @@index([emailType])
+  @@index([to])
+  @@index([sentAt])
+  @@map("email_logs")
+}
+
+// ─── AI Usage Capping ─────────────────────────────────────────────────────
+
+model AiCapPlan {
+  id              String   @id @default(cuid())
+  name            String   @unique // e.g. "free", "pro", "enterprise", "custom"
+  label           String   // Display name e.g. "Free Tier", "Pro Plan"
+  dailyTokenCap   Int      // Max tokens per day
+  description     String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now()) @db.Timestamptz
+  updatedAt       DateTime @updatedAt @db.Timestamptz
+
+  users           User[]
+  userAiCaps      UserAiCap[]
+
+  @@map("ai_cap_plans")
+}
+
+model UserAiCap {
+  id              String   @id @default(cuid())
+  userId          String
+  planId          String
+  customDailyCap  Int?     // Override plan cap for this specific user (null = use plan default)
+  assignedAt      DateTime @default(now()) @db.Timestamptz
+  assignedBy      String?  // admin email who assigned
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan            AiCapPlan @relation(fields: [planId], references: [id])
+
+  @@unique([userId, planId])
+  @@map("user_ai_caps")
+}
+
+model AiUsageDailySummary {
+  id              String   @id @default(cuid())
+  userId          String
+  date            String   // YYYY-MM-DD
+  totalTokens     Int      @default(0)
+  promptTokens    Int      @default(0)
+  completionTokens Int     @default(0)
+  requestCount    Int      @default(0)
+  agentBreakdown  String   @default("{}") // JSON: {"chat":1200,"reviewer":3400,...}
+  updatedAt       DateTime @updatedAt @db.Timestamptz
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([date])
+  @@map("ai_usage_daily_summaries")
+}
+
+model AiCapRule {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+
+  isActive    Boolean  @default(true)
+
+  // Match criteria: "email_exact" | "email_domain" | "email_regex" | "ip_exact" | "ip_cidr" | "location_country" | "location_city"
+  matchType   String
+  matchValue  String
+
+  // Cap settings: "daily_tokens" | "daily_requests" | "block"
+  capType     String
+  capValue    Int
+
+  // Optional: JSON array of agent IDs this rule applies to ("*" = all)
+  agentFilter String?  @default("*")
+
+  priority    Int      @default(100)
+  createdBy   String?
+  hitCount    Int      @default(0)
+  lastHitAt   DateTime? @db.Timestamptz
+
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@index([isActive, priority])
+  @@map("ai_cap_rules")
+}
+
+model UserSession {
+  id           String   @id @default(cuid())
+  userId       String
+  sessionToken String   @unique
+  machineId    String
+  ipAddress    String?
+  location     String?
+  userAgent    String?
+  createdAt    DateTime @default(now()) @db.Timestamptz
+  updatedAt    DateTime @updatedAt @db.Timestamptz
+  expiresAt    DateTime @db.Timestamptz
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_sessions")
+}
+
+model LayoutSettings {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  pages     String   @default("{}")
+  windows   String   @default("{}")
+  panels    String   @default("{}")
+  cards     String   @default("{}")
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("layout_settings")
+}
+
+model TaxRule {
+  id          String   @id @default(cuid())
+  region      String   // e.g. "IN", "US-CA", "DE", "GB"
+  jurisdiction String  // e.g. "India", "California, USA", "Germany, EU"
+  taxType     String   // "GST", "VAT", "Sales Tax"
+  rate        Float    // e.g. 18.0, 8.25, 19.0
+  threshold   String   // e.g. "₹2,000,000", "$100,000 / 200 Trans"
+  status      String   @default("Active") // "Active", "Pending", "Re-evaluating", "Inactive"
+  isActive    Boolean  @default(true)
+  createdBy   String?
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@map("tax_rules")
+}
+
+model TaxTransaction {
+  id              String   @id @default(cuid())
+  userId          String
+  transactionId   String?
+  amount          Float    // Transaction amount in INR
+  taxAmount       Float    // Calculated tax in INR
+  taxRate         Float    // Tax rate applied
+  taxType         String   // "GST", "VAT", "Sales Tax"
+  region          String   // e.g. "IN", "US-CA"
+  jurisdiction    String?
+  isExempt        Boolean  @default(false)
+  exemptionReason String?
+  transactionDate DateTime @default(now()) @db.Timestamptz
+  createdAt       DateTime @default(now()) @db.Timestamptz
+
+  @@index([userId])
+  @@index([region])
+  @@index([transactionDate])
+  @@map("tax_transactions")
+}
+
+model TaxFiling {
+  id          String   @id @default(cuid())
+  region      String
+  jurisdiction String
+  taxType     String
+  dueDate     DateTime @db.Timestamptz
+  status      String   @default("pending") // "pending", "completed", "overdue"
+  totalTax    Float    @default(0)
+  totalAmount Float    @default(0)
+  dataValidation Float @default(100)
+  filedAt     DateTime?
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@index([dueDate])
+  @@index([region])
+  @@map("tax_filings")
+}
+
+model GeneralQuery {
+  id         String   @id @default(cuid())
+  name       String
+  email      String
+  phone      String?
+  subject    String
+  message    String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  updatedAt  DateTime @updatedAt @db.Timestamptz
+
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("general_queries")
+}
+
+model TermAcceptance {
+  id         String   @id @default(cuid())
+  userId     String
+  acceptedAt DateTime @default(now()) @db.Timestamptz
+  ipAddress  String?
+  userAgent  String?
+
+  @@index([userId])
+  @@map("term_acceptances")
+}
+
+model Banner {
+  id          String   @id @default(cuid())
+  title       String
+  subtitle    String?
+  imageUrl    String
+  linkUrl     String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@index([isActive, sortOrder])
+  @@map("banners")
+}
+
+model Testimonial {
+  id        String   @id @default(cuid())
+  name      String
+  role      String?
+  avatarUrl String?
+  content   String
+  rating    Int      @default(5)
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([isActive, sortOrder])
+  @@map("testimonials")
+}

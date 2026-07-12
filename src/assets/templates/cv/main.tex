@@ -1,0 +1,44 @@
+﻿\documentclass{cv}
+
+% --- Essential Packages ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{booktabs,multirow,array,tabularx}
+\usepackage{float,url,cite}
+\usepackage{cv}
+
+\author{John Doe}
+
+\begin{document}
+
+\contact{john.doe@example.com}{+1-555-0199}{City, Country}{linkedin.com/in/johndoe}
+
+\begin{cvsection}{Summary}
+Results-oriented researcher with expertise in Scholarly AI and LaTeX automation. Experienced in developing high-fidelity document generation pipelines and managing large-scale template ecosystems.
+\end{cvsection}
+
+\begin{cvsection}{Education}
+\cventry{Ph.D. in Computer Science}{2020 -- 2024}{University of Advanced Intelligence}{Distinction}
+\cventry{M.Sc. in Software Engineering}{2018 -- 2020}{Technical University of Excellence}{First Class}
+\end{cvsection}
+
+\begin{cvsection}{Experience}
+\cventry{Senior AI Researcher}{2024 -- Present}{Scholarly Labs}{Leading development of automated peer review systems.}
+\cventry{Graduate Research Assistant}{2020 -- 2024}{UAI Research}{Optimized LaTeX compilation pipelines for academic publishing.}
+\end{cvsection}
+
+\begin{cvsection}{Skills}
+\textbf{Languages:} LaTeX, Python, JavaScript, TypeScript, C++, Java\\
+\textbf{Tools:} Tectonic, Pandoc, Docker, Git, Node.js\\
+\textbf{Research:} Natural Language Processing, Document Analysis, Automated Reasoning
+\end{cvsection}
+
+\begin{cvsection}{Selected Publications}
+\nocite{*}
+\\bibliographystyle{plain}
+\bibliography{sample}
+\end{cvsection}
+
+\end{document}

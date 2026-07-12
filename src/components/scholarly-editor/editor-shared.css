@@ -1,0 +1,129 @@
+/* =============================================================
+   Scholarly Editor — Shared Static Styles
+   Replaces all dangerouslySetInnerHTML <style> injections.
+   Imported once per module; never re-injected on render.
+   ============================================================= */
+
+/* ── AI Chat message controls hover ─────────────────────────── */
+.msg-controls:hover { opacity: 1 !important; }
+
+/* ── File Sidebar Styles ────────────────────────────────────── */
+.file-sidebar-item {
+  color: var(--text-secondary) !important;
+}
+.dark .file-sidebar-item {
+  color: var(--text-secondary) !important;
+}
+.file-sidebar-item.active {
+  color: var(--accent-primary) !important;
+}
+.dark .file-sidebar-item.active {
+  color: var(--accent-primary) !important;
+}
+.file-sidebar-dot {
+  background-color: var(--border) !important;
+}
+.dark .file-sidebar-dot {
+  background-color: var(--border) !important;
+}
+.file-sidebar-dot.active {
+  background-color: var(--accent-primary) !important;
+}
+.dark .file-sidebar-dot.active {
+  background-color: var(--accent-primary) !important;
+}
+
+
+
+/* ── Spinner ─────────────────────────────────────────────────── */
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Console pulse animation ─────────────────────────────────── */
+@keyframes pulse-core {
+  0%   { opacity: 0.7; transform: scale(1); }
+  50%  { opacity: 1;   transform: scale(1.02); color: var(--accent-primary); }
+  100% { opacity: 0.7; transform: scale(1); }
+}
+
+/* ── Console scrollbar ───────────────────────────────────── */
+.custom-scroll::-webkit-scrollbar       { width: 4px; }
+.custom-scroll::-webkit-scrollbar-track { background: transparent; }
+.custom-scroll::-webkit-scrollbar-thumb { background: var(--ide-divider); border-radius: 2px; }
+
+/* ── Console table row hover ─────────────────────────────── */
+.hover-row:hover { background: var(--bg-tertiary) !important; }
+
+/* ── Monaco error decorations ────────────────────────────── */
+.monaco-error-line {
+  background: linear-gradient(90deg, rgba(239,68,68,0.15) 0%, transparent 100%) !important;
+  border-left: 3px solid #ef4444 !important;
+}
+.monaco-error-margin {
+  background: rgba(239,68,68,0.2) !important;
+  border-left: 3px solid #ef4444 !important;
+}
+
+/* ── Monaco jump-to-line flare ───────────────────────────── */
+.monaco-line-flare {
+  background: linear-gradient(90deg, rgba(0,104,95,0.25) 0%, transparent 100%) !important;
+  border-left: 3px solid var(--accent-primary) !important;
+  animation: flare-fade 3s ease-out forwards;
+  z-index: 5;
+}
+.monaco-margin-flare {
+  background: rgba(0,104,95,0.3) !important;
+  border-left: 3px solid var(--accent-primary) !important;
+}
+
+@keyframes flare-fade {
+  0%   { opacity: 1; filter: brightness(1.5); }
+  20%  { opacity: 1; filter: brightness(1); }
+  100% { opacity: 0.3; background: transparent; }
+}
+
+/* ── Monaco gutter (line number area) — adapts to theme ── */
+.monaco-editor .margin-view-overlays {
+  background: var(--bg-secondary) !important;
+  border-right: 1px solid var(--border);
+}
+/* Narrower line number gutter */
+.monaco-editor .margin-view-overlays .line-numbers {
+  width: 100% !important;
+  text-align: center !important;
+}
+.monaco-editor .glyph-margin {
+  width: 0 !important;
+}
+.monaco-editor .margin-view-overlays .glyph-margin-widgets {
+  width: 0 !important;
+}
+/* Remove extra left padding in gutter */
+.monaco-editor .margin-view-overlays > div {
+  padding-left: 0 !important;
+}
+
+/* ── Fix glass-card backdrop-filter corner artifacts ───── */
+/* Removed webkit-mask-image / mask-image because they cause black artifacts in modern browsers. */
+
+
+/* ── File-list delete button hover ──────────────────────── */
+.delete-hover-trigger:hover {
+  color: #ff5555 !important;
+  opacity: 1 !important;
+  transform: scale(1.1);
+}
+
+/* ── IDE Toolbar Button Responsive Labels ────────────────────── */
+@media (max-width: 1200px) {
+  .ide-btn-label {
+    display: none !important;
+  }
+}
+

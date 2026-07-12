@@ -1,0 +1,13 @@
+% icml2024.sty - Minimal stub for ICML
+\NeedsTeXFormat{LaTeX2e}
+\RequirePackage{packages}
+\ProvidesPackage{icml2024}[2026/04/30 ICML stub]
+\RequirePackage{geometry}
+\geometry{margin=1in}
+\renewcommand{\maketitle}{%
+  \begin{center}
+    {\huge \bfseries \@title \par}
+    \vspace{1em}
+    {\large \@author \par}
+  \end{center}
+}

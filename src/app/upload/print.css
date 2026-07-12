@@ -1,0 +1,110 @@
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+
+  html,
+  body {
+    background: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 210mm !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  .print-container {
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    display: block !important;
+    overflow: visible !important;
+    width: 100% !important;
+  }
+
+  .report-grid {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+  }
+
+  .report-grid > *:not(.report-card) {
+    display: none !important;
+  }
+
+  nav,
+  header,
+  .navbar,
+  .no-print,
+  .template-sidebar,
+  .joy-header {
+    display: none !important;
+  }
+
+  .report-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 15mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    display: block !important;
+    background: white !important;
+    color: black !important;
+    box-sizing: border-box !important;
+  }
+
+  .report-card * {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  .report-card .grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  .report-card img {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  .report-card pre,
+  .report-card code {
+    white-space: pre-wrap !important;
+    word-break: break-all !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    font-size: 11px !important;
+    background: #f8f9fa !important;
+    color: #1a1a1a !important;
+    padding: 10px !important;
+    border-radius: 4px !important;
+  }
+
+  .report-header-section {
+    padding: 20px !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .mini-stat-card,
+  .discovery-item,
+  .report-header-section {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}

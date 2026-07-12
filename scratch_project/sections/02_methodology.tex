@@ -1,0 +1,810 @@
+
+\section*{Methodology}
+
+\subsection*{Carbon Nanotube (CNT)}
+
+The discovery of carbon nanotubes by Ijima of NEC Japan in 1993 is one potential
+substitute for non-silicon electronics \cite{ref12}. When compared to steel,
+they have higher tensile strength, electrical conductivity, thermal
+conductivity, and nearly 1D ballistic transport capabilities
+\cite{ref11,ref30,ref31,ref32,ref33,ref34}. Additionally, they have higher
+electrical and thermal conductivity than diamond and steel. The chiral vector
+defines the chirality, or helicity, of carbon nanotubes, and the atomic
+composition can be described by the chiral angle ($\theta$). Figure 1 (a) shows
+a graphene sheet with a known chiral vector and angle. Single-wall carbon
+nanotubes (SWCNT) and multi-wall carbon nanotubes (MWCNT) are the two types of
+carbon nanotubes shown in Figure 1 (b). However, Eq. (1) may demonstrate the
+wrapping of graphite sheets in CNT, while Eq. (2) provides the lattice
+translational indices (n, m) and CNT diameter (DCNT). The chiral vector, also
+known as the roll-up vector, can be expressed in terms of the $a$1, $a$2 as unit
+vectors. As seen in Figure 1(b), they can have two main forms: single-walled
+CNTs (SWCNTs) and multi-walled CNTs (MWCNTs). MWCNTs are made up of several
+graphene cylinders, whereas SWCNTs are made up of just one. Because of their
+remarkable strength and unique electrical properties, CNTs can be used in a
+variety of transdisciplinary domains, including electronics, optics, and
+nanotechnology.
+
+\begin{equation}
+  Ch = n$a$1+m$a$2                                                                                                 (1)
+  DCNT = Ch / π
+  \label{eq:2}
+\end{equation}
+
+Three categories of single-walled carbon nanotubes (SWCNTs) are distinguished by
+the chiral indices (n,m), which are integers that denote the steps along the
+hexagonal lattice. Armchair nanotubes arise when n = m (with n \textgreater 0),
+whose chiral vectors lie precisely between a1 or a2, corresponding to a chiral
+angle of $\theta$ = 30∘. Zigzag nanotubes are produced when one of the chiral
+indices, n or m, is zero. This results in a chiral vector aligned strictly along
+either a1 or a2 direction, which corresponds to a chiral angle of $\theta$ = 0∘.
+The remaining nanotubes are categorized as chiral, with chiral angles ranging
+between 0∘ and 30∘, where n $\neq$ m \cite{ref6}.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_0.jpg}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_0_qwfkr}{rf_fig_0.jpg}
+    \caption{(a) A representation of an unrolled graphene sheet along with the chiral vector definition (b) SWNT and MWNT}
+
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_1.jpg}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_1_6r7t0}{rf_fig_1.jpg}
+    \caption{(a) A representation of an unrolled graphene sheet along with the chiral vector definition (b) SWNT and MWNT}
+
+  \end{subfigure}
+  \caption{(a) A representation of an unrolled graphene sheet along with the chiral vector definition (b) SWNT}
+
+  \label{fig:group_3e5ag}
+\end{figure}
+
+The CNT diameter, the inter-nanotube spacing (S), the number of CNTs in a
+CNFET's channel (N), and the transistor's width (W) are all related by Equation
+(3). Eq. (4) shows that the unit electron charge (e), carbon-to-carbon bond
+energy (t; 3.0 eV), and carbon-to-carbon bond distance (acc; 0.1412 nm for
+graphite) are all related to the band gap energy ($\sum$g) and threshold voltage
+(Vth) of the intrinsic CNT channel \cite{ref7}.
+
+\begin{equation}
+  W = (N – 1)*S + DCNT                                                                                                            (3)
+  ∑g = 2acct / DCNT(nm) = 0.84eV / DCNT(nm) ≈ 2eVth
+  \label{eq:4}
+\end{equation}
+
+\subsection*{Carbon Nanotube field-effect transistor (CNTFET)}
+
+One of the most important applications of carbon nanotubes is in carbon nanotube
+field effect transistors (CNTFET). Figures 1(c) and 1(d) depict a CNTFET's
+three-dimensional structure and top perspective, respectively, along with a few
+device parameters. With its gate, source, drain, and substrate, the CNTFET is a
+four-terminal device that resembles a MOSFET. While the source and drain
+portions of CNTFETs are extensively doped, similar to MOSFETs, the CNT channel
+region stays undoped, acting as both source/drain extension regions and/or
+connectors between two neighboring devices \cite{ref17}. The gate controls the
+channel's activation and deactivation behaviors. The MOSFET and CNFET exhibit
+very similar operational behaviors. Like MOSFETs, CNFETs rely on their gate
+terminals to apply a field perpendicular to the charge flow between their source
+and drain terminals, which controls the carrier concentration in the channel
+\cite{Imranetal2012} \cite{ref32}. Charge carriers travel ballistically across
+CNTs from the drain to the source. A mean free path longer than the device's
+size is indicated by ballistic transport. As a result, charge carriers do not
+clash, which greatly lowers resistance to insignificant levels and increases
+mobility in comparison to MOSFETs \cite{ref18}. Unlike CMOS technology, CNFET
+technology uses a "1" device ratio for both p-type and n-type devices to design
+circuits since it can drive the same amount of current using the same
+geometries. The beneficial characteristics of CNTFETs include one-dimensional
+ballistic charge carrier movement, high mobility, high drive current, and low
+power consumption \cite{ref7,ref18,ref35}.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_2.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_0_13l9b}{rf_fig_2.png}
+    \caption{(c) CNTFET's three-dimensional structure (d)The CNTFET's top view with its parameters}
+
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_3.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_1_jw0k5}{rf_fig_3.png}
+    \caption{(c) CNTFET's three-dimensional structure (d)The CNTFET's top view with its parameters}
+
+  \end{subfigure}
+  \caption{(c) CNTFET's three-dimensional structure (d)The CNTFET's top view with its parameters}
+
+  \label{fig:group_zhbfs}
+\end{figure}
+
+\begin{itemize}
+  \item Using field effect transistors based on carbon nanotubes, an operational
+  transconductance amplifier: The operational transconductance amplifier (OTA),
+  which is basically a voltage control current source, is a crucial component in
+  the signal processing chain. The operational transconductance amplifier (OTA)
+  can be defined as an amplifier with low impedance at every node except the
+  input and output nodes \cite{ref1,ref2}. The cascode arrangement of an OTA
+  offers high input impedance, high gain, and good stability. Reverse
+  transmission, also known as input-output isolation, is enhanced since there is
+  no direct coupling from the output to the input. The primary advantages of an
+  OTA are its tunability and flexibility, which are really made possible by an
+  external bias current (Ibias). Because of its versatility, an OTA can be used
+  for a wide range of unique applications that aren't possible with the
+  traditional OP-AMP, increasing its potential applications. Signal processing
+  systems can be developed with OTAs \cite{ref5}. This functionality compensates
+  for age, parasitics, fabrication tolerances, and variations caused by varying
+  power supply and temperatures. Electrically tunable oscillators, filters,
+  amplifiers, and current-mode signal processing devices can be made with OTAs
+  \cite{ref24}. An ideal OTA's output resistance is infinite, and its output
+  current (Iout) can be computed using equation (5) \cite{ref2}.
+\end{itemize}
+
+\begin{equation}
+  Iout = gm (V1 – V2)
+  \label{eq:5}
+\end{equation}
+
+where V1 and V2 are the non-inverting and inverting input terminals,
+respectively, and gm is the transconductance \cite{ref6}.
+Despite their many benefits, Operational Transconductance Amplifiers (OTAs) have
+inherent drawbacks, especially when device dimensions approach the submicron
+regime. Reduced channel length in typical OTAs causes a noticeable decline in
+speed and gain, mostly because intrinsic gain (gmro) is significantly reduced.
+The overall performance of the amplifier is negatively impacted by this
+degradation \cite{ref4,ref7}. One commonly used method to address this problem
+is cascading. Voltage gain and output impedance are significantly increased by a
+cascode architecture, which is created by cascading a common-source (CS) stage
+with a common-gate (CG) stage. When paired with a CG stage, the cascade
+efficiently reduces the gain loss seen in conventional OTA designs. In a CS
+setup, the transistor transforms the input voltage into an output current. In
+the upper and lower branches of the suggested architecture, extra cascode
+transistors are purposefully added to increase gain even more. Voltage gain and
+overall amplifier performance are greatly enhanced by increasing the number of
+cascoded devices \cite{ref28}. Specifically, a theoretical voltage gain of
+around (gmro)2/2 is attained by the Triple Cascode Operational Transconductance
+Amplifier (TC-OTA) architecture shown in Figure 2. The output current (Iout)
+primarily passes through the external load capacitor (CL) due to its incredibly
+high output impedance node (ROUT=RocasnǁRocasp), The TC-OTA design is
+well-suited for high-gain, high-speed analog applications because of this
+feature, which guarantees improved high-frequency performance and effective
+signal transfer \cite{ref36}.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[b]{0.23\linewidth}
+    \centering
+    \zimg{rf_fig_4.png}{width=\linewidth,max height=0.3\textheight,keepaspectratio}{fg_0_bamv0}{rf_fig_4.png}
+    \caption{(a) Pure CNTFET TC-OTA (b) NCNTFET-PMOS-TC-OTA (c) PCNTFET-NMOS-TC-OTA (d) Bulk CMOS-based TC-OTA}
+
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.23\linewidth}
+    \centering
+    \zimg{rf_fig_5.png}{width=\linewidth,max height=0.3\textheight,keepaspectratio}{fg_1_cv2lo}{rf_fig_5.png}
+    \caption{(a) Pure CNTFET TC-OTA (b) NCNTFET-PMOS-TC-OTA (c) PCNTFET-NMOS-TC-OTA (d) Bulk CMOS-based TC-OTA}
+
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.23\linewidth}
+    \centering
+    \zimg{rf_fig_6.png}{width=\linewidth,max height=0.3\textheight,keepaspectratio}{fg_2_mhma5}{rf_fig_6.png}
+    \caption{(a) Pure CNTFET TC-OTA (b) NCNTFET-PMOS-TC-OTA (c) PCNTFET-NMOS-TC-OTA (d) Bulk CMOS-based TC-OTA}
+
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.23\linewidth}
+    \centering
+    \zimg{rf_fig_7.png}{width=\linewidth,max height=0.3\textheight,keepaspectratio}{fg_3_dath8}{rf_fig_7.png}
+    \caption{(a) Pure CNTFET TC-OTA (b) NCNTFET-PMOS-TC-OTA (c) PCNTFET-NMOS-TC-OTA (d) Bulk CMOS-based TC-OTA}
+
+  \end{subfigure}
+  \caption{(a) Pure CNTFET TC-OTA (b) NCNTFET-PMOS-TC-OTA (c) PCNTFET-NMOS-TC-OTA (d) Bulk CMOS-based TC-OTA}
+
+  \label{fig:group_r0i95}
+\end{figure}
+
+The circuits of the three suggested CNT-based TC-OTAs and a conventional CMOS
+triple cascode OTA are displayed in Figure 2. A pure CNT-TC-OTA is depicted in
+Figure 2(a). It uses pCNTFETs as sources and nCNTFETs as sinks. A hybrid TC-OTA
+known as NCNTFET-PMOS-TC-OTA is depicted in Figure 2(b) and uses nCNTFETS as
+sinks and traditional PMOS transistors as sources. Similar to this, figure 2(c)
+depicts another hybrid TC-OTA called PCNTFET-NMOS-TC-OTA that uses pCNTFETS as
+sources and conventional NMOS transistors as sinks. As seen in figure 2(d), the
+conventional CMOS based TC-OTA is made up completely of conventional NMOS and
+conventional PMOS transistors. Every TC-OTA has been simulated using HSPICE and
+uses a 32 nm technology node at 0.9V. In actuality, the simulation is
+calibrated. As stated in \cite{ref16}, we used the experimental data of a
+manufactured CNTFET to calibrate our CNTFET model. The structure, size, and
+other characteristics of our simulated device are maintained in the model
+calibration, just as they were used in [Javey et al. 2004] to generate
+simulation data \cite{ref16}. The CNTFET reported in [Javey et al. 2004] employs
+Pd source/drain contacts and an Al gate contact, with an intrinsic device
+capacitance of approximately 2–5 aF per nanotube, along with overlap and fringe
+capacitances of about 0.1 fF per nanotube. In this work, the Stanford University
+CNTFET model is used for simulation. This SPICE-compatible compact model
+accurately represents enhancement-mode, unipolar MOSFET-like devices utilizing
+single-walled carbon nanotubes as the channel material. The model is based on
+quasi-ballistic transport and incorporates several practical non-ideal effects,
+including charge-carrier scattering due to acoustic and optical phonons,
+parasitic capacitances, gate-to-gate and gate-to-contact plug capacitances,
+charge-screening effects among adjacent nanotubes, source/drain resistances, and
+band-to-band leakage currents \cite{ref7,ref16,ref26}.
+The key simulation parameters include a physical channel length (Lch) of 45 nm,
+an effective mean free path in the CNT (Lgeff) of 200 nm, a Fermi level of 0.6
+eV for the doped source/drain nanotubes, a gate-oxide dielectric constant of 16,
+a gate-oxide thickness (TOX) of 4 nm, a coupling capacitance of 40 pF·m$\^{-}$¹,
+and a CNT work function of 4.5 eV. These parameters are consistent with those
+employed in earlier CNT-based OTA designs \cite{ref7,ref15}. Since n-type and
+p-type CNTFETs of identical dimensions exhibit comparable current-driving
+capabilities, a unity sizing ratio between p-CNTFETs and n-CNTFETs is adopted in
+the design of the TC-OTAs.
+
+\subsection*{Impact of altering the number of CNTs (N) on the proposed TC-OTAs' performance}
+
+It has been investigated how the performance of the proposed cascode OTAs is
+affected by changes in the number of CNTs (N). N has been found to be crucial in
+maximizing the effectiveness of the suggested TC-OTAs. Figure 4 illustrates how
+N affects dc gain, output resistance (Rout), average power, and bandwidth. As
+the number of CNTs increases, the dc gain in the CNT-based TC-OTAs first rises
+and then saturates, as seen in Figure 3(a). The increase in driving capability
+of both the PCNTFETs and the NCNTFETs is responsible for the initial rise in dc
+gain. According to equation (6), CNTFETs' driving capability greatly increases
+as N rises \cite{ref7,ref24,ref25}.
+
+\begin{equation}
+  ICNTFET≈NgCNT(VDD-Vth)/(1+gCNTLSρS)
+  \label{eq:6}
+\end{equation}
+
+The dc gain becomes saturated as N increases due to the growth in screening
+effect between the many CNTs in a CNTFET's channel, where $\rho$S is the source
+resistance per unit length of doped CNT and Ls is the source length (doped CNT
+region), gCNT is the transconductance per CNT, and ICNTFET is the CNTFET’s ON
+current \cite{ref13,ref14,ref15,ref16,ref17,ref18,ref30}. Because a CNTFET's
+effective channel width (Weff), as stated in equation (7) \cite{ref33},
+decreases with N, its driving capability diminishes as N grows. Consequently, dc
+gain decreases.
+
+\begin{equation}
+  Weff = N*DCNT* α
+  \label{eq:7}
+\end{equation}
+
+where the screening effect coefficient $\alpha$ ranges from zero to one. The
+screening effect coefficient $\alpha$ is equal to 1 when N = 1 and less than 1
+when N \textgreater 1. Among all TC-OTAs, pure CNT-TC-OTA has a considerable
+advantage over hybrid TC-OTAs due to the use of NCNTFETs and PCNTFETs, which
+have superior transconductance over conventional bulk MOSFETs. Because it
+comprises more CNTFETs, the NCNTFET-PMOS-TC-OTA has a bigger transconductance
+than the hybrid PCNTFET-NMOS-TC-OTA, which explains why it has a higher gain in
+the hybrid TC-OTAs. Equation (8) provides the formula for dc gain.
+
+\begin{equation}
+  DC gain (AV) = gmn (ROUT) = gmn (RocasnǁRocasp)
+  \label{eq:8}
+\end{equation}
+
+where the transconductance of bulk NMOS transistors is lower than the gmn
+transconductance of NCNTFET. Consequently, the highest dc gain is found in pure
+CNT-TC-OTA; however, NCNTFET-NMOS-TC-OTA has a higher dc gain than
+PCNTFET-NMOS-TC-OTA. Rocasn and Rocasp, respectively, represent the output
+resistance of cascode-connected n-type and p-type devices \cite{ref1}.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_8.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_0_hmh6q}{rf_fig_8.png}
+    \caption{(b) shows that the output resistance in all TC-OTAs diminishes as N grows. Since an increase in N is equivalent to an increase...}
+
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_9.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_1_z31ws}{rf_fig_9.png}
+    \caption{(b) shows that the output resistance in all TC-OTAs diminishes as N grows. Since an increase in N is equivalent to an increase...}
+
+  \end{subfigure}
+  \caption{(b) shows that the output resistance in all TC-OTAs diminishes as N grows. Since an increase in N is equivalent to an increase in a transistor's width W, output resistance (ROUT) must drop as N increases. However, TC-OTAs have a greater ROUT due to the cascoding effect. Figure 3(c) shows how N affects the average power consumption of CNT-based TC-OTAs. It is evident that average power grows along with N. This is explained by the fact that CNTFETs' driving capacity has increased due to the increase in N. However, because to the exceptionally low CNT channel resistance, 1D ballistic transport, reduced parasitic capacitance, and reduced leakage, a pure CNT-based TC-OTA has a much lower power dissipation \cite{ref18,ref35}. When comparing the two hybrid TC-OTAs, the NCNTFET-PMOS-TC-OTA uses more power than the PCNTFET-NMOS-TC-OTA because the former has more nCNTFETs (14 nCNTFETs) than the latter (12 pCNTFETs). The bandwidth is greatly enhanced in CNT-based TC-OTAs, as shown in Figure 3(d), with the amount of CNTs having the biggest impact on pure CNT-TC-OTA. It is more important for PCNTFET-NMOS-TC-OTA circuits than NCNTFET-PMOS-TC-OTA circuits, though, and grows linearly \cite{ref6,ref19}.}
+
+  \label{fig:group_ab5t3}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_10.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_0_wlkgp}{rf_fig_10.png}
+    \caption{Impact of changing the number of CNTs in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_11.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_1_jkwal}{rf_fig_11.png}
+    \caption{Impact of changing the number of CNTs in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \end{subfigure}
+  \caption{Impact of changing the number of CNTs in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \label{fig:group_us7eu}
+\end{figure}
+
+\subsection*{Impact of altering the number of CNT diameter (DCNT) on the proposed TC-OTAs' performance}
+
+The proposed pure CNT-TC-OTA and hybrid TC-OTAs can perform even better by
+fine-tuning the CNT diameter used in various CNTFETs. Performance evaluations of
+the suggested CNT-based TC-OTAs have been conducted for N = 20, and all of them
+have been compared. Figure 4(a) shows a considerable variation in the dc gain of
+the pure CNT-TC-OTA with DCNT. The first dc gain augmentation is caused by
+strong transconductance and lower screening and scattering effects
+\cite{ref6,ref30}. However, as DCNT gets bigger (\textgreater 1.4 nm), the gain
+quickly drops due to an increase in screening and scattering effects. Figure
+4(b) shows that in NCNTFET-PMOS-TC-OTA and PCNTFET-NMOS-TC-OTA, the output
+resistance remains constant as the CNT diameter increases. In contrast, it rises
+sharply for DCNT (1.0-1.2 nm) in pure CNT-TC-OTA, falls for DCNT (1.2-1.4 nm),
+and stays constant for DCNT \textgreater 1.4 nm. This might be because smaller
+CNTs have higher ROUT and fewer screening and scattering effects
+\cite{ref6,ref13,ref14,ref15,ref16,ref17}. Additionally, the effect of ROUT
+reduction outweighs the rise in transconductance as the CNT diameter increases.
+The average power dissipation in CNT-based TC-OTAs and its variation with DCNT
+are shown in Figure 4(c). As DCNT increases, both the NCNTFET-NMOS-TC-OTA and
+PCNTFET-NMOS-TC-OTA circuits show a significant rise in power dissipation.
+Moreover, an increase in DCNT initially causes a linear decrease in power
+dissipation in pure CNT-TC-OTA, according to recent observations. But for DCNT
+\textgreater 1.2 nm, the power dissipation significantly increases. Likewise,
+the increased driving capability is due to the increase in transconductance.
+Furthermore, an increase in CNT diameter reduces the bandgap in accordance with
+Equation (8) \cite{ref14,ref18,ref35,ref36,ref37}.
+
+\begin{equation}
+  Bandgap = 0.8 eV / DCNT
+  \label{eq:8}
+\end{equation}
+
+In CNTFETs, a lower threshold voltage is caused by a smaller bandgap, which
+improves leakage and static power dissipation. Furthermore, the average power of
+NCNTFET-PMOS-TC-OTA rises more than that of PCNTFET-NMOS-TC-OTA as the CNT
+diameter increases. The increase in NCNTFET-PMOS-TC-OTA driving current brought
+about by the inclusion of additional CNTFETs (14 NCNTFETs) justifies this. The
+bandwidth of CNT-based TC-OTAs increases with increasing CNT diameter, as shown
+in Figure 4(d). This can be explained by the fact that ROUT decreased due to the
+increasing DCNT, as shown by Equation (9). Furthermore, increasing the CNT
+diameter results in a rise in transconductance, which expands the bandwidth of
+TC-OTAs based on CNTs \cite{ref16}.
+
+\begin{equation}
+  f3dB = 1/2πROUTCL
+  \label{eq:9}
+\end{equation}
+
+The bandwidth gain in pure CNT-TC-OTA is more noticeable than in
+PCNTFET-NMOS-TC-OTA and NCNTFET-PMOS-TC-OTA. Since the bandgap and, thus, the
+threshold voltage of the CNTFET are large, the driving current will decrease for
+CNTs with a lower diameter. The modest driving current in pure CNT-TC-OTA
+results in a limited bandwidth for small CNT diameters. Such a huge CNT diameter
+will improve the driving current and, eventually, the bandwidth in pure
+CNT-TC-OTA by reducing the bandgap and, consequently, the threshold voltage.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_12.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_0_ilyjg}{rf_fig_12.png}
+    \caption{Impact of changing the CNT diameter in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_13.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_1_ibi0z}{rf_fig_13.png}
+    \caption{Impact of changing the CNT diameter in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \end{subfigure}
+  \caption{Impact of changing the CNT diameter in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \label{fig:group_uoudr}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_14.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_0_9cnzj}{rf_fig_14.png}
+    \caption{Impact of changing the CNT diameter in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_15.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_1_gae9c}{rf_fig_15.png}
+    \caption{Impact of changing the CNT diameter in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \end{subfigure}
+  \caption{Impact of changing the CNT diameter in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \label{fig:group_6dccg}
+\end{figure}
+
+\subsection*{Impact of altering the number of CNT pitch (S) on the proposed TC-OTAs' performance}
+
+Inter-CNT pitch (S), like N and DCNT, is an important design consideration for
+improving CNTFET performance. The inter-CNT pitch (S) is the distance between
+the centers of two adjacent CNTs \cite{ref11,ref12}. It has been noted that if S
+is more than 20 nm, the CNTs will carry almost the same currents. The gate
+capacitance and drive current of the CNTs in the middle will, however, be lower
+than those of the CNTs at the edges due to screening by the nearby CNTs when the
+S is smaller. For N = 20 and DCNT = 1.5 nm, the effect of changing CNT pitch on
+TC-OTA functionality has been studied. The dc gain, average power, ROUT, and
+bandwidth of the suggested CNT-based TC-OTAs are shown to vary with S in Figure
+5. While DC gain first increases as S increases, Figure 5(a) shows that it
+finally achieves saturation. According to Equation (10), this is explained by an
+increase in channel width (W), which first causes an increase in drain current.
+
+\begin{equation}
+  W = (N - 1)*S + DCNT
+  \label{eq:10}
+\end{equation}
+
+However, the inter-CNT screening effect begins to take over as we increase S;
+this reduces net gate capacitance, which reduces drain current. But as S is
+continuously increased, the inter-CNT screening effect takes over, lowering the
+drain current by decreasing the net gate capacitance. When NCNTFET-PMOS-TC-OTA
+and PCNTFET-NMOS-TC-OTA are compared, it is evident that the former has a higher
+DC gain than the latter. Furthermore, a slight increase in S modifies the DC
+gain of the hybrid TC-OTAs. The output resistance of all OTAs decreases as S
+increases, as seen in Figure 5(b). Because S grows as channel width increases,
+output current also increases, which lowers output resistance
+\cite{ref17,ref18,ref19}. As S increases before saturation, the average power
+first increases in all three scenarios, as seen in Figure 5(c). Pure CNT-TC-OTA
+has the lowest average power because of the above listed issues. The average
+power consumption of hybrid OTAs is significantly higher due to the larger
+capacitive and short-channel effects in MOSFETs. In all three types of TC-OTAs,
+Figure 5(d) shows that bandwidth increases as pitch increases. The increase is
+particularly apparent in PCNTFET-NMOS-TC-OTA because of the high drive current
+and decreased screening effect brought about by using 12 PCNTFETs rather than
+the customary 14 CNTFETs. Compared to pure CNT-TC-OTA and NCNTFET-PMOS-TC-OTA,
+the bandwidth enhancement in PCNTFET-NMOS-TC-OTA is less pronounced. This is
+justified by the fact that the screening effect is greater because there are
+more NCNTFETs \cite{ref35,ref38}.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_16.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_0_uo0s3}{rf_fig_16.png}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_17.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_1_b98wh}{rf_fig_17.png}
+    \caption{Impact of changing the CNT pitch in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \end{subfigure}
+  \caption{Impact of changing the CNT pitch in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \label{fig:group_wsr60}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_18.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_0_regyg}{rf_fig_18.png}
+    \caption{Impact of changing the CNT pitch in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_19.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_1_vxeg2}{rf_fig_19.png}
+    \caption{Impact of changing the CNT pitch in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \end{subfigure}
+  \caption{Impact of changing the CNT pitch in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \label{fig:group_2vx1j}
+\end{figure}
+
+\subsection*{Impact of altering the gate oxide thickness (TOX) on the proposed TC-OTAs' performance}
+
+The gate oxide functions as a capacitor in a field-effect transistor. The gate
+capacitance is lowered by a thicker TOX, which lowers the current drive. Reduced
+drain current causes transconductance to drop, which raises output resistance
+(ROUT) sa shown in Figure 6(b) \cite{ref40}.
+In Figure 6(c), for both the pure and hybrid designs, the average power falls as
+TOX rises because the smaller capacitance results in lower drain currents, which
+lower power consumption \cite{ref39,ref40,ref41}.
+The decrease in transconductance as the oxide thickness rises is the main cause
+of the decreasing trend in the bandwidth shown in Figure 6(d) for the pure
+CNTFET and hybrid designs. In a CNTFET, a thicker oxide layer decreases the
+gate-to-channel capacitance, thereby lowering transconductance by weakening the
+gate's control over the channel. As the oxide thickens, the frequency response
+deteriorates because the bandwidth of an OTA is directly proportional to
+transconductance.On the other hand, the PCNTFET-NMOS-TC-OTA remains flat because
+the NMOS load's specific biasing or parasitic capacitances likely limit its
+high-frequency performance, making it less susceptible to changes in the gate
+dielectric of the CNTFET components \cite{ref6,ref39}.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_20.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_0_qoab4}{rf_fig_20.png}
+    \caption{(a) shows the behavior of various operational transconductance amplifier (OTA) topologies' DC Gain as the transistors' oxide...}
+
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_21.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_1_8dq6k}{rf_fig_21.png}
+    \caption{(a) shows the behavior of various operational transconductance amplifier (OTA) topologies' DC Gain as the transistors' oxide...}
+
+  \end{subfigure}
+  \caption{(a) shows the behavior of various operational transconductance amplifier (OTA) topologies' DC Gain as the transistors' oxide thickness (TOX) varies between 2 nm and 5 nm. Gate capacitance and drain current are often significantly impacted by the thickness of the gate oxide. Although it might result in leakage, a thinner oxide often improves gate control. The transconductance (gmn) and output resistance (ROCASN) of the transistors, which determine DC gain (AV=gmn* ROUT), seem to be leveling out or being controlled by other dominating elements in the OTA within this particular range, according to the flat lines \cite{ref7,ref39}.}
+
+  \label{fig:group_v6x7o}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_22.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_0_olutj}{rf_fig_22.png}
+    \caption{Impact of changing the oxide thickness in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_23.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_1_gkvag}{rf_fig_23.png}
+    \caption{Impact of changing the oxide thickness in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \end{subfigure}
+  \caption{Impact of changing the oxide thickness in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \label{fig:group_orhfl}
+\end{figure}
+
+\subsection*{Impact of altering the dielectric constant (KOX) on the proposed TC-OTAs' performance}
+
+A thinner gate insulator with a higher dielectric constant may be employed to
+further enhance the device's performance. Lately, thin films of high-dielectric
+materials such as ZrO2 and LaAlO3 have also been used as insulators in CNFETs.
+Table 1 lists dielectric materials commonly considered, along with their
+dielectric constants.
+
+\begin{table}[H]
+  \centering
+  \caption{Given their dielectric constants, the oxides in the following table are taken to be considered for gate insulation.}
+  \label{tab:given_their_dielectr}
+  \renewcommand{\arraystretch}{1.3}
+  \begin{adjustbox}{max width=\linewidth}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|}
+      \hline
+      Material & Die-electric value ($\epsilon$r) \\ \hline
+      Silicon dioxide (SiO2) & 3.9 \\ \hline
+      Hafnium silicate (HfSiO4) & 11 \\ \hline
+      Hafnium dioxide (HfO2) & 16 \\ \hline
+      Zirconium oxide (ZrO2) & 25 \\ \hline
+      Lanthanum aluminate (LaAlO3) & 30 \\ \hline
+    \end{tabularx}
+  \end{adjustbox}
+\end{table}
+
+Increasing gate capacitance increases electrostatic control over the carbon
+nanotube channel, which is the main driver of the DC Gain graph's growth and
+eventual saturation with respect to the dielectric constant (KOX) in Figure
+7(a). The transconductance of the CNTFET devices increases with the dielectric
+constant, thereby directly enhancing the voltage gain of the OTA systems.
+Nevertheless, this effect follows a diminishing-returns pattern in both the Pure
+CNTFET and NCNTFET-PMOS configurations, where the gain saturates beyond a
+dielectric constant of roughly 16, indicating that the device has reached a
+point at which additional increases in gate coupling no longer significantly
+overcome the current output resistance constraints. The PCNTFET-NMOS TC-OTA, on
+the other hand, stays noticeably flat, indicating that the typical NMOS load
+characteristics, not the gate dielectric characteristics of the P-type CNTFET
+components, restrict its gain \cite{ref41,ref42}.
+The primary factor leading to the output resistance dropping as the dielectric
+constant rises is the inverse relationship between device resistance and gate
+coupling in Figure 7(b). By raising gate capacitance, a larger dielectric
+constant improves the gate's electrostatic control. This causes the transistor's
+drain current to increase significantly and its output resistance to decrease
+\cite{ref43,ref44}.
+As shown in Figure 7(c), the direct correlation between gate capacitance and
+drain current is the main reason for the rise in average power in respect to the
+Dielectric Constant. The gate capacitance (COX) increases with the dielectric
+constant, improving the carrier density in the carbon nanotube channel and
+increasing current flow \cite{ref7}.
+The enhancement of the transistor's transconductance, as shown in Figure 7(d),
+is the main cause of the bandwidth increase that is visible when the dielectric
+constant increases. Greater current drive are enabled by a higher dielectric
+constant, which strengthens electrostatic control over the carbon nanotube
+channel. The frequency response increases significantly since the bandwidth of
+an OTA is exactly proportional to the transconductance of its input transistors
+\cite{ref39,ref44,ref45}.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_24.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_0_72u81}{rf_fig_24.png}
+    \caption{Impact of changing the dielectric constant in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average...}
+
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_25.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_1_srjmf}{rf_fig_25.png}
+    \caption{Impact of changing the dielectric constant in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average...}
+
+  \end{subfigure}
+  \caption{Impact of changing the dielectric constant in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \label{fig:group_l0kdd}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_26.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_0_4qyre}{rf_fig_26.png}
+    \caption{Impact of changing the dielectric constant in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average...}
+
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_27.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_1_rfxfz}{rf_fig_27.png}
+    \caption{Impact of changing the dielectric constant in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average...}
+
+  \end{subfigure}
+  \caption{Impact of changing the dielectric constant in the proposed CNT-based TC-OTAs on (a) DC gain (b) output resistance, (c) average power, and (d) bandwidth}
+
+  \label{fig:group_nhq1o}
+\end{figure}
+
+\subsection*{Stability Evaluation of the suggested TC-OTAs}
+
+Stability assessments of the proposed pure CNT-TC-OTA, hybrid TC-OTAs, and bulk
+CMOS-based TC-OTA have been successfully completed by examining their frequency
+response in Figure 6. It has been demonstrated that pure CNT-based TC-OTA is
+more stable than the others. The findings show that the pure-CNT-TC-OTA has the
+maximum gain (75.44 dB) and is exceptionally stable. While the phase margin is
+84.5$\circ$ dB. The stability analysis also shows that the hybrid TC-OTAs
+(NCNTFET-PMOS-TC-OTA and PCNTFET-NMOS-TC-OTA), which have somewhat smaller
+phases and gain margins than the pure CNT-based TC-OTA, are stable. The phase
+margin of PCNTFET-NMOS-TC-OTA and NCNTFET-PMOS-TC-OTA circuits have phase
+margins of 95.2$\circ$ and 107.6$\circ$, respectively. The phase margin for the
+bulk CMOS-TC-OTA is 78$\circ$.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_28.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_0_c4x7v}{rf_fig_28.png}
+    \caption{Frequency response of different TC-OTAs.}
+
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_29.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_1_99ufc}{rf_fig_29.png}
+    \caption{Frequency response of different TC-OTAs.}
+
+  \end{subfigure}
+  \caption{Frequency response of different TC-OTAs.}
+
+  \label{fig:group_e28g2}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_30.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_0_5yndk}{rf_fig_30.png}
+    \caption{Frequency response of different TC-OTAs.}
+
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_31.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_1_25lxa}{rf_fig_31.png}
+    \caption{Frequency response of different TC-OTAs.}
+
+  \end{subfigure}
+  \caption{Frequency response of different TC-OTAs.}
+
+  \label{fig:group_s90gd}
+\end{figure}
+
+\subsection*{Parametric Evaluation of the suggested TC-OTAs}
+
+Table 2 displays the comparative and parameterized analysis related to each
+TC-OTA that was developed and simulated for this study. The proposed circuits,
+which have a VDD of 0.9 Volt and a CL of 0.01 pF, are based on the 32 nm
+technology node. Furthermore, Table 1 shows that the pure CNT-based TC-OTA has
+the highest gain and the CMOS-based TC-OTA has the lowest. Stability assessments
+of the proposed pure CNT-TC-OTA, hybrid TC-OTAs, and bulk CMOS-based TC-OTA have
+been successfully completed by examining their frequency response in Figure 9.
+It has been demonstrated that pure CNT-based TC-OTA is more stable than the
+others. The findings show that the pure-CNT-TC-OTA has the maximum gain (75.44
+dB) and is exceptionally stable. While the phase margin is 84.5$\circ$ dB. The
+stability analysis also shows that the hybrid TC-OTAs (NCNTFET-PMOS-TC-OTA and
+PCNTFET-NMOS-TC-OTA), which have somewhat smaller phases and gain margins than
+the pure CNT-based TC-OTA, are stable. The phase margin of PCNTFET-NMOS-TC-OTA
+and NCNTFET-PMOS-TC-OTA circuits have phase margins of 95.2$\circ$ and
+107.6$\circ$, respectively. The phase margin for the bulk CMOS-TC-OTA is
+78$\circ$.
+
+\begin{table}[H]
+  \centering
+  \caption{CNTFET, hybrid, and bulk TC-OTA performance comparison at CL=0.01 pf, VDD=0.9 V at 32 nm technology node, with N=20, S=20 nm, and DCNT=1.5 nm}
+  \label{tab:cntfet__hybrid__and_}
+  \renewcommand{\arraystretch}{1.3}
+  \begin{adjustbox}{max width=\linewidth}
+    \begin{tabularx}{\linewidth}{|c|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|c|}
+      \hline
+      S. No. & Parameters & PURE CNTFET-TC-OTA & NCNTFET-PMOS-TC-OTA & PCNTFET-NMOS-TC-OTA & CMOS-TC-OTA \\ \hline
+      1 & DC gain (dB) & 75.44 & 37.55 & 31.12 & 25.4 \\ \hline
+      2 & Bandwidth (GHz) & 3.37 & 3.17 & 4 & 3.6 \\ \hline
+      3 & Output resistance (K$\Omega$) & 4.7 & 4.75 & 6.46 & 8 \\ \hline
+      4 & Average power (µW) & 38.7 & 43.1 & 57.5 & 62.5 \\ \hline
+      5 & Average Slew rate (V/µS) & 1272 & 1207 & 2092 & 2130 \\ \hline
+      6 & Phase margin in $\circ$ & 84.5 & 107.6 & 95.2 & 78 \\ \hline
+      7 & Gain Margin (dB) & 37.5 & 21 & 32 & 21.1 \\ \hline
+      8 & Unity gain frequency (GHz) & 3.03 & 2.88 & 3.62 & 3.2 \\ \hline
+      9 & CMRR (dB) & 68.09 & 38.7 & 19.25 & 14.74 \\ \hline
+      10 & (FOM)1 & 6559 & 2796 & 2176 & 1445 \\ \hline
+      11 & (FOM)2 & 0.657 & 0.558 & 0.626 & 0.54 \\ \hline
+    \end{tabularx}
+  \end{adjustbox}
+\end{table}
+
+\subsection*{Figure of Merits (FOM)1 = [Gain(dB)*UGF(kHZ) / power supply(mV)*power consumption(µW)]}
+
+\subsection*{Figure of Merits (FOM)2 = [Slew rate(V/µS)*CL(pF) / power consumption(µW)]}
+
+\subsection*{Designing Band Pass Filters (BPFs) of the suggested TC-OTAs}
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_32.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_0_isc5e}{rf_fig_32.png}
+    \caption{(a) Proposed CNT-OTA-Based BPF (b) All four OTAs' frequency responses for the specified BPF}
+
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \zimg{rf_fig_33.png}{width=\linewidth,max height=0.4\textheight,keepaspectratio}{fg_1_l86zs}{rf_fig_33.png}
+    \caption{(a) Proposed CNT-OTA-Based BPF (b) All four OTAs' frequency responses for the specified BPF}
+
+  \end{subfigure}
+  \caption{(a) Proposed CNT-OTA-Based BPF (b) All four OTAs' frequency responses for the specified BPF}
+
+  \label{fig:group_ecblm}
+\end{figure}
+
+\begin{table}[H]
+  \centering
+  \caption{Performance comparison of CNTFET, hybrid, and bulk-CMOS-TC-OTA-based BPF at VDD = 0.9 V}
+  \label{tab:performance_comparis}
+  \renewcommand{\arraystretch}{1.3}
+  \begin{adjustbox}{max width=\linewidth}
+    \begin{tabularx}{\linewidth}{|c|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|c|}
+      \hline
+      S. No. & Parameters & PURE CNTFET-TC-OTA & NCNTFET-PMOS-TC-OTA & PCNTFET-NMOS-TC-OTA & CMOS-TC-OTA \\ \hline
+      1 & Quality factor (Q) & 0.00257 & 0.0167 & 0.0233 & 0.0348 \\ \hline
+      2 & Lower cut-off freq (MHz) & 0.0292 & 0.6 & 0.925 & 1.98 \\ \hline
+      3 & Higher cut-off freq (MHz) & 3700 & 1820 & 3040 & 2300 \\ \hline
+      4 & Bandwidth (MHz) & 3699.97 & 1819.4 & 3039.07 & 2298.02 \\ \hline
+      5 & Central Frequency (MHz) & 9.53 & 30.4 & 71 & 80 \\ \hline
+      6 & Capacitance C1 (pF) & 1 & 1 & 1 & 1 \\ \hline
+      7 & Capacitance C2 (pF) & 0.01 & 0.01 & 0.01 & 0.01 \\ \hline
+      8 & Channel length & 32 nm & 32 nm & 32 nm & 32 nm \\ \hline
+    \end{tabularx}
+  \end{adjustbox}
+\end{table}

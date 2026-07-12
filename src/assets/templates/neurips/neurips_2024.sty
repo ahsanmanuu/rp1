@@ -1,0 +1,14 @@
+% neurips_2024.sty - Minimal stub for NeurIPS
+\NeedsTeXFormat{LaTeX2e}
+\RequirePackage{packages}
+\ProvidesPackage{neurips_2024}[2026/04/30 NeurIPS stub]
+\RequirePackage{geometry}
+\geometry{margin=1in}
+\newcommand{\neuripsset}[1]{}
+\renewcommand{\maketitle}{%
+  \begin{center}
+    {\huge \bfseries \@title \par}
+    \vspace{1em}
+    {\large \@author \par}
+  \end{center}
+}

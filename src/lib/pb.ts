@@ -1,0 +1,209 @@
+/**
+ * PocketBase server-client singleton & helpers.
+ *
+ * Usage (server-side / API routes):
+ *   import { pb } from '@/lib/pb';
+ *   const records = await pb.collection('projects').getFullList();
+ *
+ * Auth flows:
+ *   - User auth: pb.collection('users').authWithPassword(email, password)
+ *   - Admin auth: await pbAdmin()
+ *
+ * After login, store pb.authStore.token / pb.authStore.record in a cookie
+ * and rehydrate on each request via setToken().
+ */
+
+import PocketBase from 'pocketbase';
+
+if (typeof window === 'undefined') {
+  try {
+    const { setGlobalDispatcher, Agent } = require('undici');
+    setGlobalDispatcher(new Agent({
+      connections: 5000,
+      pipelining: 10,
+    }));
+    console.log('[PB System] undici global connection pool size increased to 5000');
+  } catch (err: any) {
+    console.warn('[PB System] Failed to configure undici global dispatcher:', err?.message || err);
+  }
+}
+
+const PB_URL = process.env.POCKETBASE_URL || (typeof window !== 'undefined' ? '/pb' : 'http://localhost:8090');
+
+/** Fresh unauthenticated client (use for public reads). */
+export function createPb() {
+  return new PocketBase(PB_URL);
+}
+
+/**
+ * Server-side PocketBase client rehydrated from an auth token cookie.
+ * Automatically loads the user record so authStore.record is available.
+ */
+export async function authFromToken(token: string) {
+  const pb = new PocketBase(PB_URL);
+  pb.authStore.save(token, null);
+  if (pb.authStore.isValid) {
+    try {
+      await pb.collection('users').authRefresh({ requestKey: 'auth_refresh' });
+    } catch {
+      pb.authStore.clear();
+    }
+  }
+  return pb;
+}
+
+/**
+ * Admin-authenticated PocketBase client.
+ * Cached in-memory so we don't re-auth on every request.
+ */
+let _adminPb: PocketBase | null = null;
+let _adminAuthPromise: Promise<PocketBase> | null = null;
+
+/** Force-clear the cached admin client so the next pbAdmin() call re-authenticates. */
+export function clearAdminCache() {
+  _adminPb = null;
+  _adminAuthPromise = null;
+}
+
+/**
+ * Refresh the admin auth by force-clearing cache and re-authenticating.
+ * Useful after password changes or when the cached token becomes stale.
+ */
+export async function refreshAdminAuth(): Promise<PocketBase> {
+  clearAdminCache();
+  return pbAdmin();
+}
+
+/**
+ * Get admin credentials — checks pb_data/admin_creds.json first,
+ * then env vars, with correct hardcoded defaults as final fallback.
+ */
+function getAdminCredentials(): { email: string; password: string } {
+  const defaultEmail = 'admin@latexify.io';
+  const defaultPassword = 'Sczone@123';
+
+  let email = defaultEmail;
+  let password = defaultPassword;
+
+  try {
+    if (typeof window === 'undefined') {
+      const fs = require('fs');
+      const path = require('path');
+      // Check PB_DATA_DIR first (Render persistent disk), then default pb_data, then root
+      const pbDataDir = process.env.PB_DATA_DIR || path.join(process.cwd(), 'pb_data');
+      const candidates = [
+        path.join(pbDataDir, 'admin_creds.json'),
+        path.join(process.cwd(), 'admin_creds.json'),
+      ];
+      for (const credsPath of candidates) {
+        if (fs.existsSync(credsPath)) {
+          const data = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+          if (data.email) email = data.email;
+          if (data.password) password = data.password;
+          return { email, password };
+        }
+      }
+    }
+  } catch (err) {
+    // Non-fatal
+  }
+
+  // Fallback to env vars (ignore the stale old default 'admin123456')
+  const envEmail = process.env.POCKETBASE_ADMIN_EMAIL;
+  let envPassword = process.env.POCKETBASE_ADMIN_PASSWORD;
+  if (envEmail) email = envEmail;
+  if (envPassword) {
+    if (envPassword === 'admin123456') envPassword = undefined;
+    if (envPassword) password = envPassword;
+  }
+
+  return { email, password };
+}
+
+export async function pbAdmin(): Promise<PocketBase> {
+  // Return cached valid client
+  if (_adminPb) {
+    if (_adminPb.authStore.isValid) {
+      return _adminPb;
+    }
+    _adminPb = null;
+    _adminAuthPromise = null;
+  }
+
+  // Deduplicate concurrent auth requests
+  if (_adminAuthPromise) {
+    return _adminAuthPromise;
+  }
+
+  const pb = new PocketBase(PB_URL);
+  const { email, password } = getAdminCredentials();
+
+  _adminAuthPromise = (async () => {
+    // PocketBase v0.23+: admins are now _superusers collection
+    await pb.collection('_superusers').authWithPassword(email, password);
+    _adminPb = pb;
+    _adminAuthPromise = null;
+    return pb;
+  })().catch((err) => {
+    _adminAuthPromise = null;
+    throw err;
+  });
+
+  return _adminAuthPromise;
+}
+
+/** Reverse map: PB field name → Prisma relation name.
+ *  PB stores relation fields as userId/aiCapPlanId, but Prisma refers to them as user/aiCapPlan.
+ *  When PB returns expanded data under expand.userId, we rename it to user.
+ */
+const EXPAND_FIELD_REVERSE_MAP: Record<string, string> = {
+  userId: 'user',
+  aiCapPlanId: 'aiCapPlan',
+};
+
+function parseDate(val: any): any {
+  if (typeof val === 'string' && val.length >= 10) {
+    const isDatePattern = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(val) || /^\d{4}-\d{2}-\d{2}$/.test(val);
+    if (isDatePattern) {
+      const d = new Date(val.replace(' ', 'T'));
+      if (!isNaN(d.getTime())) {
+        return d;
+      }
+    }
+  }
+  return val;
+}
+
+/**
+ * Convert PocketBase record list to plain objects with
+ * id / created / updated mapped to the Prisma convention.
+ */
+export function mapRecord<T = any>(r: any): T {
+  if (!r) return null as any;
+  const o: Record<string, any> = { id: r.id };
+  o.createdAt = r.created ? parseDate(r.created) : (r.updated ? parseDate(r.updated) : new Date());
+  o.updatedAt = r.updated ? parseDate(r.updated) : o.createdAt;
+  for (const k of Object.keys(r)) {
+    if (!['id', 'collectionId', 'collectionName', 'created', 'updated', 'expand'].includes(k)) {
+      const val = r[k];
+      if (val !== null && typeof val === 'object' && !Array.isArray(val) && !(val instanceof Date)) {
+        o[k] = JSON.stringify(val);
+      } else {
+        o[k] = parseDate(val);
+      }
+    }
+  }
+  if (r.expand && typeof r.expand === 'object') {
+    for (const [ek, ev] of Object.entries(r.expand)) {
+      const prismaKey = EXPAND_FIELD_REVERSE_MAP[ek] || ek;
+      o[prismaKey] = Array.isArray(ev) ? ev.map(mapRecord) : mapRecord(ev);
+    }
+  }
+  if (o.collaborators === undefined) o.collaborators = [];
+  if (o.files === undefined) o.files = [];
+  return o as T;
+}
+
+export function mapList<T = any>(list: any[]): T[] {
+  return list.map((r) => mapRecord<T>(r));
+}

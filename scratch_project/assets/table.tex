@@ -1,0 +1,86 @@
+% Required Packages: \usepackage{booktabs}, \usepackage{multirow}, \usepackage{tabularx}
+
+\begin{table}[H]
+  \centering
+  \caption{Given their dielectric constants, the oxides in the following table are taken to be considered for gate insulation.}
+  \label{tab:given_their_dielectr}
+  \renewcommand{\arraystretch}{1.3}
+  \begin{adjustbox}{max width=\linewidth}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|}
+      \hline
+      Material & Die-electric value ($\epsilon$r) \\ \hline
+      Silicon dioxide (SiO2) & 3.9 \\ \hline
+      Hafnium silicate (HfSiO4) & 11 \\ \hline
+      Hafnium dioxide (HfO2) & 16 \\ \hline
+      Zirconium oxide (ZrO2) & 25 \\ \hline
+      Lanthanum aluminate (LaAlO3) & 30 \\ \hline
+    \end{tabularx}
+  \end{adjustbox}
+\end{table}
+
+\begin{table}[H]
+  \centering
+  \caption{CNTFET, hybrid, and bulk TC-OTA performance comparison at CL=0.01 pf, VDD=0.9 V at 32 nm technology node, with N=20, S=20 nm, and DCNT=1.5 nm}
+  \label{tab:cntfet__hybrid__and_}
+  \renewcommand{\arraystretch}{1.3}
+  \begin{adjustbox}{max width=\linewidth}
+    \begin{tabularx}{\linewidth}{|c|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|c|}
+      \hline
+      S. No. & Parameters & PURE CNTFET-TC-OTA & NCNTFET-PMOS-TC-OTA & PCNTFET-NMOS-TC-OTA & CMOS-TC-OTA \\ \hline
+      1 & DC gain (dB) & 75.44 & 37.55 & 31.12 & 25.4 \\ \hline
+      2 & Bandwidth (GHz) & 3.37 & 3.17 & 4 & 3.6 \\ \hline
+      3 & Output resistance (K$\Omega$) & 4.7 & 4.75 & 6.46 & 8 \\ \hline
+      4 & Average power (µW) & 38.7 & 43.1 & 57.5 & 62.5 \\ \hline
+      5 & Average Slew rate (V/µS) & 1272 & 1207 & 2092 & 2130 \\ \hline
+      6 & Phase margin in $\circ$ & 84.5 & 107.6 & 95.2 & 78 \\ \hline
+      7 & Gain Margin (dB) & 37.5 & 21 & 32 & 21.1 \\ \hline
+      8 & Unity gain frequency (GHz) & 3.03 & 2.88 & 3.62 & 3.2 \\ \hline
+      9 & CMRR (dB) & 68.09 & 38.7 & 19.25 & 14.74 \\ \hline
+      10 & (FOM)1 & 6559 & 2796 & 2176 & 1445 \\ \hline
+      11 & (FOM)2 & 0.657 & 0.558 & 0.626 & 0.54 \\ \hline
+    \end{tabularx}
+  \end{adjustbox}
+\end{table}
+
+\begin{table}[H]
+  \centering
+  \caption{Performance comparison of CNTFET, hybrid, and bulk-CMOS-TC-OTA-based BPF at VDD = 0.9 V}
+  \label{tab:performance_comparis}
+  \renewcommand{\arraystretch}{1.3}
+  \begin{adjustbox}{max width=\linewidth}
+    \begin{tabularx}{\linewidth}{|c|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|c|}
+      \hline
+      S. No. & Parameters & PURE CNTFET-TC-OTA & NCNTFET-PMOS-TC-OTA & PCNTFET-NMOS-TC-OTA & CMOS-TC-OTA \\ \hline
+      1 & Quality factor (Q) & 0.00257 & 0.0167 & 0.0233 & 0.0348 \\ \hline
+      2 & Lower cut-off freq (MHz) & 0.0292 & 0.6 & 0.925 & 1.98 \\ \hline
+      3 & Higher cut-off freq (MHz) & 3700 & 1820 & 3040 & 2300 \\ \hline
+      4 & Bandwidth (MHz) & 3699.97 & 1819.4 & 3039.07 & 2298.02 \\ \hline
+      5 & Central Frequency (MHz) & 9.53 & 30.4 & 71 & 80 \\ \hline
+      6 & Capacitance C1 (pF) & 1 & 1 & 1 & 1 \\ \hline
+      7 & Capacitance C2 (pF) & 0.01 & 0.01 & 0.01 & 0.01 \\ \hline
+      8 & Channel length & 32 nm & 32 nm & 32 nm & 32 nm \\ \hline
+    \end{tabularx}
+  \end{adjustbox}
+\end{table}
+
+\begin{table}[H]
+  \centering
+  \caption{OTA performance summary and comparison with other contemporary OTAs.}
+  \label{tab:ota_performance_summ}
+  \renewcommand{\arraystretch}{1.3}
+  \begin{adjustbox}{max width=\linewidth}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}X|c|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|c|c|}
+      \hline
+      Parameters & CNTFET-OTA\cite{ref4} & CNTFET-TC-OTA\cite{ref5} & CNTFET-TC-OTA\cite{ref37} & CNT-FC-OTA \cite{ref13} & [This Work] \\ \hline
+      Year & 2015 & 2015 & 2023 & 2024 & $\-$ \\ \hline
+      Technology node & 45 nm & 45 nm & 45 nm & 45 nm & 32nm \\ \hline
+      Supply voltage (V) & 0.9 & 0.9 & 0.9 & 0.9 & 0.9 \\ \hline
+      DC gain (dB) & 40.3 & 45.33 & 48.7 & 43.50 & 75.44 \\ \hline
+      Slew rate (V∕$\mu$s) & 30.4 & 20.6 & 971.1 & 1814 & 2544 \\ \hline
+      Bandwidth (MHz) & 27.74 & 24.45 & 2700 & 0.19 & 3370 \\ \hline
+      CMRR & 97.85 & 108 & 46.6 & 73.51 & 68.09 \\ \hline
+      Average power ($\mu$W) & 82$\times$10$\-$3 & 38.35$\times$10$\-$3 & 59.85 & 7.14$\times$10$\-$9 & 38.7 \\ \hline
+      Phase margin (◦) & 89.4 & 89.6 & 83 & 91 & 84.5 \\ \hline
+    \end{tabularx}
+  \end{adjustbox}
+\end{table}
