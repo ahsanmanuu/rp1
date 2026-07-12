@@ -62,6 +62,40 @@ loadDotEnv();
 process.env.NODE_ENV = process.env.NODE_ENV || 'production';
 
 // ============================================================
+// Auto-download PocketBase binary if missing (Render deploy)
+// ============================================================
+async function ensurePocketBaseBinary() {
+  const isWindows = process.platform === 'win32';
+  const pbBinary = isWindows ? 'pocketbase.exe' : './pocketbase';
+  if (fs.existsSync(pbBinary)) return pbBinary;
+
+  if (isWindows) {
+    log('Windows detected — cannot auto-download PocketBase. Skipping.');
+    return null;
+  }
+
+  const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
+  const version = '0.27.0';
+  const url = `https://github.com/pocketbase/pocketbase/releases/download/v${version}/pocketbase_${version}_linux_${arch}.zip`;
+  const zipPath = path.resolve(process.cwd(), 'pocketbase.zip');
+
+  log(`PocketBase binary not found. Downloading from ${url}...`);
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    fs.writeFileSync(zipPath, buffer);
+    execSync(`unzip -o "${zipPath}" && chmod +x pocketbase && rm "${zipPath}"`, { stdio: 'inherit' });
+    log('PocketBase downloaded and extracted successfully.');
+    return pbBinary;
+  } catch (err) {
+    log(`Failed to download PocketBase: ${err.message}`);
+    try { if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath); } catch {}
+    return null;
+  }
+}
+
+// ============================================================
 // Start PocketBase as a child process (Linux/macOS only)
 // ============================================================
 async function startPocketBase() {
@@ -71,15 +105,17 @@ async function startPocketBase() {
   // custom collection created by setup-pb.js, not a PB system table,
   // so it doesn't exist yet when this check runs.
 
-  return new Promise((resolve, reject) => {
-    const isWindows = process.platform === 'win32';
-    const pbBinary = isWindows ? 'pocketbase.exe' : './pocketbase';
+  const pbBinary = await ensurePocketBaseBinary();
+  if (!pbBinary) {
     const pbUrl = process.env.POCKETBASE_URL || 'http://127.0.0.1:8090';
+    log(`No PocketBase binary available. Ensure PocketBase is running externally at ${pbUrl}`);
+    return;
+  }
 
-    if (!fs.existsSync(pbBinary)) {
-      log(`PocketBase binary not found at ${pbBinary}. Skipping auto-start. Ensure PocketBase is running externally at ${pbUrl}`);
-      return resolve();
-    }
+  const isWindows = process.platform === 'win32';
+  const pbUrl = process.env.POCKETBASE_URL || 'http://127.0.0.1:8090';
+
+  return new Promise((resolve, reject) => {
 
     // Use PB_DATA_DIR env var if set (Render persistent disk), otherwise default to ./pb_data
     const pbDataDir = process.env.PB_DATA_DIR || path.resolve(process.cwd(), 'pb_data');

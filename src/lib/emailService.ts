@@ -7,7 +7,10 @@ const COMPANY = {
   email: "contact@latexify.io",
   phone: "+91 9999999999",
   address: "Bangalore, Karnataka, India",
-  logoUrl: "https://rp-18pf.onrender.com/logo.png",
+  logoUrl: (() => {
+    const base = process.env.NEXT_PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || "http://localhost:3000";
+    return `${base.replace(/\/+$/, "")}/logo.png`;
+  })(),
 };
 
 async function getSmtpConfig() {

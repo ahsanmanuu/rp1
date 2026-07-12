@@ -3,7 +3,7 @@ services:
     name: latexify
     runtime: node
     plan: free
-    buildCommand: npm ci && npx prisma generate && npm run build && (curl -L -o pocketbase.zip https://github.com/pocketbase/pocketbase/releases/download/v0.27.0/pocketbase_0.27.0_linux_amd64.zip && unzip -o pocketbase.zip && chmod +x pocketbase && rm pocketbase.zip)
+    buildCommand: npm install && npm run build && (curl -L -o pocketbase.zip https://github.com/pocketbase/pocketbase/releases/download/v0.27.0/pocketbase_0.27.0_linux_amd64.zip && unzip -o pocketbase.zip && chmod +x pocketbase && rm pocketbase.zip)
     startCommand: node start.js
     healthCheckPath: /
     envVars:
@@ -16,7 +16,7 @@ services:
       - key: NEXTAUTH_SECRET
         sync: false
       - key: NEXTAUTH_URL
-        value: https://rp-18pf.onrender.com
+        value: https://rp1-gg10.onrender.com
       - key: POCKETBASE_URL
         value: http://127.0.0.1:8090
       - key: POCKETBASE_ADMIN_EMAIL
@@ -24,7 +24,7 @@ services:
       - key: POCKETBASE_ADMIN_PASSWORD
         sync: false
       - key: NEXT_PUBLIC_APP_URL
-        value: https://rp-18pf.onrender.com
+        value: https://rp1-gg10.onrender.com
       - key: GEMINI_API_KEY
         sync: false
       - key: OPENROUTER_API_KEY
