@@ -114,7 +114,39 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json({ success: true, users: result, adminEmail: ADMIN_EMAIL });
+    const now = new Date();
+    const threeDaysLater = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const expiringUsers = await prisma.user.findMany({
+      where: {
+        membershipExpiresAt: {
+          gte: now,
+          lte: threeDaysLater,
+        },
+        membership: { not: "free" },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        membership: true,
+        membershipExpiresAt: true,
+      },
+    });
+    const expiryNotifications = expiringUsers.map((u: any) => {
+      const expiresAt = new Date(u.membershipExpiresAt);
+      const daysRemaining = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      return {
+        id: u.id,
+        userId: u.id,
+        userEmail: u.email,
+        userName: u.name || "User",
+        planType: u.membership,
+        expiresAt: u.membershipExpiresAt,
+        daysRemaining,
+      };
+    });
+
+    return NextResponse.json({ success: true, users: result, expiryNotifications, adminEmail: ADMIN_EMAIL });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
@@ -223,7 +255,7 @@ export async function PUT(req: NextRequest) {
       });
 
       const updated = txPromise 
-        ? await prisma.$transaction([txPromise, updatePromise]).then(res => res[1])
+        ? await prisma.$transaction([txPromise, updatePromise]).then((res: any[]) => res[1])
         : await updatePromise;
 
       return NextResponse.json({ success: true, user: updated, mode: "subscription" });

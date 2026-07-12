@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { createPb } from '@/lib/pb';
 import { motion } from 'framer-motion';
+import { useUsersRealtime } from '@/hooks/useUsersRealtime';
 
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -497,15 +497,13 @@ export default function AdminUsersPage() {
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [adminName, setAdminName] = useState<string>("Admin Root");
 
-  // Database states
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Database states — powered by real-time hook
+  const { users, expiryNotifications, loading, error, selectedUser, setSelectedUser, refetch: fetchUsers } = useUsersRealtime();
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [filterTier, setFilterTier] = useState('All Tiers');
   const [filterStatus, setFilterStatus] = useState('Active / All');
   const [filterBehavior, setFilterBehavior] = useState('All Behaviors');
+  const [showExpiryPanel, setShowExpiryPanel] = useState(false);
 
   // ── Conflict Audit State ──────────────────────────────────────────────────
   const [auditData, setAuditData] = useState<any>(null);
@@ -571,80 +569,6 @@ export default function AdminUsersPage() {
     fetchAudit();
   }, [selectedUser]);
 
-  const fetchUsers = useCallback(async (silent = false) => {
-    try {
-      if (!silent) setLoading(true);
-      const res = await fetch('/api/admin/users');
-      const data = await res.json();
-      if (data.success) {
-        setUsers(data.users || []);
-        // Update selectedUser reference so changes reflect in the side panel
-        if (selectedUser) {
-          const freshUser = data.users.find((u: AdminUser) => u.id === selectedUser.id);
-          if (freshUser) {
-            setSelectedUser(freshUser);
-          }
-        } else if (data.users && data.users.length > 0) {
-          setSelectedUser(data.users[0]);
-        }
-        setError(null);
-      } else {
-        if (!silent) setError(data.error || 'Failed to load users');
-      }
-    } catch (err: any) {
-      if (!silent) setError(err.message || 'Failed to load users');
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [selectedUser]);
-
-  // Initial load
-  useEffect(() => {
-    fetchUsers(false);
-  }, []);  
-
-  // Auto-fetch in real-time every 10 seconds, and subscribe to PocketBase SSE for real-time updates
-  useEffect(() => {
-    const timer = setInterval(() => {
-      fetchUsers(true);
-    }, 10000);
-
-    let unsubscribeAll: (() => void) | null = null;
-    try {
-      const pb = createPb();
-      const token = typeof window !== 'undefined' ? localStorage.getItem('latexify-admin-token') : null;
-      if (token) {
-        pb.authStore.save(token, null);
-      }
-      const triggerRefresh = () => {
-        fetchUsers(true);
-      };
-
-      Promise.all([
-        pb.collection('users').subscribe('*', triggerRefresh),
-        pb.collection('projects').subscribe('*', triggerRefresh),
-        pb.collection('blacklist_records').subscribe('*', triggerRefresh)
-      ]).then(unsubs => {
-        unsubscribeAll = () => {
-          unsubs.forEach(unsub => {
-            try { unsub(); } catch {}
-          });
-        };
-      }).catch(err => {
-        console.warn("[AdminUsers Realtime] Subscription failed:", err);
-      });
-    } catch (err) {
-      console.warn("[AdminUsers Realtime] Initialisation failed:", err);
-    }
-
-    return () => {
-      clearInterval(timer);
-      if (unsubscribeAll) {
-        unsubscribeAll();
-      }
-    };
-  }, [fetchUsers]);
-
 
 
   const handleSubscriptionConfirm = async (membership: string, expiresAt: string | null) => {
@@ -662,8 +586,7 @@ export default function AdminUsersPage() {
       });
       const data = await res.json();
       if (data.success) {
-        // Force silent reload to get updated transactions and UI elements
-        await fetchUsers(true);
+        fetchUsers(true);
         setSubscriptionTarget(null);
       } else {
         alert(`Error: ${data.error}`);
@@ -679,7 +602,6 @@ export default function AdminUsersPage() {
     if (!blacklistTarget) return;
     setActionLoading(true);
     try {
-      // Use dedicated blacklist API for atomic user update + audit log
       const res = await fetch('/api/admin/blacklist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -687,17 +609,14 @@ export default function AdminUsersPage() {
       });
       const data = await res.json();
       if (data.success) {
-        const newRecord: BlacklistRecord = data.auditRecord;
-        setUsers(prev => prev.map(u => u.id === blacklistTarget.id
-          ? { ...u, status: 'blacklisted', blacklistReason: reason, blacklistHistory: [newRecord, ...u.blacklistHistory] }
-          : u));
         if (selectedUser?.id === blacklistTarget.id) {
-          setSelectedUser(prev => prev ? {
+          setSelectedUser((prev: AdminUser | null) => prev ? {
             ...prev, status: 'blacklisted', blacklistReason: reason,
-            blacklistHistory: [newRecord, ...prev.blacklistHistory]
+            blacklistHistory: [data.auditRecord, ...prev.blacklistHistory]
           } : null);
         }
         setBlacklistTarget(null);
+        fetchUsers(true);
       } else {
         alert(`Error: ${data.error}`);
       }
@@ -712,7 +631,6 @@ export default function AdminUsersPage() {
     if (!reactivateTarget) return;
     setActionLoading(true);
     try {
-      // Use dedicated blacklist API — DELETE = deactivate blacklist
       const res = await fetch('/api/admin/blacklist', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
@@ -720,17 +638,14 @@ export default function AdminUsersPage() {
       });
       const data = await res.json();
       if (data.success) {
-        const newRecord: BlacklistRecord = data.auditRecord;
-        setUsers(prev => prev.map(u => u.id === reactivateTarget.id
-          ? { ...u, status: 'active', blacklistReason: null, blacklistHistory: [newRecord, ...u.blacklistHistory] }
-          : u));
         if (selectedUser?.id === reactivateTarget.id) {
-          setSelectedUser(prev => prev ? {
+          setSelectedUser((prev: AdminUser | null) => prev ? {
             ...prev, status: 'active', blacklistReason: null,
-            blacklistHistory: [newRecord, ...prev.blacklistHistory]
+            blacklistHistory: [data.auditRecord, ...prev.blacklistHistory]
           } : null);
         }
         setReactivateTarget(null);
+        fetchUsers(true);
       } else {
         alert(`Error: ${data.error}`);
       }
@@ -1068,10 +983,66 @@ export default function AdminUsersPage() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <button className="p-2 hover:bg-black/5 rounded-full transition-colors"
-              style={{ color: 'var(--color-admin-on-surface-variant)' }}>
-              <span className="material-symbols-outlined">notifications</span>
-            </button>
+            <div className="relative">
+              <button onClick={() => setShowExpiryPanel(!showExpiryPanel)}
+                className="p-2 hover:bg-black/5 rounded-full transition-colors relative"
+                style={{ color: expiryNotifications.length > 0 ? '#f59e0b' : 'var(--color-admin-on-surface-variant)' }}>
+                <span className="material-symbols-outlined">notifications</span>
+                {expiryNotifications.length > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-amber-500 text-[9px] font-bold text-white flex items-center justify-center shadow-lg">
+                    {expiryNotifications.length}
+                  </span>
+                )}
+              </button>
+              {showExpiryPanel && expiryNotifications.length > 0 && (
+                <div className="absolute right-0 mt-2 w-80 rounded-xl border shadow-2xl overflow-hidden z-50"
+                  style={{ backgroundColor: 'var(--color-admin-surface-container-high)', borderColor: 'var(--color-admin-outline-variant)' }}>
+                  <div className="p-3 border-b" style={{ borderColor: 'var(--color-admin-outline-variant)' }}>
+                    <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
+                      Expiring Memberships
+                    </p>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto custom-scrollbar">
+                    {expiryNotifications.map(n => (
+                      <div key={n.id} className="flex items-center gap-3 p-3 border-b hover:bg-black/5 transition-colors"
+                        style={{ borderColor: 'var(--color-admin-outline-variant)' }}>
+                        <div className="w-2 h-2 rounded-full shrink-0 mt-0.5" style={{
+                          backgroundColor: n.daysRemaining <= 1 ? 'var(--color-admin-error)' : n.daysRemaining <= 3 ? '#f59e0b' : '#4ade80'
+                        }}></div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold truncate" style={{ color: 'var(--color-admin-on-surface)' }}>
+                            {n.userName}
+                          </p>
+                          <p className="text-[10px] truncate" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
+                            {n.planType} — {n.userEmail}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs font-bold" style={{
+                            color: n.daysRemaining <= 1 ? 'var(--color-admin-error)' : n.daysRemaining <= 3 ? '#f59e0b' : 'var(--color-admin-on-surface)'
+                          }}>
+                            {n.daysRemaining}d
+                          </p>
+                          <p className="text-[9px]" style={{ color: 'var(--color-admin-on-surface-variant)' }}>left</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="p-2 border-t" style={{ borderColor: 'var(--color-admin-outline-variant)' }}>
+                    <button onClick={async () => {
+                      try {
+                        await fetch('/api/admin/users/notify-expiry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+                        fetchUsers(true);
+                      } catch {}
+                    }}
+                      className="w-full text-[10px] font-bold uppercase tracking-wider py-2 rounded-lg border hover:opacity-80 transition-opacity"
+                      style={{ borderColor: 'var(--color-admin-outline-variant)', color: 'var(--color-admin-primary)' }}>
+                      Send Reminders Now
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Theme Switcher */}
             <div className="relative">
@@ -1153,6 +1124,37 @@ export default function AdminUsersPage() {
                </button>
              </div>
           </div>
+
+          {/* Expiry Alert Banner */}
+          {expiryNotifications.length > 0 && (
+            <div className="mb-4 p-4 rounded-xl border flex items-center justify-between"
+              style={{
+                backgroundColor: 'rgba(245,158,11,0.06)',
+                borderColor: 'rgba(245,158,11,0.25)',
+                borderLeft: '4px solid #f59e0b'
+              }}>
+              <div className="flex items-center gap-3">
+                <span className="material-symbols-outlined" style={{ color: '#f59e0b', fontVariationSettings: "'FILL' 1" }}>
+                  notification_important
+                </span>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--color-admin-on-surface)' }}>
+                    {expiryNotifications.length} membership{expiryNotifications.length !== 1 ? 's' : ''} expiring soon
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
+                    {expiryNotifications.filter(n => n.daysRemaining <= 0).length} expired ·{' '}
+                    {expiryNotifications.filter(n => n.daysRemaining === 1).length} expiring today ·{' '}
+                    {expiryNotifications.filter(n => n.daysRemaining >= 2 && n.daysRemaining <= 3).length} within 3 days
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setShowExpiryPanel(!showExpiryPanel)}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg border hover:opacity-80 transition-opacity"
+                style={{ borderColor: 'rgba(245,158,11,0.3)', color: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)' }}>
+                View Details
+              </button>
+            </div>
+          )}
 
           {/* Stats summary bar */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
@@ -1508,21 +1510,14 @@ export default function AdminUsersPage() {
                                     });
                                     const data = await res.json();
                                     if (data.success) {
-                                      // Update local list
-                                      setUsers(prev => prev.map(u => u.id === selectedUser.id ? { 
-                                        ...u, 
-                                        points: data.user.points, 
-                                        membershipRaw: data.user.membership,
-                                        membershipExpiresAt: data.user.membershipExpiresAt 
-                                      } : u));
-                                      // Update sidebar state
-                                      setSelectedUser(prev => prev ? { 
+                                      setSelectedUser((prev: AdminUser | null) => prev ? { 
                                         ...prev, 
                                         points: data.user.points, 
                                         membershipRaw: data.user.membership,
                                         membershipExpiresAt: data.user.membershipExpiresAt 
                                       } : null);
                                       setIsEditingPoints(false);
+                                      fetchUsers(true);
                                     } else {
                                       alert(data.error || "Failed to update points");
                                     }
