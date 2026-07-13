@@ -900,21 +900,7 @@ export default function Home() {
             <p className="text-sm" style={{ color: 'rgba(255,255,255,0.35)' }}>
               © 2025 Latexify Inc. All rights reserved.
             </p>
-            <div className="flex items-center gap-3 px-5 py-2.5 rounded-2xl"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" 
-                  style={{ background: statSystemsOperational ? '#10b981' : '#f59e0b' }} />
-                <span className="relative inline-flex h-2.5 w-2.5 rounded-full" 
-                  style={{ background: statSystemsOperational ? '#10b981' : '#f59e0b', boxShadow: statSystemsOperational ? '0 0 10px rgba(16,185,129,0.8)' : '0 0 10px rgba(245,158,11,0.8)' }} />
-              </span>
-              <span className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                {statSystemsOperational ? 'All systems operational' : 'System experiencing delays'}
-              </span>
-              <span className="text-xs font-black" style={{ color: '#10b981' }}>
-                {Number(statScholarsActive).toLocaleString()} Scholars Active
-              </span>
-            </div>
+
             <div className="flex gap-5">
               {['Privacy', 'Terms', 'Contact'].map((item, i) => (
                 <Link key={i} href={item === 'Contact' ? '/contact-us' : '#'} className="text-sm transition-colors hover:text-white"
