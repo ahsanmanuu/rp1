@@ -466,7 +466,7 @@ export default function Home() {
                 Tools · Academic · Statistical · Analytics · Research
               </h2>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 justify-center">
               {tasarStats.sort((a: any, b: any) => a.sortOrder - b.sortOrder).map((stat: any) => {
                 const catColors: Record<string, string> = {
                   tools: '#4f46e5', academic: '#059669', statistical: '#f59e0b',
