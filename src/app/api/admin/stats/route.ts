@@ -90,46 +90,7 @@ async function seedInitialData() {
       });
     }
 
-    // 3. Seed Platform Stats for the last 30 days if empty
-    const statsCount = await prisma.platformStat.count();
-    if (statsCount === 0) {
-      const now = new Date();
-      const statsToCreate = [];
-      
-      // Base counts that build up day by day
-      let usersAccum = 128300;
-      let projectsAccum = 15200;
-      let reviewsAccum = 3400;
-      let creditsDistAccum = 250000;
-      let creditsSpentAccum = 180000;
-
-      for (let i = 30; i >= 0; i--) {
-        const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-        const daySeed = d.getDate();
-        
-        // Random increases
-        usersAccum += Math.floor(Math.sin(daySeed) * 5) + 8;
-        projectsAccum += Math.floor(Math.cos(daySeed) * 12) + 20;
-        reviewsAccum += Math.floor(Math.sin(daySeed + 1) * 3) + 5;
-        creditsDistAccum += Math.floor(Math.sin(daySeed) * 200) + 500;
-        creditsSpentAccum += Math.floor(Math.cos(daySeed) * 180) + 450;
-
-        statsToCreate.push({
-          date: getISODateStr(d),
-          totalUsers: usersAccum,
-          activeUsers24h: 12000 + Math.floor(Math.sin(daySeed) * 1500) + 800,
-          totalProjects: projectsAccum,
-          totalReviews: reviewsAccum,
-          creditsDistributed: creditsDistAccum,
-          creditsSpent: creditsSpentAccum,
-          updatedAt: d,
-        });
-      }
-
-      await prisma.platformStat.createMany({
-        data: statsToCreate,
-      });
-    }
+    // 3. Platform Stats — no synthetic seed data, starts at 0
 
     // 4. Seed Feature Flags if empty
     const flagCount = await prisma.featureFlag.count();
@@ -150,6 +111,7 @@ async function seedInitialData() {
 
 export async function GET(_req: NextRequest) {
   try {
+    const now = new Date();
     // 1. Ensure initial stats are seeded
     await seedInitialData();
 
@@ -261,22 +223,16 @@ export async function GET(_req: NextRequest) {
     let displayBlacklisted = blacklistedCount;
     let displayAbnormal = abnormalCount;
 
-    // Fallback to platform_stats seed data when real collections are empty (fresh deployment)
+    // When DB is empty, return zero-based real metrics instead of synthetic fallback
     if (!realUserCount && !realProjectCount) {
-      const latestStat = await prisma.platformStat.findFirst({
-        orderBy: { date: "desc" },
-      });
-      if (latestStat) {
-        const ps = latestStat as any;
-        displayTotalUsers = ps.totalUsers ?? 0;
-        displayTotalRevenue = ps.creditsSpent ? Math.round(ps.creditsSpent * 0.02 * 100) / 100 : 0;
-        displayAIUsage = ps.creditsSpent ?? 0;
-        displayActiveNow = ps.activeUsers24h ?? 0;
-        displayPremium = Math.round((ps.totalUsers ?? 0) * 0.12);
-        displayFreeTier = Math.max(0, (ps.totalUsers ?? 0) - displayPremium);
-        displayBlacklisted = Math.round((ps.totalUsers ?? 0) * 0.003);
-        displayAbnormal = Math.round((ps.totalUsers ?? 0) * 0.007);
-      }
+      displayTotalUsers = 0;
+      displayTotalRevenue = 0;
+      displayAIUsage = 0;
+      displayActiveNow = 0;
+      displayPremium = 0;
+      displayFreeTier = 0;
+      displayBlacklisted = 0;
+      displayAbnormal = 0;
     }
 
     // Support Tickets stats
@@ -367,28 +323,7 @@ export async function GET(_req: NextRequest) {
       });
     });
 
-    // Fallbacks to guarantee a fully populated feed
-    let now = new Date();
-    if (feedItems.length < 4) {
-      feedItems.push(
-        {
-          id: "feed-fb-1",
-          type: "description",
-          icon: "description",
-          message: "user_882 rendered a complex TikZ document (14 pages).",
-          time: new Date(now.getTime() - 2 * 60 * 1000),
-          subtext: "LaTeX Core 3.1",
-        },
-        {
-          id: "feed-fb-2",
-          type: "person_add",
-          icon: "person_add",
-          message: "Premium Upgrade: user_441 switched to Academic Pro Plan.",
-          time: new Date(now.getTime() - 12 * 60 * 1000),
-          subtext: "Transaction ID: #9942",
-        }
-      );
-    }
+    // No fallback dummy data — return real feed items or empty
 
     // Sort feed by time descending
     feedItems.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
@@ -439,7 +374,7 @@ export async function GET(_req: NextRequest) {
     }));
 
     // 7. Traffic Density (last 12 hours) - Optimized to query in memory (4 queries instead of 48)
-    const trafficDensity: number[] = [];
+    let trafficDensity: number[] = [];
     const oneHour = 60 * 60 * 1000;
     const twelveHoursAgo = new Date(now.getTime() - 12 * oneHour);
     
@@ -474,9 +409,7 @@ export async function GET(_req: NextRequest) {
 
     const totalTraffic = trafficDensity.reduce((a, b) => a + b, 0);
     if (totalTraffic === 0) {
-      const baseline = [15, 2, 2, 0, 5, 1, 0, 3, 8, 4, 1, 0];
-      trafficDensity.length = 0;
-      trafficDensity.push(...baseline);
+      trafficDensity = Array(12).fill(0);
     }
 
     // 8. Admin persisted checklist tasks
@@ -591,7 +524,6 @@ export async function GET(_req: NextRequest) {
     const aiUsageTrend = await calculateWeeklyTrend("aiUsageLog");
     
     const activeNowTrend = [];
-    now = new Date();
     for (let i = 3; i >= 0; i--) {
       const windowEnd = new Date(now.getTime() - i * 60 * 60 * 1000);
       const windowStart = new Date(now.getTime() - (i + 1) * 60 * 60 * 1000);

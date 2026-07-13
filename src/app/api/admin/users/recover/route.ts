@@ -15,6 +15,11 @@ export async function POST(req: NextRequest) {
     }
 
     const admPb = await pbAdmin();
+    // Ensure PB users collection has all required fields before creating
+    try {
+      const { ensurePbUserCollectionFields } = await import('@/lib/pb-sync');
+      await ensurePbUserCollectionFields();
+    } catch {}
     const existing = await admPb.collection("users").getFullList({
       filter: `email = "${email}"`,
       requestKey: `recover_check_${email}`,

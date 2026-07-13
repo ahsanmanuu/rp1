@@ -478,7 +478,7 @@ function SubscriptionEditDialog({ user, onConfirm, onCancel, loading }: Subscrip
           </button>
           <button onClick={handleSave} disabled={loading}
             className="flex-1 py-2 rounded-lg text-sm font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
-            style={{ backgroundColor: 'var(--color-admin-primary-container)', color: '#fff' }}>
+            style={{ backgroundColor: 'var(--color-admin-primary)', color: 'var(--color-admin-on-primary)' }}>
             {loading
               ? <><div className="w-3.5 h-3.5 rounded-full border border-current border-t-transparent animate-spin shrink-0"></div> Saving...</>
               : <><span className="material-symbols-outlined text-[16px]">save</span> Save Changes</>

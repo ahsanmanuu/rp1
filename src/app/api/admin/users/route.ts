@@ -223,12 +223,19 @@ export async function PUT(req: NextRequest) {
     // MODE 1: Subscription Update
     if ("membership" in body) {
       const { membership, membershipExpiresAt } = body;
-      const finalExpiry = membership === "free" ? null : (membershipExpiresAt ? new Date(membershipExpiresAt) : null);
-      
+      let finalExpiry: Date | null = null;
+      if (membership !== "free" && membershipExpiresAt) {
+        const parsed = new Date(membershipExpiresAt);
+        if (isNaN(parsed.getTime())) {
+          return NextResponse.json({ error: "Invalid expiration date" }, { status: 400 });
+        }
+        finalExpiry = parsed;
+      }
+
       const prevPlan = existingUser.membership;
       const newPlan = membership || "free";
 
-      let txPromise = null;
+      let txPromise: any = null;
       if (newPlan !== "free" && prevPlan !== newPlan) {
         let duration = 1;
         if (newPlan.includes("3m")) duration = 3;
@@ -258,9 +265,17 @@ export async function PUT(req: NextRequest) {
         select: { id: true, membership: true, membershipExpiresAt: true }
       });
 
-      const updated = txPromise 
+      const updated = txPromise
         ? await prisma.$transaction([txPromise, updatePromise]).then((res: any[]) => res[1])
         : await updatePromise;
+
+      // Sync subscription change to PocketBase
+      try {
+        const { syncSubscriptionToPb } = await import('@/lib/pb-sync');
+        await syncSubscriptionToPb(id, newPlan, finalExpiry);
+      } catch {
+        // Non-fatal: PB sync failure should not block the response
+      }
 
       return NextResponse.json({ success: true, user: updated, mode: "subscription" });
     }
