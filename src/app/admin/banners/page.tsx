@@ -7,6 +7,11 @@ import { usePathname } from 'next/navigation';
 import { createPb } from '@/lib/pb';
 import ProLoader from '@/components/ProLoader';
 
+const TOOL_TITLES = [
+  'Latexify Dashboard', 'Doc2LaTeX Studio', 'Diagram Studio',
+  'Template Migrator', 'Citation Studio', 'AI Peer Reviewer',
+];
+
 const SIDEBAR_LINKS = [
   { href: '/admin/dashboard', icon: 'dashboard', label: 'Dashboard' },
   { href: '/admin/billings', icon: 'payments', label: 'Bill & Payments' },
@@ -36,6 +41,7 @@ export default function AdminBannersPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ title: '', subtitle: '', imageUrl: '', linkUrl: '', isActive: true, sortOrder: 0 });
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const pathname = usePathname();
 
@@ -104,6 +110,25 @@ export default function AdminBannersPage() {
     setEditing(banner);
     setForm({ title: banner.title, subtitle: banner.subtitle || '', imageUrl: banner.imageUrl, linkUrl: banner.linkUrl || '', isActive: banner.isActive, sortOrder: banner.sortOrder });
     setShowForm(true);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('collection', 'banners');
+      const res = await fetch('/api/admin/upload-pb', { method: 'POST', body: fd });
+      const d = await res.json();
+      if (d.success) {
+        setForm(prev => ({ ...prev, imageUrl: d.url }));
+      }
+    } catch (err) {
+      console.error('Image upload failed:', err);
+    }
+    setUploadingImage(false);
   };
 
   const toggleTheme = () => setIsThemeMenuOpen(!isThemeMenuOpen);
@@ -310,13 +335,49 @@ export default function AdminBannersPage() {
               <button onClick={() => setShowForm(false)} className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/5"><span className="material-symbols-outlined">close</span></button>
             </div>
             <div className="space-y-3">
-              {['title', 'subtitle', 'imageUrl', 'linkUrl'].map(field => (
-                <div key={field}>
-                  <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: surfaceVariant }}>{field}</label>
-                  <input type="text" value={(form as any)[field]} onChange={e => setForm({ ...form, [field]: e.target.value })}
-                    className="w-full mt-1 px-3 py-2 rounded-lg border text-sm" style={{ backgroundColor: bgColor, borderColor, color: onSurfaceColor }} />
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: surfaceVariant }}>title</label>
+                <input type="text" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 rounded-lg border text-sm" style={{ backgroundColor: bgColor, borderColor, color: onSurfaceColor }} placeholder="e.g. Latexify Dashboard" />
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {TOOL_TITLES.map(t => (
+                    <button key={t} type="button" onClick={() => setForm({ ...form, title: t })}
+                      className={`text-[9px] font-bold px-2 py-0.5 rounded-full border transition-all cursor-pointer ${form.title === t ? 'text-white' : ''}`}
+                      style={{ borderColor, backgroundColor: form.title === t ? accentColor : 'transparent', color: form.title === t ? '#fff' : surfaceVariant }}>
+                      {t}
+                    </button>
+                  ))}
                 </div>
-              ))}
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: surfaceVariant }}>subtitle</label>
+                <input type="text" value={form.subtitle} onChange={e => setForm({ ...form, subtitle: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 rounded-lg border text-sm" style={{ backgroundColor: bgColor, borderColor, color: onSurfaceColor }} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: surfaceVariant }}>image</label>
+                <div className="flex gap-2 mt-1">
+                  <input type="text" value={form.imageUrl} onChange={e => setForm({ ...form, imageUrl: e.target.value })}
+                    className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ backgroundColor: bgColor, borderColor, color: onSurfaceColor }} placeholder="Paste image URL or upload below" />
+                  <label className={`px-3 py-2 rounded-lg text-sm font-bold text-white cursor-pointer transition-all hover:brightness-110 flex items-center gap-1 ${uploadingImage ? 'opacity-60' : ''}`}
+                    style={{ backgroundColor: accentColor }}>
+                    <span className="material-symbols-outlined text-[16px]">{uploadingImage ? 'hourglass_top' : 'upload'}</span>
+                    {uploadingImage ? 'Uploading...' : 'Upload'}
+                    <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" disabled={uploadingImage} />
+                  </label>
+                </div>
+                {form.imageUrl && (
+                  <div className="mt-2 w-full h-20 rounded-lg overflow-hidden border" style={{ borderColor }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={form.imageUrl} alt="preview" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: surfaceVariant }}>linkUrl</label>
+                <input type="text" value={form.linkUrl} onChange={e => setForm({ ...form, linkUrl: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 rounded-lg border text-sm" style={{ backgroundColor: bgColor, borderColor, color: onSurfaceColor }} placeholder="/latex-studio" />
+              </div>
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: surfaceVariant }}>sortOrder</label>
                 <input type="number" value={form.sortOrder} onChange={e => setForm({ ...form, sortOrder: parseInt(e.target.value) || 0 })}

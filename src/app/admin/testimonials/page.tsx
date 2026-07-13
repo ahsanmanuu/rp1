@@ -48,6 +48,7 @@ export default function AdminTestimonialsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ name: '', role: '', avatarUrl: '', content: '', rating: 5, isActive: true, sortOrder: 0 });
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const pathname = usePathname();
 
@@ -116,6 +117,25 @@ export default function AdminTestimonialsPage() {
     setEditing(t);
     setForm({ name: t.name, role: t.role || '', avatarUrl: t.avatarUrl || '', content: t.content, rating: t.rating, isActive: t.isActive, sortOrder: t.sortOrder });
     setShowForm(true);
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingAvatar(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('collection', 'testimonials');
+      const res = await fetch('/api/admin/upload-pb', { method: 'POST', body: fd });
+      const d = await res.json();
+      if (d.success) {
+        setForm(prev => ({ ...prev, avatarUrl: d.url }));
+      }
+    } catch (err) {
+      console.error('Avatar upload failed:', err);
+    }
+    setUploadingAvatar(false);
   };
 
   const toggleTheme = () => setIsThemeMenuOpen(!isThemeMenuOpen);
@@ -323,13 +343,35 @@ export default function AdminTestimonialsPage() {
               <button onClick={() => setShowForm(false)} className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/5"><span className="material-symbols-outlined">close</span></button>
             </div>
             <div className="space-y-3">
-              {['name', 'role', 'avatarUrl'].map(field => (
-                <div key={field}>
-                  <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: surfaceVariant }}>{field}</label>
-                  <input type="text" value={(form as any)[field]} onChange={e => setForm({ ...form, [field]: e.target.value })}
-                    className="w-full mt-1 px-3 py-2 rounded-lg border text-sm" style={{ backgroundColor: bgColor, borderColor, color: onSurfaceColor }} />
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: surfaceVariant }}>name</label>
+                <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 rounded-lg border text-sm" style={{ backgroundColor: bgColor, borderColor, color: onSurfaceColor }} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: surfaceVariant }}>role</label>
+                <input type="text" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 rounded-lg border text-sm" style={{ backgroundColor: bgColor, borderColor, color: onSurfaceColor }} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: surfaceVariant }}>avatar</label>
+                <div className="flex gap-2 mt-1">
+                  <input type="text" value={form.avatarUrl} onChange={e => setForm({ ...form, avatarUrl: e.target.value })}
+                    className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ backgroundColor: bgColor, borderColor, color: onSurfaceColor }} placeholder="Paste avatar URL or upload below" />
+                  <label className={`px-3 py-2 rounded-lg text-sm font-bold text-white cursor-pointer transition-all hover:brightness-110 flex items-center gap-1 ${uploadingAvatar ? 'opacity-60' : ''}`}
+                    style={{ backgroundColor: accentColor }}>
+                    <span className="material-symbols-outlined text-[16px]">{uploadingAvatar ? 'hourglass_top' : 'upload'}</span>
+                    {uploadingAvatar ? 'Uploading...' : 'Upload'}
+                    <input type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" disabled={uploadingAvatar} />
+                  </label>
                 </div>
-              ))}
+                {form.avatarUrl && (
+                  <div className="mt-2 w-16 h-16 rounded-full overflow-hidden border" style={{ borderColor }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={form.avatarUrl} alt="avatar preview" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  </div>
+                )}
+              </div>
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: surfaceVariant }}>content</label>
                 <textarea value={form.content} onChange={e => setForm({ ...form, content: e.target.value })}
