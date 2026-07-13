@@ -191,7 +191,7 @@ export default function Home() {
 
   // Auto-rotate testimonials
   useEffect(() => {
-    const len = testimonials.length > 0 ? testimonials.length : TESTIMONIALS.length;
+    const len = testimonials.length || 1;
     const t = setInterval(() => setActiveTestimonial(p => (p + 1) % len), 5000);
     return () => clearInterval(t);
   }, [testimonials.length]);
@@ -260,8 +260,8 @@ export default function Home() {
     };
   }, []);
 
-  // Auto-rotate banners (uses fallback if PB has none)
-  const effectiveBannerCount = banners.length > 0 ? banners.length : DEFAULT_BANNERS.length;
+  // Auto-rotate banners from PB real-time data
+  const effectiveBannerCount = banners.length;
   useEffect(() => {
     if (effectiveBannerCount <= 1) return;
     const timer = setInterval(() => setBannerIndex(i => (i + 1) % effectiveBannerCount), 5000);
@@ -292,11 +292,11 @@ export default function Home() {
 
         <div className="max-w-[1440px] mx-auto px-6 md:px-12 lg:px-16 w-full py-12 md:py-16 lg:py-20">
 
-          {/* Banner Carousel — uses PB banners if available, otherwise falls back to hardcoded defaults */}
-          {(banners.length > 0 ? banners : DEFAULT_BANNERS).length > 0 && (
+          {/* Banner Carousel — loaded from PB with real-time sync */}
+          {banners.length > 0 && (
             <div className="relative w-full overflow-hidden rounded-2xl mb-8">
               <div className="flex transition-transform duration-500" style={{ transform: `translateX(-${bannerIndex * 100}%)` }}>
-                {(banners.length > 0 ? banners : DEFAULT_BANNERS).map((banner, idx) => (
+                {banners.map((banner, idx) => (
                   <div key={banner.id || `fb-${idx}`} className="w-full flex-shrink-0 relative">
                     {banner.linkUrl ? (
                       <a href={banner.linkUrl} target="_blank" rel="noopener noreferrer">
@@ -313,9 +313,9 @@ export default function Home() {
                   </div>
                 ))}
               </div>
-              {(banners.length > 0 ? banners : DEFAULT_BANNERS).length > 1 && (
+              {banners.length > 1 && (
                 <div className="absolute bottom-4 right-4 flex gap-2">
-                  {(banners.length > 0 ? banners : DEFAULT_BANNERS).map((_, i) => (
+                  {banners.map((_, i) => (
                     <button key={i} onClick={() => setBannerIndex(i)} className={`w-2.5 h-2.5 rounded-full transition-all ${i === bannerIndex ? 'bg-white w-6' : 'bg-white/50'}`} />
                   ))}
                 </div>
@@ -642,7 +642,7 @@ export default function Home() {
           </div>
 
           {/* Testimonials grid */}
-          {testimonials.length > 0 ? (
+          {testimonials.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {testimonials.map((t, i) => (
                 <div key={t.id} className="testimonial-card p-8 rounded-3xl"
@@ -678,41 +678,11 @@ export default function Home() {
                 </div>
               ))}
             </div>
-          ) : (
-            /* Fallback to hardcoded testimonials */
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {TESTIMONIALS.map((t, i) => (
-                <div key={i} className="testimonial-card p-8 rounded-3xl"
-                  style={{
-                    background: i === activeTestimonial ? 'linear-gradient(135deg, color-mix(in srgb, var(--accent-primary) 6%, transparent), color-mix(in srgb, var(--accent-secondary) 6%, transparent))' : 'var(--bg-primary)',
-                    border: i === activeTestimonial ? '1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent)' : '1px solid var(--border)',
-                    transition: 'all 0.5s cubic-bezier(0.16,1,0.3,1)'
-                  }}>
-                  {/* Stars */}
-                  <div className="flex gap-1 mb-5">
-                    {[...Array(5)].map((_, j) => <Star key={j} size={15} fill="#f59e0b" color="#f59e0b" />)}
-                  </div>
-                  <p className="text-base leading-relaxed mb-6 italic" style={{ color: 'var(--text-primary)', opacity: 0.85 }}>
-                    "{t.quote}"
-                  </p>
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-black text-white"
-                      style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))' }}>
-                      {t.name[0]}
-                    </div>
-                    <div>
-                      <div className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>{t.name}</div>
-                      <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t.role}</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
           )}
 
           {/* Dots */}
           <div className="flex justify-center gap-2 mt-8">
-            {(testimonials.length > 0 ? testimonials : TESTIMONIALS).map((_, i) => (
+            {testimonials.map((_, i) => (
               <button key={i} onClick={() => setActiveTestimonial(i)}
                 className="rounded-full transition-all duration-300"
                 style={{
@@ -927,15 +897,6 @@ export default function Home() {
   );
 }
 
-/* ─── DATA ─────────────────────────────────────────────────── */
-const DEFAULT_BANNERS = [
-  { id: 'fallback-1', title: 'Welcome to Latexify', subtitle: 'The modern, intelligent platform for the entire research writing lifecycle.', imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAfrx0rEK6VFLoe2g-XBz3W3v-F9ySny3wIO0GvOU4er61lUuTBVHvwYLUuqIs0AJoAKS007oi-Eol9Htta-GTRBF4xxAzzuqQgAhgqDtjr8p6Z7Q6hg2CSB3wQNqCGWWMQXkcp8v6Lso_Le622A3nyeH7Lev3cMioXKpnxZKCMHLPVS0ExSKUiPxYmzKIWcN6Coo758Jx_tmEY5RDPLzN1a48mBPKfpqaAgI6i5xGtO4pQLyEzyTTvYn2VnmuYr49zlqcD5RuJ2VLq', linkUrl: '/latex-studio' },
-  { id: 'fallback-2', title: 'AI Peer Reviewer', subtitle: 'Get instant, scholarly feedback on clarity, argumentation, and methodology.', imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAfrx0rEK6VFLoe2g-XBz3W3v-F9ySny3wIO0GvOU4er61lUuTBVHvwYLUuqIs0AJoAKS007oi-Eol9Htta-GTRBF4xxAzzuqQgAhgqDtjr8p6Z7Q6hg2CSB3wQNqCGWWMQXkcp8v6Lso_Le622A3nyeH7Lev3cMioXKpnxZKCMHLPVS0ExSKUiPxYmzKIWcN6Coo758Jx_tmEY5RDPLzN1a48mBPKfpqaAgI6i5xGtO4pQLyEzyTTvYn2VnmuYr49zlqcD5RuJ2VLq', linkUrl: '/reviewer' },
-  { id: 'fallback-3', title: 'Create TikZ Diagrams visually', subtitle: 'Create beautiful TikZ diagrams with an intuitive visual canvas.', imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCOfpdp7avfxHVymJ06UtjZny3PXYwWBlHy4rpi8PV7-YGXFfygei_YZV65NdCKAQfE4DuhwJVAdCrE4-JoRKmljz10dSgkNXgv5F3blSGIPbm-6vQRe0_OrtZzV49Mxi7nwF-XXZzkzf8YjZrLYr2o4KLZflRtfrY3WY0NNTblCY-q7F0rLGOfjwoHMxC6LNP6KqqBj_jnRgs7NOX4Me-ldmMJtt38-V4YCjxpmuUxTRgfP3TncR6coVeklb0q5ABJYPH4zCIbqmoe', linkUrl: '/diagrams' },
-  { id: 'fallback-4', title: 'Doc2LaTeX Studio', subtitle: 'Instantly convert Word documents into clean, well-structured LaTeX code.', imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDFtYyOpkpxGhljL4YEO1ZBLJZMbOn9gPHP8fXetmJnFR08eYC253o5M68i_jcmYGp_5iIjQ-JcBvvPO2alyZtkmAQ9nUYWjTd93LI_3N2A-FX8hLaCsZj-SLMSfhLToozbAF84ghM2FjYb4cnBUrA3DL-8YbTm4JPkf2ykIRWS461AjyRuzsmLCfQRunK5eOGjPJt5kFsqPzc3IF5aWizqmst_t4ttOirs6mspuA6M1RDIUXBrfirHyzXDyIaZJ5vtvRC3UkZz_A_o', linkUrl: '/upload' },
-  { id: 'fallback-5', title: 'Template Migrator', subtitle: 'Switch journals effortlessly — one click updates styling, margins, and bibliography.', imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAvQz491UjMaxItAqkAnkLEZDgbYQ9z3q4zdYq38xoFSNUtLSnoZEOYC584Bvw7070Yl5ia_mk8-wXycVUgmpjy6ZlOR6rh7vzwgjoolh01S0287jDHSpx6jQRhXuoo6B5SD7y4-MHAERQDO1wARSXJLiGs6dkIMw3gnQHs8Jlvr5c888M_d6SJ3VZIJVy69OKgQ2F7064lqQ1EtLt8PJIq-QQNF-enp8jKqJpjS1A9yNc61ktBXG8LfIZV7x6MET473uxu1fQKjpDl', linkUrl: '/template-migrator' },
-  { id: 'fallback-6', title: 'AI Citation Studio', subtitle: 'Manage your bibliography seamlessly with DOI auto-fetch, tags, and BibTeX export.', imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDXqWg4r7vKDSzOnA0vncm3Wcm8hiUnA9ngYcljj07eIpRK1_hbIL48t5ZMclJE_UHSwtLaKqtgC2X-457idjJlXGAtQnmbg9Kb0q5B4XzhowAyZXfRN4mFH_7aHmOOky0uti0CXVHCteoBw8TiLZVjkqa-acr8ayfGU3zI-lFqdMZaib4Gc5ZzR7Pad7NVXJpW8hokDNJvZYX30qVrX5sR6Uc9OE8nJHJOHkRH-9uIoq6HLMBZxEmozks34yZZRKMtb_IkwqULnDop', linkUrl: '/citations' },
-];
 const GALLERY_ITEMS = [
   { title: "Latexify Dashboard", image: "https://lh3.googleusercontent.com/aida-public/AB6AXuAfrx0rEK6VFLoe2g-XBz3W3v-F9ySny3wIO0GvOU4er61lUuTBVHvwYLUuqIs0AJoAKS007oi-Eol9Htta-GTRBF4xxAzzuqQgAhgqDtjr8p6Z7Q6hg2CSB3wQNqCGWWMQXkcp8v6Lso_Le622A3nyeH7Lev3cMioXKpnxZKCMHLPVS0ExSKUiPxYmzKIWcN6Coo758Jx_tmEY5RDPLzN1a48mBPKfpqaAgI6i5xGtO4pQLyEzyTTvYn2VnmuYr49zlqcD5RuJ2VLq", icon: FileEdit },
   { title: "Doc2Latex Dashboard", image: "https://lh3.googleusercontent.com/aida-public/AB6AXuDFtYyOpkpxGhljL4YEO1ZBLJZMbOn9gPHP8fXetmJnFR08eYC253o5M68i_jcmYGp_5iIjQ-JcBvvPO2alyZtkmAQ9nUYWjTd93LI_3N2A-FX8hLaCsZj-SLMSfhLToozbAF84ghM2FjYb4cnBUrA3DL-8YbTm4JPkf2ykIRWS461AjyRuzsmLCfQRunK5eOGjPJt5kFsqPzc3IF5aWizqmst_t4ttOirs6mspuA6M1RDIUXBrfirHyzXDyIaZJ5vtvRC3UkZz_A_o", icon: Wand2 },
@@ -967,12 +928,6 @@ const BENEFITS = [
   { title: "Enterprise-Grade Security", desc: "AES-256 encrypted storage with isolated project namespaces. Your research stays private.", icon: Shield, color: '#0891b2' },
   { title: "Works Everywhere", desc: "Browser-based IDE works on any device. Start on your laptop, continue on your tablet.", icon: Globe, color: '#6b38d4' },
   { title: "Real-time Collaboration", desc: "Invite co-authors, share links, and review changes together in real time.", icon: Users, color: 'var(--accent-primary)' },
-];
-
-const TESTIMONIALS = [
-  { name: "Dr. Elena Rostova", role: "Postdoctoral Fellow, MIT", quote: "Latexify's template migrator saved me weeks of reformatting when my paper was transferred between journals. The UI is incredibly clean." },
-  { name: "James Chen", role: "PhD Candidate, Stanford University", quote: "The AI Peer Reviewer caught several logical gaps in my methodology section before submission. An absolute game-changer for solo researchers." },
-  { name: "Prof. Sarah Jenkins", role: "Principal Investigator, University of Oxford", quote: "I've moved my entire lab to Latexify. Collaborative writing is finally seamless, and the Doc2Latex feature means my undergrads can contribute easily." },
 ];
 
 const PRODUCT_DETAILS: Record<string, { title: string; desc: string; icon: any; color: string; features: string[]; href: string }> = {

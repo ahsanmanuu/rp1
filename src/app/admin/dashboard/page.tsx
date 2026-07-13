@@ -6,6 +6,7 @@ import { useAdminRealtime } from "@/hooks/useAdminRealtime";
 import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
+import { createPb } from "@/lib/pb";
 
 type Theme = "indigo" | "emerald" | "rose" | "violet" | "amber" | "cyan";
 
@@ -126,6 +127,10 @@ export default function AdminDashboardPage() {
     ticketsInProgress: 0,
     ticketsResolved: 0,
     ticketsArchived: 0,
+    totalBanners: 0,
+    totalTestimonials: 0,
+    activeBanners: 0,
+    activeTestimonials: 0,
     trends: {
       totalUsers: [],
       totalRevenue: [],
@@ -206,6 +211,10 @@ export default function AdminDashboardPage() {
       ticketsInProgress: "hover:shadow-[0_8px_30px_rgba(245,158,11,0.15)] cursor-pointer active:scale-95",
       ticketsResolved: "hover:shadow-[0_8px_30px_rgba(16,185,129,0.15)] cursor-pointer active:scale-95",
       ticketsArchived: "hover:shadow-[0_8px_30px_rgba(148,163,184,0.15)] cursor-pointer active:scale-95",
+      totalBanners: "hover:shadow-[0_8px_30px_rgba(79,70,229,0.2)]",
+      totalTestimonials: "hover:shadow-[0_8px_30px_rgba(217,119,6,0.2)]",
+      activeBanners: "hover:shadow-[0_8px_30px_rgba(16,185,129,0.2)]",
+      activeTestimonials: "hover:shadow-[0_8px_30px_rgba(5,150,105,0.2)]",
     };
     return base + (glowColors[type] || "hover:shadow-lg");
   };
@@ -289,6 +298,30 @@ export default function AdminDashboardPage() {
         bgLight: "linear-gradient(135deg, rgba(148, 163, 184, 0.03) 0%, rgba(71, 85, 105, 0.01) 100%)",
         borderDark: "rgba(148, 163, 184, 0.25)",
         borderLight: "rgba(148, 163, 184, 0.15)"
+      },
+      totalBanners: {
+        bgDark: "linear-gradient(135deg, rgba(79, 70, 229, 0.08) 0%, rgba(67, 56, 202, 0.03) 100%)",
+        bgLight: "linear-gradient(135deg, rgba(79, 70, 229, 0.03) 0%, rgba(67, 56, 202, 0.01) 100%)",
+        borderDark: "rgba(79, 70, 229, 0.25)",
+        borderLight: "rgba(79, 70, 229, 0.15)"
+      },
+      totalTestimonials: {
+        bgDark: "linear-gradient(135deg, rgba(217, 119, 6, 0.08) 0%, rgba(180, 83, 9, 0.03) 100%)",
+        bgLight: "linear-gradient(135deg, rgba(217, 119, 6, 0.03) 0%, rgba(180, 83, 9, 0.01) 100%)",
+        borderDark: "rgba(217, 119, 6, 0.25)",
+        borderLight: "rgba(217, 119, 6, 0.15)"
+      },
+      activeBanners: {
+        bgDark: "linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.03) 100%)",
+        bgLight: "linear-gradient(135deg, rgba(16, 185, 129, 0.03) 0%, rgba(5, 150, 105, 0.01) 100%)",
+        borderDark: "rgba(16, 185, 129, 0.25)",
+        borderLight: "rgba(16, 185, 129, 0.15)"
+      },
+      activeTestimonials: {
+        bgDark: "linear-gradient(135deg, rgba(5, 150, 105, 0.08) 0%, rgba(4, 120, 87, 0.03) 100%)",
+        bgLight: "linear-gradient(135deg, rgba(5, 150, 105, 0.03) 0%, rgba(4, 120, 87, 0.01) 100%)",
+        borderDark: "rgba(5, 150, 105, 0.25)",
+        borderLight: "rgba(5, 150, 105, 0.15)"
       }
     };
     const colors = bgMap[type];
@@ -607,11 +640,43 @@ export default function AdminDashboardPage() {
     fetchTicketNotifications();
   }, []);
   useAdminRealtime({
-    triggerCollections: ['users', 'projects', 'support_tickets', 'ai_usage_logs', 'admin_tasks', 'announcements', 'ai_usage_daily_summaries', 'user_sessions'],
+    triggerCollections: ['users', 'projects', 'support_tickets', 'ai_usage_logs', 'admin_tasks', 'announcements', 'ai_usage_daily_summaries', 'user_sessions', 'banners', 'testimonials'],
     onRefresh: refreshAll,
     pollIntervalMs: 10000,
     onPoll: refreshAll,
   });
+
+  // Real-time social media stats from PB
+  const fetchSocialMediaStats = useCallback(async () => {
+    try {
+      const pb = createPb();
+      const [bannerRecs, testimonialRecs] = await Promise.all([
+        pb.collection('banners').getFullList(),
+        pb.collection('testimonials').getFullList(),
+      ]);
+      setMetrics(prev => ({
+        ...prev,
+        totalBanners: bannerRecs.length,
+        totalTestimonials: testimonialRecs.length,
+        activeBanners: bannerRecs.filter((b: any) => b.isActive).length,
+        activeTestimonials: testimonialRecs.filter((t: any) => t.isActive).length,
+      }));
+    } catch (err) {
+      console.warn('Failed to fetch social media stats from PB:', err);
+    }
+  }, []);
+
+  useEffect(() => { fetchSocialMediaStats(); }, [fetchSocialMediaStats]);
+
+  useEffect(() => {
+    const pb = createPb();
+    const unsubFns: (() => void)[] = [];
+    (async () => {
+      try { const u = await pb.collection('banners').subscribe('*', () => { fetchSocialMediaStats(); }); unsubFns.push(u); } catch {}
+      try { const u = await pb.collection('testimonials').subscribe('*', () => { fetchSocialMediaStats(); }); unsubFns.push(u); } catch {}
+    })();
+    return () => { for (const fn of unsubFns) { try { fn(); } catch {} } };
+  }, [fetchSocialMediaStats]);
 
   // Save theme selection changes
   useEffect(() => {
@@ -996,13 +1061,9 @@ export default function AdminDashboardPage() {
             style={{ color: 'var(--color-admin-on-surface-variant)' }}>
             <span className="material-symbols-outlined">mail</span>Email History
           </Link>
-          <Link href="/admin/banners" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-all rounded-lg"
+          <Link href="/admin/social-media" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-all rounded-lg"
             style={{ color: 'var(--color-admin-on-surface-variant)' }}>
-            <span className="material-symbols-outlined">view_carousel</span>Banners
-          </Link>
-          <Link href="/admin/testimonials" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-all rounded-lg"
-            style={{ color: 'var(--color-admin-on-surface-variant)' }}>
-            <span className="material-symbols-outlined">star</span>Testimonials
+            <span className="material-symbols-outlined">share</span>Social Media
           </Link>
           <Link href="/admin/tax-calculation" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-all rounded-lg"
             style={{ color: 'var(--color-admin-on-surface-variant)' }}>
@@ -1429,6 +1490,38 @@ export default function AdminDashboardPage() {
               <div className="flex items-center gap-1">
                 <span className="material-symbols-outlined text-lg" style={{ color: "var(--color-admin-outline)" }}>archive</span>
               </div>
+            </div>
+          </div>
+          {/* Card 13: Total Banners */}
+          <div className={getCardClassName("totalBanners")} style={getCardStyle("totalBanners")}>
+            <p className="text-xs mb-1 font-bold opacity-80">Total Banners</p>
+            <div className="flex items-end justify-between gap-2">
+              {renderMetricValue(metrics.totalBanners.toLocaleString(), "--color-admin-primary")}
+              <span className="material-symbols-outlined text-lg" style={{ color: "var(--color-admin-primary)" }}>view_carousel</span>
+            </div>
+          </div>
+          {/* Card 14: Active Banners */}
+          <div className={getCardClassName("activeBanners")} style={getCardStyle("activeBanners")}>
+            <p className="text-xs mb-1 font-bold opacity-80">Active Banners</p>
+            <div className="flex items-end justify-between gap-2">
+              {renderMetricValue(metrics.activeBanners.toLocaleString(), "--color-admin-secondary")}
+              <span className="material-symbols-outlined text-lg" style={{ color: "var(--color-admin-secondary)" }}>toggle_on</span>
+            </div>
+          </div>
+          {/* Card 15: Total Testimonials */}
+          <div className={getCardClassName("totalTestimonials")} style={getCardStyle("totalTestimonials")}>
+            <p className="text-xs mb-1 font-bold opacity-80">Total Testimonials</p>
+            <div className="flex items-end justify-between gap-2">
+              {renderMetricValue(metrics.totalTestimonials.toLocaleString(), "--color-admin-tertiary")}
+              <span className="material-symbols-outlined text-lg" style={{ color: "var(--color-admin-tertiary)" }}>star</span>
+            </div>
+          </div>
+          {/* Card 16: Active Testimonials */}
+          <div className={getCardClassName("activeTestimonials")} style={getCardStyle("activeTestimonials")}>
+            <p className="text-xs mb-1 font-bold opacity-80">Active Testimonials</p>
+            <div className="flex items-end justify-between gap-2">
+              {renderMetricValue(metrics.activeTestimonials.toLocaleString(), "--color-admin-primary")}
+              <span className="material-symbols-outlined text-lg" style={{ color: "var(--color-admin-primary)" }}>thumb_up</span>
             </div>
           </div>
         </div>
