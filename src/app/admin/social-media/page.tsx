@@ -28,7 +28,7 @@ const SIDEBAR_LINKS = [
   { href: '/admin/tax-calculation', icon: 'calculate', label: 'Tax Calculation' },
 ];
 
-type ContentTab = 'banners' | 'testimonials' | 'how_it_works' | 'gallery_items' | 'institution_logos' | 'features' | 'benefits' | 'product_details' | 'footer_links' | 'tasar_stats' | 'platform_stats' | 'settings';
+type ContentTab = 'banners' | 'testimonials' | 'how_it_works' | 'gallery_items' | 'institution_logos' | 'features' | 'benefits' | 'product_details' | 'footer_links' | 'tasar_stats' | 'platform_stats' | 'floating_banners' | 'settings';
 
 const COLLECTION_CONFIGS: Record<string, { label: string; icon: string; apiEndpoint: string; pbCollection: string }> = {
   how_it_works: { label: 'How It Works', icon: 'format_list_numbered', apiEndpoint: '/api/content/how_it_works', pbCollection: 'how_it_works' },
@@ -40,6 +40,7 @@ const COLLECTION_CONFIGS: Record<string, { label: string; icon: string; apiEndpo
   footer_links: { label: 'Footer Links', icon: 'link', apiEndpoint: '/api/content/footer_links', pbCollection: 'footer_links' },
   tasar_stats: { label: 'TASAR Stats', icon: 'bar_chart', apiEndpoint: '/api/content/tasar_stats', pbCollection: 'tasar_stats' },
   platform_stats: { label: 'Platform Stats', icon: 'analytics', apiEndpoint: '/api/content/platform_stats', pbCollection: 'platform_stats' },
+  floating_banners: { label: 'Floating Banners', icon: 'ads_click', apiEndpoint: '/api/content/floating_banners', pbCollection: 'floating_banners' },
 };
 
 const TASAR_CATEGORIES = ['tools', 'academic', 'statistical', 'analytics', 'research'];
@@ -350,6 +351,7 @@ export default function AdminSocialMediaPage() {
       case 'footer_links': return { groupTitle: '', label: '', href: '', linkKey: '', isTargetBlank: false, isActive: true, sortOrder: 0 };
       case 'tasar_stats': return { label: '', value: '', suffix: '', icon: '', color: '', category: 'tools', isActive: true, sortOrder: 0 };
       case 'platform_stats': return { key: '', label: '', value: '', suffix: '', decimals: 0, isActive: true };
+      case 'floating_banners': return { title: '', imageUrl: '', linkUrl: '', targetType: 'global', targetEmail: '', width: 4, height: 6, duration: 5, isActive: true, sortOrder: 0 };
       default: return {};
     }
   };
@@ -445,10 +447,11 @@ export default function AdminSocialMediaPage() {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      fd.append('collection', cfg.pbCollection);
+      fd.append('collection', 'uploads');
       const res = await fetch('/api/admin/upload-pb', { method: 'POST', body: fd });
       const d = await res.json();
       if (d.success) setGenericForm((prev: Record<string, any>) => ({ ...prev, [fieldName]: d.url }));
+      else console.error('Upload failed:', d.error);
     } catch (err) { console.error('Upload failed:', err); }
     setUploadingGeneric(false);
   };
@@ -743,6 +746,39 @@ export default function AdminSocialMediaPage() {
             </div>
           </div>
         );
+      case 'floating_banners':
+        return (
+          <div className="space-y-4">
+            <ModalField label="Title">{renderGenericField('title', 'text', 'e.g. Summer Sale')}</ModalField>
+            <ModalField label="Image">{renderGenericField('imageUrl', 'image', 'Upload banner image (recommended 300x450)')}</ModalField>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <ModalField label="Link URL (optional)">{renderGenericField('linkUrl', 'text', '/promo-page')}</ModalField>
+              <ModalField label="Target">
+                <div className="flex items-center gap-3 mt-1.5 p-2.5 rounded-xl border" style={{ backgroundColor: bgColor, borderColor }}>
+                  {['global', 'specific'].map(t => (
+                    <button key={t} type="button" onClick={() => setGenericForm((prev: any) => ({ ...prev, targetType: t, targetEmail: t === 'global' ? '' : prev.targetEmail }))}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${genericForm.targetType === t ? 'text-white' : ''}`}
+                      style={{ backgroundColor: genericForm.targetType === t ? accentColor : 'transparent', color: genericForm.targetType === t ? '#fff' : surfaceVariant }}>
+                      {t === 'global' ? 'Global' : 'Specific User'}
+                    </button>
+                  ))}
+                </div>
+              </ModalField>
+            </div>
+            {genericForm.targetType === 'specific' && (
+              <ModalField label="Target Email">{renderGenericField('targetEmail', 'text', 'user@example.com')}</ModalField>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <ModalField label="Width (inches)">{renderGenericField('width', 'number')}</ModalField>
+              <ModalField label="Height (inches)">{renderGenericField('height', 'number')}</ModalField>
+              <ModalField label="Duration (sec)">{renderGenericField('duration', 'number')}</ModalField>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <ModalField label="Sort Order">{renderGenericField('sortOrder', 'number')}</ModalField>
+              <ModalField label="Active">{renderGenericField('isActive', 'checkbox')}</ModalField>
+            </div>
+          </div>
+        );
       default:
         return null;
     }
@@ -917,33 +953,34 @@ export default function AdminSocialMediaPage() {
           </div>
         );
       case 'product_details':
+        const ICON_MAP: Record<string, string> = { FileEdit: 'edit_note', Wand2: 'auto_fix_high', PenTool: 'draw', Layout: 'grid_view', Library: 'library_books', Brain: 'psychology' };
         return (
           <div key={item.id} className="p-4 rounded-xl border transition-all hover:brightness-95 overflow-hidden" style={{ backgroundColor: cardBg, borderColor }}>
-            <div className="flex gap-3">
+            <div className="flex gap-4">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: (item.color || accentColor) + '20', color: item.color || accentColor }}>
-                <span className="material-symbols-outlined text-lg">{item.icon || 'inventory_2'}</span>
+                <span className="material-symbols-outlined text-lg">{ICON_MAP[item.icon] || item.icon || 'inventory_2'}</span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold truncate" style={{ color: onSurfaceColor }}>{item.title}</p>
-                {item.key && <p className="text-[10px] font-mono truncate" style={{ color: surfaceVariant }}>Key: {item.key}</p>}
-                {item.description && <p className="text-xs truncate mt-0.5" style={{ color: surfaceVariant }}>{item.description}</p>}
-                <div className="flex items-center gap-2 mt-1">
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${item.isActive ? 'text-green-600 bg-green-500/10' : 'text-red-600 bg-red-500/10'}`}>
+                <p className="text-base font-bold truncate" style={{ color: onSurfaceColor }}>{item.title}</p>
+                {item.key && <p className="text-[11px] font-mono truncate" style={{ color: surfaceVariant }}>Key: {item.key}</p>}
+                {item.description && <p className="text-xs mt-1 leading-relaxed" style={{ color: surfaceVariant }}>{item.description}</p>}
+                <div className="flex items-center gap-3 mt-2">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${item.isActive ? 'text-green-600 bg-green-500/10' : 'text-red-600 bg-red-500/10'}`}>
                     {item.isActive ? 'Active' : 'Inactive'}
                   </span>
                   <span className="text-[10px] font-bold" style={{ color: surfaceVariant }}>Sort: {item.sortOrder}</span>
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-2 mt-3 pt-3 border-t" style={{ borderColor }}>
-              <button onClick={() => toggleGenericActive(item)} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors" title="Toggle Active">
-                <span className="material-symbols-outlined text-[16px]" style={{ color: item.isActive ? '#22c55e' : surfaceVariant }}>{item.isActive ? 'toggle_on' : 'toggle_off'}</span>
+            <div className="flex items-center gap-3 mt-4 pt-3 border-t" style={{ borderColor }}>
+              <button onClick={() => toggleGenericActive(item)} className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors" title="Toggle Active">
+                <span className="material-symbols-outlined text-lg" style={{ color: item.isActive ? '#22c55e' : surfaceVariant }}>{item.isActive ? 'toggle_on' : 'toggle_off'}</span>
               </button>
-              <button onClick={() => openEditGeneric(tab, item)} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors" title="Edit">
-                <span className="material-symbols-outlined text-[16px]" style={{ color: surfaceVariant }}>edit</span>
+              <button onClick={() => openEditGeneric(tab, item)} className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors" title="Edit">
+                <span className="material-symbols-outlined text-lg" style={{ color: surfaceVariant }}>edit</span>
               </button>
-              <button onClick={() => deleteGeneric(item.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 transition-colors ml-auto" title="Delete">
-                <span className="material-symbols-outlined text-[16px] text-red-500">delete</span>
+              <button onClick={() => deleteGeneric(item.id)} className="p-2 rounded-lg hover:bg-red-500/10 transition-colors ml-auto" title="Delete">
+                <span className="material-symbols-outlined text-lg text-red-500">delete</span>
               </button>
             </div>
           </div>
@@ -1031,6 +1068,51 @@ export default function AdminSocialMediaPage() {
             </div>
             <div className="flex items-center gap-2 mt-3 pt-3 border-t" style={{ borderColor }}>
               <button onClick={() => toggleGenericActive(item)} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors" title="Toggle Active">
+                <span className="material-symbols-outlined text-[16px]" style={{ color: item.isActive ? '#22c55e' : surfaceVariant }}>{item.isActive ? 'toggle_on' : 'toggle_off'}</span>
+              </button>
+              <button onClick={() => openEditGeneric(tab, item)} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors" title="Edit">
+                <span className="material-symbols-outlined text-[16px]" style={{ color: surfaceVariant }}>edit</span>
+              </button>
+              <button onClick={() => deleteGeneric(item.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 transition-colors ml-auto" title="Delete">
+                <span className="material-symbols-outlined text-[16px] text-red-500">delete</span>
+              </button>
+            </div>
+          </div>
+        );
+      case 'floating_banners':
+        return (
+          <div key={item.id} className="p-4 rounded-xl border transition-all hover:brightness-95 overflow-hidden" style={{ backgroundColor: cardBg, borderColor }}>
+            <div className="flex gap-3">
+              <div className="w-14 h-20 rounded-lg overflow-hidden shrink-0" style={{ backgroundColor: bgColor }}>
+                {item.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-xs" style={{ color: surfaceVariant }}>No img</div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold truncate" style={{ color: onSurfaceColor }}>{item.title}</p>
+                <p className="text-[10px] font-mono truncate" style={{ color: surfaceVariant }}>{item.linkUrl ? `→ ${item.linkUrl}` : 'No link'}</p>
+                <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${item.isActive ? 'text-green-600 bg-green-500/10' : 'text-red-600 bg-red-500/10'}`}>
+                    {item.isActive ? 'Active' : 'Paused'}
+                  </span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${item.targetType === 'specific' ? 'text-blue-600 bg-blue-500/10' : 'text-purple-600 bg-purple-500/10'}`}>
+                    {item.targetType === 'global' ? 'Global' : 'Targeted'}
+                  </span>
+                  <span className="text-[10px] font-bold" style={{ color: surfaceVariant }}>{item.width}x{item.height}in</span>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[10px]" style={{ color: surfaceVariant }}>Sort: {item.sortOrder}</span>
+                  {item.targetType === 'specific' && item.targetEmail && (
+                    <span className="text-[10px] truncate max-w-[120px]" style={{ color: surfaceVariant }}>→ {item.targetEmail}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 mt-3 pt-3 border-t" style={{ borderColor }}>
+              <button onClick={() => toggleGenericActive(item)} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors" title={item.isActive ? 'Pause' : 'Activate'}>
                 <span className="material-symbols-outlined text-[16px]" style={{ color: item.isActive ? '#22c55e' : surfaceVariant }}>{item.isActive ? 'toggle_on' : 'toggle_off'}</span>
               </button>
               <button onClick={() => openEditGeneric(tab, item)} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors" title="Edit">
@@ -1175,6 +1257,7 @@ export default function AdminSocialMediaPage() {
     footer_links: null,
     tasar_stats: null,
     platform_stats: null,
+    floating_banners: null,
   };
   const loading = tab === 'banners' ? loadingBanners : tab === 'testimonials' ? loadingTestimonials : genericIsLoading;
   const items = tab === 'banners' ? banners : tab === 'testimonials' ? testimonials : genericData;
@@ -1191,6 +1274,7 @@ export default function AdminSocialMediaPage() {
     { key: 'footer_links', icon: 'link', label: 'Footer Links', count: (genericItems['footer_links'] || []).length },
     { key: 'tasar_stats', icon: 'bar_chart', label: 'TASAR Stats', count: (genericItems['tasar_stats'] || []).length },
     { key: 'platform_stats', icon: 'analytics', label: 'Platform Stats', count: (genericItems['platform_stats'] || []).length },
+    { key: 'floating_banners', icon: 'ads_click', label: 'Floating Banners', count: (genericItems['floating_banners'] || []).length },
     { key: 'settings', icon: 'settings', label: 'Settings', count: 0 },
   ];
 
@@ -1467,10 +1551,10 @@ export default function AdminSocialMediaPage() {
           </header>
 
           {/* Tabs */}
-          <div className="flex items-center gap-1 px-8 pt-6 pb-2 border-b tabs-scroll" style={{ borderColor }}>
+          <div className="flex flex-wrap items-center gap-1 px-8 pt-6 pb-2 border-b" style={{ borderColor }}>
             {ALL_TABS.map(t => (
               <button key={t.key} onClick={() => setTab(t.key)}
-                className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-t-lg transition-all whitespace-nowrap shrink-0"
+                className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-t-lg transition-all whitespace-nowrap"
                 style={{ color: tab === t.key ? accentColor : surfaceVariant, borderBottom: tab === t.key ? `2px solid ${accentColor}` : '2px solid transparent', backgroundColor: tab === t.key ? accentColor + '10' : 'transparent' }}>
                 <span className="material-symbols-outlined text-[18px]">{t.icon}</span>
                 {t.label}

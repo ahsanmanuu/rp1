@@ -126,8 +126,8 @@ const FOOTER_RESOURCES = [
 ];
 const FOOTER_COMPANY = [
   { label: 'About Us', href: '/about' },
-  { label: 'Blog', href: '#' },
   { label: 'Careers', href: '#' },
+  { label: 'Blog', href: '#' },
   { label: 'Contact', href: '/contact-us' },
 ];
 const FOOTER_LEGAL = [

@@ -54,8 +54,8 @@ const FOOTER_RESOURCES = [
 
 const FOOTER_COMPANY = [
   { label: 'About Us', href: '#' },
-  { label: 'Blog', href: '#' },
   { label: 'Careers', href: '#' },
+  { label: 'Blog', href: '#' },
   { label: 'Contact', href: '/contact-us' },
 ];
 

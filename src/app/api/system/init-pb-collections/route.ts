@@ -154,6 +154,31 @@ const COLLECTIONS = [
     ],
     indexes: ['CREATE UNIQUE INDEX idx_site_settings_key ON site_settings (key);'],
   },
+  {
+    name: 'uploads',
+    type: 'base',
+    schema: [
+      { name: 'file', type: 'file', required: true, options: { maxSelect: 1, maxSize: 10485760 } },
+    ],
+    indexes: [],
+  },
+  {
+    name: 'floating_banners',
+    type: 'base',
+    schema: [
+      { name: 'title', type: 'text', required: true },
+      { name: 'imageUrl', type: 'url' },
+      { name: 'linkUrl', type: 'url' },
+      { name: 'targetType', type: 'text' },
+      { name: 'targetEmail', type: 'email' },
+      { name: 'width', type: 'number' },
+      { name: 'height', type: 'number' },
+      { name: 'duration', type: 'number' },
+      { name: 'isActive', type: 'bool' },
+      { name: 'sortOrder', type: 'number' },
+    ],
+    indexes: [],
+  },
 ];
 
 function mapSchemaToFields(schema: any[]) {

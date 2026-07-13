@@ -41,6 +41,7 @@ export default function SecurityBlockOverlay() {
       try {
         // Query free geocoding API to resolve client-side public IP to location name
         const geoRes = await fetch('https://ip-api.com/json/');
+        if (!geoRes.ok) throw new Error(`Geo IP HTTP ${geoRes.status}`);
         const geoData = await geoRes.json();
         if (geoData && geoData.query) {
           const locStr = `${geoData.city || ''}, ${geoData.regionName || ''}, ${geoData.country || ''}`

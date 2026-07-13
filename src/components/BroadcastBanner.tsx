@@ -40,6 +40,7 @@ export default function BroadcastBanner() {
     const fetchAnnouncements = async () => {
       try {
         const res = await fetch('/api/announcements');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (data.success) {
           setAnnouncements(data.announcements || []);

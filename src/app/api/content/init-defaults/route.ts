@@ -56,8 +56,8 @@ const FOOTER_LINKS = [
   { groupTitle: 'Resources', label: 'Templates Gallery', href: '/templates', isActive: true, sortOrder: 2 },
   { groupTitle: 'Resources', label: 'Help Center', href: '#', isActive: true, sortOrder: 3 },
   { groupTitle: 'Company', label: 'About Us', href: '/about', isActive: true, sortOrder: 1 },
-  { groupTitle: 'Company', label: 'Blog', href: '#', isActive: true, sortOrder: 2 },
-  { groupTitle: 'Company', label: 'Careers', href: '#', isActive: true, sortOrder: 3 },
+  { groupTitle: 'Company', label: 'Careers', href: '#', isActive: true, sortOrder: 2 },
+  { groupTitle: 'Company', label: 'Blog', href: '#', isActive: true, sortOrder: 3 },
   { groupTitle: 'Company', label: 'Contact', href: '/contact-us', isActive: true, sortOrder: 4 },
   { groupTitle: 'Legal', label: 'Privacy Policy', href: '#', isActive: true, sortOrder: 1 },
   { groupTitle: 'Legal', label: 'Terms of Service', href: '#', isActive: true, sortOrder: 2 },
@@ -88,6 +88,10 @@ const PLATFORM_STATS = [
   { key: 'uptime', label: 'Uptime', value: 99.9, suffix: '%', decimals: 1, isActive: true },
 ];
 
+const FLOATING_BANNERS = [
+  { title: 'Try AI Peer Reviewer', imageUrl: 'https://placehold.co/400x600/4f46e5/ffffff?text=Try+AI+Review', linkUrl: '/reviewer', targetType: 'global', targetEmail: '', width: 4, height: 6, duration: 5, isActive: true, sortOrder: 1 },
+];
+
 const TESTIMONIALS = [
   { name: 'James Chen', role: 'PhD Candidate, Stanford University', content: "Latexify's template migrator saved me weeks of reformatting when my paper was transferred between journals. The UI is incredibly clean.", avatarUrl: 'https://ui-avatars.com/api/?name=James+Chen&background=4f46e5&color=fff&size=96', rating: 5, isActive: true, sortOrder: 1 },
   { name: 'Prof. Sarah Jenkins', role: 'Principal Investigator, University of Oxford', content: "The AI Peer Reviewer caught several logical gaps in my methodology section before submission. An absolute game-changer for solo researchers.", avatarUrl: 'https://ui-avatars.com/api/?name=Sarah+Jenkins&background=059669&color=fff&size=96', rating: 5, isActive: true, sortOrder: 2 },
@@ -108,6 +112,7 @@ const SEED_DATA: Record<string, any[]> = {
   how_it_works: HOW_IT_WORKS,
   tasar_stats: TASAR_STATS,
   platform_stats: PLATFORM_STATS,
+  floating_banners: FLOATING_BANNERS,
 };
 
 export async function POST() {

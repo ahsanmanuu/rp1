@@ -14,6 +14,7 @@ const ALLOWED_COLLECTIONS = new Set([
   'footer_links',
   'tasar_stats',
   'platform_stats',
+  'floating_banners',
 ]);
 
 export async function GET(

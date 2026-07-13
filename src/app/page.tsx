@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import LatexifyLogo from "@/components/LatexifyLogo";
 import ProLoader from "@/components/ProLoader";
 import LoginPromptModal from "@/components/LoginPromptModal";
+import FloatingBanner from "@/components/FloatingBanner";
 import { useHomeRealtime } from '@/lib/useHomeRealtime';
 import {
   ArrowRight, FileEdit, Wand2, PenTool, Layout,
@@ -786,6 +787,11 @@ export default function Home() {
                   </button>
                 ))}
               </div>
+              <div className="flex justify-center pt-2">
+                <a href="http://s01.flagcounter.com/more/0Ye" className="opacity-60 hover:opacity-100 transition-opacity">
+                  <img src="https://s01.flagcounter.com/count2/0Ye/bg_FFFFFF/txt_000000/border_CCCCCC/columns_2/maxflags_10/viewers_0/labels_0/pageviews_0/flags_0/percent_0/" alt="Flag Counter" border="0" style={{ borderRadius: '6px', maxWidth: '100%' }} />
+                </a>
+              </div>
             </div>
 
             {/* Nav columns */}
@@ -912,6 +918,7 @@ export default function Home() {
         </div>
       </footer>
       <LoginPromptModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
+      <FloatingBanner userEmail={session?.user?.email} />
     </div>
     </>
   );

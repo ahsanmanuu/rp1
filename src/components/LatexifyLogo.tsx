@@ -22,7 +22,7 @@ export default function LatexifyLogo({ size = 32, className = '', style = {}, fo
     }
     const controller = new AbortController();
     fetch('/api/logo', { signal: controller.signal })
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then(data => { if (data?.url && !controller.signal.aborted) setDynamicSrc(data.url); })
       .catch(() => {});
     return () => controller.abort();
