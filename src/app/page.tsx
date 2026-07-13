@@ -27,9 +27,9 @@ const ICON_MAP: Record<string, React.ComponentType<any>> = {
   RefreshCw, Video, Play, Award,
 };
 
-function resolveIcon(name: string | React.ComponentType<any>): React.ComponentType<any> {
-  if (typeof name === 'function') return name;
-  return ICON_MAP[name] || FileEdit;
+function DynamicIcon({ name, size, color, className, style }: { name: string; size?: number; color?: string; className?: string; style?: React.CSSProperties }) {
+  const Icon = ICON_MAP[name] || FileEdit;
+  return <Icon size={size} color={color} className={className} style={style} />;
 }
 
 /* ─── Animated Stats Counter ──────────────────────────────── */
@@ -102,7 +102,6 @@ function StatItem({ value, suffix, label, decimals = 0 }: { value: number; suffi
 /* ─── Feature Card ────────────────────────────────────────── */
 function FeatureCard({ feature, delay }: { feature: any; delay: number }) {
   const ref = useReveal();
-  const Icon = resolveIcon(feature.icon);
   const { status } = useSession();
   const href = status === "authenticated" ? feature.href : "/login";
   return (
@@ -114,7 +113,7 @@ function FeatureCard({ feature, delay }: { feature: any; delay: number }) {
           style={{ background: feature.glow }} />
         <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-6 shadow-lg flex-shrink-0"
           style={{ background: feature.iconBg }}>
-          <Icon size={26} color="#fff" />
+          <DynamicIcon name={feature.icon} size={26} color="#fff" />
         </div>
         <h3 className="text-xl font-bold mb-3" style={{ color: 'var(--text-primary)' }}>{feature.title}</h3>
         <p className="text-sm leading-relaxed flex-1" style={{ color: 'var(--text-secondary)' }}>{feature.desc}</p>
@@ -638,22 +637,19 @@ export default function Home() {
                 — real-time collaboration, AI assistance, and beautiful design — to academic publishing.
               </p>
               <div className="space-y-5">
-                {benefits.map((b, i) => {
-                  const BenefitIcon = resolveIcon(b.icon);
-                  return (
+                {benefits.map((b, i) => (
                   <div key={b.id || i} className="flex items-start gap-4 p-4 rounded-2xl transition-all duration-300 hover:shadow-md"
                     style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
                     <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                       style={{ background: b.color + '18' }}>
-                      <BenefitIcon size={18} style={{ color: b.color }} />
+                      <DynamicIcon name={b.icon} size={18} style={{ color: b.color }} />
                     </div>
                     <div>
                       <div className="font-bold text-sm mb-1" style={{ color: 'var(--text-primary)' }}>{b.title}</div>
                       <div className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{b.desc}</div>
                     </div>
                   </div>
-                  );
-                })}
+                ))}
               </div>
             </div>
           </div>
@@ -662,7 +658,7 @@ export default function Home() {
 
       {/* ═══════════════ TESTIMONIALS ═══════════════ */}
       <section className="w-full py-8 md:py-12" style={{ background: 'var(--bg-secondary)' }}>
-        <div className="max-w-7xl mx-auto px-6 lg:px-12">
+        <div className="max-w-4xl mx-auto px-6 lg:px-12">
           <div className="text-center mb-8 md:mb-10 space-y-3">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest"
               style={{ background: 'color-mix(in srgb, var(--accent-primary) 8%, transparent)', color: 'var(--accent-primary)', border: '1px solid color-mix(in srgb, var(--accent-primary) 20%, transparent)' }}>
@@ -673,57 +669,60 @@ export default function Home() {
             </h2>
           </div>
 
-          {/* Testimonials grid */}
+          {/* Testimonials carousel */}
           {testimonials.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {testimonials.map((t, i) => (
-                <div key={t.id} className="testimonial-card p-8 rounded-3xl"
-                  style={{
-                    background: i === activeTestimonial ? 'linear-gradient(135deg, color-mix(in srgb, var(--accent-primary) 6%, transparent), color-mix(in srgb, var(--accent-secondary) 6%, transparent))' : 'var(--bg-primary)',
-                    border: i === activeTestimonial ? '1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent)' : '1px solid var(--border)',
-                    transition: 'all 0.5s cubic-bezier(0.16,1,0.3,1)'
-                  }}>
-                  <div className="flex items-center gap-3 mb-4">
-                    {t.avatarUrl ? (
-                      <Image src={t.avatarUrl} alt={t.name} width={48} height={48} className="rounded-full object-cover" />
-                    ) : (
-                      <div className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-black text-white"
-                        style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))' }}>
-                        {t.name?.charAt(0) || '?'}
+            <div className="relative overflow-hidden" style={{ minHeight: '280px' }}>
+              <div className="flex transition-transform duration-500 ease-in-out"
+                style={{ transform: `translateX(-${activeTestimonial * 100}%)` }}>
+                {testimonials.map((t, i) => (
+                  <div key={t.id} className="w-full flex-shrink-0 px-4">
+                    <div className="p-8 md:p-10 rounded-3xl text-center max-w-2xl mx-auto"
+                      style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)' }}>
+                      <p className="text-base md:text-lg leading-relaxed mb-6 italic" style={{ color: 'var(--text-primary)', opacity: 0.9 }}>
+                        &ldquo;{t.content}&rdquo;
+                      </p>
+                      {t.rating && (
+                        <div className="flex justify-center gap-1 mb-5">
+                          {Array.from({ length: t.rating }).map((_, j) => (
+                            <span key={j} className="text-yellow-400 text-xl">★</span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex items-center justify-center gap-3">
+                        {t.avatarUrl ? (
+                          <Image src={t.avatarUrl} alt={t.name} width={52} height={52} className="rounded-full object-cover w-13 h-13" />
+                        ) : (
+                          <div className="w-13 h-13 rounded-full flex items-center justify-center text-xl font-black text-white shrink-0"
+                            style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))' }}>
+                            {t.name?.charAt(0) || '?'}
+                          </div>
+                        )}
+                        <div className="text-left">
+                          <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>{t.name}</p>
+                          {t.role && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t.role}</p>}
+                        </div>
                       </div>
-                    )}
-                    <div>
-                      <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>{t.name}</p>
-                      {t.role && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t.role}</p>}
                     </div>
                   </div>
-                  <p className="text-base leading-relaxed mb-6 italic" style={{ color: 'var(--text-primary)', opacity: 0.85 }}>
-                    "{t.content}"
-                  </p>
-                  {t.rating && (
-                    <div className="flex gap-1 mb-5">
-                      {Array.from({ length: t.rating }).map((_, i) => (
-                        <span key={i} className="text-yellow-400 text-lg">★</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
 
           {/* Dots */}
-          <div className="flex justify-center gap-2 mt-8">
-            {testimonials.map((_, i) => (
-              <button key={i} onClick={() => setActiveTestimonial(i)}
-                className="rounded-full transition-all duration-300"
-                style={{
-                  width: i === activeTestimonial ? '24px' : '8px',
-                  height: '8px',
-                  background: i === activeTestimonial ? 'var(--accent-primary)' : 'var(--border)'
-                }} />
-            ))}
-          </div>
+          {testimonials.length > 1 && (
+            <div className="flex justify-center gap-2 mt-6">
+              {testimonials.map((_, i) => (
+                <button key={i} onClick={() => setActiveTestimonial(i)}
+                  className="rounded-full transition-all duration-300"
+                  style={{
+                    width: i === activeTestimonial ? '24px' : '8px',
+                    height: '8px',
+                    background: i === activeTestimonial ? 'var(--accent-primary)' : 'var(--border)'
+                  }} />
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

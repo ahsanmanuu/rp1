@@ -72,6 +72,8 @@ const HOW_IT_WORKS = [
   { title: 'Publish & Share', description: 'Export to PDF, share links, or submit directly to journals with confidence.', stepNumber: 4, icon: 'Upload', isActive: true, sortOrder: 4 },
 ];
 
+const BANNERS: any[] = [];
+
 const TASAR_STATS = [
   { label: 'Active Users', value: 50000, suffix: '+', icon: 'Users', color: 'var(--accent-primary)', category: 'engagement', isActive: true, sortOrder: 1 },
   { label: 'Projects Created', value: 150000, suffix: '+', icon: 'FileText', color: '#f59e0b', category: 'usage', isActive: true, sortOrder: 2 },
@@ -86,7 +88,17 @@ const PLATFORM_STATS = [
   { key: 'uptime', label: 'Uptime', value: 99.9, suffix: '%', decimals: 1, isActive: true },
 ];
 
+const TESTIMONIALS = [
+  { name: 'James Chen', role: 'PhD Candidate, Stanford University', content: "Latexify's template migrator saved me weeks of reformatting when my paper was transferred between journals. The UI is incredibly clean.", avatarUrl: 'https://ui-avatars.com/api/?name=James+Chen&background=4f46e5&color=fff&size=96', rating: 5, isActive: true, sortOrder: 1 },
+  { name: 'Prof. Sarah Jenkins', role: 'Principal Investigator, University of Oxford', content: "The AI Peer Reviewer caught several logical gaps in my methodology section before submission. An absolute game-changer for solo researchers.", avatarUrl: 'https://ui-avatars.com/api/?name=Sarah+Jenkins&background=059669&color=fff&size=96', rating: 5, isActive: true, sortOrder: 2 },
+  { name: 'Dr. Marcus Rivera', role: 'Postdoctoral Fellow, MIT', content: "I've moved my entire lab to Latexify. Collaborative writing is finally seamless, and the Doc2Latex feature means my undergrads can contribute easily.", avatarUrl: 'https://ui-avatars.com/api/?name=Marcus+Rivera&background=f59e0b&color=fff&size=96', rating: 5, isActive: true, sortOrder: 3 },
+  { name: 'Prof. Emily Nakamura', role: 'Department Chair, Tokyo University', content: "The citation studio alone is worth it. Managing 200+ references across multiple projects has never been easier. Real-time sync is flawless.", avatarUrl: 'https://ui-avatars.com/api/?name=Emily+Nakamura&background=0891b2&color=fff&size=96', rating: 5, isActive: true, sortOrder: 4 },
+  { name: 'Dr. Alex Thompson', role: 'Research Scientist, CERN', content: "Diagram Studio replaced our entire TikZ workflow. The visual editor is intuitive, and the export quality matches hand-crafted diagrams.", avatarUrl: 'https://ui-avatars.com/api/?name=Alex+Thompson&background=dc2626&color=fff&size=96', rating: 5, isActive: true, sortOrder: 5 },
+];
+
 const SEED_DATA: Record<string, any[]> = {
+  banners: BANNERS || [],
+  testimonials: TESTIMONIALS,
   gallery_items: GALLERY_ITEMS,
   institution_logos: INSTITUTION_LOGOS,
   features: FEATURES,
