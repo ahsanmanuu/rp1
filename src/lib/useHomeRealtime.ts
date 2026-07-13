@@ -96,7 +96,9 @@ export function useHomeRealtime() {
         });
       }, filter ? { filter } : undefined)
     );
-    Promise.all(subs).then(u => { unsubsRef.current = u; });
+    Promise.allSettled(subs).then(results => {
+      unsubsRef.current = results.map(r => r.status === 'fulfilled' ? r.value : () => {});
+    });
     fetchAll();
     const interval = setInterval(fetchAll, 120000);
     return () => {
