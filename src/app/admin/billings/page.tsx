@@ -501,6 +501,14 @@ export default function AdminBillingsPage() {
                   style={{ color: 'var(--color-admin-on-surface-variant)' }}>
                   <span className="material-symbols-outlined">mail</span>Email History
                 </Link>
+                <Link href="/admin/banners" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-all rounded-lg"
+                  style={{ color: 'var(--color-admin-on-surface-variant)' }}>
+                  <span className="material-symbols-outlined">view_carousel</span>Banners
+                </Link>
+                <Link href="/admin/testimonials" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-all rounded-lg"
+                  style={{ color: 'var(--color-admin-on-surface-variant)' }}>
+                  <span className="material-symbols-outlined">star</span>Testimonials
+                </Link>
                 <Link href="/admin/tax-calculation" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-all rounded-lg"
                   style={{ color: 'var(--color-admin-on-surface-variant)' }}>
                   <span className="material-symbols-outlined">calculate</span>Tax Calculation

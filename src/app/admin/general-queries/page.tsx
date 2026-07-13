@@ -210,6 +210,8 @@ export default function AdminGeneralQueriesPage() {
               { href: '/admin/offers', icon: 'local_offer', label: 'Offers' },
               { href: '/admin/emails', icon: 'mail', label: 'Email History' },
               { href: '/admin/general-queries', icon: 'forum', label: 'General Queries' },
+              { href: '/admin/banners', icon: 'view_carousel', label: 'Banners' },
+              { href: '/admin/testimonials', icon: 'star', label: 'Testimonials' },
               { href: '/admin/tax-calculation', icon: 'calculate', label: 'Tax Calculation' },
             ].map(item => (
               <Link key={item.href} href={item.href}
