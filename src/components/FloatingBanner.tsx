@@ -35,9 +35,11 @@ export default function FloatingBanner({ userEmail }: { userEmail?: string | nul
         );
         if (matched) {
           setBanner(matched);
-          setTimeout(() => { if (!cancelled) setVisible(true); }, 300);
+          requestAnimationFrame(() => {
+            if (!cancelled) setVisible(true);
+          });
           const ms = (matched.duration || 5) * 1000;
-          setTimeout(() => { if (!cancelled) setVisible(false); }, ms + 300);
+          setTimeout(() => { if (!cancelled) setVisible(false); }, ms + 600);
         }
       })
       .catch(() => {});
@@ -46,7 +48,7 @@ export default function FloatingBanner({ userEmail }: { userEmail?: string | nul
 
   const handleClose = useCallback(() => {
     setVisible(false);
-    setTimeout(() => setDismissed(true), 400);
+    setTimeout(() => setDismissed(true), 650);
   }, []);
 
   if (!banner || dismissed) return null;
@@ -55,13 +57,13 @@ export default function FloatingBanner({ userEmail }: { userEmail?: string | nul
   const h = Math.min(Math.max(banner.height || 6, 3), 12) * 96;
 
   return (
+
     <div
-      className="fixed z-[9999] transition-all duration-500 ease-in-out"
+      className="fixed z-[9999]"
       style={{
-        bottom: visible ? "24px" : "-120%",
+        bottom: "24px",
         right: "24px",
-        opacity: visible ? 1 : 0,
-        transform: visible ? "scale(1) translateY(0)" : "scale(0.85) translateY(20px)",
+        pointerEvents: visible ? "auto" : "none",
       }}
     >
       <div
@@ -70,10 +72,11 @@ export default function FloatingBanner({ userEmail }: { userEmail?: string | nul
           width: `${w}px`,
           height: `${h}px`,
           borderColor: "rgba(255,255,255,0.1)",
-          animation: visible ? "floatingBannerPulse 0.6s ease-out" : "none",
+          opacity: visible ? 1 : 0,
+          transform: visible ? "scale(1) translateY(0)" : "scale(0.85) translateY(20px)",
+          transition: "opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1), transform 0.6s cubic-bezier(0.22, 1, 0.36, 1)",
         }}
       >
-        <style>{`@keyframes floatingBannerPulse{0%{opacity:0;transform:scale(0.8)}50%{opacity:1;transform:scale(1.05)}100%{opacity:1;transform:scale(1)}}`}</style>
         {banner.linkUrl ? (
           <Link href={banner.linkUrl} className="block w-full h-full">
             {/* eslint-disable-next-line @next/next/no-img-element */}

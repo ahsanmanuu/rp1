@@ -190,10 +190,9 @@ export default function Home() {
     return () => clearInterval(timer);
   }, [effectiveBannerCount]);
 
-  if (status === "authenticated") return null;
   if (!mounted) return <ProLoader />;
 
-  return (
+  const mainContent = status === "authenticated" ? null : (
     <>
     <style>{`@keyframes scaleIn{from{opacity:0;transform:scale(0.85) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
     <div style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)', fontFamily: 'var(--font-inter)', overflowX: 'hidden' }}>
@@ -918,8 +917,14 @@ export default function Home() {
         </div>
       </footer>
       <LoginPromptModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
-      <FloatingBanner userEmail={session?.user?.email} />
     </div>
+    </>
+  );
+
+  return (
+    <>
+      {mainContent}
+      <FloatingBanner userEmail={session?.user?.email} />
     </>
   );
 }
