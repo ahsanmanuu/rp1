@@ -41,7 +41,6 @@ export default function AdminOffersPage() {
     const [chatMessages, setChatMessages] = useState<any[]>([]);
     const [responseMessage, setResponseMessage] = useState("");
     const [sendingResponse, setSendingResponse] = useState(false);
-    const [loadingChatSessions, setLoadingChatSessions] = useState(false);
     const chatEndRef = React.useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -69,7 +68,6 @@ export default function AdminOffersPage() {
     };
 
     const fetchChatSessions = async (silent = false) => {
-        if (!silent) setLoadingChatSessions(true);
         try {
             const [activeRes, historyRes] = await Promise.all([
                 fetch("/api/admin/chat/sessions?status=open"),
@@ -85,8 +83,6 @@ export default function AdminOffersPage() {
             }
         } catch (err) {
             console.error("Failed to load chat sessions:", err);
-        } finally {
-            setLoadingChatSessions(false);
         }
     };
 

@@ -17,7 +17,9 @@ export function Heartbeat() {
     }
 
     const ping = () => {
-      fetch('/api/user/heartbeat', { method: 'POST' }).catch(() => {});
+      fetch('/api/user/heartbeat', { method: 'POST' }).catch((err) => {
+        console.warn('[HEARTBEAT] Failed to ping:', err);
+      });
     };
 
     ping();

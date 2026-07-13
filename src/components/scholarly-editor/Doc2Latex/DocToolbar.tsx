@@ -1,7 +1,7 @@
 "use client";
 
 import { 
-  Plus, Edit2, Pencil, Sparkles, Zap, Command, RefreshCw, LayoutDashboard, Share2
+  Pencil, Sparkles, Zap, Command, RefreshCw, LayoutDashboard, Share2
 } from 'lucide-react';
 import Link from 'next/link';
 import ThemeSwitcher from '../ThemeSwitcher';
@@ -41,7 +41,6 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
   setIsEditingTitle,
   setTempTitle,
   renameProject,
-  createNewFile,
   beautify,
   hasCode = true,
   editorMood,
@@ -52,7 +51,6 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
   setAutoEngine,
   compile,
   compiling,
-  projectId,
   isReadOnly = false,
   onShare,
 }) => {

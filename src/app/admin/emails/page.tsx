@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { createPb } from '@/lib/pb';
@@ -145,11 +145,6 @@ export default function AdminEmailsPage() {
     }, 10000);
     return () => clearInterval(syncInterval);
   }, []);
-
-  const showToast = (type: 'success' | 'error', text: string) => {
-    setToastMessage({ type, text });
-    setTimeout(() => setToastMessage(null), 3000);
-  };
 
   const handleSearch = () => fetchData(1);
   const handlePageChange = (newPage: number) => fetchData(newPage);

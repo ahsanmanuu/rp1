@@ -193,7 +193,10 @@ export async function GET(_req: NextRequest) {
     const activeThreshold = new Date(Date.now() - 15 * 60 * 1000);
     const activeUserIds = await prisma.userSession.groupBy({
       by: ['userId'],
-      where: { lastActiveAt: { gte: activeThreshold } },
+      where: {
+        lastActiveAt: { gte: activeThreshold },
+        expiresAt: { gte: new Date() },
+      },
       _count: { id: true },
     });
     let displayTotalUsers = realUserCount;
@@ -531,6 +534,7 @@ export async function GET(_req: NextRequest) {
         by: ['userId'],
         where: {
           lastActiveAt: { gte: windowStart, lt: windowEnd },
+          expiresAt: { gte: new Date() },
         },
         _count: { id: true },
       });

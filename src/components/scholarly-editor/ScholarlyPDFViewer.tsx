@@ -5,8 +5,6 @@ import * as pdfjs from 'pdfjs-dist/build/pdf.min.mjs';
 import { Printer, Download, ExternalLink, ChevronsUp, ChevronsDown } from 'lucide-react';
 import { SyncTexParser } from '@/lib/studio-core/synctex-parser';
 
-const PDFJS_VERSION = '5.6.205';
-
 // Initialize worker safely with defensive checks
 if (typeof window !== 'undefined' && pdfjs) {
   try {
@@ -179,7 +177,7 @@ const PDFPage = memo(({ pageNum, pdf, scale, handleSyncClick }: { pageNum: numbe
 });
 PDFPage.displayName = 'PDFPage';
 
-const ScholarlyPDFViewer = memo(({ pdfUrl, syncTexStr, compiling, onJumpToLatexCode, onExactSync, jumpTo, jumpToLine, onSync, onDownload }: PDFSyncViewerProps) => {
+const ScholarlyPDFViewer = memo(({ pdfUrl, syncTexStr, compiling, onJumpToLatexCode, onExactSync, jumpTo, jumpToLine, onDownload }: PDFSyncViewerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [numPages, setNumPages] = useState<number>(0);
   const [pdf, setPdf] = useState<pdfjs.PDFDocumentProxy | null>(null);
