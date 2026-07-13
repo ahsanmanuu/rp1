@@ -211,7 +211,7 @@ export default function Home() {
         <div className="animate-float-medium absolute bottom-[20%] left-[5%] w-[380px] h-[380px] rounded-full pointer-events-none"
           style={{ background: 'radial-gradient(circle, rgba(107,56,212,0.10) 0%, transparent 70%)', filter: 'blur(60px)' }} />
 
-        <div className="max-w-[1440px] mx-auto px-6 md:px-12 lg:px-16 w-full py-12 md:py-16 lg:py-20">
+        <div className="max-w-[1440px] mx-auto px-6 md:px-12 lg:px-16 w-full py-8 md:py-12 lg:py-16">
 
           {/* Banner Carousel — loaded from PB with real-time sync */}
           {banners.length > 0 && (
@@ -393,9 +393,9 @@ export default function Home() {
 
       {/* ═══════════════ SEE HOW IT WORKS ═══════════════ */}
       {howItWorks.length > 0 && (
-        <section className="w-full py-14 md:py-18" style={{ background: 'var(--bg-primary)' }}>
+        <section className="w-full py-8 md:py-12" style={{ background: 'var(--bg-primary)' }}>
           <div className="max-w-7xl mx-auto px-6 lg:px-12">
-            <div className="text-center mb-12 md:mb-16 space-y-4">
+            <div className="text-center mb-8 md:mb-10 space-y-3">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest"
                 style={{ background: 'color-mix(in srgb, var(--accent-primary) 8%, transparent)', color: 'var(--accent-primary)', border: '1px solid color-mix(in srgb, var(--accent-primary) 20%, transparent)' }}>
                 <Play size={12} /> See How It Works
@@ -459,8 +459,8 @@ export default function Home() {
 
       {/* ═══════════════ STATS SECTION ═══════════════ */}
       <section style={{ background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
-        <div className="max-w-7xl mx-auto px-6 lg:px-12 py-10 md:py-12">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-10">
+        <div className="max-w-7xl mx-auto px-6 lg:px-12 py-6 md:py-8">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
             <StatItem value={statResearchers} suffix="+" label="Researchers" />
             <StatItem value={statPagesCompiled} suffix="+" label="Pages Compiled" />
             <StatItem value={statTemplates} suffix="+" label="Journal Templates" />
@@ -471,9 +471,9 @@ export default function Home() {
 
       {/* ═══════════════ TASAR STATS ═══════════════ */}
       {tasarStats.length > 0 && (
-        <section className="w-full py-12 md:py-16" style={{ background: 'var(--bg-primary)' }}>
+        <section className="w-full py-8 md:py-10" style={{ background: 'var(--bg-primary)' }}>
           <div className="max-w-7xl mx-auto px-6 lg:px-12">
-            <div className="text-center mb-10 space-y-3">
+            <div className="text-center mb-6 space-y-2">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest"
                 style={{ background: 'color-mix(in srgb, var(--accent-primary) 8%, transparent)', color: 'var(--accent-primary)', border: '1px solid color-mix(in srgb, var(--accent-primary) 20%, transparent)' }}>
                 <BarChart3 size={12} /> T.A.S.A.R
@@ -511,9 +511,9 @@ export default function Home() {
       )}
 
       {/* ═══════════════ TRUST LOGOS ═══════════════ */}
-      <section className="w-full py-10 md:py-12" style={{ background: 'var(--bg-primary)' }}>
+      <section className="w-full py-6 md:py-8" style={{ background: 'var(--bg-primary)' }}>
         <div className="max-w-7xl mx-auto px-6 lg:px-12">
-          <p className="text-center text-xs font-black uppercase tracking-[0.4em] mb-8 opacity-50"
+          <p className="text-center text-xs font-black uppercase tracking-[0.4em] mb-6 opacity-50"
             style={{ color: 'var(--text-secondary)' }}>
             Trusted by researchers at world-leading institutions
           </p>
@@ -532,10 +532,10 @@ export default function Home() {
       </section>
 
       {/* ═══════════════ FEATURES SECTION ═══════════════ */}
-      <section className="w-full py-14 md:py-18" style={{ background: 'var(--bg-secondary)' }}>
+      <section className="w-full py-8 md:py-12" style={{ background: 'var(--bg-secondary)' }}>
         <div className="max-w-7xl mx-auto px-6 lg:px-12">
           {/* Section header */}
-          <div className="text-center mb-12 md:mb-16 space-y-5">
+          <div className="text-center mb-8 md:mb-10 space-y-3">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest"
               style={{ background: 'color-mix(in srgb, var(--accent-primary) 8%, transparent)', color: 'var(--accent-primary)', border: '1px solid color-mix(in srgb, var(--accent-primary) 20%, transparent)' }}>
               <Rocket size={12} /> Complete Research Studio
@@ -557,9 +557,9 @@ export default function Home() {
       </section>
 
       {/* ═══════════════ WHY LATEXIFY ═══════════════ */}
-      <section className="w-full py-14 md:py-18" style={{ background: 'var(--bg-primary)' }}>
+      <section className="w-full py-8 md:py-12" style={{ background: 'var(--bg-primary)' }}>
         <div className="max-w-7xl mx-auto px-6 lg:px-12">
-          <div className="flex flex-col lg:flex-row gap-12 lg:gap-20 items-center">
+          <div className="flex flex-col lg:flex-row gap-8 lg:gap-12 items-center">
 
             {/* Left visual card */}
             <div className="w-full lg:w-1/2 relative">
@@ -661,9 +661,9 @@ export default function Home() {
       </section>
 
       {/* ═══════════════ TESTIMONIALS ═══════════════ */}
-      <section className="w-full py-14 md:py-18" style={{ background: 'var(--bg-secondary)' }}>
+      <section className="w-full py-8 md:py-12" style={{ background: 'var(--bg-secondary)' }}>
         <div className="max-w-7xl mx-auto px-6 lg:px-12">
-          <div className="text-center mb-12 md:mb-16 space-y-4">
+          <div className="text-center mb-8 md:mb-10 space-y-3">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest"
               style={{ background: 'color-mix(in srgb, var(--accent-primary) 8%, transparent)', color: 'var(--accent-primary)', border: '1px solid color-mix(in srgb, var(--accent-primary) 20%, transparent)' }}>
               <Users size={12} /> From The Community
@@ -728,7 +728,7 @@ export default function Home() {
       </section>
 
       {/* ═══════════════ CTA SECTION ═══════════════ */}
-      <section className="w-full py-14 md:py-18 relative overflow-hidden"
+      <section className="w-full py-8 md:py-12 relative overflow-hidden"
         style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent-primary) 30%, black) 0%, color-mix(in srgb, var(--accent-primary) 15%, black) 60%, #0f0a2e 100%)' }}>
         {/* Orb */}
         <div className="animate-float-slow absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full pointer-events-none"
@@ -768,8 +768,8 @@ export default function Home() {
 
       {/* ═══════════════ FOOTER ═══════════════ */}
       <footer style={{ background: '#020b09', borderTop: '1px solid rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)' }}>
-        <div className="max-w-7xl mx-auto px-6 lg:px-12 py-10 md:py-14">
-          <div className="flex flex-col lg:flex-row gap-16 mb-16">
+        <div className="max-w-7xl mx-auto px-6 lg:px-12 py-6 md:py-10">
+          <div className="flex flex-col lg:flex-row gap-12 mb-12">
 
             {/* Brand */}
             <div className="w-full lg:w-80 space-y-6 flex-shrink-0">
