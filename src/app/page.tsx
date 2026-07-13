@@ -18,6 +18,20 @@ import {
   RefreshCw, Video, Play, Award
 } from "lucide-react";
 
+const ICON_MAP: Record<string, React.ComponentType<any>> = {
+  ArrowRight, FileEdit, Wand2, PenTool, Layout,
+  Library, Star, School, Building2, BookOpen, Atom,
+  Share2, MessageSquare, Code2, ChevronRight,
+  Check, Zap, Shield, Globe, Users, Trophy, Rocket, GraduationCap,
+  Sparkles, PlayCircle, Brain, X, BarChart3, Search, Cpu,
+  RefreshCw, Video, Play, Award,
+};
+
+function resolveIcon(name: string | React.ComponentType<any>): React.ComponentType<any> {
+  if (typeof name === 'function') return name;
+  return ICON_MAP[name] || FileEdit;
+}
+
 /* ─── Animated Stats Counter ──────────────────────────────── */
 function useCountUp(target: number, duration = 1800) {
   const [count, setCount] = useState(0);
@@ -88,7 +102,7 @@ function StatItem({ value, suffix, label, decimals = 0 }: { value: number; suffi
 /* ─── Feature Card ────────────────────────────────────────── */
 function FeatureCard({ feature, delay }: { feature: any; delay: number }) {
   const ref = useReveal();
-  const Icon = feature.icon;
+  const Icon = resolveIcon(feature.icon);
   return (
     <div ref={ref} className="feature-card rounded-3xl overflow-hidden"
       style={{ transitionDelay: `${delay}ms`, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
@@ -623,7 +637,7 @@ export default function Home() {
               </p>
               <div className="space-y-5">
                 {benefits.map((b, i) => {
-                  const BenefitIcon = b.icon;
+                  const BenefitIcon = resolveIcon(b.icon);
                   return (
                   <div key={b.id || i} className="flex items-start gap-4 p-4 rounded-2xl transition-all duration-300 hover:shadow-md"
                     style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
