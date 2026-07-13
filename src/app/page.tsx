@@ -480,7 +480,7 @@ export default function Home() {
                 Tools · Academic · Statistical · Analytics · Research
               </h2>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 justify-center">
+            <div className="flex flex-wrap justify-center gap-4">
               {tasarStats.sort((a: any, b: any) => a.sortOrder - b.sortOrder).map((stat: any) => {
                 const catColors: Record<string, string> = {
                   tools: '#4f46e5', academic: '#059669', statistical: '#f59e0b',
@@ -488,7 +488,7 @@ export default function Home() {
                 };
                 const color = stat.color || catColors[stat.category] || 'var(--accent-primary)';
                 return (
-                  <div key={stat.id} className="relative group">
+                  <div key={stat.id} className="relative group w-[calc(50%-0.5rem)] md:w-[calc(20%-1rem)] min-w-[140px] max-w-[220px]">
                     <div className="p-6 rounded-2xl text-center transition-all duration-300 group-hover:shadow-xl group-hover:-translate-y-1"
                       style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
                       <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-3"
