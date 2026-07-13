@@ -103,6 +103,8 @@ function StatItem({ value, suffix, label, decimals = 0 }: { value: number; suffi
 function FeatureCard({ feature, delay }: { feature: any; delay: number }) {
   const ref = useReveal();
   const Icon = resolveIcon(feature.icon);
+  const { status } = useSession();
+  const href = status === "authenticated" ? feature.href : "/login";
   return (
     <div ref={ref} className="feature-card rounded-3xl overflow-hidden"
       style={{ transitionDelay: `${delay}ms`, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
@@ -126,7 +128,7 @@ function FeatureCard({ feature, delay }: { feature: any; delay: number }) {
             ))}
           </div>
         )}
-        <Link href={feature.href} className="mt-6 inline-flex items-center gap-2 text-sm font-bold group"
+        <Link href={href} className="mt-6 inline-flex items-center gap-2 text-sm font-bold group"
           style={{ color: 'var(--accent-primary)' }}>
           Explore <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
         </Link>
