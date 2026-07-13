@@ -10,6 +10,7 @@ import BroadcastBanner from "@/components/BroadcastBanner";
 import SecurityBlockOverlay from "@/components/SecurityBlockOverlay";
 import AiCapWarning from "@/components/AiCapWarning";
 import { Heartbeat } from "@/components/Heartbeat";
+import { getLogoUrlFromPb } from '@/lib/logo';
 
 const inter = Inter({
   subsets: ["latin"],
@@ -38,15 +39,21 @@ const newsreader = Newsreader({
   weight: ["300", "400", "700"],
 });
 
-export const metadata = {
-  title: "Latexify | Professional LaTeX Editorial for Researchers",
-  description: "AI-powered LaTeX Studio: browser-based IDE with pdfLaTeX/LuaLaTeX/XeLaTeX, template gallery, PDF preview, and Word-to-LaTeX conversion. 100% free.",
-  icons: {
-    icon: "/logo.png",
-    shortcut: "/logo.png",
-    apple: "/logo.png",
-  },
-};
+export async function generateMetadata() {
+  let logoUrl = '/logo.png';
+  try {
+    logoUrl = await getLogoUrlFromPb();
+  } catch {}
+  return {
+    title: "Latexify | Professional LaTeX Editorial for Researchers",
+    description: "AI-powered LaTeX Studio: browser-based IDE with pdfLaTeX/LuaLaTeX/XeLaTeX, template gallery, PDF preview, and Word-to-LaTeX conversion. 100% free.",
+    icons: {
+      icon: logoUrl,
+      shortcut: logoUrl,
+      apple: logoUrl,
+    },
+  };
+}
 
 export default function RootLayout({
   children,

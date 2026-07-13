@@ -154,8 +154,8 @@ export const ScholarlyNavbar = () => {
                     <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                       6 powerful tools for academic researchers
                     </span>
-                    <Link href="/dashboard" className="text-xs font-bold flex items-center gap-1" style={{ color: 'var(--accent-primary)' }}>
-                      Go to Dashboard <ArrowRight size={12} />
+                     <Link href="/login" className="text-xs font-bold flex items-center gap-1" style={{ color: 'var(--accent-primary)' }}>
+                      Login to Access Free <ArrowRight size={12} />
                     </Link>
                   </div>
                 </div>

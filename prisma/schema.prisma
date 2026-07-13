@@ -903,3 +903,147 @@ model Testimonial {
   @@index([isActive, sortOrder])
   @@map("testimonials")
 }
+
+model HowItWorks {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  stepNumber  Int
+  icon        String?
+  videoUrl    String?
+  imageUrl    String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@index([isActive, sortOrder])
+  @@map("how_it_works")
+}
+
+model GalleryItem {
+  id        String   @id @default(cuid())
+  title     String
+  imageUrl  String?
+  icon      String?
+  category  String?
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([isActive, sortOrder])
+  @@map("gallery_items")
+}
+
+model InstitutionLogo {
+  id        String   @id @default(cuid())
+  name      String
+  logoUrl   String?
+  icon      String?
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([isActive, sortOrder])
+  @@map("institution_logos")
+}
+
+model Feature {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  icon        String?
+  iconBg      String?
+  glow        String?
+  tags        Json?
+  href        String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@index([isActive, sortOrder])
+  @@map("features")
+}
+
+model Benefit {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  icon        String?
+  color       String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@index([isActive, sortOrder])
+  @@map("benefits")
+}
+
+model ProductDetail {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  title       String
+  description String?
+  icon        String?
+  color       String?
+  features    Json?
+  href        String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@index([isActive, sortOrder])
+  @@map("product_details")
+}
+
+model FooterLink {
+  id            String   @id @default(cuid())
+  groupTitle    String
+  label         String
+  href          String?
+  linkKey       String?
+  isTargetBlank Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now()) @db.Timestamptz
+  updatedAt     DateTime @updatedAt @db.Timestamptz
+
+  @@index([groupTitle, sortOrder])
+  @@map("footer_links")
+}
+
+model TasarStat {
+  id        String   @id @default(cuid())
+  label     String
+  value     Int
+  suffix    String?
+  icon      String?
+  color     String?
+  category  String?
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([category, sortOrder])
+  @@map("tasar_stats")
+}
+
+model ContentPlatformStat {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  label     String?
+  value     Int
+  suffix    String?
+  decimals  Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@map("content_platform_stats")
+}

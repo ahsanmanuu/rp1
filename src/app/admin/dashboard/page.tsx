@@ -131,6 +131,15 @@ export default function AdminDashboardPage() {
     totalTestimonials: 0,
     activeBanners: 0,
     activeTestimonials: 0,
+    totalHowItWorks: 0,
+    totalGalleryItems: 0,
+    totalInstitutionLogos: 0,
+    totalFeatures: 0,
+    totalBenefits: 0,
+    totalProducts: 0,
+    totalFooterLinks: 0,
+    totalTasarStats: 0,
+    totalPlatformStats: 0,
     trends: {
       totalUsers: [],
       totalRevenue: [],
@@ -215,6 +224,15 @@ export default function AdminDashboardPage() {
       totalTestimonials: "hover:shadow-[0_8px_30px_rgba(217,119,6,0.2)]",
       activeBanners: "hover:shadow-[0_8px_30px_rgba(16,185,129,0.2)]",
       activeTestimonials: "hover:shadow-[0_8px_30px_rgba(5,150,105,0.2)]",
+      totalHowItWorks: "hover:shadow-[0_8px_30px_rgba(139,92,246,0.2)]",
+      totalGalleryItems: "hover:shadow-[0_8px_30px_rgba(244,63,94,0.2)]",
+      totalInstitutionLogos: "hover:shadow-[0_8px_30px_rgba(34,197,94,0.2)]",
+      totalFeatures: "hover:shadow-[0_8px_30px_rgba(251,146,60,0.2)]",
+      totalBenefits: "hover:shadow-[0_8px_30px_rgba(56,189,248,0.2)]",
+      totalProducts: "hover:shadow-[0_8px_30px_rgba(232,121,249,0.2)]",
+      totalFooterLinks: "hover:shadow-[0_8px_30px_rgba(52,211,153,0.2)]",
+      totalTasarStats: "hover:shadow-[0_8px_30px_rgba(250,204,21,0.2)]",
+      totalPlatformStats: "hover:shadow-[0_8px_30px_rgba(129,140,248,0.2)]",
     };
     return base + (glowColors[type] || "hover:shadow-lg");
   };
@@ -322,6 +340,60 @@ export default function AdminDashboardPage() {
         bgLight: "linear-gradient(135deg, rgba(5, 150, 105, 0.03) 0%, rgba(4, 120, 87, 0.01) 100%)",
         borderDark: "rgba(5, 150, 105, 0.25)",
         borderLight: "rgba(5, 150, 105, 0.15)"
+      },
+      totalHowItWorks: {
+        bgDark: "linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(124, 58, 237, 0.03) 100%)",
+        bgLight: "linear-gradient(135deg, rgba(139, 92, 246, 0.03) 0%, rgba(124, 58, 237, 0.01) 100%)",
+        borderDark: "rgba(139, 92, 246, 0.25)",
+        borderLight: "rgba(139, 92, 246, 0.15)"
+      },
+      totalGalleryItems: {
+        bgDark: "linear-gradient(135deg, rgba(244, 63, 94, 0.08) 0%, rgba(225, 29, 72, 0.03) 100%)",
+        bgLight: "linear-gradient(135deg, rgba(244, 63, 94, 0.03) 0%, rgba(225, 29, 72, 0.01) 100%)",
+        borderDark: "rgba(244, 63, 94, 0.25)",
+        borderLight: "rgba(244, 63, 94, 0.15)"
+      },
+      totalInstitutionLogos: {
+        bgDark: "linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(22, 163, 74, 0.03) 100%)",
+        bgLight: "linear-gradient(135deg, rgba(34, 197, 94, 0.03) 0%, rgba(22, 163, 74, 0.01) 100%)",
+        borderDark: "rgba(34, 197, 94, 0.25)",
+        borderLight: "rgba(34, 197, 94, 0.15)"
+      },
+      totalFeatures: {
+        bgDark: "linear-gradient(135deg, rgba(251, 146, 60, 0.08) 0%, rgba(234, 88, 12, 0.03) 100%)",
+        bgLight: "linear-gradient(135deg, rgba(251, 146, 60, 0.03) 0%, rgba(234, 88, 12, 0.01) 100%)",
+        borderDark: "rgba(251, 146, 60, 0.25)",
+        borderLight: "rgba(251, 146, 60, 0.15)"
+      },
+      totalBenefits: {
+        bgDark: "linear-gradient(135deg, rgba(56, 189, 248, 0.08) 0%, rgba(14, 165, 233, 0.03) 100%)",
+        bgLight: "linear-gradient(135deg, rgba(56, 189, 248, 0.03) 0%, rgba(14, 165, 233, 0.01) 100%)",
+        borderDark: "rgba(56, 189, 248, 0.25)",
+        borderLight: "rgba(56, 189, 248, 0.15)"
+      },
+      totalProducts: {
+        bgDark: "linear-gradient(135deg, rgba(232, 121, 249, 0.08) 0%, rgba(192, 38, 211, 0.03) 100%)",
+        bgLight: "linear-gradient(135deg, rgba(232, 121, 249, 0.03) 0%, rgba(192, 38, 211, 0.01) 100%)",
+        borderDark: "rgba(232, 121, 249, 0.25)",
+        borderLight: "rgba(232, 121, 249, 0.15)"
+      },
+      totalFooterLinks: {
+        bgDark: "linear-gradient(135deg, rgba(52, 211, 153, 0.08) 0%, rgba(16, 185, 129, 0.03) 100%)",
+        bgLight: "linear-gradient(135deg, rgba(52, 211, 153, 0.03) 0%, rgba(16, 185, 129, 0.01) 100%)",
+        borderDark: "rgba(52, 211, 153, 0.25)",
+        borderLight: "rgba(52, 211, 153, 0.15)"
+      },
+      totalTasarStats: {
+        bgDark: "linear-gradient(135deg, rgba(250, 204, 21, 0.08) 0%, rgba(234, 179, 8, 0.03) 100%)",
+        bgLight: "linear-gradient(135deg, rgba(250, 204, 21, 0.03) 0%, rgba(234, 179, 8, 0.01) 100%)",
+        borderDark: "rgba(250, 204, 21, 0.25)",
+        borderLight: "rgba(250, 204, 21, 0.15)"
+      },
+      totalPlatformStats: {
+        bgDark: "linear-gradient(135deg, rgba(129, 140, 248, 0.08) 0%, rgba(99, 102, 241, 0.03) 100%)",
+        bgLight: "linear-gradient(135deg, rgba(129, 140, 248, 0.03) 0%, rgba(99, 102, 241, 0.01) 100%)",
+        borderDark: "rgba(129, 140, 248, 0.25)",
+        borderLight: "rgba(129, 140, 248, 0.15)"
       }
     };
     const colors = bgMap[type];
@@ -465,7 +537,7 @@ export default function AdminDashboardPage() {
       const res = await fetch("/api/admin/stats", { cache: "no-store" });
       const data = await safeJson(res);
       if (data.success) {
-        setMetrics(data.metrics);
+        setMetrics(prev => ({ ...prev, ...data.metrics }));
         setFeed(data.feed);
         setAnnouncements(data.announcements);
         setCharts(data.charts);
@@ -640,29 +712,42 @@ export default function AdminDashboardPage() {
     fetchTicketNotifications();
   }, []);
   useAdminRealtime({
-    triggerCollections: ['users', 'projects', 'support_tickets', 'ai_usage_logs', 'admin_tasks', 'announcements', 'ai_usage_daily_summaries', 'user_sessions', 'banners', 'testimonials'],
+    triggerCollections: ['users', 'projects', 'support_tickets', 'ai_usage_logs', 'admin_tasks', 'announcements', 'ai_usage_daily_summaries', 'user_sessions', 'banners', 'testimonials', 'how_it_works', 'gallery_items', 'institution_logos', 'features', 'benefits', 'product_details', 'footer_links', 'tasar_stats', 'platform_stats'],
     onRefresh: refreshAll,
     pollIntervalMs: 10000,
     onPoll: refreshAll,
   });
 
   // Real-time social media stats from PB
+  const CONTENT_COLLECTIONS = [
+    { name: 'banners', totalKey: 'totalBanners' as const, activeKey: 'activeBanners' as const },
+    { name: 'testimonials', totalKey: 'totalTestimonials' as const, activeKey: 'activeTestimonials' as const },
+    { name: 'how_it_works', totalKey: 'totalHowItWorks' as const },
+    { name: 'gallery_items', totalKey: 'totalGalleryItems' as const },
+    { name: 'institution_logos', totalKey: 'totalInstitutionLogos' as const },
+    { name: 'features', totalKey: 'totalFeatures' as const },
+    { name: 'benefits', totalKey: 'totalBenefits' as const },
+    { name: 'product_details', totalKey: 'totalProducts' as const },
+    { name: 'footer_links', totalKey: 'totalFooterLinks' as const },
+    { name: 'tasar_stats', totalKey: 'totalTasarStats' as const },
+    { name: 'platform_stats', totalKey: 'totalPlatformStats' as const },
+  ];
   const fetchSocialMediaStats = useCallback(async () => {
     try {
       const pb = createPb();
-      const [bannerRecs, testimonialRecs] = await Promise.all([
-        pb.collection('banners').getFullList(),
-        pb.collection('testimonials').getFullList(),
-      ]);
-      setMetrics(prev => ({
-        ...prev,
-        totalBanners: bannerRecs.length,
-        totalTestimonials: testimonialRecs.length,
-        activeBanners: bannerRecs.filter((b: any) => b.isActive).length,
-        activeTestimonials: testimonialRecs.filter((t: any) => t.isActive).length,
-      }));
+      const results = await Promise.all(
+        CONTENT_COLLECTIONS.map(c => pb.collection(c.name).getFullList().then(recs => ({ c, recs })).catch(() => ({ c, recs: [] })))
+      );
+      setMetrics(prev => {
+        const updates: any = {};
+        for (const { c, recs } of results) {
+          updates[c.totalKey] = recs.length;
+          if ('activeKey' in c) updates[(c as any).activeKey] = recs.filter((r: any) => r.isActive).length;
+        }
+        return { ...prev, ...updates };
+      });
     } catch (err) {
-      console.warn('Failed to fetch social media stats from PB:', err);
+      console.warn('Failed to fetch content stats from PB:', err);
     }
   }, []);
 
@@ -672,8 +757,9 @@ export default function AdminDashboardPage() {
     const pb = createPb();
     const unsubFns: (() => void)[] = [];
     (async () => {
-      try { const u = await pb.collection('banners').subscribe('*', () => { fetchSocialMediaStats(); }); unsubFns.push(u); } catch {}
-      try { const u = await pb.collection('testimonials').subscribe('*', () => { fetchSocialMediaStats(); }); unsubFns.push(u); } catch {}
+      for (const c of CONTENT_COLLECTIONS) {
+        try { const u = await pb.collection(c.name).subscribe('*', () => { fetchSocialMediaStats(); }); unsubFns.push(u); } catch {}
+      }
     })();
     return () => { for (const fn of unsubFns) { try { fn(); } catch {} } };
   }, [fetchSocialMediaStats]);
@@ -1522,6 +1608,78 @@ export default function AdminDashboardPage() {
             <div className="flex items-end justify-between gap-2">
               {renderMetricValue(metrics.activeTestimonials.toLocaleString(), "--color-admin-primary")}
               <span className="material-symbols-outlined text-lg" style={{ color: "var(--color-admin-primary)" }}>thumb_up</span>
+            </div>
+          </div>
+          {/* Card 17: How It Works */}
+          <div className={getCardClassName("totalHowItWorks")} style={getCardStyle("totalHowItWorks")}>
+            <p className="text-xs mb-1 font-bold opacity-80">How It Works</p>
+            <div className="flex items-end justify-between gap-2">
+              {renderMetricValue(metrics.totalHowItWorks.toLocaleString(), "--color-admin-primary")}
+              <span className="material-symbols-outlined text-lg" style={{ color: "var(--color-admin-primary)" }}>play_circle</span>
+            </div>
+          </div>
+          {/* Card 18: Gallery Items */}
+          <div className={getCardClassName("totalGalleryItems")} style={getCardStyle("totalGalleryItems")}>
+            <p className="text-xs mb-1 font-bold opacity-80">Gallery Items</p>
+            <div className="flex items-end justify-between gap-2">
+              {renderMetricValue(metrics.totalGalleryItems.toLocaleString(), "--color-admin-primary")}
+              <span className="material-symbols-outlined text-lg" style={{ color: "var(--color-admin-primary)" }}>photo_library</span>
+            </div>
+          </div>
+          {/* Card 19: Institution Logos */}
+          <div className={getCardClassName("totalInstitutionLogos")} style={getCardStyle("totalInstitutionLogos")}>
+            <p className="text-xs mb-1 font-bold opacity-80">Institution Logos</p>
+            <div className="flex items-end justify-between gap-2">
+              {renderMetricValue(metrics.totalInstitutionLogos.toLocaleString(), "--color-admin-primary")}
+              <span className="material-symbols-outlined text-lg" style={{ color: "var(--color-admin-primary)" }}>school</span>
+            </div>
+          </div>
+          {/* Card 20: Features */}
+          <div className={getCardClassName("totalFeatures")} style={getCardStyle("totalFeatures")}>
+            <p className="text-xs mb-1 font-bold opacity-80">Features</p>
+            <div className="flex items-end justify-between gap-2">
+              {renderMetricValue(metrics.totalFeatures.toLocaleString(), "--color-admin-primary")}
+              <span className="material-symbols-outlined text-lg" style={{ color: "var(--color-admin-primary)" }}>widgets</span>
+            </div>
+          </div>
+          {/* Card 21: Benefits */}
+          <div className={getCardClassName("totalBenefits")} style={getCardStyle("totalBenefits")}>
+            <p className="text-xs mb-1 font-bold opacity-80">Benefits</p>
+            <div className="flex items-end justify-between gap-2">
+              {renderMetricValue(metrics.totalBenefits.toLocaleString(), "--color-admin-primary")}
+              <span className="material-symbols-outlined text-lg" style={{ color: "var(--color-admin-primary)" }}>verified</span>
+            </div>
+          </div>
+          {/* Card 22: Products */}
+          <div className={getCardClassName("totalProducts")} style={getCardStyle("totalProducts")}>
+            <p className="text-xs mb-1 font-bold opacity-80">Products</p>
+            <div className="flex items-end justify-between gap-2">
+              {renderMetricValue(metrics.totalProducts.toLocaleString(), "--color-admin-primary")}
+              <span className="material-symbols-outlined text-lg" style={{ color: "var(--color-admin-primary)" }}>category</span>
+            </div>
+          </div>
+          {/* Card 23: Footer Links */}
+          <div className={getCardClassName("totalFooterLinks")} style={getCardStyle("totalFooterLinks")}>
+            <p className="text-xs mb-1 font-bold opacity-80">Footer Links</p>
+            <div className="flex items-end justify-between gap-2">
+              {renderMetricValue(metrics.totalFooterLinks.toLocaleString(), "--color-admin-primary")}
+              <span className="material-symbols-outlined text-lg" style={{ color: "var(--color-admin-primary)" }}>link</span>
+            </div>
+          </div>
+          {/* Card 24: TASAR Stats */}
+          <div className={getCardClassName("totalTasarStats")} style={getCardStyle("totalTasarStats")}>
+            <p className="text-xs mb-1 font-bold opacity-80">TASAR Stats</p>
+            <div className="flex items-end justify-between gap-2">
+              {renderMetricValue(metrics.totalTasarStats.toLocaleString(), "--color-admin-primary")}
+              <span className="material-symbols-outlined text-lg" style={{ color: "var(--color-admin-primary)" }}>bar_chart</span>
+            </div>
+          </div>
+          {/* Card 25: Platform Stats */}
+          <div className={getCardClassName("totalPlatformStats")} style={getCardStyle("totalPlatformStats")}>
+            <p className="text-xs mb-1 font-bold opacity-80">Platform Stats</p>
+            <div className="flex items-end justify-between gap-2">
+              {renderMetricValue(metrics.totalPlatformStats.toLocaleString(), "--color-admin-primary")}
+              <span className="material-symbols-outlined text-lg" style={{ color: "var(--color-admin-primary)" }}>monitoring</span>
             </div>
           </div>
         </div>

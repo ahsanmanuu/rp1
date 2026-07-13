@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAdminSessionFromRequest } from '@/lib/adminAuth';
-import fs from 'fs';
-import path from 'path';
+import { getLogoBase64 } from '@/lib/logo';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,30 +32,6 @@ const getPointsINR = (amount: number): number => {
   if (amount === 1000) return 4150;
   return Math.round(amount * 8.3);
 };
-
-// ── Logo loader (server-side filesystem read with diagnostics) ───────────────
-function getLogoBase64(): string {
-  const candidates = [
-    path.join(process.cwd(), 'public', 'logo.png'),
-    path.resolve('./public/logo.png'),
-    path.join(process.cwd(), '..', 'public', 'logo.png'),
-    path.join(process.cwd(), '.next', 'standalone', 'public', 'logo.png')
-  ];
-
-  for (const logoPath of candidates) {
-    try {
-      if (fs.existsSync(logoPath)) {
-        const buf = fs.readFileSync(logoPath);
-        return `data:image/png;base64,${buf.toString('base64')}`;
-      }
-    } catch (e: any) {
-      console.error(`Error reading logo from path ${logoPath}:`, e.message);
-    }
-  }
-
-  console.error(" getLogoBase64 failed: public/logo.png not found in candidates:", candidates);
-  return '';
-}
 
 // ── PDF header drawer ─────────────────────────────────────────────────────────
 function drawPdfHeader(
@@ -357,7 +332,7 @@ export async function GET(req: NextRequest) {
       rose:    [225, 29, 72],
     };
     const primary = themeColors[theme] ?? themeColors.indigo;
-    const logoBase64 = getLogoBase64(); // server-side fs read
+    const logoBase64 = await getLogoBase64();
 
     const doc = new jsPDF({ orientation: 'landscape' }); // landscape = more columns space
     const pw = doc.internal.pageSize.width;

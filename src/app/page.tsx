@@ -4,17 +4,18 @@ import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useSession } from "@/lib/pb-auth-react";
-import { createPb } from '@/lib/pb';
 import { useRouter } from "next/navigation";
 import LatexifyLogo from "@/components/LatexifyLogo";
 import ProLoader from "@/components/ProLoader";
 import LoginPromptModal from "@/components/LoginPromptModal";
+import { useHomeRealtime } from '@/lib/useHomeRealtime';
 import {
   ArrowRight, FileEdit, Wand2, PenTool, Layout,
   Library, Star, School, Building2, BookOpen, Atom,
   Share2, MessageSquare, Code2, ChevronRight,
   Check, Zap, Shield, Globe, Users, Trophy, Rocket, GraduationCap,
-  Sparkles, PlayCircle, Brain, X
+  Sparkles, PlayCircle, Brain, X, BarChart3, Search, Cpu,
+  RefreshCw, Video, Play, Award
 } from "lucide-react";
 
 /* ─── Animated Stats Counter ──────────────────────────────── */
@@ -85,8 +86,9 @@ function StatItem({ value, suffix, label, decimals = 0 }: { value: number; suffi
 }
 
 /* ─── Feature Card ────────────────────────────────────────── */
-function FeatureCard({ feature, delay }: { feature: typeof FEATURES[0]; delay: number }) {
+function FeatureCard({ feature, delay }: { feature: any; delay: number }) {
   const ref = useReveal();
+  const Icon = feature.icon;
   return (
     <div ref={ref} className="feature-card rounded-3xl overflow-hidden"
       style={{ transitionDelay: `${delay}ms`, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
@@ -96,7 +98,7 @@ function FeatureCard({ feature, delay }: { feature: typeof FEATURES[0]; delay: n
           style={{ background: feature.glow }} />
         <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-6 shadow-lg flex-shrink-0"
           style={{ background: feature.iconBg }}>
-          <feature.icon size={26} color="#fff" />
+          <Icon size={26} color="#fff" />
         </div>
         <h3 className="text-xl font-bold mb-3" style={{ color: 'var(--text-primary)' }}>{feature.title}</h3>
         <p className="text-sm leading-relaxed flex-1" style={{ color: 'var(--text-secondary)' }}>{feature.desc}</p>
@@ -123,144 +125,48 @@ function FeatureCard({ feature, delay }: { feature: typeof FEATURES[0]; delay: n
 export default function Home() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const { data: homeData } = useHomeRealtime();
   const [mounted, setMounted] = useState(false);
   const [activeTestimonial, setActiveTestimonial] = useState(0);
-  const [banners, setBanners] = useState<any[]>([]);
-  const [testimonials, setTestimonials] = useState<any[]>([]);
-  const [realStats, setRealStats] = useState<any>({
-    totalUsers: 0,
-    totalProjects: 0,
-    totalTemplates: 0,
-    uptimePercent: 99.9,
-    totalReviews: 0,
-  });
   const [bannerIndex, setBannerIndex] = useState(0);
   const [activeProduct, setActiveProduct] = useState<string | null>(null);
+  const [activeHowItWorks, setActiveHowItWorks] = useState<number>(0);
   const [showLoginModal, setShowLoginModal] = useState(false);
-  
-  const [proloaderTimeout, setProloaderTimeout] = useState(false);
+  const [showHowItWorksModal, setShowHowItWorksModal] = useState(false);
 
-  const [stats, setStats] = useState({
-    systemsOperational: true,
-    scholarsActive: 18450,
-    initials: ['E', 'J', 'S', 'A', 'R'],
-    totalResearchers: 50000,
-    pagesCompiled: 1200000,
-    journalTemplates: 55,
-    uptime: 100.0
-  });
+  const banners = homeData.banners;
+  const testimonials = homeData.testimonials;
+  const galleryItems = homeData.galleryItems;
+  const institutionLogos = homeData.institutionLogos;
+  const features = homeData.features;
+  const benefits = homeData.benefits;
+  const productDetails = homeData.productDetails;
+  const footerLinks = homeData.footerLinks;
+  const howItWorks = homeData.howItWorks;
+  const tasarStats = homeData.tasarStats;
+  const platformStats = homeData.platformStats;
 
-  useEffect(() => {
-    const t = setTimeout(() => setProloaderTimeout(true), 6000);
-    return () => clearTimeout(t);
-  }, []);
+  const statResearchers = platformStats.find((s: any) => s.key === 'totalResearchers')?.value || 50000;
+  const statPagesCompiled = platformStats.find((s: any) => s.key === 'pagesCompiled')?.value || 1200000;
+  const statTemplates = platformStats.find((s: any) => s.key === 'journalTemplates')?.value || 55;
+  const statUptime = platformStats.find((s: any) => s.key === 'uptime')?.value || 99.9;
+  const statScholarsActive = platformStats.find((s: any) => s.key === 'scholarsActive')?.value || 18450;
+  const statSystemsOperational = platformStats.find((s: any) => s.key === 'systemsOperational')?.value !== 0;
+
+  let initialsArr: string[] = (institutionLogos.slice(0, 5) as any[]).map((l: any) => l.name?.charAt(0) || '?');
+  if (initialsArr.length === 0) initialsArr = ['E', 'J', 'S', 'A', 'R'];
 
   useEffect(() => {
     setMounted(true);
     if (status === "authenticated") router.replace("/dashboard");
   }, [status]);
 
-  // Fetch real-time platform statistics from database
-  useEffect(() => {
-    const fetchPlatformStats = () => {
-      fetch('/api/platform-stats')
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.success !== false) {
-            setStats({
-              systemsOperational: data.systemsOperational ?? true,
-              scholarsActive: data.scholarsActive ?? 18492,
-              initials: data.initials ?? ['E', 'J', 'S', 'A', 'R'],
-              totalResearchers: data.totalResearchers ?? 50000,
-              pagesCompiled: data.pagesCompiled ?? 1200000,
-              journalTemplates: data.journalTemplates ?? 55,
-              uptime: data.uptime ?? 100.0
-            });
-          }
-        })
-        .catch(err => console.info("Platform statistics are currently using cached offline fallbacks."));
-    };
-
-    // Initial fetch
-    fetchPlatformStats();
-
-    // Refresh every 30 seconds for live feel
-    const refreshInterval = setInterval(fetchPlatformStats, 30000);
-    return () => clearInterval(refreshInterval);
-  }, []);
-
-  // Auto-rotate testimonials
   useEffect(() => {
     const len = testimonials.length || 1;
     const t = setInterval(() => setActiveTestimonial(p => (p + 1) % len), 5000);
     return () => clearInterval(t);
   }, [testimonials.length]);
 
-  // Fetch banners, testimonials, and real stats from PB
-  useEffect(() => {
-    async function fetchHomeData() {
-      try {
-        const pb = createPb();
-        const [bannerRecords, testimonialRecords] = await Promise.all([
-          pb.collection('banners').getFullList({ sort: 'sortOrder', filter: 'isActive=true' }),
-          pb.collection('testimonials').getFullList({ sort: 'sortOrder', filter: 'isActive=true' }),
-        ]);
-        setBanners(bannerRecords);
-        setTestimonials(testimonialRecords);
-        
-        // Fetch real stats
-        try {
-          const statsRes = await fetch('/api/platform-stats');
-          const statsData = await statsRes.json();
-          if (statsData?.stats) {
-            setRealStats((prev: any) => ({ ...prev, ...statsData.stats }));
-          }
-        } catch {}
-      } catch (e) {
-        console.warn('Failed to fetch home data from PB', e);
-      }
-    }
-    fetchHomeData();
-    
-    // PB realtime subscription
-    let unsubBanners: (() => void) | undefined;
-    let unsubTestimonials: (() => void) | undefined;
-    
-    async function setupRealtime() {
-      try {
-        const pb = createPb();
-        unsubBanners = await pb.collection('banners').subscribe('*', (e) => {
-          if (e.action === 'create' && e.record.isActive) {
-            setBanners(prev => [...prev, e.record]);
-          } else if (e.action === 'update') {
-            setBanners(prev => prev.map(b => b.id === e.record.id ? e.record : b));
-          } else if (e.action === 'delete') {
-            setBanners(prev => prev.filter(b => b.id !== e.record.id));
-          }
-        }, { filter: 'isActive=true' });
-        
-        unsubTestimonials = await pb.collection('testimonials').subscribe('*', (e) => {
-          if (e.action === 'create' && e.record.isActive) {
-            setTestimonials(prev => [...prev, e.record]);
-          } else if (e.action === 'update') {
-            setTestimonials(prev => prev.map(t => t.id === e.record.id ? e.record : t));
-          } else if (e.action === 'delete') {
-            setTestimonials(prev => prev.filter(t => t.id !== e.record.id));
-          }
-        }, { filter: 'isActive=true' });
-      } catch (e) {
-        console.warn('Failed to setup PB realtime for home page', e);
-      }
-    }
-    setupRealtime();
-    
-    return () => {
-      unsubBanners?.();
-      unsubTestimonials?.();
-    };
-  }, []);
-
-  // Auto-rotate banners from PB real-time data
   const effectiveBannerCount = banners.length;
   useEffect(() => {
     if (effectiveBannerCount <= 1) return;
@@ -268,9 +174,8 @@ export default function Home() {
     return () => clearInterval(timer);
   }, [effectiveBannerCount]);
 
-  if ((!mounted || status === "authenticated") && !proloaderTimeout) {
-    return <ProLoader />;
-  }
+  if (status === "authenticated") return null;
+  if (!mounted) return <ProLoader />;
 
   return (
     <>
@@ -372,7 +277,8 @@ export default function Home() {
                   Start Writing Free
                   <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                 </Link>
-                <button className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl text-base font-bold transition-all duration-300"
+                <button onClick={() => { if (howItWorks.length > 0) { setActiveHowItWorks(0); setShowHowItWorksModal(true); } }}
+                  className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl text-base font-bold transition-all duration-300"
                   style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
                   <PlayCircle size={22} style={{ color: 'var(--accent-primary)' }} />
                   See How It Works
@@ -382,7 +288,7 @@ export default function Home() {
               {/* Social proof */}
               <div className="flex items-center gap-6 pt-2">
                 <div className="flex -space-x-3">
-                  {stats.initials.map((l, i) => (
+                  {initialsArr.map((l, i) => (
                     <div key={i} className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white ring-2"
                       style={{ background: ['var(--accent-primary)','var(--accent-secondary)','#00a395','#f59e0b','#ef4444'][i % 5], outline: '2px solid var(--bg-primary)', outlineOffset: '-1px' }}>
                       {l}
@@ -394,7 +300,7 @@ export default function Home() {
                     {[...Array(5)].map((_,i) => <Star key={i} size={14} fill="#f59e0b" color="#f59e0b" />)}
                   </div>
                   <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                    Trusted by <strong style={{ color: 'var(--text-primary)' }}>{stats.totalResearchers.toLocaleString()}+</strong> researchers worldwide
+                    Trusted by <strong style={{ color: 'var(--text-primary)' }}>{statResearchers.toLocaleString()}+</strong> researchers worldwide
                   </p>
                 </div>
               </div>
@@ -421,16 +327,16 @@ export default function Home() {
                 {/* Marquee gallery */}
                 <div className="overflow-hidden" style={{ height: '280px' }}>
                   <div className="animate-marquee h-full items-stretch gap-4 p-4">
-                    {[...GALLERY_ITEMS, ...GALLERY_ITEMS].map((item, i) => (
-                      <div key={i} className="flex-shrink-0 w-56 h-full rounded-2xl overflow-hidden relative group"
+                    {[...galleryItems, ...galleryItems].filter(Boolean).map((item, i) => (
+                      <div key={`${item.id}-${i}`} className="flex-shrink-0 w-56 h-full rounded-2xl overflow-hidden relative group"
                         style={{ border: '1px solid var(--border)' }}>
-                        <Image src={item.image} alt={item.title} loading="lazy" fill
+                        <Image src={item.imageUrl || '/placeholder.png'} alt={item.title} loading="lazy" fill
                           className="object-cover transition-transform duration-700 group-hover:scale-105" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
                         <div className="absolute bottom-0 left-0 right-0 p-4 flex items-center gap-3">
                           <div className="w-8 h-8 rounded-xl flex items-center justify-center"
                             style={{ background: 'var(--accent-primary)' }}>
-                            <item.icon size={15} color="#fff" />
+                            <FileEdit size={15} color="#fff" />
                           </div>
                           <span className="text-sm font-bold text-white leading-tight">{item.title}</span>
                         </div>
@@ -469,17 +375,124 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ═══════════════ SEE HOW IT WORKS ═══════════════ */}
+      {howItWorks.length > 0 && (
+        <section className="w-full py-14 md:py-18" style={{ background: 'var(--bg-primary)' }}>
+          <div className="max-w-7xl mx-auto px-6 lg:px-12">
+            <div className="text-center mb-12 md:mb-16 space-y-4">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest"
+                style={{ background: 'color-mix(in srgb, var(--accent-primary) 8%, transparent)', color: 'var(--accent-primary)', border: '1px solid color-mix(in srgb, var(--accent-primary) 20%, transparent)' }}>
+                <Play size={12} /> See How It Works
+              </div>
+              <h2 className="font-black tracking-tight" style={{ fontSize: 'clamp(1.8rem, 3vw, 2.6rem)', color: 'var(--text-primary)' }}>
+                Get started in <span className="gradient-text-animated">3 simple steps</span>
+              </h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {howItWorks.sort((a: any, b: any) => a.sortOrder - b.sortOrder).map((step: any, i: number) => (
+                <div key={step.id} className="relative group">
+                  <div className="absolute -top-3 -left-3 w-12 h-12 rounded-2xl flex items-center justify-center text-white text-lg font-black"
+                    style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))' }}>
+                    {step.stepNumber || i + 1}
+                  </div>
+                  <div className="p-8 pt-10 rounded-3xl transition-all duration-300 group-hover:shadow-xl group-hover:-translate-y-1"
+                    style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+                    {step.imageUrl && (
+                      <div className="mb-5 rounded-2xl overflow-hidden">
+                        <Image src={step.imageUrl} alt={step.title} width={400} height={250} className="w-full h-48 object-cover" />
+                      </div>
+                    )}
+                    {step.videoUrl && (
+                      <button onClick={() => { setActiveHowItWorks(i); setShowHowItWorksModal(true); }}
+                        className="mb-5 relative w-full h-48 rounded-2xl overflow-hidden group/vid">
+                        <Image src={step.imageUrl || '/placeholder.png'} alt={step.title} width={400} height={250} className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center group-hover/vid:bg-black/40 transition-all">
+                          <div className="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center shadow-xl group-hover/vid:scale-110 transition-transform">
+                            <Play size={28} fill="var(--accent-primary)" style={{ color: 'var(--accent-primary)', marginLeft: 2 }} />
+                          </div>
+                        </div>
+                      </button>
+                    )}
+                    <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--text-primary)' }}>{step.title}</h3>
+                    {step.description && <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{step.description}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* How It Works Video Modal */}
+      {showHowItWorksModal && howItWorks[activeHowItWorks]?.videoUrl && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
+          onClick={() => setShowHowItWorksModal(false)}>
+          <div className="relative w-full max-w-4xl rounded-3xl overflow-hidden shadow-2xl animate-[scaleIn_0.3s_ease-out]"
+            onClick={e => e.stopPropagation()}>
+            <button onClick={() => setShowHowItWorksModal(false)}
+              className="absolute top-4 right-4 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70 transition-all">
+              <X size={20} />
+            </button>
+            <div className="relative" style={{ paddingBottom: '56.25%' }}>
+              <iframe src={howItWorks[activeHowItWorks].videoUrl.replace('watch?v=', 'embed/')}
+                className="absolute inset-0 w-full h-full" allow="autoplay; encrypted-media" allowFullScreen />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ═══════════════ STATS SECTION ═══════════════ */}
       <section style={{ background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
         <div className="max-w-7xl mx-auto px-6 lg:px-12 py-10 md:py-12">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-10">
-            <StatItem value={realStats.totalUsers || stats.totalResearchers} suffix="+" label="Researchers" />
-            <StatItem value={realStats.totalProjects || stats.pagesCompiled} suffix="+" label="Pages Compiled" />
-            <StatItem value={realStats.totalTemplates || stats.journalTemplates} suffix="+" label="Journal Templates" />
-            <StatItem value={realStats.uptimePercent || stats.uptime} suffix="%" label="Uptime" decimals={1} />
+            <StatItem value={statResearchers} suffix="+" label="Researchers" />
+            <StatItem value={statPagesCompiled} suffix="+" label="Pages Compiled" />
+            <StatItem value={statTemplates} suffix="+" label="Journal Templates" />
+            <StatItem value={statUptime} suffix="%" label="Uptime" decimals={1} />
           </div>
         </div>
       </section>
+
+      {/* ═══════════════ TASAR STATS ═══════════════ */}
+      {tasarStats.length > 0 && (
+        <section className="w-full py-12 md:py-16" style={{ background: 'var(--bg-primary)' }}>
+          <div className="max-w-7xl mx-auto px-6 lg:px-12">
+            <div className="text-center mb-10 space-y-3">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest"
+                style={{ background: 'color-mix(in srgb, var(--accent-primary) 8%, transparent)', color: 'var(--accent-primary)', border: '1px solid color-mix(in srgb, var(--accent-primary) 20%, transparent)' }}>
+                <BarChart3 size={12} /> T.A.S.A.R
+              </div>
+              <h2 className="font-black tracking-tight" style={{ fontSize: 'clamp(1.6rem, 2.5vw, 2.2rem)', color: 'var(--text-primary)' }}>
+                Tools · Academic · Statistical · Analytics · Research
+              </h2>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              {tasarStats.sort((a: any, b: any) => a.sortOrder - b.sortOrder).map((stat: any) => {
+                const catColors: Record<string, string> = {
+                  tools: '#4f46e5', academic: '#059669', statistical: '#f59e0b',
+                  analytics: '#0891b2', research: '#dc2626',
+                };
+                const color = stat.color || catColors[stat.category] || 'var(--accent-primary)';
+                return (
+                  <div key={stat.id} className="relative group">
+                    <div className="p-6 rounded-2xl text-center transition-all duration-300 group-hover:shadow-xl group-hover:-translate-y-1"
+                      style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+                      <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-3"
+                        style={{ background: `${color}18` }}>
+                        <BarChart3 size={22} style={{ color }} />
+                      </div>
+                      <div className="text-3xl font-black mb-1 tabular-nums" style={{ color }}>
+                        {stat.value}{stat.suffix || ''}
+                      </div>
+                      <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>{stat.label}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ═══════════════ TRUST LOGOS ═══════════════ */}
       <section className="w-full py-10 md:py-12" style={{ background: 'var(--bg-primary)' }}>
@@ -489,11 +502,11 @@ export default function Home() {
             Trusted by researchers at world-leading institutions
           </p>
           <div className="trust-logos-row flex flex-wrap justify-center items-center gap-12 lg:gap-20">
-            {TRUST_LOGOS.map((logo, i) => (
-              <div key={i} className="trust-logo flex items-center gap-3">
+            {institutionLogos.map((logo, i) => (
+              <div key={logo.id || i} className="trust-logo flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white"
                   style={{ background: 'var(--accent-primary)' }}>
-                  <logo.icon size={20} />
+                  <School size={20} />
                 </div>
                 <span className="text-xl font-black" style={{ color: 'var(--text-primary)' }}>{logo.name}</span>
               </div>
@@ -522,7 +535,7 @@ export default function Home() {
 
           {/* Feature grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {FEATURES.map((f, i) => <FeatureCard key={i} feature={f} delay={i * 80} />)}
+            {features.map((f, i) => <FeatureCard key={f.id || i} feature={f} delay={i * 80} />)}
           </div>
         </div>
       </section>
@@ -609,19 +622,22 @@ export default function Home() {
                 — real-time collaboration, AI assistance, and beautiful design — to academic publishing.
               </p>
               <div className="space-y-5">
-                {BENEFITS.map((b, i) => (
-                  <div key={i} className="flex items-start gap-4 p-4 rounded-2xl transition-all duration-300 hover:shadow-md"
+                {benefits.map((b, i) => {
+                  const BenefitIcon = b.icon;
+                  return (
+                  <div key={b.id || i} className="flex items-start gap-4 p-4 rounded-2xl transition-all duration-300 hover:shadow-md"
                     style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
                     <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                       style={{ background: b.color + '18' }}>
-                      <b.icon size={18} style={{ color: b.color }} />
+                      <BenefitIcon size={18} style={{ color: b.color }} />
                     </div>
                     <div>
                       <div className="font-bold text-sm mb-1" style={{ color: 'var(--text-primary)' }}>{b.title}</div>
                       <div className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{b.desc}</div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -759,51 +775,54 @@ export default function Home() {
 
             {/* Nav columns */}
             <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-10">
-              {FOOTER_LINKS.map((col, i) => (
-                <div key={i} className="space-y-5">
-                  <h4 className="text-sm font-black uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.9)' }}>
-                    {col.title}
-                  </h4>
-                  <div className="space-y-3">
-                    {col.links.map((link: any, j: number) => {
-                      if (link.label === "Templates Gallery") {
-                        return (
-                          <button
-                            key={j}
-                            onClick={() => {
-                              setShowLoginModal(true);
-                            }}
+              {(() => {
+                const groups = footerLinks.reduce((acc: any, link: any) => {
+                  if (!acc[link.groupTitle]) acc[link.groupTitle] = [];
+                  acc[link.groupTitle].push(link);
+                  return acc;
+                }, {} as Record<string, any[]>);
+                return Object.entries(groups).map(([title, links]: [string, any[]]) => (
+                  <div key={title} className="space-y-5">
+                    <h4 className="text-sm font-black uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.9)' }}>
+                      {title}
+                    </h4>
+                    <div className="space-y-3">
+                      {links.map((link: any, j: number) => {
+                        if (link.label === "Templates Gallery") {
+                          return (
+                            <button key={j} onClick={() => setShowLoginModal(true)}
+                              className="footer-link text-sm block text-left w-full"
+                              style={{ color: 'rgba(255,255,255,0.5)' }}>
+                              {link.label}
+                            </button>
+                          );
+                        }
+                        return title === "Products" && link.linkKey ? (
+                          <button key={j} onClick={() => setActiveProduct(link.linkKey)}
                             className="footer-link text-sm block text-left w-full"
-                            style={{ color: 'rgba(255,255,255,0.5)' }}
-                          >
+                            style={{ color: 'rgba(255,255,255,0.5)' }}>
                             {link.label}
                           </button>
+                        ) : (
+                          <Link key={j} href={link.href || '#'} className="footer-link text-sm block"
+                            style={{ color: 'rgba(255,255,255,0.5)' }}>
+                            {link.label}
+                          </Link>
                         );
-                      }
-                      return col.title === "Products" ? (
-                        <button key={j} onClick={() => setActiveProduct(link.key)}
-                          className="footer-link text-sm block text-left w-full"
-                          style={{ color: 'rgba(255,255,255,0.5)' }}>
-                          {link.label}
-                        </button>
-                      ) : (
-                        <Link key={j} href={link.href} className="footer-link text-sm block"
-                          style={{ color: 'rgba(255,255,255,0.5)' }}>
-                          {link.label}
-                        </Link>
-                      );
-                    })}
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ));
+              })()}
             </div>
           </div>
 
           {/* ── Product Modal ── */}
           {activeProduct && (() => {
-            const p = PRODUCT_DETAILS[activeProduct];
+            const p = productDetails.find((pd: any) => pd.key === activeProduct);
             if (!p) return null;
-            const Icon = p.icon;
+            const iconMap: Record<string, any> = { FileEdit, Wand2, PenTool, Layout, Library, Brain };
+            const Icon = iconMap[p.icon] || FileEdit;
             return (
               <div className="fixed inset-0 z-[999] flex items-center justify-center p-4"
                 style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
@@ -871,15 +890,15 @@ export default function Home() {
               style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
               <span className="relative flex h-2.5 w-2.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" 
-                  style={{ background: stats.systemsOperational ? '#10b981' : '#f59e0b' }} />
+                  style={{ background: statSystemsOperational ? '#10b981' : '#f59e0b' }} />
                 <span className="relative inline-flex h-2.5 w-2.5 rounded-full" 
-                  style={{ background: stats.systemsOperational ? '#10b981' : '#f59e0b', boxShadow: stats.systemsOperational ? '0 0 10px rgba(16,185,129,0.8)' : '0 0 10px rgba(245,158,11,0.8)' }} />
+                  style={{ background: statSystemsOperational ? '#10b981' : '#f59e0b', boxShadow: statSystemsOperational ? '0 0 10px rgba(16,185,129,0.8)' : '0 0 10px rgba(245,158,11,0.8)' }} />
               </span>
               <span className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                {stats.systemsOperational ? 'All systems operational' : 'System experiencing delays'}
+                {statSystemsOperational ? 'All systems operational' : 'System experiencing delays'}
               </span>
               <span className="text-xs font-black" style={{ color: '#10b981' }}>
-                {stats.scholarsActive.toLocaleString()} Scholars Active
+                {Number(statScholarsActive).toLocaleString()} Scholars Active
               </span>
             </div>
             <div className="flex gap-5">
@@ -897,74 +916,4 @@ export default function Home() {
   );
 }
 
-const GALLERY_ITEMS = [
-  { title: "Latexify Dashboard", image: "https://lh3.googleusercontent.com/aida-public/AB6AXuAfrx0rEK6VFLoe2g-XBz3W3v-F9ySny3wIO0GvOU4er61lUuTBVHvwYLUuqIs0AJoAKS007oi-Eol9Htta-GTRBF4xxAzzuqQgAhgqDtjr8p6Z7Q6hg2CSB3wQNqCGWWMQXkcp8v6Lso_Le622A3nyeH7Lev3cMioXKpnxZKCMHLPVS0ExSKUiPxYmzKIWcN6Coo758Jx_tmEY5RDPLzN1a48mBPKfpqaAgI6i5xGtO4pQLyEzyTTvYn2VnmuYr49zlqcD5RuJ2VLq", icon: FileEdit },
-  { title: "Doc2Latex Dashboard", image: "https://lh3.googleusercontent.com/aida-public/AB6AXuDFtYyOpkpxGhljL4YEO1ZBLJZMbOn9gPHP8fXetmJnFR08eYC253o5M68i_jcmYGp_5iIjQ-JcBvvPO2alyZtkmAQ9nUYWjTd93LI_3N2A-FX8hLaCsZj-SLMSfhLToozbAF84ghM2FjYb4cnBUrA3DL-8YbTm4JPkf2ykIRWS461AjyRuzsmLCfQRunK5eOGjPJt5kFsqPzc3IF5aWizqmst_t4ttOirs6mspuA6M1RDIUXBrfirHyzXDyIaZJ5vtvRC3UkZz_A_o", icon: Wand2 },
-  { title: "Diagram Studio", image: "https://lh3.googleusercontent.com/aida-public/AB6AXuCOfpdp7avfxHVymJ06UtjZny3PXYwWBlHy4rpi8PV7-YGXFfygei_YZV65NdCKAQfE4DuhwJVAdCrE4-JoRKmljz10dSgkNXgv5F3blSGIPbm-6vQRe0_OrtZzV49Mxi7nwF-XXZzkzf8YjZrLYr2o4KLZflRtfrY3WY0NNTblCY-q7F0rLGOfjwoHMxC6LNP6KqqBj_jnRgs7NOX4Me-ldmMJtt38-V4YCjxpmuUxTRgfP3TncR6coVeklb0q5ABJYPH4zCIbqmoe", icon: PenTool },
-  { title: "Template Migrator", image: "https://lh3.googleusercontent.com/aida-public/AB6AXuAvQz491UjMaxItAqkAnkLEZDgbYQ9z3q4zdYq38xoFSNUtLSnoZEOYC584Bvw7070Yl5ia_mk8-wXycVUgmpjy6ZlOR6rh7vzwgjoolh01S0287jDHSpx6jQRhXuoo6B5SD7y4-MHAERQDO1wARSXJLiGs6dkIMw3gnQHs8Jlvr5c888M_d6SJ3VZIJVy69OKgQ2F7064lqQ1EtLt8PJIq-QQNF-enp8jKqJpjS1A9yNc61ktBXG8LfIZV7x6MET473uxu1fQKjpDl", icon: Layout },
-  { title: "Citation Studio", image: "https://lh3.googleusercontent.com/aida-public/AB6AXuDXqWg4r7vKDSzOnA0vncm3Wcm8hiUnA9ngYcljj07eIpRK1_hbIL48t5ZMclJE_UHSwtLaKqtgC2X-457idjJlXGAtQnmbg9Kb0q5B4XzhowAyZXfRN4mFH_7aHmOOky0uti0CXVHCteoBw8TiLZVjkqa-acr8ayfGU3zI-lFqdMZaib4Gc5ZzR7Pad7NVXJpW8hokDNJvZYX30qVrX5sR6Uc9OE8nJHJOHkRH-9uIoq6HLMBZxEmozks34yZZRKMtb_IkwqULnDop", icon: Library },
-  { title: "AI Peer Reviewer", image: "https://lh3.googleusercontent.com/aida-public/AB6AXuAfrx0rEK6VFLoe2g-XBz3W3v-F9ySny3wIO0GvOU4er61lUuTBVHvwYLUuqIs0AJoAKS007oi-Eol9Htta-GTRBF4xxAzzuqQgAhgqDtjr8p6Z7Q6hg2CSB3wQNqCGWWMQXkcp8v6Lso_Le622A3nyeH7Lev3cMioXKpnxZKCMHLPVS0ExSKUiPxYmzKIWcN6Coo758Jx_tmEY5RDPLzN1a48mBPKfpqaAgI6i5xGtO4pQLyEzyTTvYn2VnmuYr49zlqcD5RuJ2VLq", icon: Brain },
-];
-
-const TRUST_LOGOS = [
-  { name: "MIT", icon: School },
-  { name: "Stanford", icon: Building2 },
-  { name: "Oxford", icon: BookOpen },
-  { name: "CERN", icon: Atom },
-  { name: "Harvard", icon: GraduationCap },
-];
-
-const FEATURES = [
-  { title: "Latexify Dashboard", desc: "A modern, powerful, collaborative LaTeX editor designed for the web. Write with joy, compile with speed, share with ease.", icon: FileEdit, iconBg: 'var(--accent-primary)', glow: 'var(--accent-primary)', tags: ["Real-time Collab", "Cloud Sync"], href: "/latex-studio" },
-  { title: "Doc2Latex", desc: "Instantly convert Word documents into clean, well-structured LaTeX code. Bridge the gap with co-authors seamlessly.", icon: Wand2, iconBg: 'var(--accent-secondary)', glow: 'var(--accent-secondary)', tags: ["DOCX → LaTeX", "Smart Parsing"], href: "/upload" },
-  { title: "Diagram Studio", desc: "Create beautiful TikZ diagrams with an intuitive visual canvas. No more wrestling with coordinates and syntax.", icon: PenTool, iconBg: '#f59e0b', glow: '#f59e0b', tags: ["Visual Editor", "TikZ Export"], href: "/diagrams" },
-  { title: "Template Migrator", desc: "Switch journals effortlessly. One click updates your document styling, margins, and bibliography formats instantly.", icon: Layout, iconBg: '#0891b2', glow: '#0891b2', tags: ["55+ Templates", "IEEE, Nature, ACM"], href: "/template-migrator" },
-  { title: "Citation Studio", desc: "Manage your bibliography seamlessly. Auto-fetch metadata via DOI, organize references with tags and export BibTeX.", icon: Library, iconBg: '#059669', glow: '#059669', tags: ["DOI Auto-fetch", "BibTeX Export"], href: "/citations" },
-  { title: "AI Peer Reviewer", desc: "Get instant, scholarly feedback on clarity, argumentation, and methodology. Like having a senior researcher on speed dial.", icon: Brain, iconBg: '#dc2626', glow: '#dc2626', tags: ["Logic Check", "Grammar AI"], href: "/reviewer" },
-];
-
-const BENEFITS = [
-  { title: "Lightning-Fast Compilation", desc: "Cloud-powered LaTeX cluster compiles your manuscript in under 3 seconds. No local installation needed.", icon: Zap, color: '#f59e0b' },
-  { title: "Enterprise-Grade Security", desc: "AES-256 encrypted storage with isolated project namespaces. Your research stays private.", icon: Shield, color: '#0891b2' },
-  { title: "Works Everywhere", desc: "Browser-based IDE works on any device. Start on your laptop, continue on your tablet.", icon: Globe, color: '#6b38d4' },
-  { title: "Real-time Collaboration", desc: "Invite co-authors, share links, and review changes together in real time.", icon: Users, color: 'var(--accent-primary)' },
-];
-
-const PRODUCT_DETAILS: Record<string, { title: string; desc: string; icon: any; color: string; features: string[]; href: string }> = {
-  'Latexify Studio': { title: 'Latexify Studio', desc: 'A modern, powerful, collaborative LaTeX editor designed for the web. Write with joy, compile with speed, share with ease.', icon: FileEdit, color: '#00685f', href: '/latex-studio', features: ['Real-time collaboration with co-authors', 'Cloud-sync across all devices', 'pdfLaTeX, LuaLaTeX, XeLaTeX support', 'Live PDF preview with split view', 'Syntax highlighting & auto-complete', 'Version history & restore'] },
-  'Doc2Latex': { title: 'Doc2LateX', desc: 'Instantly convert Word documents into clean, well-structured LaTeX code. Bridge the gap with co-authors seamlessly.', icon: Wand2, color: '#545f73', href: '/upload', features: ['DOCX to LaTeX in one click', 'Smart formatting preservation', 'Table & image handling', 'Bibliography conversion', 'Math equation parsing', 'Batch document processing'] },
-  'Diagram Studio': { title: 'AI Diagram Studio', desc: 'Create beautiful TikZ diagrams with an intuitive visual canvas. No more wrestling with coordinates and syntax.', icon: PenTool, color: '#f59e0b', href: '/diagrams', features: ['Visual drag-and-drop canvas', 'AI-powered diagram generation', 'Export to TikZ code', 'Pre-built template library', 'Real-time preview', 'Import from Visio & Draw.io'] },
-  'Template Migrator': { title: 'Template Migrator', desc: 'Switch journals effortlessly. One click updates your document styling, margins, and bibliography formats instantly.', icon: Layout, color: '#0891b2', href: '/template-migrator', features: ['55+ journal templates', 'One-click format switching', 'Automatic margin & spacing', 'Bibliography style conversion', 'IEEE, Nature, ACM, Elsevier support', 'Custom template import'] },
-  'Citation Studio': { title: 'AI Citation Studio', desc: 'Manage your bibliography seamlessly. Auto-fetch metadata via DOI, organize references with tags and export BibTeX.', icon: Library, color: '#059669', href: '/citations', features: ['DOI auto-fetch metadata', 'BibTeX & BibLaTeX export', 'Tag-based organization', 'Duplicate detection', 'Multi-style formatting', 'Zotero & Mendeley import'] },
-  'AI Peer Reviewer': { title: 'AI Peer Reviewer', desc: 'Get instant, scholarly feedback on clarity, argumentation, and methodology. Like having a senior researcher on speed dial.', icon: Brain, color: '#dc2626', href: '/reviewer', features: ['Grammar & style analysis', 'Logical gap detection', 'Methodology assessment', 'Citation quality check', 'Readability scoring', 'Revision suggestions'] },
-};
-
-const FOOTER_PRODUCTS_LINKS = Object.keys(PRODUCT_DETAILS).map(label => ({ label, key: label }));
-
-const FOOTER_LINKS = [
-  { title: "Products", links: [
-    { label: "Latexify Studio", key: "Latexify Studio" },
-    { label: "Doc2Latex", key: "Doc2Latex" },
-    { label: "Diagram Studio", key: "Diagram Studio" },
-    { label: "Template Migrator", key: "Template Migrator" },
-    { label: "Citation Studio", key: "Citation Studio" },
-    { label: "AI Peer Reviewer", key: "AI Peer Reviewer" },
-  ]},
-  { title: "Resources", links: [
-    { label: "Pricing", href: "/pricing" },
-    { label: "Templates Gallery", href: "/templates" },
-    { label: "Help Center", href: "#" },
-  ]},
-  { title: "Company", links: [
-    { label: "About Us", href: "/about" },
-    { label: "Blog", href: "#" },
-    { label: "Careers", href: "#" },
-    { label: "Contact", href: "/contact-us" },
-  ]},
-  { title: "Legal", links: [
-    { label: "Privacy Policy", href: "#" },
-    { label: "Terms of Service", href: "#" },
-    { label: "Cookie Policy", href: "#" },
-    { label: "GDPR", href: "#" },
-  ]},
-];
+// All data now loaded from PocketBase via useHomeRealtime hook
