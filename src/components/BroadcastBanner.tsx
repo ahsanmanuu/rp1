@@ -45,7 +45,8 @@ export default function BroadcastBanner() {
         if (data.success) {
           setAnnouncements(data.announcements || []);
         }
-      } catch (err) {
+      } catch (err: any) {
+        if (err?.message?.includes('503')) return;
         console.error('Failed to fetch announcements:', err);
       }
     };
