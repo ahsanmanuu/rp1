@@ -28,7 +28,7 @@ const SIDEBAR_LINKS = [
   { href: '/admin/tax-calculation', icon: 'calculate', label: 'Tax Calculation' },
 ];
 
-type ContentTab = 'banners' | 'testimonials' | 'how_it_works' | 'gallery_items' | 'institution_logos' | 'features' | 'benefits' | 'product_details' | 'footer_links' | 'tasar_stats' | 'platform_stats' | 'floating_banners' | 'settings';
+type ContentTab = 'banners' | 'testimonials' | 'how_it_works' | 'gallery_items' | 'institution_logos' | 'features' | 'benefits' | 'product_details' | 'footer_links' | 'tasar_stats' | 'platform_stats' | 'floating_banners' | 'videos' | 'settings';
 
 const COLLECTION_CONFIGS: Record<string, { label: string; icon: string; apiEndpoint: string; pbCollection: string }> = {
   how_it_works: { label: 'How It Works', icon: 'format_list_numbered', apiEndpoint: '/api/content/how_it_works', pbCollection: 'how_it_works' },
@@ -41,6 +41,7 @@ const COLLECTION_CONFIGS: Record<string, { label: string; icon: string; apiEndpo
   tasar_stats: { label: 'TASAR Stats', icon: 'bar_chart', apiEndpoint: '/api/content/tasar_stats', pbCollection: 'tasar_stats' },
   platform_stats: { label: 'Platform Stats', icon: 'analytics', apiEndpoint: '/api/content/platform_stats', pbCollection: 'platform_stats' },
   floating_banners: { label: 'Floating Banners', icon: 'ads_click', apiEndpoint: '/api/content/floating_banners', pbCollection: 'floating_banners' },
+  videos: { label: 'Videos', icon: 'smart_display', apiEndpoint: '/api/content/videos', pbCollection: 'videos' },
 };
 
 const TASAR_CATEGORIES = ['tools', 'academic', 'statistical', 'analytics', 'research'];
@@ -352,6 +353,7 @@ export default function AdminSocialMediaPage() {
       case 'tasar_stats': return { label: '', value: '', suffix: '', icon: '', color: '', category: 'tools', isActive: true, sortOrder: 0 };
       case 'platform_stats': return { key: '', label: '', value: '', suffix: '', decimals: 0, isActive: true };
       case 'floating_banners': return { title: '', imageUrl: '', linkUrl: '', targetType: 'global', targetEmail: '', width: 4, height: 6, duration: 5, isActive: true, sortOrder: 0 };
+      case 'videos': return { title: '', description: '', videoUrl: '', posterUrl: '', isActive: true, sortOrder: 0 };
       default: return {};
     }
   };
@@ -746,6 +748,19 @@ export default function AdminSocialMediaPage() {
             </div>
           </div>
         );
+      case 'videos':
+        return (
+          <div className="space-y-4">
+            <ModalField label="Title">{renderGenericField('title', 'text', 'e.g. How to Use Latexify')}</ModalField>
+            <ModalField label="Description">{renderGenericField('description', 'textarea', 'Video description...')}</ModalField>
+            <ModalField label="Video URL">{renderGenericField('videoUrl', 'text', 'Upload an MP4 or paste a video URL')}</ModalField>
+            <ModalField label="Poster / Thumbnail">{renderGenericField('posterUrl', 'image', 'Upload a poster image for the video')}</ModalField>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <ModalField label="Sort Order">{renderGenericField('sortOrder', 'number')}</ModalField>
+              <ModalField label="Active">{renderGenericField('isActive', 'checkbox')}</ModalField>
+            </div>
+          </div>
+        );
       case 'floating_banners':
         return (
           <div className="space-y-4">
@@ -1079,6 +1094,42 @@ export default function AdminSocialMediaPage() {
             </div>
           </div>
         );
+      case 'videos':
+        return (
+          <div key={item.id} className="p-4 rounded-xl border transition-all hover:brightness-95 overflow-hidden" style={{ backgroundColor: cardBg, borderColor }}>
+            <div className="flex gap-3">
+              <div className="w-20 h-14 rounded-lg overflow-hidden shrink-0 flex items-center justify-center" style={{ backgroundColor: bgColor }}>
+                {item.posterUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={item.posterUrl} alt={item.title} className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                ) : (
+                  <span className="material-symbols-outlined text-2xl" style={{ color: surfaceVariant }}>smart_display</span>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold truncate" style={{ color: onSurfaceColor }}>{item.title}</p>
+                {item.description && <p className="text-xs truncate mt-0.5" style={{ color: surfaceVariant }}>{item.description}</p>}
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${item.isActive ? 'text-green-600 bg-green-500/10' : 'text-red-600 bg-red-500/10'}`}>
+                    {item.isActive ? 'Active' : 'Inactive'}
+                  </span>
+                  <span className="text-[10px] font-bold" style={{ color: surfaceVariant }}>Sort: {item.sortOrder}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 mt-3 pt-3 border-t" style={{ borderColor }}>
+              <button onClick={() => toggleGenericActive(item)} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors" title="Toggle Active">
+                <span className="material-symbols-outlined text-[16px]" style={{ color: item.isActive ? '#22c55e' : surfaceVariant }}>{item.isActive ? 'toggle_on' : 'toggle_off'}</span>
+              </button>
+              <button onClick={() => openEditGeneric(tab, item)} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors" title="Edit">
+                <span className="material-symbols-outlined text-[16px]" style={{ color: surfaceVariant }}>edit</span>
+              </button>
+              <button onClick={() => deleteGeneric(item.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 transition-colors ml-auto" title="Delete">
+                <span className="material-symbols-outlined text-[16px] text-red-500">delete</span>
+              </button>
+            </div>
+          </div>
+        );
       case 'floating_banners':
         return (
           <div key={item.id} className="p-4 rounded-xl border transition-all hover:brightness-95 overflow-hidden" style={{ backgroundColor: cardBg, borderColor }}>
@@ -1258,6 +1309,7 @@ export default function AdminSocialMediaPage() {
     tasar_stats: null,
     platform_stats: null,
     floating_banners: null,
+    videos: null,
   };
   const loading = tab === 'banners' ? loadingBanners : tab === 'testimonials' ? loadingTestimonials : genericIsLoading;
   const items = tab === 'banners' ? banners : tab === 'testimonials' ? testimonials : genericData;
@@ -1275,6 +1327,7 @@ export default function AdminSocialMediaPage() {
     { key: 'tasar_stats', icon: 'bar_chart', label: 'TASAR Stats', count: (genericItems['tasar_stats'] || []).length },
     { key: 'platform_stats', icon: 'analytics', label: 'Platform Stats', count: (genericItems['platform_stats'] || []).length },
     { key: 'floating_banners', icon: 'ads_click', label: 'Floating Banners', count: (genericItems['floating_banners'] || []).length },
+    { key: 'videos', icon: 'smart_display', label: 'Videos', count: (genericItems['videos'] || []).length },
     { key: 'settings', icon: 'settings', label: 'Settings', count: 0 },
   ];
 

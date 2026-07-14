@@ -179,6 +179,19 @@ const COLLECTIONS = [
     ],
     indexes: [],
   },
+  {
+    name: 'videos',
+    type: 'base',
+    schema: [
+      { name: 'title', type: 'text', required: true },
+      { name: 'description', type: 'text' },
+      { name: 'videoUrl', type: 'url', required: true },
+      { name: 'posterUrl', type: 'url' },
+      { name: 'isActive', type: 'bool' },
+      { name: 'sortOrder', type: 'number' },
+    ],
+    indexes: [],
+  },
 ];
 
 function mapSchemaToFields(schema: any[]) {

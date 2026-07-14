@@ -10,6 +10,8 @@ import LoginPromptModal from "@/components/LoginPromptModal";
 import FloatingBanner from "@/components/FloatingBanner";
 import SiteFooter from "@/components/SiteFooter";
 import { useHomeRealtime } from '@/lib/useHomeRealtime';
+import dynamic from 'next/dynamic';
+const VideoPlayer = dynamic(() => import('@/components/VideoPlayer'), { ssr: false });
 import {
   ArrowRight, FileEdit, Wand2, PenTool, Layout,
   Library, Star, School, Building2, BookOpen, Atom,
@@ -158,6 +160,7 @@ export default function Home() {
   const [activeHowItWorks, setActiveHowItWorks] = useState<number>(0);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showHowItWorksModal, setShowHowItWorksModal] = useState(false);
+  const [videos, setVideos] = useState<any[]>([]);
 
   const banners = homeData.banners;
   const testimonials = homeData.testimonials;
@@ -185,6 +188,13 @@ export default function Home() {
     setMounted(true);
     if (status === "authenticated") router.replace("/dashboard");
   }, [status]);
+
+  useEffect(() => {
+    fetch('/api/content/videos')
+      .then(r => r.json())
+      .then(d => { if (d.success) setVideos(d.data.filter((v: any) => v.isActive).sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0))); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const len = testimonials.length || 1;
@@ -301,7 +311,7 @@ export default function Home() {
                   Start Writing Free
                   <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                 </Link>
-                <button onClick={() => { if (howItWorks.length > 0) { setActiveHowItWorks(0); setShowHowItWorksModal(true); } }}
+                <button onClick={() => { if (videos.length > 0 || howItWorks.length > 0) { setActiveHowItWorks(0); setShowHowItWorksModal(true); } }}
                   className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl text-base font-bold transition-all duration-300"
                   style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
                   <PlayCircle size={22} style={{ color: 'var(--accent-primary)' }} />
@@ -448,7 +458,7 @@ export default function Home() {
       )}
 
       {/* How It Works Video Modal */}
-      {showHowItWorksModal && howItWorks[activeHowItWorks]?.videoUrl && (
+      {showHowItWorksModal && (videos[activeHowItWorks]?.videoUrl || howItWorks[activeHowItWorks]?.videoUrl) && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
           onClick={() => setShowHowItWorksModal(false)}>
           <div className="relative w-full max-w-4xl rounded-3xl overflow-hidden shadow-2xl animate-[scaleIn_0.3s_ease-out]"
@@ -457,10 +467,21 @@ export default function Home() {
               className="absolute top-4 right-4 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70 transition-all">
               <X size={20} />
             </button>
-            <div className="relative" style={{ paddingBottom: '56.25%' }}>
-              <iframe src={howItWorks[activeHowItWorks].videoUrl.replace('watch?v=', 'embed/')}
-                className="absolute inset-0 w-full h-full" allow="autoplay; encrypted-media" allowFullScreen />
-            </div>
+            {(() => {
+              const video = videos[activeHowItWorks];
+              const url = video?.videoUrl || howItWorks[activeHowItWorks]?.videoUrl;
+              if (!url) return null;
+              const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
+              if (isYouTube) {
+                return (
+                  <div className="relative" style={{ paddingBottom: '56.25%' }}>
+                    <iframe src={url.replace('watch?v=', 'embed/')}
+                      className="absolute inset-0 w-full h-full" allow="autoplay; encrypted-media" allowFullScreen />
+                  </div>
+                );
+              }
+              return <VideoPlayer src={url} poster={video?.posterUrl} autoPlay />;
+            })()}
           </div>
         </div>
       )}

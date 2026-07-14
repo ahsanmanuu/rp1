@@ -17,6 +17,7 @@ const ALLOWED_COLLECTIONS = new Set([
   'tasar_stats',
   'platform_stats',
   'floating_banners',
+  'videos',
 ]);
 
 export async function GET(
@@ -74,7 +75,8 @@ async function exportHomepageContent() {
     const collections = [
       'banners', 'testimonials', 'how_it_works', 'gallery_items', 
       'institution_logos', 'features', 'benefits', 'product_details', 
-      'footer_links', 'tasar_stats', 'platform_stats', 'floating_banners'
+      'footer_links', 'tasar_stats', 'platform_stats', 'floating_banners',
+      'videos'
     ];
     
     const data: Record<string, any[]> = {};
