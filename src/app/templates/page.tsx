@@ -4,7 +4,6 @@
 import { useSearchParams } from "next/navigation";
 import { useState, Suspense, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { TEMPLATE_REGISTRY, TemplateMetadata } from "@/lib/templates/registry";
 import Sidebar from "@/components/Sidebar";
@@ -44,12 +43,9 @@ const TemplateIcon = ({ src, label, category }: { src: string, label: string, ca
       return <div className="w-full h-full flex items-center justify-center bg-slate-50 rounded-lg">{getFallbackIcon()}</div>;
     }
     return (
-      <Image 
-        src={src} 
-        alt={label} 
-        width={0}
-        height={0}
-        sizes="32px"
+      <img
+        src={src}
+        alt={label}
         className="w-full h-full object-contain p-0.5"
         onError={() => setError(true)}
         referrerPolicy="no-referrer"
