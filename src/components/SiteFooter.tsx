@@ -17,6 +17,42 @@ interface FooterLink {
   sortOrder: number;
 }
 
+const LINK_KEY_TO_HREF: Record<string, string> = {
+  'Latexify Studio': '/latex-studio',
+  'Doc2Latex': '/doc2latex',
+  'Diagram Studio': '/diagrams',
+  'Template Migrator': '/template-migrator',
+  'Citation Studio': '/citations',
+  'AI Peer Reviewer': '/reviewer',
+};
+
+const LABEL_TO_HREF: Record<string, string> = {
+  'Latexify Studio': '/latex-studio',
+  'Doc2Latex': '/doc2latex',
+  'Diagram Studio': '/diagrams',
+  'Template Migrator': '/template-migrator',
+  'Citation Studio': '/citations',
+  'AI Peer Reviewer': '/reviewer',
+  'Pricing': '/pricing',
+  'Templates Gallery': '/templates',
+  'Help Center': '/help',
+  'About Us': '/about',
+  'Blog': '/blog',
+  'Careers': '/careers',
+  'Contact': '/contact',
+  'Privacy Policy': '/privacy',
+  'Terms of Service': '/terms',
+  'Cookie Policy': '/cookies',
+  'GDPR': '/gdpr',
+};
+
+function resolveHref(link: FooterLink): string {
+  if (link.href && link.href !== '#') return link.href;
+  if (link.linkKey && LINK_KEY_TO_HREF[link.linkKey]) return LINK_KEY_TO_HREF[link.linkKey];
+  if (LABEL_TO_HREF[link.label]) return LABEL_TO_HREF[link.label];
+  return '#';
+}
+
 interface SiteFooterProps {
   onProductClick?: (linkKey: string) => void;
   onLoginRequired?: () => void;
@@ -68,7 +104,7 @@ export default function SiteFooter({ onProductClick, onLoginRequired }: SiteFoot
                 <h4 className="text-sm font-black uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.9)' }}>{title}</h4>
                 <div className="space-y-3">
                   {groupLinks.map((link) => (
-                    <Link key={link.id} href={link.href || '#'}
+                    <Link key={link.id} href={resolveHref(link)}
                       className="block text-sm transition-colors hover:text-white"
                       style={{ color: 'rgba(255,255,255,0.5)' }}>
                       {link.label}
@@ -84,7 +120,7 @@ export default function SiteFooter({ onProductClick, onLoginRequired }: SiteFoot
             &copy; {new Date().getFullYear()} Latexify Inc. All rights reserved.
           </p>
           <div className="flex gap-5">
-            {[{ label: 'Privacy', href: '/privacy' }, { label: 'Terms', href: '/terms' }, { label: 'Contact', href: '/contact-us' }].map((item, i) => (
+            {[{ label: 'Privacy', href: '/privacy' }, { label: 'Terms', href: '/terms' }, { label: 'Contact', href: '/contact' }].map((item, i) => (
               <Link key={i} href={item.href} className="text-sm transition-colors hover:text-white" style={{ color: 'rgba(255,255,255,0.35)' }}>{item.label}</Link>
             ))}
           </div>

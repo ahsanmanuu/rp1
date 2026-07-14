@@ -58,7 +58,7 @@ const FOOTER_LINKS = [
   { groupTitle: 'Company', label: 'About Us', href: '/about', isActive: true, sortOrder: 1 },
   { groupTitle: 'Company', label: 'Careers', href: '/careers', isActive: true, sortOrder: 2 },
   { groupTitle: 'Company', label: 'Blog', href: '/blog', isActive: true, sortOrder: 3 },
-  { groupTitle: 'Company', label: 'Contact', href: '/contact-us', isActive: true, sortOrder: 4 },
+  { groupTitle: 'Company', label: 'Contact', href: '/contact', isActive: true, sortOrder: 4 },
   { groupTitle: 'Legal', label: 'Privacy Policy', href: '/privacy', isActive: true, sortOrder: 1 },
   { groupTitle: 'Legal', label: 'Terms of Service', href: '/terms', isActive: true, sortOrder: 2 },
   { groupTitle: 'Legal', label: 'Cookie Policy', href: '/cookies', isActive: true, sortOrder: 3 },
