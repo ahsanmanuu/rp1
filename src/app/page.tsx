@@ -192,7 +192,11 @@ export default function Home() {
   useEffect(() => {
     fetch('/api/content/videos')
       .then(r => r.json())
-      .then(d => { if (d.success) setVideos(d.data.filter((v: any) => v.isActive).sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0))); })
+      .then(d => {
+        if (d.success && d.data.length > 0) {
+          setVideos(d.data.filter((v: any) => v.isActive).sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0)));
+        }
+      })
       .catch(() => {});
   }, []);
 

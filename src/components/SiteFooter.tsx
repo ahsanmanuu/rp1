@@ -58,6 +58,19 @@ interface SiteFooterProps {
   onLoginRequired?: () => void;
 }
 
+const FALLBACK_LINKS: FooterLink[] = [
+  { id: 'fb-1', groupTitle: 'Platform', label: 'Latexify', href: '/', isActive: true, sortOrder: 1 },
+  { id: 'fb-2', groupTitle: 'Platform', label: 'Pricing', href: '/pricing', isActive: true, sortOrder: 2 },
+  { id: 'fb-3', groupTitle: 'Platform', label: 'About Us', href: '/about', isActive: true, sortOrder: 3 },
+  { id: 'fb-4', groupTitle: 'Features', label: 'Latex Studio', href: '/latex-studio', isActive: true, sortOrder: 4 },
+  { id: 'fb-5', groupTitle: 'Features', label: 'Templates', href: '/templates', isActive: true, sortOrder: 5 },
+  { id: 'fb-6', groupTitle: 'Features', label: 'AI Review', href: '/reviewer', isActive: true, sortOrder: 6 },
+  { id: 'fb-7', groupTitle: 'Support', label: 'Help Center', href: '/help', isActive: true, sortOrder: 7 },
+  { id: 'fb-8', groupTitle: 'Support', label: 'Documentation', href: '/docs', isActive: true, sortOrder: 8 },
+  { id: 'fb-9', groupTitle: 'Legal', label: 'Terms of Service', href: '/terms', isActive: true, sortOrder: 9 },
+  { id: 'fb-10', groupTitle: 'Legal', label: 'Privacy Policy', href: '/privacy', isActive: true, sortOrder: 10 },
+];
+
 export default function SiteFooter({ onProductClick, onLoginRequired }: SiteFooterProps) {
   const [links, setLinks] = useState<FooterLink[]>([]);
   const { data: session } = useSession();
@@ -65,8 +78,8 @@ export default function SiteFooter({ onProductClick, onLoginRequired }: SiteFoot
   useEffect(() => {
     fetch("/api/content/footer_links?activeOnly=true&sort=sortOrder")
       .then(r => r.json())
-      .then(d => { if (d.success) setLinks(d.data); })
-      .catch(() => {});
+      .then(d => { if (d.success && d.data.length > 0) setLinks(d.data); else setLinks(FALLBACK_LINKS); })
+      .catch(() => setLinks(FALLBACK_LINKS));
   }, []);
 
   const groups = links.reduce<Record<string, FooterLink[]>>((acc, link) => {
