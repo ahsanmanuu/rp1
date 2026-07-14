@@ -144,11 +144,12 @@ async function startPocketBase() {
       }
     }
 
-    // Ensure empty_migrations directory exists in the data dir
-    fs.mkdirSync(path.resolve(pbDataDir, 'empty_migrations'), { recursive: true });
+    // Ensure migrations directory exists (pointing to our tracked pb_migrations/)
+    const migrationsDir = path.resolve(process.cwd(), 'pb_migrations');
+    fs.mkdirSync(migrationsDir, { recursive: true });
 
     log(`Starting PocketBase from ${pbBinary}...`);
-    const pb = spawn(pbBinary, ['serve', '--http=0.0.0.0:8090', `--dir=${pbDataDir}`, `--migrationsDir=${pbDataDir}/empty_migrations`], {
+    const pb = spawn(pbBinary, ['serve', '--http=0.0.0.0:8090', `--dir=${pbDataDir}`, `--migrationsDir=${migrationsDir}`], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env },
     });
