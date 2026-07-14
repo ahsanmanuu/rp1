@@ -974,7 +974,75 @@ export async function setupPocketBase() {
       }
     }
   } else {
-    console.log('[PB Setup] Skipping admin_users seeding (not authenticated). Login fallback will handle this.');
+    console.log('[PB Setup] Skipping admin_users seeding (not authenticated).');
+  }
+
+  // Ensure public read rules for homepage content collections
+  if (authenticated) {
+    try {
+      const publicCollections = [
+        'banners', 'testimonials', 'how_it_works', 'gallery_items',
+        'institution_logos', 'features', 'benefits', 'product_details',
+        'footer_links', 'tasar_stats', 'platform_stats', 'floating_banners'
+      ];
+      console.log('[PB Setup] Ensuring public read rules for homepage collections...');
+      for (const name of publicCollections) {
+        const col = existing.find(c => c.name === name);
+        if (col) {
+          if (col.listRule !== "" || col.viewRule !== "") {
+            await pb.collections.update(col.id, {
+              listRule: "",
+              viewRule: "",
+            });
+            console.log(`[PB Setup] Updated ${name} rules to public read.`);
+          }
+        }
+      }
+    } catch (ruleErr) {
+      console.warn('[PB Setup] Failed to update public collections rules:', ruleErr.message);
+    }
+
+    // Sync homepage content from src/assets/homepage-content.json
+    try {
+      const contentJsonPath = path.resolve(process.cwd(), 'src/assets/homepage-content.json');
+      if (fs.existsSync(contentJsonPath)) {
+        console.log('[PB Setup] Syncing homepage content from src/assets/homepage-content.json...');
+        const contentData = JSON.parse(fs.readFileSync(contentJsonPath, 'utf8'));
+        const deleteAllowedCollections = [
+          'banners', 'testimonials', 'how_it_works', 'gallery_items',
+          'institution_logos', 'features', 'benefits', 'product_details',
+          'footer_links', 'tasar_stats', 'floating_banners'
+        ];
+
+        for (const [colName, items] of Object.entries(contentData)) {
+          const existingColRecords = await pb.collection(colName).getFullList({ requestKey: `sync_check_${colName}` });
+          const existingMap = new Map(existingColRecords.map(r => [r.id, r]));
+
+          for (const item of items) {
+            if (existingMap.has(item.id)) {
+              // Update existing
+              await pb.collection(colName).update(item.id, item);
+            } else {
+              // Create new
+              await pb.collection(colName).create(item);
+            }
+          }
+
+          // Delete records not in whitelisted JSON data
+          if (deleteAllowedCollections.includes(colName)) {
+            const incomingIds = new Set(items.map(item => item.id));
+            for (const existingRec of existingColRecords) {
+              if (!incomingIds.has(existingRec.id)) {
+                await pb.collection(colName).delete(existingRec.id).catch(() => {});
+              }
+            }
+          }
+        }
+        console.log('[PB Setup] Homepage content synced successfully.');
+      }
+    } catch (syncErr) {
+      console.warn('[PB Setup] Homepage content sync failed:', syncErr.message);
+    }
   }
 
   console.log('[PB Setup] Complete.');

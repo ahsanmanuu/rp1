@@ -1,0 +1,2550 @@
+{
+  "banners": [
+    {
+      "id": "9l3199661nj26ul",
+      "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuAfrx0rEK6VFLoe2g-XBz3W3v-F9ySny3wIO0GvOU4er61lUuTBVHvwYLUuqIs0AJoAKS007oi-Eol9Htta-GTRBF4xxAzzuqQgAhgqDtjr8p6Z7Q6hg2CSB3wQNqCGWWMQXkcp8v6Lso_Le622A3nyeH7Lev3cMioXKpnxZKCMHLPVS0ExSKUiPxYmzKIWcN6Coo758Jx_tmEY5RDPLzN1a48mBPKfpqaAgI6i5xGtO4pQLyEzyTTvYn2VnmuYr49zlqcD5RuJ2VLq",
+      "isActive": true,
+      "linkUrl": "/latex-studio",
+      "sortOrder": 1,
+      "subtitle": "The modern, intelligent platform for the entire research writing lifecycle.",
+      "title": "Welcome to Latexify"
+    },
+    {
+      "id": "m3iu997a0lfnn0t",
+      "imageUrl": "/ai_peer_reviewer_dashboard_1777058436599.png",
+      "isActive": true,
+      "linkUrl": "/reviewer",
+      "sortOrder": 2,
+      "subtitle": "Get instant, scholarly feedback on clarity, argumentation, and methodology.",
+      "title": "AI Peer Reviewer"
+    },
+    {
+      "id": "6xb18lpphphn212",
+      "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuCOfpdp7avfxHVymJ06UtjZny3PXYwWBlHy4rpi8PV7-YGXFfygei_YZV65NdCKAQfE4DuhwJVAdCrE4-JoRKmljz10dSgkNXgv5F3blSGIPbm-6vQRe0_OrtZzV49Mxi7nwF-XXZzkzf8YjZrLYr2o4KLZflRtfrY3WY0NNTblCY-q7F0rLGOfjwoHMxC6LNP6KqqBj_jnRgs7NOX4Me-ldmMJtt38-V4YCjxpmuUxTRgfP3TncR6coVeklb0q5ABJYPH4zCIbqmoe",
+      "isActive": true,
+      "linkUrl": "/diagrams",
+      "sortOrder": 3,
+      "subtitle": "Create beautiful TikZ diagrams with an intuitive visual canvas. No more coordinate wrestling.",
+      "title": "Create TikZ Diagrams visually"
+    }
+  ],
+  "testimonials": [
+    {
+      "avatarUrl": "",
+      "content": "Latexify's template migrator saved me weeks of reformatting when my paper was transferred between journals. The UI is incredibly clean.",
+      "id": "1e57vu60n2fr5j4",
+      "isActive": true,
+      "name": "Dr. Elena Rostova",
+      "rating": 5,
+      "role": "Postdoctoral Fellow, MIT",
+      "sortOrder": 1
+    },
+    {
+      "avatarUrl": "",
+      "content": "The AI Peer Reviewer caught several logical gaps in my methodology section before submission. An absolute game-changer for solo researchers.",
+      "id": "q6kvt5ou916htx4",
+      "isActive": true,
+      "name": "James Chen",
+      "rating": 5,
+      "role": "PhD Candidate, Stanford University",
+      "sortOrder": 2
+    },
+    {
+      "avatarUrl": "",
+      "content": "I've moved my entire lab to Latexify. Collaborative writing is finally seamless, and the Doc2Latex feature means my undergrads can contribute easily.",
+      "id": "44w1grf133y8tho",
+      "isActive": true,
+      "name": "Prof. Sarah Jenkins",
+      "rating": 5,
+      "role": "Principal Investigator, University of Oxford",
+      "sortOrder": 3
+    }
+  ],
+  "how_it_works": [
+    {
+      "description": "Create your free account in seconds. No credit card required.",
+      "icon": "UserPlus",
+      "id": "508xidg11hiidab",
+      "imageUrl": "",
+      "isActive": true,
+      "sortOrder": 1,
+      "stepNumber": 1,
+      "title": "Sign Up",
+      "videoUrl": ""
+    },
+    {
+      "description": "Write, edit, and collaborate in real-time with co-authors from anywhere.",
+      "icon": "Users",
+      "id": "b81ys26x572xec3",
+      "imageUrl": "",
+      "isActive": true,
+      "sortOrder": 3,
+      "stepNumber": 3,
+      "title": "Create & Collaborate",
+      "videoUrl": ""
+    },
+    {
+      "description": "Export to PDF, share links, or submit directly to journals with confidence.",
+      "icon": "Upload",
+      "id": "kt7u25fhb1g9s8c",
+      "imageUrl": "",
+      "isActive": true,
+      "sortOrder": 4,
+      "stepNumber": 4,
+      "title": "Publish & Share",
+      "videoUrl": ""
+    }
+  ],
+  "gallery_items": [
+    {
+      "category": "",
+      "icon": "FileEdit",
+      "id": "476iy9bldv5j743",
+      "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuAfrx0rEK6VFLoe2g-XBz3W3v-F9ySny3wIO0GvOU4er61lUuTBVHvwYLUuqIs0AJoAKS007oi-Eol9Htta-GTRBF4xxAzzuqQgAhgqDtjr8p6Z7Q6hg2CSB3wQNqCGWWMQXkcp8v6Lso_Le622A3nyeH7Lev3cMioXKpnxZKCMHLPVS0ExSKUiPxYmzKIWcN6Coo758Jx_tmEY5RDPLzN1a48mBPKfpqaAgI6i5xGtO4pQLyEzyTTvYn2VnmuYr49zlqcD5RuJ2VLq",
+      "isActive": true,
+      "sortOrder": 1,
+      "title": "Latexify Dashboard"
+    },
+    {
+      "category": "",
+      "icon": "Wand2",
+      "id": "5058m3730fw9i58",
+      "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuDFtYyOpkpxGhljL4YEO1ZBLJZMbOn9gPHP8fXetmJnFR08eYC253o5M68i_jcmYGp_5iIjQ-JcBvvPO2alyZtkmAQ9nUYWjTd93LI_3N2A-FX8hLaCsZj-SLMSfhLToozbAF84ghM2FjYb4cnBUrA3DL-8YbTm4JPkf2ykIRWS461AjyRuzsmLCfQRunK5eOGjPJt5kFsqPzc3IF5aWizqmst_t4ttOirs6mspuA6M1RDIUXBrfirHyzXDyIaZJ5vtvRC3UkZz_A_o",
+      "isActive": true,
+      "sortOrder": 2,
+      "title": "Doc2Latex Dashboard"
+    },
+    {
+      "category": "",
+      "icon": "PenTool",
+      "id": "p5cxuublakybm59",
+      "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuCOfpdp7avfxHVymJ06UtjZny3PXYwWBlHy4rpi8PV7-YGXFfygei_YZV65NdCKAQfE4DuhwJVAdCrE4-JoRKmljz10dSgkNXgv5F3blSGIPbm-6vQRe0_OrtZzV49Mxi7nwF-XXZzkzf8YjZrLYr2o4KLZflRtfrY3WY0NNTblCY-q7F0rLGOfjwoHMxC6LNP6KqqBj_jnRgs7NOX4Me-ldmMJtt38-V4YCjxpmuUxTRgfP3TncR6coVeklb0q5ABJYPH4zCIbqmoe",
+      "isActive": true,
+      "sortOrder": 3,
+      "title": "Diagram Studio"
+    },
+    {
+      "category": "",
+      "icon": "Layout",
+      "id": "vs2q34069nqk360",
+      "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuAvQz491UjMaxItAqkAnkLEZDgbYQ9z3q4zdYq38xoFSNUtLSnoZEOYC584Bvw7070Yl5ia_mk8-wXycVUgmpjy6ZlOR6rh7vzwgjoolh01S0287jDHSpx6jQRhXuoo6B5SD7y4-MHAERQDO1wARSXJLiGs6dkIMw3gnQHs8Jlvr5c888M_d6SJ3VZIJVy69OKgQ2F7064lqQ1EtLt8PJIq-QQNF-enp8jKqJpjS1A9yNc61ktBXG8LfIZV7x6MET473uxu1fQKjpDl",
+      "isActive": true,
+      "sortOrder": 4,
+      "title": "Template Migrator"
+    },
+    {
+      "category": "",
+      "icon": "Library",
+      "id": "4lfleu5798ul15j",
+      "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuDXqWg4r7vKDSzOnA0vncm3Wcm8hiUnA9ngYcljj07eIpRK1_hbIL48t5ZMclJE_UHSwtLaKqtgC2X-457idjJlXGAtQnmbg9Kb0q5B4XzhowAyZXfRN4mFH_7aHmOOky0uti0CXVHCteoBw8TiLZVjkqa-acr8ayfGU3zI-lFqdMZaib4Gc5ZzR7Pad7NVXJpW8hokDNJvZYX30qVrX5sR6Uc9OE8nJHJOHkRH-9uIoq6HLMBZxEmozks34yZZRKMtb_IkwqULnDop",
+      "isActive": true,
+      "sortOrder": 5,
+      "title": "Citation Studio"
+    },
+    {
+      "category": "",
+      "icon": "Brain",
+      "id": "eb1ca886783q6n5",
+      "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuAfrx0rEK6VFLoe2g-XBz3W3v-F9ySny3wIO0GvOU4er61lUuTBVHvwYLUuqIs0AJoAKS007oi-Eol9Htta-GTRBF4xxAzzuqQgAhgqDtjr8p6Z7Q6hg2CSB3wQNqCGWWMQXkcp8v6Lso_Le622A3nyeH7Lev3cMioXKpnxZKCMHLPVS0ExSKUiPxYmzKIWcN6Coo758Jx_tmEY5RDPLzN1a48mBPKfpqaAgI6i5xGtO4pQLyEzyTTvYn2VnmuYr49zlqcD5RuJ2VLq",
+      "isActive": true,
+      "sortOrder": 6,
+      "title": "AI Peer Reviewer"
+    }
+  ],
+  "institution_logos": [
+    {
+      "icon": "School",
+      "id": "4383npn70x7z7tt",
+      "isActive": true,
+      "logoUrl": "",
+      "name": "MIT",
+      "sortOrder": 1
+    },
+    {
+      "icon": "Building2",
+      "id": "5594740ba393m20",
+      "isActive": true,
+      "logoUrl": "",
+      "name": "Stanford",
+      "sortOrder": 2
+    },
+    {
+      "icon": "BookOpen",
+      "id": "87pf2lxxg52388k",
+      "isActive": true,
+      "logoUrl": "",
+      "name": "Oxford",
+      "sortOrder": 3
+    },
+    {
+      "icon": "Atom",
+      "id": "4b3f7kcr28x4oox",
+      "isActive": true,
+      "logoUrl": "",
+      "name": "CERN",
+      "sortOrder": 4
+    },
+    {
+      "icon": "GraduationCap",
+      "id": "49ha4w2q354gm1l",
+      "isActive": true,
+      "logoUrl": "",
+      "name": "Harvard",
+      "sortOrder": 5
+    }
+  ],
+  "features": [
+    {
+      "description": "A modern, powerful, collaborative LaTeX editor designed for the web. Write with joy, compile with speed, share with ease.",
+      "glow": "var(--accent-primary)",
+      "href": "/latex-studio",
+      "icon": "FileEdit",
+      "iconBg": "var(--accent-primary)",
+      "id": "48vtuur44s46r1h",
+      "isActive": true,
+      "sortOrder": 1,
+      "tags": [
+        "Real-time Collab",
+        "Cloud Sync"
+      ],
+      "title": "Latexify Dashboard"
+    },
+    {
+      "description": "Instantly convert Word documents into clean, well-structured LaTeX code. Bridge the gap with co-authors seamlessly.",
+      "glow": "var(--accent-secondary)",
+      "href": "/upload",
+      "icon": "Wand2",
+      "iconBg": "var(--accent-secondary)",
+      "id": "e43mx10850m43v4",
+      "isActive": true,
+      "sortOrder": 2,
+      "tags": [
+        "DOCX → LaTeX",
+        "Smart Parsing"
+      ],
+      "title": "Doc2Latex"
+    },
+    {
+      "description": "Create beautiful TikZ diagrams with an intuitive visual canvas. No more wrestling with coordinates and syntax.",
+      "glow": "#f59e0b",
+      "href": "/diagrams",
+      "icon": "PenTool",
+      "iconBg": "#f59e0b",
+      "id": "3953o49li70ug4c",
+      "isActive": true,
+      "sortOrder": 3,
+      "tags": [
+        "Visual Editor",
+        "TikZ Export"
+      ],
+      "title": "Diagram Studio"
+    },
+    {
+      "description": "Switch journals effortlessly. One click updates your document styling, margins, and bibliography formats instantly.",
+      "glow": "#0891b2",
+      "href": "/template-migrator",
+      "icon": "Layout",
+      "iconBg": "#0891b2",
+      "id": "99adt568f4da703",
+      "isActive": true,
+      "sortOrder": 4,
+      "tags": [
+        "55+ Templates",
+        "IEEE, Nature, ACM"
+      ],
+      "title": "Template Migrator"
+    },
+    {
+      "description": "Manage your bibliography seamlessly. Auto-fetch metadata via DOI, organize references with tags and export BibTeX.",
+      "glow": "#059669",
+      "href": "/citations",
+      "icon": "Library",
+      "iconBg": "#059669",
+      "id": "9b3ol2oe8896xwe",
+      "isActive": true,
+      "sortOrder": 5,
+      "tags": [
+        "DOI Auto-fetch",
+        "BibTeX Export"
+      ],
+      "title": "Citation Studio"
+    },
+    {
+      "description": "Get instant, scholarly feedback on clarity, argumentation, and methodology. Like having a senior researcher on speed dial.",
+      "glow": "#dc2626",
+      "href": "/reviewer",
+      "icon": "Brain",
+      "iconBg": "#dc2626",
+      "id": "t6zy1d6ru8t1z38",
+      "isActive": true,
+      "sortOrder": 6,
+      "tags": [
+        "Logic Check",
+        "Grammar AI"
+      ],
+      "title": "AI Peer Reviewer"
+    }
+  ],
+  "benefits": [
+    {
+      "color": "#f59e0b",
+      "description": "Cloud-powered LaTeX cluster compiles your manuscript in under 3 seconds. No local installation needed.",
+      "icon": "Zap",
+      "id": "ym1ccm624710rqt",
+      "isActive": true,
+      "sortOrder": 1,
+      "title": "Lightning-Fast Compilation"
+    },
+    {
+      "color": "#0891b2",
+      "description": "AES-256 encrypted storage with isolated project namespaces. Your research stays private.",
+      "icon": "Shield",
+      "id": "b733mr7mr4ayh92",
+      "isActive": true,
+      "sortOrder": 2,
+      "title": "Enterprise-Grade Security"
+    },
+    {
+      "color": "#6b38d4",
+      "description": "Browser-based IDE works on any device. Start on your laptop, continue on your tablet.",
+      "icon": "Globe",
+      "id": "h3y6ja9c5w47sg6",
+      "isActive": true,
+      "sortOrder": 3,
+      "title": "Works Everywhere"
+    },
+    {
+      "color": "var(--accent-primary)",
+      "description": "Invite co-authors, share links, and review changes together in real time.",
+      "icon": "Users",
+      "id": "l1l8pfq601f37fd",
+      "isActive": true,
+      "sortOrder": 4,
+      "title": "Real-time Collaboration"
+    }
+  ],
+  "product_details": [
+    {
+      "color": "#00685f",
+      "description": "A modern, powerful, collaborative LaTeX editor designed for the web. Write with joy, compile with speed, share with ease.",
+      "features": [
+        "Real-time collaboration with co-authors",
+        "Cloud-sync across all devices",
+        "pdfLaTeX, LuaLaTeX, XeLaTeX support",
+        "Live PDF preview with split view",
+        "Syntax highlighting & auto-complete",
+        "Version history & restore"
+      ],
+      "href": "/latex-studio",
+      "icon": "FileEdit",
+      "id": "9lmy7g3o9d543in",
+      "isActive": true,
+      "key": "latexify_studio",
+      "sortOrder": 1,
+      "title": "Latexify Studio"
+    },
+    {
+      "color": "#545f73",
+      "description": "Instantly convert Word documents into clean, well-structured LaTeX code. Bridge the gap with co-authors seamlessly.",
+      "features": [
+        "DOCX to LaTeX in one click",
+        "Smart formatting preservation",
+        "Table & image handling",
+        "Bibliography conversion",
+        "Math equation parsing",
+        "Batch document processing"
+      ],
+      "href": "/upload",
+      "icon": "Wand2",
+      "id": "15wufeu2u8o0i43",
+      "isActive": true,
+      "key": "doc2latex",
+      "sortOrder": 2,
+      "title": "Doc2LateX"
+    },
+    {
+      "color": "#f59e0b",
+      "description": "Create beautiful TikZ diagrams with an intuitive visual canvas. No more wrestling with coordinates and syntax.",
+      "features": [
+        "Visual drag-and-drop canvas",
+        "AI-powered diagram generation",
+        "Export to TikZ code",
+        "Pre-built template library",
+        "Real-time preview",
+        "Import from Visio & Draw.io"
+      ],
+      "href": "/diagrams",
+      "icon": "PenTool",
+      "id": "48222071ta26e6y",
+      "isActive": true,
+      "key": "diagram_studio",
+      "sortOrder": 3,
+      "title": "AI Diagram Studio"
+    },
+    {
+      "color": "#0891b2",
+      "description": "Switch journals effortlessly. One click updates your document styling, margins, and bibliography formats instantly.",
+      "features": [
+        "55+ journal templates",
+        "One-click format switching",
+        "Automatic margin & spacing",
+        "Bibliography style conversion",
+        "IEEE, Nature, ACM, Elsevier support",
+        "Custom template import"
+      ],
+      "href": "/template-migrator",
+      "icon": "Layout",
+      "id": "5g5xevqq2z5do73",
+      "isActive": true,
+      "key": "template_migrator",
+      "sortOrder": 4,
+      "title": "Template Migrator"
+    },
+    {
+      "color": "#059669",
+      "description": "Manage your bibliography seamlessly. Auto-fetch metadata via DOI, organize references with tags and export BibTeX.",
+      "features": [
+        "DOI auto-fetch metadata",
+        "BibTeX & BibLaTeX export",
+        "Tag-based organization",
+        "Duplicate detection",
+        "Multi-style formatting",
+        "Zotero & Mendeley import"
+      ],
+      "href": "/citations",
+      "icon": "Library",
+      "id": "zm388812tr7wtlf",
+      "isActive": true,
+      "key": "citation_studio",
+      "sortOrder": 5,
+      "title": "AI Citation Studio"
+    },
+    {
+      "color": "#dc2626",
+      "description": "Get instant, scholarly feedback on clarity, argumentation, and methodology. Like having a senior researcher on speed dial.",
+      "features": [
+        "Grammar & style analysis",
+        "Logical gap detection",
+        "Methodology assessment",
+        "Citation quality check",
+        "Readability scoring",
+        "Revision suggestions"
+      ],
+      "href": "/reviewer",
+      "icon": "Brain",
+      "id": "d2ws734eah9lx90",
+      "isActive": true,
+      "key": "ai_peer_reviewer",
+      "sortOrder": 6,
+      "title": "AI Peer Reviewer"
+    }
+  ],
+  "footer_links": [
+    {
+      "groupTitle": "Products",
+      "href": "",
+      "id": "9q9rm36lbn864s8",
+      "isActive": true,
+      "isTargetBlank": false,
+      "label": "Latexify Studio",
+      "linkKey": "Latexify Studio",
+      "sortOrder": 1
+    },
+    {
+      "groupTitle": "Products",
+      "href": "",
+      "id": "adu0d8p21173233",
+      "isActive": true,
+      "isTargetBlank": false,
+      "label": "Doc2Latex",
+      "linkKey": "Doc2Latex",
+      "sortOrder": 2
+    },
+    {
+      "groupTitle": "Products",
+      "href": "",
+      "id": "8m5725qfc0sg65a",
+      "isActive": true,
+      "isTargetBlank": false,
+      "label": "Diagram Studio",
+      "linkKey": "Diagram Studio",
+      "sortOrder": 3
+    },
+    {
+      "groupTitle": "Products",
+      "href": "",
+      "id": "a1w05m7u403c938",
+      "isActive": true,
+      "isTargetBlank": false,
+      "label": "Template Migrator",
+      "linkKey": "Template Migrator",
+      "sortOrder": 4
+    },
+    {
+      "groupTitle": "Products",
+      "href": "",
+      "id": "aeph8sfd4j5i95o",
+      "isActive": true,
+      "isTargetBlank": false,
+      "label": "Citation Studio",
+      "linkKey": "Citation Studio",
+      "sortOrder": 5
+    },
+    {
+      "groupTitle": "Products",
+      "href": "",
+      "id": "00we6mk142rn7h0",
+      "isActive": true,
+      "isTargetBlank": false,
+      "label": "AI Peer Reviewer",
+      "linkKey": "AI Peer Reviewer",
+      "sortOrder": 6
+    },
+    {
+      "groupTitle": "Resources",
+      "href": "/pricing",
+      "id": "6ib985q2m32whum",
+      "isActive": true,
+      "isTargetBlank": false,
+      "label": "Pricing",
+      "linkKey": "",
+      "sortOrder": 1
+    },
+    {
+      "groupTitle": "Resources",
+      "href": "/templates",
+      "id": "6sg9g79r1su121o",
+      "isActive": true,
+      "isTargetBlank": false,
+      "label": "Templates Gallery",
+      "linkKey": "",
+      "sortOrder": 2
+    },
+    {
+      "groupTitle": "Resources",
+      "href": "#",
+      "id": "0u23i21jw3w8dd4",
+      "isActive": true,
+      "isTargetBlank": false,
+      "label": "Help Center",
+      "linkKey": "",
+      "sortOrder": 3
+    },
+    {
+      "groupTitle": "Company",
+      "href": "/about",
+      "id": "h5t17gwf165dkx6",
+      "isActive": true,
+      "isTargetBlank": false,
+      "label": "About Us",
+      "linkKey": "",
+      "sortOrder": 1
+    },
+    {
+      "groupTitle": "Company",
+      "href": "#",
+      "id": "zq85926987ss7ig",
+      "isActive": true,
+      "isTargetBlank": false,
+      "label": "Blog",
+      "linkKey": "",
+      "sortOrder": 2
+    },
+    {
+      "groupTitle": "Company",
+      "href": "#",
+      "id": "saqyrm6245hh94x",
+      "isActive": true,
+      "isTargetBlank": false,
+      "label": "Careers",
+      "linkKey": "",
+      "sortOrder": 3
+    },
+    {
+      "groupTitle": "Company",
+      "href": "/contact-us",
+      "id": "91z405063d5rdgv",
+      "isActive": true,
+      "isTargetBlank": false,
+      "label": "Contact",
+      "linkKey": "",
+      "sortOrder": 4
+    },
+    {
+      "groupTitle": "Legal",
+      "href": "#",
+      "id": "z5f3dj1147ivf13",
+      "isActive": true,
+      "isTargetBlank": false,
+      "label": "Privacy Policy",
+      "linkKey": "",
+      "sortOrder": 1
+    },
+    {
+      "groupTitle": "Legal",
+      "href": "#",
+      "id": "t086107x04f99o7",
+      "isActive": true,
+      "isTargetBlank": false,
+      "label": "Terms of Service",
+      "linkKey": "",
+      "sortOrder": 2
+    },
+    {
+      "groupTitle": "Legal",
+      "href": "#",
+      "id": "z658ipeci63d84s",
+      "isActive": true,
+      "isTargetBlank": false,
+      "label": "Cookie Policy",
+      "linkKey": "",
+      "sortOrder": 3
+    },
+    {
+      "groupTitle": "Legal",
+      "href": "#",
+      "id": "wbcsog6wdy56dxt",
+      "isActive": true,
+      "isTargetBlank": false,
+      "label": "GDPR",
+      "linkKey": "",
+      "sortOrder": 4
+    }
+  ],
+  "tasar_stats": [
+    {
+      "category": "engagement",
+      "color": "var(--accent-primary)",
+      "icon": "Users",
+      "id": "3164iq7gcik2ups",
+      "isActive": true,
+      "label": "Active Users",
+      "sortOrder": 1,
+      "suffix": "+",
+      "value": 50000
+    },
+    {
+      "category": "usage",
+      "color": "#f59e0b",
+      "icon": "FileText",
+      "id": "17k61c7z7z1894j",
+      "isActive": true,
+      "label": "Projects Created",
+      "sortOrder": 2,
+      "suffix": "+",
+      "value": 150000
+    },
+    {
+      "category": "content",
+      "color": "#0891b2",
+      "icon": "Layout",
+      "id": "b67089lxmb7om01",
+      "isActive": true,
+      "label": "Templates Available",
+      "sortOrder": 3,
+      "suffix": "+",
+      "value": 55
+    },
+    {
+      "category": "engagement",
+      "color": "#dc2626",
+      "icon": "Brain",
+      "id": "732wq636i8c2w50",
+      "isActive": true,
+      "label": "AI Reviews Done",
+      "sortOrder": 4,
+      "suffix": "+",
+      "value": 25000
+    }
+  ],
+  "platform_stats": [
+    {
+      "activeUsers24h": 11983,
+      "creditsDistributed": 250391,
+      "creditsSpent": 180298,
+      "date": "2026-06-09",
+      "id": "8nfgv3d981so19o",
+      "totalProjects": 15209,
+      "totalReviews": 3402,
+      "totalUsers": 128305
+    },
+    {
+      "activeUsers24h": 11300,
+      "creditsDistributed": 250691,
+      "creditsSpent": 180748,
+      "date": "2026-06-10",
+      "id": "3hdyf8x479h09zs",
+      "totalProjects": 15229,
+      "totalReviews": 3405,
+      "totalUsers": 128308
+    },
+    {
+      "activeUsers24h": 11995,
+      "creditsDistributed": 251083,
+      "creditsSpent": 181349,
+      "date": "2026-06-11",
+      "id": "c7y6c1xxxx18kss",
+      "totalProjects": 15259,
+      "totalReviews": 3411,
+      "totalUsers": 128313
+    },
+    {
+      "activeUsers24h": 13430,
+      "creditsDistributed": 251667,
+      "creditsSpent": 181962,
+      "date": "2026-06-12",
+      "id": "335q55nn8x1vjr1",
+      "totalProjects": 15289,
+      "totalReviews": 3418,
+      "totalUsers": 128323
+    },
+    {
+      "activeUsers24h": 14285,
+      "creditsDistributed": 252365,
+      "creditsSpent": 182436,
+      "date": "2026-06-13",
+      "id": "2or27io8r25fvo5",
+      "totalProjects": 15310,
+      "totalReviews": 3424,
+      "totalUsers": 128335
+    },
+    {
+      "activeUsers24h": 13775,
+      "creditsDistributed": 252995,
+      "creditsSpent": 182749,
+      "date": "2026-06-14",
+      "id": "185v59ad0i69t79",
+      "totalProjects": 15320,
+      "totalReviews": 3428,
+      "totalUsers": 128346
+    },
+    {
+      "activeUsers24h": 12368,
+      "creditsDistributed": 253437,
+      "creditsSpent": 183026,
+      "date": "2026-06-15",
+      "id": "9a730i9a008421s",
+      "totalProjects": 15328,
+      "totalReviews": 3430,
+      "totalUsers": 128352
+    },
+    {
+      "activeUsers24h": 11357,
+      "creditsDistributed": 253744,
+      "creditsSpent": 183426,
+      "date": "2026-06-16",
+      "id": "5am0js5lk14yu13",
+      "totalProjects": 15344,
+      "totalReviews": 3432,
+      "totalUsers": 128355
+    },
+    {
+      "activeUsers24h": 11673,
+      "creditsDistributed": 254093,
+      "creditsSpent": 183994,
+      "date": "2026-06-17",
+      "id": "k864tijpia2uy0j",
+      "totalProjects": 15371,
+      "totalReviews": 3437,
+      "totalUsers": 128359
+    },
+    {
+      "activeUsers24h": 13024,
+      "creditsDistributed": 254622,
+      "creditsSpent": 184621,
+      "date": "2026-06-18",
+      "id": "hew7boc0ckbyk1w",
+      "totalProjects": 15402,
+      "totalReviews": 3444,
+      "totalUsers": 128367
+    },
+    {
+      "activeUsers24h": 14169,
+      "creditsDistributed": 255304,
+      "creditsSpent": 185144,
+      "date": "2026-06-19",
+      "id": "93kehd74j9w3btd",
+      "totalProjects": 15426,
+      "totalReviews": 3451,
+      "totalUsers": 128379
+    },
+    {
+      "activeUsers24h": 14054,
+      "creditsDistributed": 255971,
+      "creditsSpent": 185495,
+      "date": "2026-06-20",
+      "id": "kf8bsh1t44f8d0e",
+      "totalProjects": 15439,
+      "totalReviews": 3455,
+      "totalUsers": 128391
+    },
+    {
+      "activeUsers24h": 12786,
+      "creditsDistributed": 256469,
+      "creditsSpent": 185765,
+      "date": "2026-06-21",
+      "id": "q8c8v35xfz7tov3",
+      "totalProjects": 15447,
+      "totalReviews": 3457,
+      "totalUsers": 128398
+    },
+    {
+      "activeUsers24h": 11530,
+      "creditsDistributed": 256799,
+      "creditsSpent": 186119,
+      "date": "2026-06-22",
+      "id": "942t063f5vet411",
+      "totalProjects": 15460,
+      "totalReviews": 3459,
+      "totalUsers": 128401
+    },
+    {
+      "activeUsers24h": 11441,
+      "creditsDistributed": 257117,
+      "creditsSpent": 186645,
+      "date": "2026-06-23",
+      "id": "z9wf9v06hootrd5",
+      "totalProjects": 15485,
+      "totalReviews": 3463,
+      "totalUsers": 128404
+    },
+    {
+      "activeUsers24h": 12601,
+      "creditsDistributed": 257590,
+      "creditsSpent": 187273,
+      "date": "2026-06-24",
+      "id": "06f46p5606k94g8",
+      "totalProjects": 15516,
+      "totalReviews": 3470,
+      "totalUsers": 128411
+    },
+    {
+      "activeUsers24h": 13943,
+      "creditsDistributed": 258242,
+      "creditsSpent": 187839,
+      "date": "2026-06-25",
+      "id": "9au86u2o6d40eku",
+      "totalProjects": 15543,
+      "totalReviews": 3477,
+      "totalUsers": 128422
+    },
+    {
+      "activeUsers24h": 14234,
+      "creditsDistributed": 258933,
+      "creditsSpent": 188236,
+      "date": "2026-06-26",
+      "id": "05lxr28y81yu9s4",
+      "totalProjects": 15559,
+      "totalReviews": 3482,
+      "totalUsers": 128434
+    },
+    {
+      "activeUsers24h": 13206,
+      "creditsDistributed": 259487,
+      "creditsSpent": 188512,
+      "date": "2026-06-27",
+      "id": "w0g414s22t89v1z",
+      "totalProjects": 15567,
+      "totalReviews": 3485,
+      "totalUsers": 128443
+    },
+    {
+      "activeUsers24h": 11804,
+      "creditsDistributed": 259854,
+      "creditsSpent": 188827,
+      "date": "2026-06-28",
+      "id": "73i318sara95302",
+      "totalProjects": 15578,
+      "totalReviews": 3487,
+      "totalUsers": 128447
+    },
+    {
+      "activeUsers24h": 11317,
+      "creditsDistributed": 260156,
+      "creditsSpent": 189304,
+      "date": "2026-06-29",
+      "id": "0q6444d7nx2w73p",
+      "totalProjects": 15599,
+      "totalReviews": 3490,
+      "totalUsers": 128450
+    },
+    {
+      "activeUsers24h": 14062,
+      "creditsDistributed": 260824,
+      "creditsSpent": 189851,
+      "date": "2026-06-30",
+      "id": "0yipkz57882dug9",
+      "totalProjects": 15625,
+      "totalReviews": 3497,
+      "totalUsers": 128462
+    },
+    {
+      "activeUsers24h": 14163,
+      "creditsDistributed": 261505,
+      "creditsSpent": 190226,
+      "date": "2026-07-01",
+      "id": "y1g4x1m58q267zd",
+      "totalProjects": 15640,
+      "totalReviews": 3502,
+      "totalUsers": 128474
+    },
+    {
+      "activeUsers24h": 13011,
+      "creditsDistributed": 262033,
+      "creditsSpent": 190497,
+      "date": "2026-07-02",
+      "id": "461y5av2k17mn1k",
+      "totalProjects": 15648,
+      "totalReviews": 3504,
+      "totalUsers": 128482
+    },
+    {
+      "activeUsers24h": 11664,
+      "creditsDistributed": 262381,
+      "creditsSpent": 190829,
+      "date": "2026-07-03",
+      "id": "p1a6865c73t7d00",
+      "totalProjects": 15660,
+      "totalReviews": 3506,
+      "totalUsers": 128486
+    },
+    {
+      "activeUsers24h": 11361,
+      "creditsDistributed": 262689,
+      "creditsSpent": 191330,
+      "date": "2026-07-04",
+      "id": "2p2357391u6re6j",
+      "totalProjects": 15683,
+      "totalReviews": 3510,
+      "totalUsers": 128489
+    },
+    {
+      "activeUsers24h": 12380,
+      "creditsDistributed": 263133,
+      "creditsSpent": 191952,
+      "date": "2026-07-05",
+      "id": "7o9u2lr8a29022l",
+      "totalProjects": 15714,
+      "totalReviews": 3516,
+      "totalUsers": 128495
+    },
+    {
+      "activeUsers24h": 13785,
+      "creditsDistributed": 263764,
+      "creditsSpent": 192537,
+      "date": "2026-07-06",
+      "id": "ctkv28lff36i570",
+      "totalProjects": 15743,
+      "totalReviews": 3523,
+      "totalUsers": 128506
+    },
+    {
+      "activeUsers24h": 14284,
+      "creditsDistributed": 264461,
+      "creditsSpent": 192960,
+      "date": "2026-07-07",
+      "id": "08j8502i1wwzh4l",
+      "totalProjects": 15761,
+      "totalReviews": 3529,
+      "totalUsers": 128518
+    },
+    {
+      "activeUsers24h": 13418,
+      "creditsDistributed": 265043,
+      "creditsSpent": 193245,
+      "date": "2026-07-08",
+      "id": "h9k975o3x770m54",
+      "totalProjects": 15770,
+      "totalReviews": 3532,
+      "totalUsers": 128528
+    },
+    {
+      "activeUsers24h": 11983,
+      "creditsDistributed": 265434,
+      "creditsSpent": 193543,
+      "date": "2026-07-09",
+      "id": "6wymf98124uyof8",
+      "totalProjects": 15779,
+      "totalReviews": 3534,
+      "totalUsers": 128533
+    },
+    {
+      "activeUsers24h": 11983,
+      "creditsDistributed": 250391,
+      "creditsSpent": 180298,
+      "date": "2026-06-10",
+      "id": "cm8jc9ik6005ioj",
+      "totalProjects": 15209,
+      "totalReviews": 3402,
+      "totalUsers": 128305
+    },
+    {
+      "activeUsers24h": 11300,
+      "creditsDistributed": 250691,
+      "creditsSpent": 180748,
+      "date": "2026-06-11",
+      "id": "6luz0g0194yo6ct",
+      "totalProjects": 15229,
+      "totalReviews": 3405,
+      "totalUsers": 128308
+    },
+    {
+      "activeUsers24h": 11995,
+      "creditsDistributed": 251083,
+      "creditsSpent": 181349,
+      "date": "2026-06-12",
+      "id": "6bubacs597g6hr8",
+      "totalProjects": 15259,
+      "totalReviews": 3411,
+      "totalUsers": 128313
+    },
+    {
+      "activeUsers24h": 13430,
+      "creditsDistributed": 251667,
+      "creditsSpent": 181962,
+      "date": "2026-06-13",
+      "id": "6203y6y0a4k440v",
+      "totalProjects": 15289,
+      "totalReviews": 3418,
+      "totalUsers": 128323
+    },
+    {
+      "activeUsers24h": 14285,
+      "creditsDistributed": 252365,
+      "creditsSpent": 182436,
+      "date": "2026-06-14",
+      "id": "5vt764110k19ng8",
+      "totalProjects": 15310,
+      "totalReviews": 3424,
+      "totalUsers": 128335
+    },
+    {
+      "activeUsers24h": 13775,
+      "creditsDistributed": 252995,
+      "creditsSpent": 182749,
+      "date": "2026-06-15",
+      "id": "igujx492nprngk3",
+      "totalProjects": 15320,
+      "totalReviews": 3428,
+      "totalUsers": 128346
+    },
+    {
+      "activeUsers24h": 12368,
+      "creditsDistributed": 253437,
+      "creditsSpent": 183026,
+      "date": "2026-06-16",
+      "id": "897n02wl3mwqpt8",
+      "totalProjects": 15328,
+      "totalReviews": 3430,
+      "totalUsers": 128352
+    },
+    {
+      "activeUsers24h": 11357,
+      "creditsDistributed": 253744,
+      "creditsSpent": 183426,
+      "date": "2026-06-17",
+      "id": "po4053wqwsrkoo1",
+      "totalProjects": 15344,
+      "totalReviews": 3432,
+      "totalUsers": 128355
+    },
+    {
+      "activeUsers24h": 11673,
+      "creditsDistributed": 254093,
+      "creditsSpent": 183994,
+      "date": "2026-06-18",
+      "id": "z8l69ym698l923z",
+      "totalProjects": 15371,
+      "totalReviews": 3437,
+      "totalUsers": 128359
+    },
+    {
+      "activeUsers24h": 13024,
+      "creditsDistributed": 254622,
+      "creditsSpent": 184621,
+      "date": "2026-06-19",
+      "id": "oyk7h4r915mv954",
+      "totalProjects": 15402,
+      "totalReviews": 3444,
+      "totalUsers": 128367
+    },
+    {
+      "activeUsers24h": 14169,
+      "creditsDistributed": 255304,
+      "creditsSpent": 185144,
+      "date": "2026-06-20",
+      "id": "9ccu3a30f9mi8d7",
+      "totalProjects": 15426,
+      "totalReviews": 3451,
+      "totalUsers": 128379
+    },
+    {
+      "activeUsers24h": 14054,
+      "creditsDistributed": 255971,
+      "creditsSpent": 185495,
+      "date": "2026-06-21",
+      "id": "2089hm02paj063l",
+      "totalProjects": 15439,
+      "totalReviews": 3455,
+      "totalUsers": 128391
+    },
+    {
+      "activeUsers24h": 12786,
+      "creditsDistributed": 256469,
+      "creditsSpent": 185765,
+      "date": "2026-06-22",
+      "id": "gea2jgb0xevj819",
+      "totalProjects": 15447,
+      "totalReviews": 3457,
+      "totalUsers": 128398
+    },
+    {
+      "activeUsers24h": 11530,
+      "creditsDistributed": 256799,
+      "creditsSpent": 186119,
+      "date": "2026-06-23",
+      "id": "c4pym2y19ia916e",
+      "totalProjects": 15460,
+      "totalReviews": 3459,
+      "totalUsers": 128401
+    },
+    {
+      "activeUsers24h": 11441,
+      "creditsDistributed": 257117,
+      "creditsSpent": 186645,
+      "date": "2026-06-24",
+      "id": "r8g6981efb2k8qd",
+      "totalProjects": 15485,
+      "totalReviews": 3463,
+      "totalUsers": 128404
+    },
+    {
+      "activeUsers24h": 12601,
+      "creditsDistributed": 257590,
+      "creditsSpent": 187273,
+      "date": "2026-06-25",
+      "id": "wb5xx32qx4n899l",
+      "totalProjects": 15516,
+      "totalReviews": 3470,
+      "totalUsers": 128411
+    },
+    {
+      "activeUsers24h": 13943,
+      "creditsDistributed": 258242,
+      "creditsSpent": 187839,
+      "date": "2026-06-26",
+      "id": "0ae8u9mh0hr37px",
+      "totalProjects": 15543,
+      "totalReviews": 3477,
+      "totalUsers": 128422
+    },
+    {
+      "activeUsers24h": 14234,
+      "creditsDistributed": 258933,
+      "creditsSpent": 188236,
+      "date": "2026-06-27",
+      "id": "ke26kvb3dx6hji1",
+      "totalProjects": 15559,
+      "totalReviews": 3482,
+      "totalUsers": 128434
+    },
+    {
+      "activeUsers24h": 13206,
+      "creditsDistributed": 259487,
+      "creditsSpent": 188512,
+      "date": "2026-06-28",
+      "id": "5prjtfc80j46ow8",
+      "totalProjects": 15567,
+      "totalReviews": 3485,
+      "totalUsers": 128443
+    },
+    {
+      "activeUsers24h": 11804,
+      "creditsDistributed": 259854,
+      "creditsSpent": 188827,
+      "date": "2026-06-29",
+      "id": "oh936b8zi842o06",
+      "totalProjects": 15578,
+      "totalReviews": 3487,
+      "totalUsers": 128447
+    },
+    {
+      "activeUsers24h": 11317,
+      "creditsDistributed": 260156,
+      "creditsSpent": 189304,
+      "date": "2026-06-30",
+      "id": "h68x3m3e48nu233",
+      "totalProjects": 15599,
+      "totalReviews": 3490,
+      "totalUsers": 128450
+    },
+    {
+      "activeUsers24h": 14062,
+      "creditsDistributed": 260824,
+      "creditsSpent": 189851,
+      "date": "2026-07-01",
+      "id": "3xc91vp8av173s4",
+      "totalProjects": 15625,
+      "totalReviews": 3497,
+      "totalUsers": 128462
+    },
+    {
+      "activeUsers24h": 14163,
+      "creditsDistributed": 261505,
+      "creditsSpent": 190226,
+      "date": "2026-07-02",
+      "id": "4x8gz41uweeakkd",
+      "totalProjects": 15640,
+      "totalReviews": 3502,
+      "totalUsers": 128474
+    },
+    {
+      "activeUsers24h": 13011,
+      "creditsDistributed": 262033,
+      "creditsSpent": 190497,
+      "date": "2026-07-03",
+      "id": "2vbyez56h901wdv",
+      "totalProjects": 15648,
+      "totalReviews": 3504,
+      "totalUsers": 128482
+    },
+    {
+      "activeUsers24h": 11664,
+      "creditsDistributed": 262381,
+      "creditsSpent": 190829,
+      "date": "2026-07-04",
+      "id": "48562ajn4uvsysi",
+      "totalProjects": 15660,
+      "totalReviews": 3506,
+      "totalUsers": 128486
+    },
+    {
+      "activeUsers24h": 11361,
+      "creditsDistributed": 262689,
+      "creditsSpent": 191330,
+      "date": "2026-07-05",
+      "id": "8wg62s4qgq9p9i0",
+      "totalProjects": 15683,
+      "totalReviews": 3510,
+      "totalUsers": 128489
+    },
+    {
+      "activeUsers24h": 12380,
+      "creditsDistributed": 263133,
+      "creditsSpent": 191952,
+      "date": "2026-07-06",
+      "id": "48fdj69xk1avuf9",
+      "totalProjects": 15714,
+      "totalReviews": 3516,
+      "totalUsers": 128495
+    },
+    {
+      "activeUsers24h": 13785,
+      "creditsDistributed": 263764,
+      "creditsSpent": 192537,
+      "date": "2026-07-07",
+      "id": "5g9y24gobw68739",
+      "totalProjects": 15743,
+      "totalReviews": 3523,
+      "totalUsers": 128506
+    },
+    {
+      "activeUsers24h": 14284,
+      "creditsDistributed": 264461,
+      "creditsSpent": 192960,
+      "date": "2026-07-08",
+      "id": "gq6z15goty6f8wd",
+      "totalProjects": 15761,
+      "totalReviews": 3529,
+      "totalUsers": 128518
+    },
+    {
+      "activeUsers24h": 13418,
+      "creditsDistributed": 265043,
+      "creditsSpent": 193245,
+      "date": "2026-07-09",
+      "id": "te482b83a218ck7",
+      "totalProjects": 15770,
+      "totalReviews": 3532,
+      "totalUsers": 128528
+    },
+    {
+      "activeUsers24h": 11983,
+      "creditsDistributed": 265434,
+      "creditsSpent": 193543,
+      "date": "2026-07-10",
+      "id": "yitjr78karkdrq7",
+      "totalProjects": 15779,
+      "totalReviews": 3534,
+      "totalUsers": 128533
+    },
+    {
+      "activeUsers24h": 11983,
+      "creditsDistributed": 250391,
+      "creditsSpent": 180298,
+      "date": "2026-06-10",
+      "id": "6r145yj0784wgz1",
+      "totalProjects": 15209,
+      "totalReviews": 3402,
+      "totalUsers": 128305
+    },
+    {
+      "activeUsers24h": 11300,
+      "creditsDistributed": 250691,
+      "creditsSpent": 180748,
+      "date": "2026-06-11",
+      "id": "418pp3j4v5h7y7v",
+      "totalProjects": 15229,
+      "totalReviews": 3405,
+      "totalUsers": 128308
+    },
+    {
+      "activeUsers24h": 11995,
+      "creditsDistributed": 251083,
+      "creditsSpent": 181349,
+      "date": "2026-06-12",
+      "id": "6h3rearw3z5xyu5",
+      "totalProjects": 15259,
+      "totalReviews": 3411,
+      "totalUsers": 128313
+    },
+    {
+      "activeUsers24h": 13430,
+      "creditsDistributed": 251667,
+      "creditsSpent": 181962,
+      "date": "2026-06-13",
+      "id": "b2sl277b321tn9u",
+      "totalProjects": 15289,
+      "totalReviews": 3418,
+      "totalUsers": 128323
+    },
+    {
+      "activeUsers24h": 14285,
+      "creditsDistributed": 252365,
+      "creditsSpent": 182436,
+      "date": "2026-06-14",
+      "id": "l7f51fab1118m5l",
+      "totalProjects": 15310,
+      "totalReviews": 3424,
+      "totalUsers": 128335
+    },
+    {
+      "activeUsers24h": 13775,
+      "creditsDistributed": 252995,
+      "creditsSpent": 182749,
+      "date": "2026-06-15",
+      "id": "fcxdmm4b1193u8y",
+      "totalProjects": 15320,
+      "totalReviews": 3428,
+      "totalUsers": 128346
+    },
+    {
+      "activeUsers24h": 12368,
+      "creditsDistributed": 253437,
+      "creditsSpent": 183026,
+      "date": "2026-06-16",
+      "id": "ru39l2rqx5u6uz8",
+      "totalProjects": 15328,
+      "totalReviews": 3430,
+      "totalUsers": 128352
+    },
+    {
+      "activeUsers24h": 11357,
+      "creditsDistributed": 253744,
+      "creditsSpent": 183426,
+      "date": "2026-06-17",
+      "id": "b0d9l0rtpnkxc2j",
+      "totalProjects": 15344,
+      "totalReviews": 3432,
+      "totalUsers": 128355
+    },
+    {
+      "activeUsers24h": 11673,
+      "creditsDistributed": 254093,
+      "creditsSpent": 183994,
+      "date": "2026-06-18",
+      "id": "k3m7gz655461p6p",
+      "totalProjects": 15371,
+      "totalReviews": 3437,
+      "totalUsers": 128359
+    },
+    {
+      "activeUsers24h": 13024,
+      "creditsDistributed": 254622,
+      "creditsSpent": 184621,
+      "date": "2026-06-19",
+      "id": "o27p2ica4m7o58q",
+      "totalProjects": 15402,
+      "totalReviews": 3444,
+      "totalUsers": 128367
+    },
+    {
+      "activeUsers24h": 14169,
+      "creditsDistributed": 255304,
+      "creditsSpent": 185144,
+      "date": "2026-06-20",
+      "id": "mclhzxb8u31w2q4",
+      "totalProjects": 15426,
+      "totalReviews": 3451,
+      "totalUsers": 128379
+    },
+    {
+      "activeUsers24h": 14054,
+      "creditsDistributed": 255971,
+      "creditsSpent": 185495,
+      "date": "2026-06-21",
+      "id": "rzxi2l11ce3uk56",
+      "totalProjects": 15439,
+      "totalReviews": 3455,
+      "totalUsers": 128391
+    },
+    {
+      "activeUsers24h": 12786,
+      "creditsDistributed": 256469,
+      "creditsSpent": 185765,
+      "date": "2026-06-22",
+      "id": "3d9649lil8t59a7",
+      "totalProjects": 15447,
+      "totalReviews": 3457,
+      "totalUsers": 128398
+    },
+    {
+      "activeUsers24h": 11530,
+      "creditsDistributed": 256799,
+      "creditsSpent": 186119,
+      "date": "2026-06-23",
+      "id": "7beq3kxp973v18n",
+      "totalProjects": 15460,
+      "totalReviews": 3459,
+      "totalUsers": 128401
+    },
+    {
+      "activeUsers24h": 11441,
+      "creditsDistributed": 257117,
+      "creditsSpent": 186645,
+      "date": "2026-06-24",
+      "id": "6505e0lyaj176a8",
+      "totalProjects": 15485,
+      "totalReviews": 3463,
+      "totalUsers": 128404
+    },
+    {
+      "activeUsers24h": 12601,
+      "creditsDistributed": 257590,
+      "creditsSpent": 187273,
+      "date": "2026-06-25",
+      "id": "vde697s8061zebk",
+      "totalProjects": 15516,
+      "totalReviews": 3470,
+      "totalUsers": 128411
+    },
+    {
+      "activeUsers24h": 13943,
+      "creditsDistributed": 258242,
+      "creditsSpent": 187839,
+      "date": "2026-06-26",
+      "id": "h5xp21e7hti7rro",
+      "totalProjects": 15543,
+      "totalReviews": 3477,
+      "totalUsers": 128422
+    },
+    {
+      "activeUsers24h": 14234,
+      "creditsDistributed": 258933,
+      "creditsSpent": 188236,
+      "date": "2026-06-27",
+      "id": "b48z3v69y45usot",
+      "totalProjects": 15559,
+      "totalReviews": 3482,
+      "totalUsers": 128434
+    },
+    {
+      "activeUsers24h": 13206,
+      "creditsDistributed": 259487,
+      "creditsSpent": 188512,
+      "date": "2026-06-28",
+      "id": "50ospw2v10d6f2d",
+      "totalProjects": 15567,
+      "totalReviews": 3485,
+      "totalUsers": 128443
+    },
+    {
+      "activeUsers24h": 11804,
+      "creditsDistributed": 259854,
+      "creditsSpent": 188827,
+      "date": "2026-06-29",
+      "id": "4o227972zvoa2c5",
+      "totalProjects": 15578,
+      "totalReviews": 3487,
+      "totalUsers": 128447
+    },
+    {
+      "activeUsers24h": 11317,
+      "creditsDistributed": 260156,
+      "creditsSpent": 189304,
+      "date": "2026-06-30",
+      "id": "7o6vpe7rskk32z6",
+      "totalProjects": 15599,
+      "totalReviews": 3490,
+      "totalUsers": 128450
+    },
+    {
+      "activeUsers24h": 14062,
+      "creditsDistributed": 260824,
+      "creditsSpent": 189851,
+      "date": "2026-07-01",
+      "id": "2k39r2c25eh457a",
+      "totalProjects": 15625,
+      "totalReviews": 3497,
+      "totalUsers": 128462
+    },
+    {
+      "activeUsers24h": 14163,
+      "creditsDistributed": 261505,
+      "creditsSpent": 190226,
+      "date": "2026-07-02",
+      "id": "82wy2r9plst4g7k",
+      "totalProjects": 15640,
+      "totalReviews": 3502,
+      "totalUsers": 128474
+    },
+    {
+      "activeUsers24h": 13011,
+      "creditsDistributed": 262033,
+      "creditsSpent": 190497,
+      "date": "2026-07-03",
+      "id": "53qe05jzgv6t124",
+      "totalProjects": 15648,
+      "totalReviews": 3504,
+      "totalUsers": 128482
+    },
+    {
+      "activeUsers24h": 11664,
+      "creditsDistributed": 262381,
+      "creditsSpent": 190829,
+      "date": "2026-07-04",
+      "id": "235upo206vf8d58",
+      "totalProjects": 15660,
+      "totalReviews": 3506,
+      "totalUsers": 128486
+    },
+    {
+      "activeUsers24h": 11361,
+      "creditsDistributed": 262689,
+      "creditsSpent": 191330,
+      "date": "2026-07-05",
+      "id": "18i6g80e5rfcfx4",
+      "totalProjects": 15683,
+      "totalReviews": 3510,
+      "totalUsers": 128489
+    },
+    {
+      "activeUsers24h": 12380,
+      "creditsDistributed": 263133,
+      "creditsSpent": 191952,
+      "date": "2026-07-06",
+      "id": "lb91yrvk4x1xtqk",
+      "totalProjects": 15714,
+      "totalReviews": 3516,
+      "totalUsers": 128495
+    },
+    {
+      "activeUsers24h": 13785,
+      "creditsDistributed": 263764,
+      "creditsSpent": 192537,
+      "date": "2026-07-07",
+      "id": "25tkey02pn866pf",
+      "totalProjects": 15743,
+      "totalReviews": 3523,
+      "totalUsers": 128506
+    },
+    {
+      "activeUsers24h": 14284,
+      "creditsDistributed": 264461,
+      "creditsSpent": 192960,
+      "date": "2026-07-08",
+      "id": "w7j183k6qr33oz9",
+      "totalProjects": 15761,
+      "totalReviews": 3529,
+      "totalUsers": 128518
+    },
+    {
+      "activeUsers24h": 13418,
+      "creditsDistributed": 265043,
+      "creditsSpent": 193245,
+      "date": "2026-07-09",
+      "id": "1e4f75g0kt2c6n4",
+      "totalProjects": 15770,
+      "totalReviews": 3532,
+      "totalUsers": 128528
+    },
+    {
+      "activeUsers24h": 11983,
+      "creditsDistributed": 265434,
+      "creditsSpent": 193543,
+      "date": "2026-07-10",
+      "id": "30s5659rzg5s601",
+      "totalProjects": 15779,
+      "totalReviews": 3534,
+      "totalUsers": 128533
+    },
+    {
+      "activeUsers24h": 11983,
+      "creditsDistributed": 250391,
+      "creditsSpent": 180298,
+      "date": "2026-06-10",
+      "id": "2cw8h4m06z13xlq",
+      "totalProjects": 15209,
+      "totalReviews": 3402,
+      "totalUsers": 128305
+    },
+    {
+      "activeUsers24h": 11300,
+      "creditsDistributed": 250691,
+      "creditsSpent": 180748,
+      "date": "2026-06-11",
+      "id": "xgyf3j34744lv9m",
+      "totalProjects": 15229,
+      "totalReviews": 3405,
+      "totalUsers": 128308
+    },
+    {
+      "activeUsers24h": 11995,
+      "creditsDistributed": 251083,
+      "creditsSpent": 181349,
+      "date": "2026-06-12",
+      "id": "221a6d6y878mi65",
+      "totalProjects": 15259,
+      "totalReviews": 3411,
+      "totalUsers": 128313
+    },
+    {
+      "activeUsers24h": 13430,
+      "creditsDistributed": 251667,
+      "creditsSpent": 181962,
+      "date": "2026-06-13",
+      "id": "bhu48pcyn7m5cfs",
+      "totalProjects": 15289,
+      "totalReviews": 3418,
+      "totalUsers": 128323
+    },
+    {
+      "activeUsers24h": 14285,
+      "creditsDistributed": 252365,
+      "creditsSpent": 182436,
+      "date": "2026-06-14",
+      "id": "9m31d50n36ep7i5",
+      "totalProjects": 15310,
+      "totalReviews": 3424,
+      "totalUsers": 128335
+    },
+    {
+      "activeUsers24h": 13775,
+      "creditsDistributed": 252995,
+      "creditsSpent": 182749,
+      "date": "2026-06-15",
+      "id": "x0t7ur19rh86wyf",
+      "totalProjects": 15320,
+      "totalReviews": 3428,
+      "totalUsers": 128346
+    },
+    {
+      "activeUsers24h": 12368,
+      "creditsDistributed": 253437,
+      "creditsSpent": 183026,
+      "date": "2026-06-16",
+      "id": "o90qpuut06zt6pv",
+      "totalProjects": 15328,
+      "totalReviews": 3430,
+      "totalUsers": 128352
+    },
+    {
+      "activeUsers24h": 11357,
+      "creditsDistributed": 253744,
+      "creditsSpent": 183426,
+      "date": "2026-06-17",
+      "id": "scw21fs59dxnaf8",
+      "totalProjects": 15344,
+      "totalReviews": 3432,
+      "totalUsers": 128355
+    },
+    {
+      "activeUsers24h": 11673,
+      "creditsDistributed": 254093,
+      "creditsSpent": 183994,
+      "date": "2026-06-18",
+      "id": "g4r3hk25864kn17",
+      "totalProjects": 15371,
+      "totalReviews": 3437,
+      "totalUsers": 128359
+    },
+    {
+      "activeUsers24h": 13024,
+      "creditsDistributed": 254622,
+      "creditsSpent": 184621,
+      "date": "2026-06-19",
+      "id": "7nungdyo20wi8p6",
+      "totalProjects": 15402,
+      "totalReviews": 3444,
+      "totalUsers": 128367
+    },
+    {
+      "activeUsers24h": 14169,
+      "creditsDistributed": 255304,
+      "creditsSpent": 185144,
+      "date": "2026-06-20",
+      "id": "slfqp17grix14nz",
+      "totalProjects": 15426,
+      "totalReviews": 3451,
+      "totalUsers": 128379
+    },
+    {
+      "activeUsers24h": 14054,
+      "creditsDistributed": 255971,
+      "creditsSpent": 185495,
+      "date": "2026-06-21",
+      "id": "4076696171r9067",
+      "totalProjects": 15439,
+      "totalReviews": 3455,
+      "totalUsers": 128391
+    },
+    {
+      "activeUsers24h": 12786,
+      "creditsDistributed": 256469,
+      "creditsSpent": 185765,
+      "date": "2026-06-22",
+      "id": "56jj0i301n5t170",
+      "totalProjects": 15447,
+      "totalReviews": 3457,
+      "totalUsers": 128398
+    },
+    {
+      "activeUsers24h": 11530,
+      "creditsDistributed": 256799,
+      "creditsSpent": 186119,
+      "date": "2026-06-23",
+      "id": "6n91w4w2jzaw94a",
+      "totalProjects": 15460,
+      "totalReviews": 3459,
+      "totalUsers": 128401
+    },
+    {
+      "activeUsers24h": 11441,
+      "creditsDistributed": 257117,
+      "creditsSpent": 186645,
+      "date": "2026-06-24",
+      "id": "0tivt0mv4c90t72",
+      "totalProjects": 15485,
+      "totalReviews": 3463,
+      "totalUsers": 128404
+    },
+    {
+      "activeUsers24h": 12601,
+      "creditsDistributed": 257590,
+      "creditsSpent": 187273,
+      "date": "2026-06-25",
+      "id": "avv94l9s1573n2s",
+      "totalProjects": 15516,
+      "totalReviews": 3470,
+      "totalUsers": 128411
+    },
+    {
+      "activeUsers24h": 13943,
+      "creditsDistributed": 258242,
+      "creditsSpent": 187839,
+      "date": "2026-06-26",
+      "id": "853me23cx953ht3",
+      "totalProjects": 15543,
+      "totalReviews": 3477,
+      "totalUsers": 128422
+    },
+    {
+      "activeUsers24h": 14234,
+      "creditsDistributed": 258933,
+      "creditsSpent": 188236,
+      "date": "2026-06-27",
+      "id": "r05987i3y0bv92o",
+      "totalProjects": 15559,
+      "totalReviews": 3482,
+      "totalUsers": 128434
+    },
+    {
+      "activeUsers24h": 13206,
+      "creditsDistributed": 259487,
+      "creditsSpent": 188512,
+      "date": "2026-06-28",
+      "id": "1h3t5065055fi14",
+      "totalProjects": 15567,
+      "totalReviews": 3485,
+      "totalUsers": 128443
+    },
+    {
+      "activeUsers24h": 11804,
+      "creditsDistributed": 259854,
+      "creditsSpent": 188827,
+      "date": "2026-06-29",
+      "id": "ur44d6otpqd304z",
+      "totalProjects": 15578,
+      "totalReviews": 3487,
+      "totalUsers": 128447
+    },
+    {
+      "activeUsers24h": 11317,
+      "creditsDistributed": 260156,
+      "creditsSpent": 189304,
+      "date": "2026-06-30",
+      "id": "43jva8ls5vjrg8m",
+      "totalProjects": 15599,
+      "totalReviews": 3490,
+      "totalUsers": 128450
+    },
+    {
+      "activeUsers24h": 14062,
+      "creditsDistributed": 260824,
+      "creditsSpent": 189851,
+      "date": "2026-07-01",
+      "id": "br87o403hm0l876",
+      "totalProjects": 15625,
+      "totalReviews": 3497,
+      "totalUsers": 128462
+    },
+    {
+      "activeUsers24h": 14163,
+      "creditsDistributed": 261505,
+      "creditsSpent": 190226,
+      "date": "2026-07-02",
+      "id": "fc1i0bjykk797d9",
+      "totalProjects": 15640,
+      "totalReviews": 3502,
+      "totalUsers": 128474
+    },
+    {
+      "activeUsers24h": 13011,
+      "creditsDistributed": 262033,
+      "creditsSpent": 190497,
+      "date": "2026-07-03",
+      "id": "95271z7c1462cd7",
+      "totalProjects": 15648,
+      "totalReviews": 3504,
+      "totalUsers": 128482
+    },
+    {
+      "activeUsers24h": 11664,
+      "creditsDistributed": 262381,
+      "creditsSpent": 190829,
+      "date": "2026-07-04",
+      "id": "i60ya851u781an1",
+      "totalProjects": 15660,
+      "totalReviews": 3506,
+      "totalUsers": 128486
+    },
+    {
+      "activeUsers24h": 11361,
+      "creditsDistributed": 262689,
+      "creditsSpent": 191330,
+      "date": "2026-07-05",
+      "id": "09ks1sod00p3d7s",
+      "totalProjects": 15683,
+      "totalReviews": 3510,
+      "totalUsers": 128489
+    },
+    {
+      "activeUsers24h": 12380,
+      "creditsDistributed": 263133,
+      "creditsSpent": 191952,
+      "date": "2026-07-06",
+      "id": "9m55pdrm438140f",
+      "totalProjects": 15714,
+      "totalReviews": 3516,
+      "totalUsers": 128495
+    },
+    {
+      "activeUsers24h": 13785,
+      "creditsDistributed": 263764,
+      "creditsSpent": 192537,
+      "date": "2026-07-07",
+      "id": "4p1ih0ty7cjo59l",
+      "totalProjects": 15743,
+      "totalReviews": 3523,
+      "totalUsers": 128506
+    },
+    {
+      "activeUsers24h": 14284,
+      "creditsDistributed": 264461,
+      "creditsSpent": 192960,
+      "date": "2026-07-08",
+      "id": "vh1v18s9j46r124",
+      "totalProjects": 15761,
+      "totalReviews": 3529,
+      "totalUsers": 128518
+    },
+    {
+      "activeUsers24h": 13418,
+      "creditsDistributed": 265043,
+      "creditsSpent": 193245,
+      "date": "2026-07-09",
+      "id": "i0m04e66b3l3u72",
+      "totalProjects": 15770,
+      "totalReviews": 3532,
+      "totalUsers": 128528
+    },
+    {
+      "activeUsers24h": 11983,
+      "creditsDistributed": 265434,
+      "creditsSpent": 193543,
+      "date": "2026-07-10",
+      "id": "wwu2o4d7fy6w0q6",
+      "totalProjects": 15779,
+      "totalReviews": 3534,
+      "totalUsers": 128533
+    },
+    {
+      "activeUsers24h": 11983,
+      "creditsDistributed": 250391,
+      "creditsSpent": 180298,
+      "date": "2026-06-10",
+      "id": "72n87639c04rkza",
+      "totalProjects": 15209,
+      "totalReviews": 3402,
+      "totalUsers": 128305
+    },
+    {
+      "activeUsers24h": 11300,
+      "creditsDistributed": 250691,
+      "creditsSpent": 180748,
+      "date": "2026-06-11",
+      "id": "548vm947jk1y75x",
+      "totalProjects": 15229,
+      "totalReviews": 3405,
+      "totalUsers": 128308
+    },
+    {
+      "activeUsers24h": 11995,
+      "creditsDistributed": 251083,
+      "creditsSpent": 181349,
+      "date": "2026-06-12",
+      "id": "7262a59755bg99n",
+      "totalProjects": 15259,
+      "totalReviews": 3411,
+      "totalUsers": 128313
+    },
+    {
+      "activeUsers24h": 13430,
+      "creditsDistributed": 251667,
+      "creditsSpent": 181962,
+      "date": "2026-06-13",
+      "id": "x3821q794p9axd8",
+      "totalProjects": 15289,
+      "totalReviews": 3418,
+      "totalUsers": 128323
+    },
+    {
+      "activeUsers24h": 14285,
+      "creditsDistributed": 252365,
+      "creditsSpent": 182436,
+      "date": "2026-06-14",
+      "id": "8589nlp5w831p77",
+      "totalProjects": 15310,
+      "totalReviews": 3424,
+      "totalUsers": 128335
+    },
+    {
+      "activeUsers24h": 13775,
+      "creditsDistributed": 252995,
+      "creditsSpent": 182749,
+      "date": "2026-06-15",
+      "id": "5xx55929k69ke03",
+      "totalProjects": 15320,
+      "totalReviews": 3428,
+      "totalUsers": 128346
+    },
+    {
+      "activeUsers24h": 12368,
+      "creditsDistributed": 253437,
+      "creditsSpent": 183026,
+      "date": "2026-06-16",
+      "id": "z31oh1t78erc4w6",
+      "totalProjects": 15328,
+      "totalReviews": 3430,
+      "totalUsers": 128352
+    },
+    {
+      "activeUsers24h": 11357,
+      "creditsDistributed": 253744,
+      "creditsSpent": 183426,
+      "date": "2026-06-17",
+      "id": "um633fktcez1164",
+      "totalProjects": 15344,
+      "totalReviews": 3432,
+      "totalUsers": 128355
+    },
+    {
+      "activeUsers24h": 11673,
+      "creditsDistributed": 254093,
+      "creditsSpent": 183994,
+      "date": "2026-06-18",
+      "id": "3sw5k0zbb2d9v29",
+      "totalProjects": 15371,
+      "totalReviews": 3437,
+      "totalUsers": 128359
+    },
+    {
+      "activeUsers24h": 13024,
+      "creditsDistributed": 254622,
+      "creditsSpent": 184621,
+      "date": "2026-06-19",
+      "id": "602eyb1vc1583br",
+      "totalProjects": 15402,
+      "totalReviews": 3444,
+      "totalUsers": 128367
+    },
+    {
+      "activeUsers24h": 14169,
+      "creditsDistributed": 255304,
+      "creditsSpent": 185144,
+      "date": "2026-06-20",
+      "id": "l5sf3v1t41v9q28",
+      "totalProjects": 15426,
+      "totalReviews": 3451,
+      "totalUsers": 128379
+    },
+    {
+      "activeUsers24h": 14054,
+      "creditsDistributed": 255971,
+      "creditsSpent": 185495,
+      "date": "2026-06-21",
+      "id": "59185w72ovgp8q2",
+      "totalProjects": 15439,
+      "totalReviews": 3455,
+      "totalUsers": 128391
+    },
+    {
+      "activeUsers24h": 12786,
+      "creditsDistributed": 256469,
+      "creditsSpent": 185765,
+      "date": "2026-06-22",
+      "id": "y9172511a5ukn64",
+      "totalProjects": 15447,
+      "totalReviews": 3457,
+      "totalUsers": 128398
+    },
+    {
+      "activeUsers24h": 11530,
+      "creditsDistributed": 256799,
+      "creditsSpent": 186119,
+      "date": "2026-06-23",
+      "id": "1la0zzlj49u7dro",
+      "totalProjects": 15460,
+      "totalReviews": 3459,
+      "totalUsers": 128401
+    },
+    {
+      "activeUsers24h": 11441,
+      "creditsDistributed": 257117,
+      "creditsSpent": 186645,
+      "date": "2026-06-24",
+      "id": "1gd5g75q06nayb8",
+      "totalProjects": 15485,
+      "totalReviews": 3463,
+      "totalUsers": 128404
+    },
+    {
+      "activeUsers24h": 12601,
+      "creditsDistributed": 257590,
+      "creditsSpent": 187273,
+      "date": "2026-06-25",
+      "id": "gt6bgc3co17z6a7",
+      "totalProjects": 15516,
+      "totalReviews": 3470,
+      "totalUsers": 128411
+    },
+    {
+      "activeUsers24h": 13943,
+      "creditsDistributed": 258242,
+      "creditsSpent": 187839,
+      "date": "2026-06-26",
+      "id": "9c04po320q4hvps",
+      "totalProjects": 15543,
+      "totalReviews": 3477,
+      "totalUsers": 128422
+    },
+    {
+      "activeUsers24h": 14234,
+      "creditsDistributed": 258933,
+      "creditsSpent": 188236,
+      "date": "2026-06-27",
+      "id": "gj4e20l550dsau7",
+      "totalProjects": 15559,
+      "totalReviews": 3482,
+      "totalUsers": 128434
+    },
+    {
+      "activeUsers24h": 13206,
+      "creditsDistributed": 259487,
+      "creditsSpent": 188512,
+      "date": "2026-06-28",
+      "id": "6xag0v461ce359h",
+      "totalProjects": 15567,
+      "totalReviews": 3485,
+      "totalUsers": 128443
+    },
+    {
+      "activeUsers24h": 11804,
+      "creditsDistributed": 259854,
+      "creditsSpent": 188827,
+      "date": "2026-06-29",
+      "id": "1im81o4404xtpbj",
+      "totalProjects": 15578,
+      "totalReviews": 3487,
+      "totalUsers": 128447
+    },
+    {
+      "activeUsers24h": 11317,
+      "creditsDistributed": 260156,
+      "creditsSpent": 189304,
+      "date": "2026-06-30",
+      "id": "brsj529846u2ms9",
+      "totalProjects": 15599,
+      "totalReviews": 3490,
+      "totalUsers": 128450
+    },
+    {
+      "activeUsers24h": 14062,
+      "creditsDistributed": 260824,
+      "creditsSpent": 189851,
+      "date": "2026-07-01",
+      "id": "vr1n906972k465n",
+      "totalProjects": 15625,
+      "totalReviews": 3497,
+      "totalUsers": 128462
+    },
+    {
+      "activeUsers24h": 14163,
+      "creditsDistributed": 261505,
+      "creditsSpent": 190226,
+      "date": "2026-07-02",
+      "id": "xk75d0ys1tq627u",
+      "totalProjects": 15640,
+      "totalReviews": 3502,
+      "totalUsers": 128474
+    },
+    {
+      "activeUsers24h": 13011,
+      "creditsDistributed": 262033,
+      "creditsSpent": 190497,
+      "date": "2026-07-03",
+      "id": "54h87pq4dqu22s3",
+      "totalProjects": 15648,
+      "totalReviews": 3504,
+      "totalUsers": 128482
+    },
+    {
+      "activeUsers24h": 11664,
+      "creditsDistributed": 262381,
+      "creditsSpent": 190829,
+      "date": "2026-07-04",
+      "id": "5sc4g2dz0e0dxfj",
+      "totalProjects": 15660,
+      "totalReviews": 3506,
+      "totalUsers": 128486
+    },
+    {
+      "activeUsers24h": 11361,
+      "creditsDistributed": 262689,
+      "creditsSpent": 191330,
+      "date": "2026-07-05",
+      "id": "52t32ln0c1by65t",
+      "totalProjects": 15683,
+      "totalReviews": 3510,
+      "totalUsers": 128489
+    },
+    {
+      "activeUsers24h": 12380,
+      "creditsDistributed": 263133,
+      "creditsSpent": 191952,
+      "date": "2026-07-06",
+      "id": "3ym9z4e77r20sw4",
+      "totalProjects": 15714,
+      "totalReviews": 3516,
+      "totalUsers": 128495
+    },
+    {
+      "activeUsers24h": 13785,
+      "creditsDistributed": 263764,
+      "creditsSpent": 192537,
+      "date": "2026-07-07",
+      "id": "dc38l48q5f24hj6",
+      "totalProjects": 15743,
+      "totalReviews": 3523,
+      "totalUsers": 128506
+    },
+    {
+      "activeUsers24h": 14284,
+      "creditsDistributed": 264461,
+      "creditsSpent": 192960,
+      "date": "2026-07-08",
+      "id": "4l8uyb689hgkce8",
+      "totalProjects": 15761,
+      "totalReviews": 3529,
+      "totalUsers": 128518
+    },
+    {
+      "activeUsers24h": 13418,
+      "creditsDistributed": 265043,
+      "creditsSpent": 193245,
+      "date": "2026-07-09",
+      "id": "60pcyr4l796vt51",
+      "totalProjects": 15770,
+      "totalReviews": 3532,
+      "totalUsers": 128528
+    },
+    {
+      "activeUsers24h": 11983,
+      "creditsDistributed": 265434,
+      "creditsSpent": 193543,
+      "date": "2026-07-10",
+      "id": "tt256009dm70629",
+      "totalProjects": 15779,
+      "totalReviews": 3534,
+      "totalUsers": 128533
+    },
+    {
+      "activeUsers24h": 11300,
+      "creditsDistributed": 250300,
+      "creditsSpent": 180450,
+      "date": "2026-06-11",
+      "id": "29v9ay213x5riqs",
+      "totalProjects": 15220,
+      "totalReviews": 3403,
+      "totalUsers": 128303
+    },
+    {
+      "activeUsers24h": 11995,
+      "creditsDistributed": 250692,
+      "creditsSpent": 181051,
+      "date": "2026-06-12",
+      "id": "9ew2qf0mywe6qn4",
+      "totalProjects": 15250,
+      "totalReviews": 3409,
+      "totalUsers": 128308
+    },
+    {
+      "activeUsers24h": 13430,
+      "creditsDistributed": 251276,
+      "creditsSpent": 181664,
+      "date": "2026-06-13",
+      "id": "1l89xr7rpob00u9",
+      "totalProjects": 15280,
+      "totalReviews": 3416,
+      "totalUsers": 128318
+    },
+    {
+      "activeUsers24h": 14285,
+      "creditsDistributed": 251974,
+      "creditsSpent": 182138,
+      "date": "2026-06-14",
+      "id": "4w8946ptoygebiu",
+      "totalProjects": 15301,
+      "totalReviews": 3422,
+      "totalUsers": 128330
+    },
+    {
+      "activeUsers24h": 13775,
+      "creditsDistributed": 252604,
+      "creditsSpent": 182451,
+      "date": "2026-06-15",
+      "id": "ljs72v11737e65o",
+      "totalProjects": 15311,
+      "totalReviews": 3426,
+      "totalUsers": 128341
+    },
+    {
+      "activeUsers24h": 12368,
+      "creditsDistributed": 253046,
+      "creditsSpent": 182728,
+      "date": "2026-06-16",
+      "id": "ta629lb8o5l86yp",
+      "totalProjects": 15319,
+      "totalReviews": 3428,
+      "totalUsers": 128347
+    },
+    {
+      "activeUsers24h": 11357,
+      "creditsDistributed": 253353,
+      "creditsSpent": 183128,
+      "date": "2026-06-17",
+      "id": "k8k8hvms2560lq2",
+      "totalProjects": 15335,
+      "totalReviews": 3430,
+      "totalUsers": 128350
+    },
+    {
+      "activeUsers24h": 11673,
+      "creditsDistributed": 253702,
+      "creditsSpent": 183696,
+      "date": "2026-06-18",
+      "id": "yst0nzr6md01d71",
+      "totalProjects": 15362,
+      "totalReviews": 3435,
+      "totalUsers": 128354
+    },
+    {
+      "activeUsers24h": 13024,
+      "creditsDistributed": 254231,
+      "creditsSpent": 184323,
+      "date": "2026-06-19",
+      "id": "d060tza9ue275xz",
+      "totalProjects": 15393,
+      "totalReviews": 3442,
+      "totalUsers": 128362
+    },
+    {
+      "activeUsers24h": 14169,
+      "creditsDistributed": 254913,
+      "creditsSpent": 184846,
+      "date": "2026-06-20",
+      "id": "n1838e042e0j9k7",
+      "totalProjects": 15417,
+      "totalReviews": 3449,
+      "totalUsers": 128374
+    },
+    {
+      "activeUsers24h": 14054,
+      "creditsDistributed": 255580,
+      "creditsSpent": 185197,
+      "date": "2026-06-21",
+      "id": "ym9e0362s0412ge",
+      "totalProjects": 15430,
+      "totalReviews": 3453,
+      "totalUsers": 128386
+    },
+    {
+      "activeUsers24h": 12786,
+      "creditsDistributed": 256078,
+      "creditsSpent": 185467,
+      "date": "2026-06-22",
+      "id": "6c02vi5b9ch9743",
+      "totalProjects": 15438,
+      "totalReviews": 3455,
+      "totalUsers": 128393
+    },
+    {
+      "activeUsers24h": 11530,
+      "creditsDistributed": 256408,
+      "creditsSpent": 185821,
+      "date": "2026-06-23",
+      "id": "j71r9vt3lop3cu1",
+      "totalProjects": 15451,
+      "totalReviews": 3457,
+      "totalUsers": 128396
+    },
+    {
+      "activeUsers24h": 11441,
+      "creditsDistributed": 256726,
+      "creditsSpent": 186347,
+      "date": "2026-06-24",
+      "id": "w6ovp23qb9892j0",
+      "totalProjects": 15476,
+      "totalReviews": 3461,
+      "totalUsers": 128399
+    },
+    {
+      "activeUsers24h": 12601,
+      "creditsDistributed": 257199,
+      "creditsSpent": 186975,
+      "date": "2026-06-25",
+      "id": "0q48a334ds79855",
+      "totalProjects": 15507,
+      "totalReviews": 3468,
+      "totalUsers": 128406
+    },
+    {
+      "activeUsers24h": 13943,
+      "creditsDistributed": 257851,
+      "creditsSpent": 187541,
+      "date": "2026-06-26",
+      "id": "9estya10z6605xq",
+      "totalProjects": 15534,
+      "totalReviews": 3475,
+      "totalUsers": 128417
+    },
+    {
+      "activeUsers24h": 14234,
+      "creditsDistributed": 258542,
+      "creditsSpent": 187938,
+      "date": "2026-06-27",
+      "id": "5k69cu3n16q3o0z",
+      "totalProjects": 15550,
+      "totalReviews": 3480,
+      "totalUsers": 128429
+    },
+    {
+      "activeUsers24h": 13206,
+      "creditsDistributed": 259096,
+      "creditsSpent": 188214,
+      "date": "2026-06-28",
+      "id": "n727x0dr22117u9",
+      "totalProjects": 15558,
+      "totalReviews": 3483,
+      "totalUsers": 128438
+    },
+    {
+      "activeUsers24h": 11804,
+      "creditsDistributed": 259463,
+      "creditsSpent": 188529,
+      "date": "2026-06-29",
+      "id": "127o64p97f29in4",
+      "totalProjects": 15569,
+      "totalReviews": 3485,
+      "totalUsers": 128442
+    },
+    {
+      "activeUsers24h": 11317,
+      "creditsDistributed": 259765,
+      "creditsSpent": 189006,
+      "date": "2026-06-30",
+      "id": "opj1w4ln7om34p0",
+      "totalProjects": 15590,
+      "totalReviews": 3488,
+      "totalUsers": 128445
+    },
+    {
+      "activeUsers24h": 14062,
+      "creditsDistributed": 260433,
+      "creditsSpent": 189553,
+      "date": "2026-07-01",
+      "id": "v05qm5rqbzw6vl8",
+      "totalProjects": 15616,
+      "totalReviews": 3495,
+      "totalUsers": 128457
+    },
+    {
+      "activeUsers24h": 14163,
+      "creditsDistributed": 261114,
+      "creditsSpent": 189928,
+      "date": "2026-07-02",
+      "id": "aus931mq6wu23i4",
+      "totalProjects": 15631,
+      "totalReviews": 3500,
+      "totalUsers": 128469
+    },
+    {
+      "activeUsers24h": 13011,
+      "creditsDistributed": 261642,
+      "creditsSpent": 190199,
+      "date": "2026-07-03",
+      "id": "8f9yr6719xmk72d",
+      "totalProjects": 15639,
+      "totalReviews": 3502,
+      "totalUsers": 128477
+    },
+    {
+      "activeUsers24h": 11664,
+      "creditsDistributed": 261990,
+      "creditsSpent": 190531,
+      "date": "2026-07-04",
+      "id": "0fzj31g8za37z19",
+      "totalProjects": 15651,
+      "totalReviews": 3504,
+      "totalUsers": 128481
+    },
+    {
+      "activeUsers24h": 11361,
+      "creditsDistributed": 262298,
+      "creditsSpent": 191032,
+      "date": "2026-07-05",
+      "id": "4228cj6h94szvz2",
+      "totalProjects": 15674,
+      "totalReviews": 3508,
+      "totalUsers": 128484
+    },
+    {
+      "activeUsers24h": 12380,
+      "creditsDistributed": 262742,
+      "creditsSpent": 191654,
+      "date": "2026-07-06",
+      "id": "61o0r8q2624th02",
+      "totalProjects": 15705,
+      "totalReviews": 3514,
+      "totalUsers": 128490
+    },
+    {
+      "activeUsers24h": 13785,
+      "creditsDistributed": 263373,
+      "creditsSpent": 192239,
+      "date": "2026-07-07",
+      "id": "uc23fer8qf7c396",
+      "totalProjects": 15734,
+      "totalReviews": 3521,
+      "totalUsers": 128501
+    },
+    {
+      "activeUsers24h": 14284,
+      "creditsDistributed": 264070,
+      "creditsSpent": 192662,
+      "date": "2026-07-08",
+      "id": "52p6w6sxd1fzm1o",
+      "totalProjects": 15752,
+      "totalReviews": 3527,
+      "totalUsers": 128513
+    },
+    {
+      "activeUsers24h": 13418,
+      "creditsDistributed": 264652,
+      "creditsSpent": 192947,
+      "date": "2026-07-09",
+      "id": "d9odov1x7tn7v46",
+      "totalProjects": 15761,
+      "totalReviews": 3530,
+      "totalUsers": 128523
+    },
+    {
+      "activeUsers24h": 11983,
+      "creditsDistributed": 265043,
+      "creditsSpent": 193245,
+      "date": "2026-07-10",
+      "id": "z9i6jrsfl7f37p1",
+      "totalProjects": 15770,
+      "totalReviews": 3532,
+      "totalUsers": 128528
+    },
+    {
+      "activeUsers24h": 11300,
+      "creditsDistributed": 265343,
+      "creditsSpent": 193695,
+      "date": "2026-07-11",
+      "id": "01v51646qatprxt",
+      "totalProjects": 15790,
+      "totalReviews": 3535,
+      "totalUsers": 128531
+    }
+  ],
+  "floating_banners": [
+    {
+      "duration": 5,
+      "height": 6,
+      "id": "pm2jm082k3j8858",
+      "imageUrl": "http://127.0.0.1:8090/api/files/pbc_121766130/3zj824gww745g6l/ahsan_4v3ylkxkou.jpeg",
+      "isActive": true,
+      "linkUrl": "",
+      "sortOrder": 0,
+      "targetEmail": "ahsan@gmail.com",
+      "targetType": "specific",
+      "title": "summer sale",
+      "width": 4
+    },
+    {
+      "duration": 10,
+      "height": 6,
+      "id": "f868ud16st77e76",
+      "imageUrl": "http://127.0.0.1:8090/api/files/pbc_121766130/78719vjntr32bvb/ahsan_6pqkeklzz4.jpeg",
+      "isActive": true,
+      "linkUrl": "",
+      "sortOrder": 0,
+      "targetEmail": "",
+      "targetType": "global",
+      "title": "Hello Sir/Madam",
+      "width": 4
+    }
+  ]
+}

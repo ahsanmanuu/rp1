@@ -68,7 +68,24 @@ async function fetchAllCollections(timeout = 2000): Promise<HomeData> {
       (data as any)[r.value.key] = r.value.records;
     }
   }
-  return data;
+  return rewriteUrls(data);
+}
+
+function rewriteUrls(obj: any): any {
+  if (typeof obj === 'string') {
+    return obj.replace(/http:\/\/(127\.0\.0\.1|localhost):8090/g, '/pb');
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(rewriteUrls);
+  }
+  if (obj !== null && typeof obj === 'object') {
+    const newObj: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      newObj[key] = rewriteUrls(value);
+    }
+    return newObj;
+  }
+  return obj;
 }
 
 export function useHomeRealtime(skip = false) {
