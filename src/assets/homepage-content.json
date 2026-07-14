@@ -442,7 +442,7 @@
   "footer_links": [
     {
       "groupTitle": "Products",
-      "href": "",
+      "href": "/latex-studio",
       "id": "9q9rm36lbn864s8",
       "isActive": true,
       "isTargetBlank": false,
@@ -452,7 +452,7 @@
     },
     {
       "groupTitle": "Products",
-      "href": "",
+      "href": "/doc2latex",
       "id": "adu0d8p21173233",
       "isActive": true,
       "isTargetBlank": false,
@@ -462,7 +462,7 @@
     },
     {
       "groupTitle": "Products",
-      "href": "",
+      "href": "/diagrams",
       "id": "8m5725qfc0sg65a",
       "isActive": true,
       "isTargetBlank": false,
@@ -472,7 +472,7 @@
     },
     {
       "groupTitle": "Products",
-      "href": "",
+      "href": "/template-migrator",
       "id": "a1w05m7u403c938",
       "isActive": true,
       "isTargetBlank": false,
@@ -482,7 +482,7 @@
     },
     {
       "groupTitle": "Products",
-      "href": "",
+      "href": "/citations",
       "id": "aeph8sfd4j5i95o",
       "isActive": true,
       "isTargetBlank": false,
@@ -492,7 +492,7 @@
     },
     {
       "groupTitle": "Products",
-      "href": "",
+      "href": "/reviewer",
       "id": "00we6mk142rn7h0",
       "isActive": true,
       "isTargetBlank": false,
@@ -522,7 +522,7 @@
     },
     {
       "groupTitle": "Resources",
-      "href": "#",
+      "href": "/help",
       "id": "0u23i21jw3w8dd4",
       "isActive": true,
       "isTargetBlank": false,
@@ -542,7 +542,7 @@
     },
     {
       "groupTitle": "Company",
-      "href": "#",
+      "href": "/blog",
       "id": "zq85926987ss7ig",
       "isActive": true,
       "isTargetBlank": false,
@@ -552,7 +552,7 @@
     },
     {
       "groupTitle": "Company",
-      "href": "#",
+      "href": "/careers",
       "id": "saqyrm6245hh94x",
       "isActive": true,
       "isTargetBlank": false,
@@ -572,7 +572,7 @@
     },
     {
       "groupTitle": "Legal",
-      "href": "#",
+      "href": "/privacy",
       "id": "z5f3dj1147ivf13",
       "isActive": true,
       "isTargetBlank": false,
@@ -582,7 +582,7 @@
     },
     {
       "groupTitle": "Legal",
-      "href": "#",
+      "href": "/terms",
       "id": "t086107x04f99o7",
       "isActive": true,
       "isTargetBlank": false,
@@ -592,7 +592,7 @@
     },
     {
       "groupTitle": "Legal",
-      "href": "#",
+      "href": "/cookies",
       "id": "z658ipeci63d84s",
       "isActive": true,
       "isTargetBlank": false,
@@ -602,7 +602,7 @@
     },
     {
       "groupTitle": "Legal",
-      "href": "#",
+      "href": "/gdpr",
       "id": "wbcsog6wdy56dxt",
       "isActive": true,
       "isTargetBlank": false,
