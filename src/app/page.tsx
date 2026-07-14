@@ -403,9 +403,9 @@ export default function Home() {
         </div>
 
         {/* Scroll indicator */}
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-bounce opacity-50">
-          <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>Scroll</span>
-          <div className="w-0.5 h-8 rounded-full" style={{ background: 'var(--border)' }} />
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 animate-bounce opacity-60">
+          <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>Scroll</span>
+          <ChevronDown size={18} style={{ color: 'var(--text-secondary)' }} />
         </div>
       </section>
 
