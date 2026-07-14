@@ -50,7 +50,7 @@ export default function SiteFooter({ onProductClick, onLoginRequired }: SiteFoot
               Write, compile, cite, collaborate — all in one place.
             </p>
             <a href="https://info.flagcounter.com/g3uU" target="_blank" rel="noopener noreferrer">
-              <img src="https://s01.flagcounter.com/count2/g3uU/bg_FFFFFF/txt_000000/border_CCCCCC/columns_2/maxflags_10/viewers_0/labels_0/pageviews_0/flags_0/percent_0/" alt="Flag Counter" border="0" style={{ maxWidth: '100%' }} />
+              <img src="https://s01.flagcounter.com/count2/g3uU/bg_FFFFFF/txt_000000/border_CCCCCC/columns_2/maxflags_10/viewers_0/labels_0/pageviews_0/flags_0/percent_0/" alt="Flag Counter" style={{ maxWidth: '100%', border: 0 }} />
             </a>
             <div className="flex gap-3">
               {[Share2, Code2, MessageSquare].map((Icon, i) => (

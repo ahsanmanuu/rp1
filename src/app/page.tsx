@@ -129,7 +129,7 @@ function FeatureCard({ feature, delay }: { feature: any; delay: number }) {
         <p className="text-sm leading-relaxed flex-1" style={{ color: 'var(--text-secondary)' }}>{feature.desc}</p>
         {feature.tags && (
           <div className="flex flex-wrap gap-2 mt-6">
-            {feature.tags.map(tag => (
+            {feature.tags.map((tag: string) => (
               <span key={tag} className="text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full"
                 style={{ background: 'color-mix(in srgb, var(--accent-primary) 10%, transparent)', color: 'var(--accent-primary)', border: '1px solid color-mix(in srgb, var(--accent-primary) 20%, transparent)' }}>
                 {tag}
@@ -150,7 +150,7 @@ function FeatureCard({ feature, delay }: { feature: any; delay: number }) {
 export default function Home() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const { data: homeData } = useHomeRealtime();
+  const { data: homeData } = useHomeRealtime(status === "authenticated" || status === "loading");
   const [mounted, setMounted] = useState(false);
   const [activeTestimonial, setActiveTestimonial] = useState(0);
   const [bannerIndex, setBannerIndex] = useState(0);
