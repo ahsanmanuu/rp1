@@ -26,16 +26,6 @@ if (typeof window === 'undefined') {
   } catch (err: any) {
     console.warn('[PB System] Failed to configure undici global dispatcher:', err?.message || err);
   }
-
-  try {
-    const dns = require('dns');
-    if (typeof dns.setDefaultResultOrder === 'function') {
-      dns.setDefaultResultOrder('ipv4first');
-      console.log('[PB System] Forced DNS IPv4-first resolution order');
-    }
-  } catch (err: any) {
-    console.warn('[PB System] Failed to configure DNS resolution order:', err?.message || err);
-  }
 }
 
 const PB_URL = process.env.POCKETBASE_URL || (typeof window !== 'undefined' ? '/pb' : 'http://127.0.0.1:8090');
