@@ -16,6 +16,10 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: '*.googleusercontent.com',
       },
+      {
+        protocol: 'https',
+        hostname: 'www.elsevier.com',
+      },
     ],
   },
   // Keep all Prisma and Prisma-related dependencies external on the server to prevent bundler resolution hijacking
