@@ -388,32 +388,33 @@ function TemplatesContent() {
         {/* --- REFINED HERO SECTION --- */}
         <div className="max-w-6xl mx-auto mb-12 relative">
            <div className="flex flex-col lg:flex-row items-center justify-between gap-8">
-              <div className="space-y-4 text-center lg:text-left">
-                 <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary-joy/5 text-primary-joy text-[10px] font-black uppercase tracking-[0.2em] rounded-full border border-primary-joy/10">
-                    <Sparkles size={12} /> Scholarly Repository
+              <div className="space-y-5 text-center lg:text-left">
+                 <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-primary-joy/[0.08] text-primary-joy text-[11px] font-bold uppercase tracking-[0.25em] rounded-full border border-primary-joy/15">
+                    <Sparkles size={14} /> Template Gallery
                  </div>
-                 <h1 className="text-4xl lg:text-5xl font-black tracking-tight text-slate-900 leading-tight">
-                    Scholarly <span className="text-joy-gradient italic font-newsreader">Archive</span>
+                 <h1 className="text-5xl lg:text-6xl xl:text-7xl font-black tracking-tight text-slate-900 leading-[1.1]">
+                    Scholarly<br />
+                    <span className="bg-gradient-to-r from-primary-joy via-purple-500 to-pink-500 bg-clip-text text-transparent">Archive</span>
                  </h1>
-                 <p className="text-slate-400 font-medium text-base max-w-2xl leading-relaxed">
+                 <p className="text-slate-500 font-medium text-base lg:text-lg max-w-xl leading-relaxed">
                     Over 100+ professional LaTeX formats for high-impact publishing.
                  </p>
               </div>
 
               <div className="flex items-center gap-4 w-full lg:w-auto">
-                 <div className="relative flex-1 lg:w-[300px]">
+                 <div className="relative flex-1 lg:w-[320px]">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                     <input 
                        type="text"
                        placeholder="Search archives..."
                        value={searchQuery}
                        onChange={(e) => setSearchQuery(e.target.value)}
-                       className="w-full h-12 pl-12 pr-6 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-primary-joy transition-all shadow-sm"
+                       className="w-full h-12 pl-12 pr-6 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-primary-joy focus:ring-2 focus:ring-primary-joy/10 transition-all shadow-sm"
                     />
                  </div>
                   <button 
                     disabled
-                    className="h-12 px-6 bg-slate-200 text-slate-400 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-3 cursor-not-allowed opacity-50"
+                    className="h-12 px-6 bg-slate-100 text-slate-400 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-3 cursor-not-allowed opacity-60 border border-slate-200"
                     title="Template upload is disabled"
                   >
                      <Upload size={16} /> Upload ZIP (Disabled)
