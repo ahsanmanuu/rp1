@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { TEMPLATE_REGISTRY, TemplateMetadata } from "@/lib/templates/registry";
 import Sidebar from "@/components/Sidebar";
+import SiteFooter from "@/components/SiteFooter";
+import { useSession } from "@/lib/pb-auth-react";
 import { toast } from "react-hot-toast";
 import ProjectLimitModal from "@/components/ProjectLimitModal";
 import { useProjectLimit } from "@/hooks/useProjectLimit";
@@ -60,6 +62,7 @@ function TemplatesContent() {
   const searchParams = useSearchParams();
   const projectId = searchParams.get('projectId');
   const router = useRouter();
+  const { data: session } = useSession();
 
   const [_loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -390,7 +393,7 @@ function TemplatesContent() {
     <div className="flex h-screen bg-background-joy text-on-surface-joy font-body overflow-hidden">
       <Sidebar />
       
-      <main className="flex-1 md:ml-64 p-6 lg:p-10 pt-28 lg:pt-32 min-w-0 h-full overflow-y-auto custom-scroll">
+      <main className={`flex-1 p-6 lg:p-10 pt-28 lg:pt-32 min-w-0 h-full overflow-y-auto custom-scroll ${session ? 'md:ml-64' : ''}`}>
         
         {/* --- REFINED HERO SECTION --- */}
         <div className="max-w-6xl mx-auto mb-12 relative">
@@ -569,311 +572,157 @@ function TemplatesContent() {
                        </div>
                     </motion.div>
                  ))}
-              </AnimatePresence>
-           </div>
-        </div>
+               </AnimatePresence>
+            </div>
+         </div>
 
-      </main>
-
-      {/* --- MODALS RENDERED AT THE ROOT FOR DEAD-SURE STACKING --- */}
-      <AnimatePresence>
-         {showManageModal && (
-            <div className="fixed inset-0 flex items-center justify-center p-6 bg-slate-900/95 backdrop-blur-md" style={{ zIndex: 9999 }}>
-               <motion.div 
-                 initial={{ opacity: 0, scale: 0.9, y: 40 }}
-                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                 exit={{ opacity: 0, scale: 0.9, y: 40 }}
-                 className="w-full max-w-4xl rounded-[2.5rem] p-10 border border-slate-200 shadow-2xl relative overflow-hidden"
-                 style={{ backgroundColor: 'var(--card-bg)', opacity: 1 }}
-               >
-                  <div className="absolute top-0 right-0 w-64 h-64 bg-primary-joy/5 rounded-full -mr-32 -mt-32 blur-[80px]" />
-                  
-                  <button 
-                    onClick={() => { setShowManageModal(false); setManageFile(null); }}
-                    className="absolute top-6 right-6 p-2 text-slate-300 hover:text-slate-900 transition-colors z-20 bg-slate-50 rounded-xl border border-slate-100"
+         <AnimatePresence>
+            {showManageModal && (
+               <div className="fixed inset-0 flex items-center justify-center p-6 bg-slate-900/95 backdrop-blur-md" style={{ zIndex: 9999 }}>
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.9, y: 40 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.9, y: 40 }}
+                    className="w-full max-w-4xl rounded-[2.5rem] p-10 border border-slate-200 shadow-2xl relative overflow-hidden"
+                    style={{ backgroundColor: 'var(--card-bg)', opacity: 1 }}
                   >
-                     <X size={18} />
-                  </button>
-
-                  <div className="space-y-8 relative z-10">
-                     <div className="space-y-2">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-slate-900 text-white text-[9px] font-black uppercase tracking-[0.2em] rounded-full">
-                           <Command size={10} /> Template Hardening
+                     <div className="absolute top-0 right-0 w-64 h-64 bg-primary-joy/5 rounded-full -mr-32 -mt-32 blur-[80px]" />
+                     <button 
+                       onClick={() => { setShowManageModal(false); setManageFile(null); }}
+                       className="absolute top-6 right-6 p-2 text-slate-300 hover:text-slate-900 transition-colors z-20 bg-slate-50 rounded-xl border border-slate-100"
+                     ><X size={18} /></button>
+                     <div className="space-y-8 relative z-10">
+                        <div className="space-y-2">
+                           <div className="inline-flex items-center gap-2 px-3 py-1 bg-slate-900 text-white text-[9px] font-black uppercase tracking-[0.2em] rounded-full"><Command size={10} /> Template Hardening</div>
+                           <h2 className="text-2xl font-black text-slate-900 tracking-tight">Manage {allTemplates.find(t => t.id === pendingTemplateId)?.label}</h2>
+                           <p className="text-slate-400 text-xs font-medium leading-relaxed">Replace specific template components with high-fidelity versions.</p>
                         </div>
-                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-                          Manage {allTemplates.find(t => t.id === pendingTemplateId)?.label}
-                        </h2>
-                        <p className="text-slate-400 text-xs font-medium leading-relaxed">
-                          Replace specific template components with high-fidelity versions.
-                        </p>
+                        <div className="space-y-6">
+                           <div className="space-y-3">
+                              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Select File Type</label>
+                              <div className="flex flex-wrap gap-2">
+                                 {fileTypes.map((type) => (
+                                    <button key={type.value} onClick={() => setSelectedFileType(type.value)}
+                                      className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all border-2 ${selectedFileType === type.value ? "bg-primary-joy text-white border-primary-joy shadow-md shadow-primary-joy/20" : "bg-white text-slate-500 border-slate-100 hover:border-slate-300"}`}>{type.label}</button>
+                                 ))}
+                              </div>
+                           </div>
+                           <div className="space-y-3">
+                              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Upload Replacement (Disabled)</label>
+                              <div className="w-full h-40 border-2 border-dashed border-slate-100 rounded-3xl flex flex-col items-center justify-center gap-4 bg-slate-100/50 cursor-not-allowed opacity-60 shadow-inner">
+                                 <div className="w-12 h-12 bg-slate-200 rounded-2xl shadow-sm flex items-center justify-center text-slate-400 border border-slate-100"><Upload size={20} /></div>
+                                 <div className="text-center"><span className="block text-[11px] font-black text-slate-400 uppercase tracking-widest">Upload Disabled</span><span className="text-[9px] text-slate-400 font-bold uppercase tracking-tight">Source file modification is locked</span></div>
+                              </div>
+                           </div>
+                        </div>
+                        <div className="flex gap-4 pt-2">
+                           <button disabled className="flex-1 h-16 bg-slate-300 text-slate-400 rounded-[1.25rem] font-black text-[11px] uppercase tracking-[0.2em] cursor-not-allowed opacity-50 flex items-center justify-center gap-3"><Zap size={20} /> Update File (Disabled)</button>
+                           <button onClick={() => setShowModal(true)} className="h-16 px-8 bg-white border-2 border-slate-100 text-slate-600 rounded-[1.25rem] font-black text-[11px] uppercase tracking-widest hover:border-primary-joy hover:text-primary-joy transition-all flex items-center gap-3 shadow-sm">Use Template <ArrowUpRight size={18} /></button>
+                        </div>
                      </div>
+                  </motion.div>
+               </div>
+            )}
+         </AnimatePresence>
 
-                     <div className="space-y-6">
+         <AnimatePresence>
+            {showModal && (
+               <div className="fixed inset-0 flex items-center justify-center p-6 bg-slate-900/90 backdrop-blur-xl" style={{ zIndex: 9999 }}>
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95, y: 30 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 30 }}
+                    className="w-full max-w-4xl rounded-[3rem] p-8 md:p-12 border-2 border-primary-joy/20 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.2)] relative overflow-hidden"
+                    style={{ backgroundColor: 'var(--card-bg)', opacity: 1 }}
+                  >
+                     <div className="absolute top-0 right-0 w-64 h-64 bg-primary-joy/5 rounded-full -mr-32 -mt-32 blur-[80px]" />
+                     <button onClick={() => setShowModal(false)} className="absolute top-6 right-6 p-2 text-slate-300 hover:text-slate-900 transition-colors z-20 bg-slate-50 rounded-xl border border-slate-100"><X size={18} /></button>
+                     <div className="space-y-10 relative z-10">
+                        <div className="space-y-4 text-center">
+                           <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-primary-joy/5 text-primary-joy text-[10px] font-black uppercase tracking-widest rounded-full border border-primary-joy/10 mx-auto"><Zap size={14} /> Workflow Selection</div>
+                           <h2 className="text-3xl font-black tracking-tight text-slate-900">Choose Your Studio</h2>
+                           <p className="text-slate-400 font-medium text-base leading-relaxed max-w-full mx-auto">Select the optimized environment for this template. You can switch later if needed.</p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                           <button onClick={() => handleApplyFinal('latexify')} className="group relative p-10 rounded-[2rem] border-2 border-outline-joy/10 hover:border-primary-joy bg-white hover:bg-primary-joy/[0.02] transition-all text-center space-y-5 shadow-sm hover:shadow-joy-premium flex flex-col items-center">
+                              <div className="w-16 h-16 rounded-2xl bg-primary-joy/10 flex items-center justify-center text-primary-joy group-hover:scale-110 transition-transform duration-500 mx-auto"><Monitor size={32} /></div>
+                              <div className="space-y-2"><h3 className="text-2xl font-black text-slate-800 tracking-tight">Latexify Studio</h3><p className="text-sm text-slate-400 font-medium leading-relaxed max-w-xs mx-auto">Full-featured LaTeX IDE with real-time sync, PDF preview, and version control.</p></div>
+                              <div className="flex items-center gap-2 text-[10px] font-black text-primary-joy uppercase tracking-widest transition-all">Launch Now <ArrowUpRight size={14} /></div>
+                           </button>
+                           <button onClick={() => handleApplyFinal('doc2latex')} className="group relative p-10 rounded-[2rem] border-2 border-outline-joy/10 hover:border-primary-joy bg-white hover:bg-primary-joy/[0.02] transition-all text-center space-y-5 shadow-sm hover:shadow-joy-premium flex flex-col items-center">
+                              <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 group-hover:scale-110 transition-transform duration-500 mx-auto"><Sparkles size={32} /></div>
+                              <div className="space-y-2"><h3 className="text-2xl font-black text-slate-800 tracking-tight">Doc2Latex</h3><p className="text-sm text-slate-400 font-medium leading-relaxed max-w-xs mx-auto">AI-powered document parser and automatic manuscript format converter.</p></div>
+                              <div className="flex items-center gap-2 text-[10px] font-black text-emerald-500 uppercase tracking-widest transition-all">Launch Now <ArrowUpRight size={14} /></div>
+                           </button>
+                        </div>
+                     </div>
+                  </motion.div>
+               </div>
+            )}
+         </AnimatePresence>
+
+         <AnimatePresence>
+            {showUploadModal && (
+               <div className="fixed inset-0 flex items-center justify-center p-6 bg-slate-900/90 backdrop-blur-xl" style={{ zIndex: 9999 }}>
+                  <motion.div 
+                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 20, scale: 0.95 }}
+                    className="w-full max-w-4xl rounded-[3rem] p-8 md:p-12 border-2 border-slate-200 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.15)] relative overflow-hidden"
+                    style={{ backgroundColor: 'var(--card-bg)', opacity: 1 }}
+                  >
+                     <div className="absolute top-0 left-0 w-48 h-48 bg-primary-joy/5 rounded-full -ml-24 -mt-24 blur-[60px]" />
+                     <button onClick={() => setShowUploadModal(false)} className="absolute top-8 right-8 p-3 text-slate-300 hover:text-slate-900 bg-slate-50 rounded-2xl border border-slate-100 transition-all z-20"><X size={20} /></button>
+                     <form onSubmit={handleUpload} className="space-y-8 relative z-10">
                         <div className="space-y-3">
-                           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Select File Type</label>
-                           <div className="flex flex-wrap gap-2">
-                              {fileTypes.map((type) => (
-                                 <button
-                                   key={type.value}
-                                   onClick={() => setSelectedFileType(type.value)}
-                                   className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all border-2 ${
-                                     selectedFileType === type.value 
-                                       ? "bg-primary-joy text-white border-primary-joy shadow-md shadow-primary-joy/20" 
-                                       : "bg-white text-slate-500 border-slate-100 hover:border-slate-300"
-                                   }`}
-                                 >
-                                   {type.label}
-                                 </button>
-                              ))}
+                           <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary-joy/5 text-primary-joy text-[10px] font-black uppercase tracking-widest rounded-full border border-primary-joy/10"><FileArchive size={14} /> Repository Expansion</div>
+                           <h2 className="text-3xl font-black text-slate-900 tracking-tight">Upload Custom Template</h2>
+                           <p className="text-sm text-slate-400 font-medium leading-relaxed">Add your own professional formats to the Scholarly Archive. Ensure your ZIP includes all .tex, .cls, and .bst files.</p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                           <div className="space-y-6">
+                              <div className="space-y-1.5">
+                                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Template Name</label>
+                                 <input required type="text" placeholder="e.g., Nature Physics Revised" value={uploadForm.name} onChange={(e) => setUploadForm({...uploadForm, name: e.target.value})} className="w-full h-13 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:border-primary-joy focus:bg-white transition-all shadow-sm" />
+                              </div>
+                              <div className="space-y-1.5">
+                                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Category</label>
+                                 <div className="relative">
+                                    <select value={uploadForm.category} onChange={(e) => { const newCat = e.target.value; const subs = new Set<string>(); TEMPLATE_REGISTRY.forEach(t => { if (t.category === newCat && t.subCategory && t.subCategory !== "multidisciplinary") subs.add(t.subCategory); }); subs.add("General"); setUploadForm({...uploadForm, category: newCat, subCategory: Array.from(subs)[0]}); }} className="w-full h-13 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:border-primary-joy focus:bg-white transition-all appearance-none cursor-pointer">{categories.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}</select>
+                                    <ChevronRight className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 rotate-90" size={16} />
+                                 </div>
+                              </div>
+                              <div className="space-y-1.5">
+                                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Research Field</label>
+                                 <div className="relative">
+                                    <select value={uploadForm.subCategory} onChange={(e) => setUploadForm({...uploadForm, subCategory: e.target.value})} className="w-full h-13 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:border-primary-joy focus:bg-white transition-all appearance-none cursor-pointer">{dynamicSubCategoryList.map(s => <option key={s} value={s}>{s}</option>)}</select>
+                                    <ChevronRight className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 rotate-90" size={16} />
+                                 </div>
+                              </div>
+                           </div>
+                           <div className="space-y-1.5">
+                              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Source Archive</label>
+                              <div onClick={() => fileInputRef.current?.click()} className="w-full h-full min-h-[220px] border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center gap-4 bg-slate-50 hover:bg-white hover:border-primary-joy/50 transition-all cursor-pointer group shadow-inner">
+                                 <div className="w-14 h-14 bg-white rounded-2xl shadow-sm flex items-center justify-center text-slate-400 group-hover:scale-110 group-hover:text-primary-joy transition-all border border-slate-100"><Upload size={24} /></div>
+                                 <div className="text-center space-y-1 px-4"><span className="block text-[11px] font-black text-slate-900 uppercase tracking-widest">{fileInputRef.current?.files?.[0]?.name || "Select ZIP File"}</span><span className="block text-[9px] font-bold text-slate-400">Max size 25MB • .zip only</span></div>
+                                 <input ref={fileInputRef} type="file" accept=".zip" className="hidden" onChange={() => setUploadForm({...uploadForm})} />
+                              </div>
                            </div>
                         </div>
+                        <button type="submit" disabled={uploading} className="w-full h-16 bg-slate-900 text-white rounded-[1.5rem] font-black text-[11px] uppercase tracking-[0.25em] shadow-xl hover:bg-primary-joy transition-all flex items-center justify-center gap-4 disabled:opacity-50 active:scale-[0.98]">{uploading ? <><Loader2 size={20} className="animate-spin" /> Analyzing Package...</> : <><Zap size={20} /> Integrate into Archive</>}</button>
+                     </form>
+                  </motion.div>
+               </div>
+            )}
+         </AnimatePresence>
 
-                         <div className="space-y-3">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Upload Replacement (Disabled)</label>
-                            <div 
-                               className="w-full h-40 border-2 border-dashed border-slate-100 rounded-3xl flex flex-col items-center justify-center gap-4 bg-slate-100/50 cursor-not-allowed opacity-60 shadow-inner"
-                            >
-                               <div className="w-12 h-12 bg-slate-200 rounded-2xl shadow-sm flex items-center justify-center text-slate-400 border border-slate-100">
-                                  <Upload size={20} />
-                               </div>
-                               <div className="text-center">
-                                  <span className="block text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                                     Upload Disabled
-                                  </span>
-                                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-tight">Source file modification is locked</span>
-                               </div>
-                            </div>
-                         </div>
-                     </div>
+         <ProjectLimitModal isOpen={showLimitModal} onClose={() => setShowLimitModal(false)} />
 
-                      <div className="flex gap-4 pt-2">
-                         <button 
-                           disabled
-                           className="flex-1 h-16 bg-slate-300 text-slate-400 rounded-[1.25rem] font-black text-[11px] uppercase tracking-[0.2em] cursor-not-allowed opacity-50 flex items-center justify-center gap-3"
-                         >
-                            <Zap size={20} />
-                            Update File (Disabled)
-                         </button>
-                        <button 
-                          onClick={() => setShowModal(true)}
-                          className="h-16 px-8 bg-white border-2 border-slate-100 text-slate-600 rounded-[1.25rem] font-black text-[11px] uppercase tracking-widest hover:border-primary-joy hover:text-primary-joy transition-all flex items-center gap-3 shadow-sm"
-                        >
-                           Use Template
-                           <ArrowUpRight size={18} />
-                        </button>
-                     </div>
-                  </div>
-               </motion.div>
-            </div>
-         )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-         {showModal && (
-            <div className="fixed inset-0 flex items-center justify-center p-6 bg-slate-900/90 backdrop-blur-xl" style={{ zIndex: 9999 }}>
-               <motion.div 
-                 initial={{ opacity: 0, scale: 0.95, y: 30 }}
-                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                 exit={{ opacity: 0, scale: 0.95, y: 30 }}
-                 className="w-full max-w-4xl rounded-[3rem] p-8 md:p-12 border-2 border-primary-joy/20 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.2)] relative overflow-hidden"
-                 style={{ backgroundColor: 'var(--card-bg)', opacity: 1 }}
-               >
-                  <div className="absolute top-0 right-0 w-64 h-64 bg-primary-joy/5 rounded-full -mr-32 -mt-32 blur-[80px]" />
-                  
-                  <button 
-                    onClick={() => setShowModal(false)}
-                    className="absolute top-6 right-6 p-2 text-slate-300 hover:text-slate-900 transition-colors z-20 bg-slate-50 rounded-xl border border-slate-100"
-                  >
-                     <X size={18} />
-                  </button>
-
-                  <div className="space-y-10 relative z-10">
-                     <div className="space-y-4 text-center">
-                        <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-primary-joy/5 text-primary-joy text-[10px] font-black uppercase tracking-widest rounded-full border border-primary-joy/10 mx-auto">
-                           <Zap size={14} /> Workflow Selection
-                        </div>
-                        <h2 className="text-3xl font-black tracking-tight text-slate-900">Choose Your Studio</h2>
-                        <p className="text-slate-400 font-medium text-base leading-relaxed max-w-full mx-auto">
-                           Select the optimized environment for this template. You can switch later if needed.
-                        </p>
-                     </div>
-
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <button
-                          onClick={() => handleApplyFinal('latexify')}
-                          className="group relative p-10 rounded-[2rem] border-2 border-outline-joy/10 hover:border-primary-joy bg-white hover:bg-primary-joy/[0.02] transition-all text-center space-y-5 shadow-sm hover:shadow-joy-premium flex flex-col items-center"
-                        >
-                           <div className="w-16 h-16 rounded-2xl bg-primary-joy/10 flex items-center justify-center text-primary-joy group-hover:scale-110 transition-transform duration-500 mx-auto">
-                              <Monitor size={32} />
-                           </div>
-                           <div className="space-y-2">
-                              <h3 className="text-2xl font-black text-slate-800 tracking-tight">Latexify Studio</h3>
-                              <p className="text-sm text-slate-400 font-medium leading-relaxed max-w-xs mx-auto">
-                                 Full-featured LaTeX IDE with real-time sync, PDF preview, and version control.
-                              </p>
-                           </div>
-                           <div className="flex items-center gap-2 text-[10px] font-black text-primary-joy uppercase tracking-widest transition-all">
-                              Launch Now <ArrowUpRight size={14} />
-                           </div>
-                        </button>
-                        <button
-                          onClick={() => handleApplyFinal('doc2latex')}
-                          className="group relative p-10 rounded-[2rem] border-2 border-outline-joy/10 hover:border-primary-joy bg-white hover:bg-primary-joy/[0.02] transition-all text-center space-y-5 shadow-sm hover:shadow-joy-premium flex flex-col items-center"
-                        >
-                           <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 group-hover:scale-110 transition-transform duration-500 mx-auto">
-                              <Sparkles size={32} />
-                           </div>
-                           <div className="space-y-2">
-                              <h3 className="text-2xl font-black text-slate-800 tracking-tight">Doc2Latex</h3>
-                              <p className="text-sm text-slate-400 font-medium leading-relaxed max-w-xs mx-auto">
-                                 AI-powered document parser and automatic manuscript format converter.
-                              </p>
-                           </div>
-                           <div className="flex items-center gap-2 text-[10px] font-black text-emerald-500 uppercase tracking-widest transition-all">
-                              Launch Now <ArrowUpRight size={14} />
-                           </div>
-                        </button>
-                     </div>
-                  </div>
-               </motion.div>
-            </div>
-         )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-         {showUploadModal && (
-            <div className="fixed inset-0 flex items-center justify-center p-6 bg-slate-900/90 backdrop-blur-xl" style={{ zIndex: 9999 }}>
-               <motion.div 
-                 initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                 exit={{ opacity: 0, y: 20, scale: 0.95 }}
-                 className="w-full max-w-4xl rounded-[3rem] p-8 md:p-12 border-2 border-slate-200 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.15)] relative overflow-hidden"
-                 style={{ backgroundColor: 'var(--card-bg)', opacity: 1 }}
-               >
-                    <div className="absolute top-0 left-0 w-48 h-48 bg-primary-joy/5 rounded-full -ml-24 -mt-24 blur-[60px]" />
-                    
-                    <button 
-                      onClick={() => setShowUploadModal(false)}
-                      className="absolute top-8 right-8 p-3 text-slate-300 hover:text-slate-900 bg-slate-50 rounded-2xl border border-slate-100 transition-all z-20"
-                    >
-                       <X size={20} />
-                    </button>
-
-                    <form onSubmit={handleUpload} className="space-y-8 relative z-10">
-                       <div className="space-y-3">
-                          <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary-joy/5 text-primary-joy text-[10px] font-black uppercase tracking-widest rounded-full border border-primary-joy/10">
-                             <FileArchive size={14} /> Repository Expansion
-                          </div>
-                          <h2 className="text-3xl font-black text-slate-900 tracking-tight">Upload Custom Template</h2>
-                          <p className="text-sm text-slate-400 font-medium leading-relaxed">
-                             Add your own professional formats to the Scholarly Archive. Ensure your ZIP includes all .tex, .cls, and .bst files.
-                          </p>
-                       </div>
-
-                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div className="space-y-6">
-                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Template Name</label>
-                                <input 
-                                   required
-                                   type="text"
-                                   placeholder="e.g., Nature Physics Revised"
-                                   value={uploadForm.name}
-                                   onChange={(e) => setUploadForm({...uploadForm, name: e.target.value})}
-                                   className="w-full h-13 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:border-primary-joy focus:bg-white transition-all shadow-sm"
-                                />
-                             </div>
-
-                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Category</label>
-                                <div className="relative">
-                                   <select 
-                                      value={uploadForm.category}
-                                      onChange={(e) => {
-                                        const newCat = e.target.value;
-                                        const subs = new Set<string>();
-                                        TEMPLATE_REGISTRY.forEach(t => {
-                                          if (t.category === newCat && t.subCategory && t.subCategory !== "multidisciplinary") {
-                                            subs.add(t.subCategory);
-                                          }
-                                        });
-                                        subs.add("General");
-                                        const newSubs = Array.from(subs);
-                                        setUploadForm({...uploadForm, category: newCat, subCategory: newSubs[0]});
-                                      }}
-                                      className="w-full h-13 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:border-primary-joy focus:bg-white transition-all appearance-none cursor-pointer"
-                                   >
-                                      {categories.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                                   </select>
-                                   <ChevronRight className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 rotate-90" size={16} />
-                                </div>
-                             </div>
-
-                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Research Field</label>
-                                <div className="relative">
-                                   <select 
-                                      value={uploadForm.subCategory}
-                                      onChange={(e) => setUploadForm({...uploadForm, subCategory: e.target.value})}
-                                      className="w-full h-13 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:border-primary-joy focus:bg-white transition-all appearance-none cursor-pointer"
-                                   >
-                                      {dynamicSubCategoryList.map(s => <option key={s} value={s}>{s}</option>)}
-                                   </select>
-                                   <ChevronRight className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 rotate-90" size={16} />
-                                </div>
-                             </div>
-                          </div>
-
-                          <div className="space-y-1.5">
-                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Source Archive</label>
-                             <div 
-                                onClick={() => fileInputRef.current?.click()}
-                                className="w-full h-full min-h-[220px] border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center gap-4 bg-slate-50 hover:bg-white hover:border-primary-joy/50 transition-all cursor-pointer group shadow-inner"
-                             >
-                                <div className="w-14 h-14 bg-white rounded-2xl shadow-sm flex items-center justify-center text-slate-400 group-hover:scale-110 group-hover:text-primary-joy transition-all border border-slate-100">
-                                   <Upload size={24} />
-                                </div>
-                                <div className="text-center space-y-1 px-4">
-                                   <span className="block text-[11px] font-black text-slate-900 uppercase tracking-widest">
-                                      {fileInputRef.current?.files?.[0]?.name || "Select ZIP File"}
-                                   </span>
-                                   <span className="block text-[9px] font-bold text-slate-400">Max size 25MB • .zip only</span>
-                                </div>
-                                <input 
-                                   ref={fileInputRef}
-                                   type="file"
-                                   accept=".zip"
-                                   className="hidden"
-                                   onChange={() => setUploadForm({...uploadForm})} 
-                                />
-                             </div>
-                          </div>
-                       </div>
-
-                       <button 
-                         type="submit"
-                         disabled={uploading}
-                         className="w-full h-16 bg-slate-900 text-white rounded-[1.5rem] font-black text-[11px] uppercase tracking-[0.25em] shadow-xl hover:bg-primary-joy transition-all flex items-center justify-center gap-4 disabled:opacity-50 active:scale-[0.98]"
-                       >
-                          {uploading ? (
-                             <>
-                                <Loader2 size={20} className="animate-spin" />
-                                Analyzing Package...
-                             </>
-                          ) : (
-                             <>
-                                <Zap size={20} />
-                                Integrate into Archive
-                             </>
-                          )}
-                       </button>
-                    </form>
-                 </motion.div>
-              </div>
-           )}
-        </AnimatePresence>
-        <ProjectLimitModal isOpen={showLimitModal} onClose={() => setShowLimitModal(false)} />
-      </div>
+         <div className="max-w-6xl mx-auto mt-16">
+           <SiteFooter />
+         </div>
+      </main>
+    </div>
   );
 }
 
