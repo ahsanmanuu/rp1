@@ -15,7 +15,7 @@ const VideoPlayer = dynamic(() => import('@/components/VideoPlayer'), { ssr: fal
 import {
   ArrowRight, FileEdit, Wand2, PenTool, Layout,
   Library, Star, School, Building2, BookOpen, Atom,
-  ChevronRight,
+  ChevronRight, ChevronDown,
   Check, Zap, Shield, Globe, Users, Trophy, Rocket, GraduationCap,
   Sparkles, PlayCircle, Brain, X, BarChart3, Search, Cpu,
   RefreshCw, Video, Play, Award
@@ -33,7 +33,7 @@ const FALLBACK_FEATURES = [
 const ICON_MAP: Record<string, React.ComponentType<any>> = {
   ArrowRight, FileEdit, Wand2, PenTool, Layout,
   Library, Star, School, Building2, BookOpen, Atom,
-  ChevronRight,
+  ChevronRight, ChevronDown,
   Check, Zap, Shield, Globe, Users, Trophy, Rocket, GraduationCap,
   Sparkles, PlayCircle, Brain, X, BarChart3, Search, Cpu,
   RefreshCw, Video, Play, Award,
