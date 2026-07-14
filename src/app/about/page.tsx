@@ -1,12 +1,10 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useSession } from '@/lib/pb-auth-react';
 import { motion } from 'framer-motion';
-import { Sparkles, ArrowRight, CheckCircle2, Zap, Shield, Globe, Users, Brain, BookOpen, Target, Heart, Quote, Share2, Code2, MessageSquare } from 'lucide-react';
-import LatexifyLogo from '@/components/LatexifyLogo';
+import { Sparkles, ArrowRight, CheckCircle2, Zap, Shield, Globe, Users, Brain, BookOpen, Target, Heart, Quote } from 'lucide-react';
 import LoginPromptModal from '@/components/LoginPromptModal';
+import SiteFooter from '@/components/SiteFooter';
 
 const STATS = [
   { value: 50000, suffix: '+', label: 'Researchers' },
@@ -111,36 +109,8 @@ function RevealSection({ children, delay = 0 }: { children: React.ReactNode; del
   );
 }
 
-const FOOTER_PRODUCTS = [
-  { label: 'Latexify Studio', href: '/latex-studio' },
-  { label: 'Doc2LateX', href: '/upload' },
-  { label: 'Diagram Studio', href: '/diagrams' },
-  { label: 'Template Migrator', href: '/template-migrator' },
-];
-const FOOTER_RESOURCES = [
-  { label: 'Pricing', href: '/pricing' },
-  { label: 'Templates Gallery', href: '/templates' },
-  { label: 'Citation Studio', href: '/citations' },
-  { label: 'AI Reviewer', href: '/reviewer' },
-  { label: 'Help Center', href: '#' },
-];
-const FOOTER_COMPANY = [
-  { label: 'About Us', href: '/about' },
-  { label: 'Careers', href: '#' },
-  { label: 'Blog', href: '#' },
-  { label: 'Contact', href: '/contact-us' },
-];
-const FOOTER_LEGAL = [
-  { label: 'Privacy Policy', href: '#' },
-  { label: 'Terms of Service', href: '#' },
-  { label: 'Cookie Policy', href: '#' },
-  { label: 'GDPR', href: '#' },
-];
-
-const SOCIAL_ICONS = [Share2, Code2, MessageSquare];
-
 export default function AboutPage() {
-  const { data: session, status } = useSession();
+
   const router = useRouter();
   const [showLoginModal, setShowLoginModal] = useState(false);
   return (
@@ -400,74 +370,7 @@ export default function AboutPage() {
       </RevealSection>
 
       {/* Footer */}
-      <footer style={{ background: '#020b09', borderTop: '1px solid rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)' }}>
-        <div className="max-w-7xl mx-auto px-6 lg:px-12 py-10 md:py-14">
-          <div className="flex flex-col lg:flex-row gap-16 mb-16">
-            <div className="w-full lg:w-80 space-y-6 flex-shrink-0">
-              <LatexifyLogo size={72} className="text-white" />
-              <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                The modern, intelligent platform for the entire research writing lifecycle. Write, compile, cite, collaborate — all in one place.
-              </p>
-              <div className="flex gap-3">
-                {SOCIAL_ICONS.map((Icon, i) => (
-                  <button key={i} className="w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 hover:scale-110" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    <Icon size={18} style={{ color: 'rgba(255,255,255,0.7)' }} />
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-10">
-              {[
-                { title: 'Products', links: FOOTER_PRODUCTS },
-                { title: 'Resources', links: FOOTER_RESOURCES },
-                { title: 'Company', links: FOOTER_COMPANY },
-                { title: 'Legal', links: FOOTER_LEGAL },
-              ].map((col, i) => (
-                <div key={i} className="space-y-5">
-                  <h4 className="text-sm font-black uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.9)' }}>{col.title}</h4>
-                  <div className="space-y-3">
-                    {col.links.map((link, j) => {
-                      if (link.label === 'Templates Gallery') {
-                        return (
-                          <button
-                            key={j}
-                            onClick={() => {
-                              if (status === 'authenticated') {
-                                router.push(link.href);
-                              } else {
-                                setShowLoginModal(true);
-                              }
-                            }}
-                            className="block text-sm text-left w-full transition-colors hover:text-white"
-                            style={{ color: 'rgba(255,255,255,0.5)' }}
-                          >
-                            {link.label}
-                          </button>
-                        );
-                      }
-                      return (
-                        <Link key={j} href={link.href} className="block text-sm transition-colors hover:text-white" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                          {link.label}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="pt-8 flex flex-col md:flex-row items-center justify-between gap-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
-              &copy; {new Date().getFullYear()} Latexify. All rights reserved.
-            </p>
-            <div className="flex gap-6 text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
-              <Link href="#">Privacy</Link>
-              <Link href="#">Terms</Link>
-              <Link href="/contact-us">Contact</Link>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter onLoginRequired={() => setShowLoginModal(true)} />
       <LoginPromptModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
     </div>
   );

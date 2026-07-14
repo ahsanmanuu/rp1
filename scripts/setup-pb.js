@@ -878,6 +878,34 @@ export async function setupPocketBase() {
     console.warn('[PB Setup] Failed to seed testimonials:', e.message);
   }
 
+  // Seed default footer links
+  try {
+    const footerCount = (await pb.collection('footer_links').getFullList()).length;
+    if (footerCount === 0) {
+      const defaultFooterLinks = [
+        { groupTitle: 'Platform', label: 'Latexify', href: '/', linkKey: 'footer_platform_home', isTargetBlank: false, isActive: true, sortOrder: 1 },
+        { groupTitle: 'Platform', label: 'Pricing', href: '/pricing', linkKey: 'footer_platform_pricing', isTargetBlank: false, isActive: true, sortOrder: 2 },
+        { groupTitle: 'Platform', label: 'About Us', href: '/about', linkKey: 'footer_platform_about', isTargetBlank: false, isActive: true, sortOrder: 3 },
+        { groupTitle: 'Platform', label: 'Contact Us', href: '/contact', linkKey: 'footer_platform_contact', isTargetBlank: false, isActive: true, sortOrder: 4 },
+        { groupTitle: 'Features', label: 'Latex Studio', href: '/latex-studio', linkKey: 'footer_features_studio', isTargetBlank: false, isActive: true, sortOrder: 5 },
+        { groupTitle: 'Features', label: 'Templates', href: '/templates', linkKey: 'footer_features_templates', isTargetBlank: false, isActive: true, sortOrder: 6 },
+        { groupTitle: 'Features', label: 'AI Review', href: '/reviewer', linkKey: 'footer_features_ai_review', isTargetBlank: false, isActive: true, sortOrder: 7 },
+        { groupTitle: 'Features', label: 'Bibliography', href: '/bibliography', linkKey: 'footer_features_bibliography', isTargetBlank: false, isActive: true, sortOrder: 8 },
+        { groupTitle: 'Support', label: 'Help Center', href: '/help', linkKey: 'footer_support_help', isTargetBlank: false, isActive: true, sortOrder: 9 },
+        { groupTitle: 'Support', label: 'Documentation', href: '/docs', linkKey: 'footer_support_docs', isTargetBlank: false, isActive: true, sortOrder: 10 },
+        { groupTitle: 'Support', label: 'API Status', href: '/status', linkKey: 'footer_support_status', isTargetBlank: false, isActive: true, sortOrder: 11 },
+        { groupTitle: 'Legal', label: 'Terms of Service', href: '/terms', linkKey: 'footer_legal_tos', isTargetBlank: false, isActive: true, sortOrder: 12 },
+        { groupTitle: 'Legal', label: 'Privacy Policy', href: '/privacy', linkKey: 'footer_legal_privacy', isTargetBlank: false, isActive: true, sortOrder: 13 },
+        { groupTitle: 'Legal', label: 'Refund Policy', href: '/refund', linkKey: 'footer_legal_refund', isTargetBlank: false, isActive: true, sortOrder: 14 },
+      ];
+      for (const link of defaultFooterLinks) {
+        await pb.collection('footer_links').create(link);
+      }
+      console.log('[PB Setup] Footer links seeded.');
+    }
+  } catch (e) {
+    console.warn('[PB Setup] Failed to seed footer links:', e.message);
+  }
 
   // Seed admin_users collection — ensures the admin profile record exists in PB
   // so the profile/change-password routes can find it without relying on env vars.

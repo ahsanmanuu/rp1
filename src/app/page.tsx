@@ -5,15 +5,15 @@ import Link from "next/link";
 import Image from "next/image";
 import { useSession } from "@/lib/pb-auth-react";
 import { useRouter } from "next/navigation";
-import LatexifyLogo from "@/components/LatexifyLogo";
 import ProLoader from "@/components/ProLoader";
 import LoginPromptModal from "@/components/LoginPromptModal";
 import FloatingBanner from "@/components/FloatingBanner";
+import SiteFooter from "@/components/SiteFooter";
 import { useHomeRealtime } from '@/lib/useHomeRealtime';
 import {
   ArrowRight, FileEdit, Wand2, PenTool, Layout,
   Library, Star, School, Building2, BookOpen, Atom,
-  Share2, MessageSquare, Code2, ChevronRight,
+  ChevronRight,
   Check, Zap, Shield, Globe, Users, Trophy, Rocket, GraduationCap,
   Sparkles, PlayCircle, Brain, X, BarChart3, Search, Cpu,
   RefreshCw, Video, Play, Award
@@ -22,7 +22,7 @@ import {
 const ICON_MAP: Record<string, React.ComponentType<any>> = {
   ArrowRight, FileEdit, Wand2, PenTool, Layout,
   Library, Star, School, Building2, BookOpen, Atom,
-  Share2, MessageSquare, Code2, ChevronRight,
+  ChevronRight,
   Check, Zap, Shield, Globe, Users, Trophy, Rocket, GraduationCap,
   Sparkles, PlayCircle, Brain, X, BarChart3, Search, Cpu,
   RefreshCw, Video, Play, Award,
@@ -157,7 +157,7 @@ export default function Home() {
   const features = homeData.features;
   const benefits = homeData.benefits;
   const productDetails = homeData.productDetails;
-  const footerLinks = homeData.footerLinks;
+
   const howItWorks = homeData.howItWorks;
   const tasarStats = homeData.tasarStats;
   const platformStats = homeData.platformStats;
@@ -766,151 +766,65 @@ export default function Home() {
       </section>
 
       {/* ═══════════════ FOOTER ═══════════════ */}
-      <footer style={{ background: '#020b09', borderTop: '1px solid rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)' }}>
-        <div className="max-w-7xl mx-auto px-6 lg:px-12 py-6 md:py-10">
-          <div className="flex flex-col lg:flex-row gap-12 mb-12">
+      <SiteFooter onProductClick={(key) => setActiveProduct(key)} onLoginRequired={() => setShowLoginModal(true)} />
 
-            {/* Brand */}
-            <div className="w-full lg:w-80 space-y-6 flex-shrink-0">
-              <LatexifyLogo size={72} className="text-white" />
-              <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                The modern, intelligent platform for the entire research writing lifecycle.
-                Write, compile, cite, collaborate — all in one place.
-              </p>
-              <div className="flex gap-3">
-                {[Share2, Code2, MessageSquare].map((Icon, i) => (
-                  <button key={i}
-                    className="w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 hover:scale-110"
-                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    <Icon size={18} style={{ color: 'rgba(255,255,255,0.7)' }} />
+      {/* ── Product Modal ── */}
+      {activeProduct && (() => {
+        const p = productDetails.find((pd: any) => pd.key === activeProduct);
+        if (!p) return null;
+        const iconMap: Record<string, any> = { FileEdit, Wand2, PenTool, Layout, Library, Brain };
+        const Icon = iconMap[p.icon] || FileEdit;
+        return (
+          <div className="fixed inset-0 z-[999] flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
+            onClick={() => setActiveProduct(null)}>
+            <div className="relative w-[90vw] max-w-2xl rounded-3xl overflow-hidden animate-[scaleIn_0.3s_ease-out]"
+              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color, rgba(255,255,255,0.1))', boxShadow: '0 25px 60px rgba(0,0,0,0.5)' }}
+              onClick={e => e.stopPropagation()}>
+              <div className="h-1.5 w-full" style={{ background: p.color }} />
+              <div className="p-8">
+                <div className="flex items-start justify-between mb-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center"
+                      style={{ background: `${p.color}20` }}>
+                      <Icon size={28} style={{ color: p.color }} />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{p.title}</h3>
+                      <span className="text-xs font-semibold uppercase tracking-wider"
+                        style={{ color: p.color }}>Featured Tool</span>
+                    </div>
+                  </div>
+                  <button onClick={() => setActiveProduct(null)}
+                    className="w-9 h-9 rounded-xl flex items-center justify-center transition-transform hover:scale-110"
+                    style={{ background: 'var(--bg-tertiary, rgba(255,255,255,0.06))' }}>
+                    <X size={18} style={{ color: 'var(--text-secondary)' }} />
                   </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Nav columns */}
-            <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-10">
-              {(() => {
-                const groups = footerLinks.reduce((acc: any, link: any) => {
-                  if (!acc[link.groupTitle]) acc[link.groupTitle] = [];
-                  acc[link.groupTitle].push(link);
-                  return acc;
-                }, {} as Record<string, any[]>);
-                return Object.entries(groups).map(([title, links]: [string, any[]]) => (
-                  <div key={title} className="space-y-5">
-                    <h4 className="text-sm font-black uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.9)' }}>
-                      {title}
-                    </h4>
-                    <div className="space-y-3">
-                      {links.map((link: any, j: number) => {
-                        if (link.label === "Templates Gallery") {
-                          return (
-                            <button key={j} onClick={() => setShowLoginModal(true)}
-                              className="footer-link text-sm block text-left w-full"
-                              style={{ color: 'rgba(255,255,255,0.5)' }}>
-                              {link.label}
-                            </button>
-                          );
-                        }
-                        return title === "Products" && link.linkKey ? (
-                          <button key={j} onClick={() => setActiveProduct(link.linkKey)}
-                            className="footer-link text-sm block text-left w-full"
-                            style={{ color: 'rgba(255,255,255,0.5)' }}>
-                            {link.label}
-                          </button>
-                        ) : (
-                          <Link key={j} href={link.href || '#'} className="footer-link text-sm block"
-                            style={{ color: 'rgba(255,255,255,0.5)' }}>
-                            {link.label}
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ));
-              })()}
-            </div>
-          </div>
-
-          {/* ── Product Modal ── */}
-          {activeProduct && (() => {
-            const p = productDetails.find((pd: any) => pd.key === activeProduct);
-            if (!p) return null;
-            const iconMap: Record<string, any> = { FileEdit, Wand2, PenTool, Layout, Library, Brain };
-            const Icon = iconMap[p.icon] || FileEdit;
-            return (
-              <div className="fixed inset-0 z-[999] flex items-center justify-center p-4"
-                style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
-                onClick={() => setActiveProduct(null)}>
-                <div className="relative w-[90vw] max-w-2xl rounded-3xl overflow-hidden animate-[scaleIn_0.3s_ease-out]"
-                  style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color, rgba(255,255,255,0.1))', boxShadow: '0 25px 60px rgba(0,0,0,0.5)' }}
-                  onClick={e => e.stopPropagation()}>
-                  {/* Top accent bar */}
-                  <div className="h-1.5 w-full" style={{ background: p.color }} />
-                  <div className="p-8">
-                    {/* Header */}
-                    <div className="flex items-start justify-between mb-6">
-                      <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 rounded-2xl flex items-center justify-center"
-                          style={{ background: `${p.color}20` }}>
-                          <Icon size={28} style={{ color: p.color }} />
-                        </div>
-                        <div>
-                          <h3 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{p.title}</h3>
-                          <span className="text-xs font-semibold uppercase tracking-wider"
-                            style={{ color: p.color }}>Featured Tool</span>
-                        </div>
-                      </div>
-                      <button onClick={() => setActiveProduct(null)}
-                        className="w-9 h-9 rounded-xl flex items-center justify-center transition-transform hover:scale-110"
-                        style={{ background: 'var(--bg-tertiary, rgba(255,255,255,0.06))' }}>
-                        <X size={18} style={{ color: 'var(--text-secondary)' }} />
-                      </button>
-                    </div>
-                    {/* Description */}
-                    <p className="text-base leading-relaxed mb-6" style={{ color: 'var(--text-secondary)' }}>
-                      {p.desc}
-                    </p>
-                    {/* Features */}
-                    <div className="space-y-2.5 mb-8">
-                      {p.features.slice(0, 4).map((f: string, k: number) => (
-                        <div key={k} className="flex items-center gap-3 text-sm px-4 py-2.5 rounded-xl"
-                          style={{ background: 'var(--bg-tertiary, rgba(255,255,255,0.04))' }}>
-                          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke={p.color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                          <span style={{ color: 'var(--text-primary)' }}>{f}</span>
-                        </div>
-                      ))}
-                    </div>
-                    {/* Action */}
-                    <Link href="/login" onClick={() => setActiveProduct(null)}
-                      className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-sm transition-all hover:gap-3"
-                      style={{ background: p.color, color: '#fff' }}>
-                      Open {p.title} <ArrowRight size={16} />
-                    </Link>
-                  </div>
                 </div>
+                <p className="text-base leading-relaxed mb-6" style={{ color: 'var(--text-secondary)' }}>
+                  {p.desc}
+                </p>
+                <div className="space-y-2.5 mb-8">
+                  {p.features.slice(0, 4).map((f: string, k: number) => (
+                    <div key={k} className="flex items-center gap-3 text-sm px-4 py-2.5 rounded-xl"
+                      style={{ background: 'var(--bg-tertiary, rgba(255,255,255,0.04))' }}>
+                      <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke={p.color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                      <span style={{ color: 'var(--text-primary)' }}>{f}</span>
+                    </div>
+                  ))}
+                </div>
+                <Link href="/login" onClick={() => setActiveProduct(null)}
+                  className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-sm transition-all hover:gap-3"
+                  style={{ background: p.color, color: '#fff' }}>
+                  Open {p.title} <ArrowRight size={16} />
+                </Link>
               </div>
-            );
-          })()}
-
-          {/* Bottom bar */}
-          <div className="flex flex-col md:flex-row justify-between items-center gap-6 pt-8"
-            style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <p className="text-sm" style={{ color: 'rgba(255,255,255,0.35)' }}>
-              © 2025 Latexify Inc. All rights reserved.
-            </p>
-
-            <div className="flex gap-5">
-              {['Privacy', 'Terms', 'Contact'].map((item, i) => (
-                <Link key={i} href={item === 'Contact' ? '/contact-us' : '#'} className="text-sm transition-colors hover:text-white"
-                  style={{ color: 'rgba(255,255,255,0.35)' }}>{item}</Link>
-              ))}
             </div>
           </div>
-        </div>
-      </footer>
+        );
+      })()}
       <LoginPromptModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
     </div>
     </>
