@@ -718,7 +718,7 @@ function TemplatesContent() {
 
          <ProjectLimitModal isOpen={showLimitModal} onClose={() => setShowLimitModal(false)} />
 
-         <div className="mt-16">
+         <div className="mt-16 -mx-6 lg:-mx-10">
            <SiteFooter />
          </div>
       </main>
