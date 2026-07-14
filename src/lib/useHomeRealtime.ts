@@ -86,5 +86,16 @@ export function useHomeRealtime(skip = false) {
     fetchAll();
   }, [skip, fetchAll]);
 
+  useEffect(() => {
+    if (skip) return;
+    const onOnline = () => { cachedData = null; fetchAll(); };
+    window.addEventListener('online', onOnline);
+    window.addEventListener('online-restored', onOnline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('online-restored', onOnline);
+    };
+  }, [skip, fetchAll]);
+
   return { data, loading: !cachedData && !skip, refresh: fetchAll };
 }
