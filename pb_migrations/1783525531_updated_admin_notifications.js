@@ -2,7 +2,7 @@
 migrate((app) => {
   const collection = app.findCollectionByNameOrId("pbc_4269230398")
 
-  if (!collection.fields.hasFieldWithName("type")) {
+  if (!collection.getFieldByName("type")) {
     collection.fields.addAt(1, new Field({
       "autogeneratePattern": "",
       "hidden": false,
@@ -19,7 +19,7 @@ migrate((app) => {
     }))
   }
 
-  if (!collection.fields.hasFieldWithName("title")) {
+  if (!collection.getFieldByName("title")) {
     collection.fields.addAt(2, new Field({
       "autogeneratePattern": "",
       "hidden": false,
@@ -36,7 +36,7 @@ migrate((app) => {
     }))
   }
 
-  if (!collection.fields.hasFieldWithName("body")) {
+  if (!collection.getFieldByName("body")) {
     collection.fields.addAt(3, new Field({
       "autogeneratePattern": "",
       "hidden": false,

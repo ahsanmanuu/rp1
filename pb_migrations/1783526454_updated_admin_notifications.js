@@ -2,7 +2,7 @@
 migrate((app) => {
   const collection = app.findCollectionByNameOrId("pbc_4269230398")
 
-  if (!collection.fields.hasFieldWithName("created")) {
+  if (!collection.getFieldByName("created")) {
     collection.fields.addAt(1, new Field({
       "hidden": false,
       "id": "autodate2990389176",
@@ -15,7 +15,7 @@ migrate((app) => {
     }))
   }
 
-  if (!collection.fields.hasFieldWithName("updated")) {
+  if (!collection.getFieldByName("updated")) {
     collection.fields.addAt(2, new Field({
       "hidden": false,
       "id": "autodate3332085495",
