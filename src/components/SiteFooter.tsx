@@ -67,41 +67,13 @@ export default function SiteFooter({ onProductClick, onLoginRequired }: SiteFoot
               <div key={title} className="space-y-5">
                 <h4 className="text-sm font-black uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.9)' }}>{title}</h4>
                 <div className="space-y-3">
-                  {groupLinks.map((link) => {
-                    if (link.label === "Templates Gallery") {
-                      return (
-                        <button key={link.id}
-                          onClick={() => {
-                            if (session?.user) {
-                              window.location.href = link.href || '/templates';
-                            } else if (onLoginRequired) {
-                              onLoginRequired();
-                            }
-                          }}
-                          className="block text-sm text-left w-full transition-colors hover:text-white"
-                          style={{ color: 'rgba(255,255,255,0.5)' }}>
-                          {link.label}
-                        </button>
-                      );
-                    }
-                    if (title === "Products" && link.linkKey && onProductClick) {
-                      return (
-                        <button key={link.id}
-                          onClick={() => onProductClick(link.linkKey!)}
-                          className="block text-sm text-left w-full transition-colors hover:text-white"
-                          style={{ color: 'rgba(255,255,255,0.5)' }}>
-                          {link.label}
-                        </button>
-                      );
-                    }
-                    return (
-                      <Link key={link.id} href={link.href || '#'}
-                        className="block text-sm transition-colors hover:text-white"
-                        style={{ color: 'rgba(255,255,255,0.5)' }}>
-                        {link.label}
-                      </Link>
-                    );
-                  })}
+                  {groupLinks.map((link) => (
+                    <Link key={link.id} href={link.href || '#'}
+                      className="block text-sm transition-colors hover:text-white"
+                      style={{ color: 'rgba(255,255,255,0.5)' }}>
+                      {link.label}
+                    </Link>
+                  ))}
                 </div>
               </div>
             ))}
@@ -112,7 +84,7 @@ export default function SiteFooter({ onProductClick, onLoginRequired }: SiteFoot
             &copy; {new Date().getFullYear()} Latexify Inc. All rights reserved.
           </p>
           <div className="flex gap-5">
-            {[{ label: 'Privacy', href: '#' }, { label: 'Terms', href: '#' }, { label: 'Contact', href: '/contact-us' }].map((item, i) => (
+            {[{ label: 'Privacy', href: '/privacy' }, { label: 'Terms', href: '/terms' }, { label: 'Contact', href: '/contact-us' }].map((item, i) => (
               <Link key={i} href={item.href} className="text-sm transition-colors hover:text-white" style={{ color: 'rgba(255,255,255,0.35)' }}>{item.label}</Link>
             ))}
           </div>
