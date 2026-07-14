@@ -49,7 +49,7 @@ export default function DiagramsPage() {
           <h1 className="text-4xl md:text-6xl font-black tracking-tight mb-6 leading-tight">
             Diagram <span className="gradient-text-animated">Studio</span>
           </h1>
-          <p className="text-lg opacity-70 max-w-2xl mx-auto mb-10 text-justify md:text-center">
+            <p className="text-lg opacity-70 max-w-2xl mx-auto mb-10 text-justify">
             Design beautiful diagrams, flowcharts, and system architectures in seconds.
             AI-powered layout, real-time collaboration, and export-ready output —
             all in a single, stunning canvas.
@@ -73,7 +73,7 @@ export default function DiagramsPage() {
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-4">Everything You Need to Diagram</h2>
-            <p className="text-base opacity-60 max-w-2xl mx-auto">
+            <p className="text-base opacity-60 max-w-2xl mx-auto text-justify">
               From quick sketches to production-grade architecture diagrams — built for speed, teamwork, and precision.
             </p>
           </div>

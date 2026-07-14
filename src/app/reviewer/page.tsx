@@ -49,7 +49,7 @@ export default function ReviewerPage() {
           <h1 className="text-4xl md:text-6xl font-black tracking-tight mb-6 leading-tight">
             AI Peer <span className="gradient-text-animated">Reviewer</span>
           </h1>
-          <p className="text-lg opacity-70 max-w-2xl mx-auto mb-10 text-justify md:text-center">
+            <p className="text-lg opacity-70 max-w-2xl mx-auto mb-10 text-justify">
             Get instant, intelligent feedback on your academic manuscripts — from grammar and style 
             to logical reasoning and methodological rigor. Strengthen every paper before peer review.
           </p>
@@ -72,7 +72,7 @@ export default function ReviewerPage() {
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-4">Comprehensive Review Dimensions</h2>
-            <p className="text-base opacity-60 max-w-2xl mx-auto">
+            <p className="text-base opacity-60 max-w-2xl mx-auto text-justify">
               Six lenses through which every manuscript is evaluated — no detail goes unnoticed.
             </p>
           </div>

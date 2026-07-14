@@ -49,7 +49,7 @@ export default function Doc2LatexPage() {
           <h1 className="text-4xl md:text-6xl font-black tracking-tight mb-6 leading-tight">
             Doc2<span className="gradient-text-animated">Latex</span>
           </h1>
-          <p className="text-lg opacity-70 max-w-2xl mx-auto mb-10 text-justify md:text-center">
+            <p className="text-lg opacity-70 max-w-2xl mx-auto mb-10 text-justify">
             Instantly convert Microsoft Word documents into pristine LaTeX code. 
             Our intelligent parsing engine preserves every equation, table, citation, and formatting rule — 
             bridging the gap between word processors and academic publishing.
@@ -73,7 +73,7 @@ export default function Doc2LatexPage() {
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-4">Powerful Conversion Features</h2>
-            <p className="text-base opacity-60 max-w-2xl mx-auto">
+            <p className="text-base opacity-60 max-w-2xl mx-auto text-justify">
               Everything you need to migrate from Word to LaTeX without losing a single piece of content.
             </p>
           </div>

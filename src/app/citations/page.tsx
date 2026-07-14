@@ -49,7 +49,7 @@ export default function CitationsPage() {
           <h1 className="text-4xl md:text-6xl font-black tracking-tight mb-6 leading-tight">
             Citation <span className="gradient-text-animated">Studio</span>
           </h1>
-          <p className="text-lg opacity-70 max-w-2xl mx-auto mb-10 text-justify md:text-center">
+            <p className="text-lg opacity-70 max-w-2xl mx-auto mb-10 text-justify">
             Automatically fetch, format, and manage academic references with ease.
             From DOI auto-retrieval to BibTeX export and multi-style formatting —
             Citation Studio is the all-in-one reference manager for researchers.
@@ -73,7 +73,7 @@ export default function CitationsPage() {
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-4">Everything for Reference Management</h2>
-            <p className="text-base opacity-60 max-w-2xl mx-auto">
+            <p className="text-base opacity-60 max-w-2xl mx-auto text-justify">
               From discovery to final bibliography — Citation Studio covers every step of your citation workflow.
             </p>
           </div>

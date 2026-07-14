@@ -49,7 +49,7 @@ export default function TemplateMigratorPage() {
           <h1 className="text-4xl md:text-6xl font-black tracking-tight mb-6 leading-tight">
             Template <span className="gradient-text-animated">Migrator</span>
           </h1>
-          <p className="text-lg opacity-70 max-w-2xl mx-auto mb-10 text-justify md:text-center">
+            <p className="text-lg opacity-70 max-w-2xl mx-auto mb-10 text-justify">
             Instantly migrate your LaTeX projects between journal templates — IEEE, Nature, ACM, Elsevier, and more.
             Preserve every equation, citation, figure, and section while switching formats with zero manual rework.
           </p>
@@ -72,7 +72,7 @@ export default function TemplateMigratorPage() {
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-4">Why Template Migrator</h2>
-            <p className="text-base opacity-60 max-w-2xl mx-auto">
+            <p className="text-base opacity-60 max-w-2xl mx-auto text-justify">
               Seamlessly move between journal formats without touching a single line of LaTeX.
             </p>
           </div>

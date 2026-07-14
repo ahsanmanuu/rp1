@@ -49,7 +49,7 @@ export default function LatexStudioPage() {
           <h1 className="text-4xl md:text-6xl font-black tracking-tight mb-6 leading-tight">
             Latexify <span className="gradient-text-animated">Studio</span>
           </h1>
-          <p className="text-lg opacity-70 max-w-2xl mx-auto mb-10 text-justify md:text-center">
+            <p className="text-lg opacity-70 max-w-2xl mx-auto mb-10 text-justify">
             A modern, browser-based LaTeX editor with live PDF preview, AI-powered suggestions, 
             and seamless collaboration. Write beautiful academic documents without installing a single package.
           </p>
@@ -72,7 +72,7 @@ export default function LatexStudioPage() {
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-4">Everything a LaTeX Author Needs</h2>
-            <p className="text-base opacity-60 max-w-2xl mx-auto">
+            <p className="text-base opacity-60 max-w-2xl mx-auto text-justify">
               From first draft to final submission — Latexify Studio equips you with professional tools for every stage of academic writing.
             </p>
           </div>

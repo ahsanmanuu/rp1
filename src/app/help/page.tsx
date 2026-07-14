@@ -46,7 +46,7 @@ export default function HelpCenter() {
           <h1 className="text-4xl md:text-5xl font-black tracking-tight mb-4">
             How can we <span className="gradient-text-animated">help you</span>?
           </h1>
-          <p className="text-base text-justify md:text-center opacity-70 mb-8 max-w-2xl mx-auto">
+          <p className="text-base text-justify opacity-70 mb-8 max-w-2xl mx-auto">
             Search our knowledge base for quick setup guides, troubleshooting tips, and documentation for our AI-powered editorial tools.
           </p>
 
