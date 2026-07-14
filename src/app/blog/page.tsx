@@ -162,9 +162,9 @@ export default function BlogPage() {
           <div className="p-8 md:p-12 rounded-3xl text-center relative overflow-hidden"
             style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent-primary) 8%, transparent), color-mix(in srgb, #6b38d4 5%, transparent))', border: '1px solid color-mix(in srgb, var(--accent-primary) 15%, transparent)' }}>
             <h2 className="text-2xl md:text-3xl font-black mb-3">Subscribe to our Newsletter</h2>
-            <p className="text-sm opacity-70 mb-6 max-w-xl mx-auto">
-              Get monthly updates on LaTeX formatting hacks, research writing tips, and Latexify product features directly to your inbox.
-            </p>
+             <p className="text-sm opacity-70 mb-6 max-w-4xl mx-auto text-justify" style={{ textAlignLast: 'justify' }}>
+               Get monthly updates on LaTeX formatting hacks, research writing tips, and Latexify product features directly to your inbox.
+             </p>
             <form onSubmit={(e) => e.preventDefault()} className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
               <input
                 type="email"
