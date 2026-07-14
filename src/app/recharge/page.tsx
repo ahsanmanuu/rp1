@@ -100,7 +100,7 @@ export default function RechargePage() {
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
           Secure payment processing. Points are added instantly to your account.
           <br />
-          Need a custom plan? <Link href="/contact" style={{ color: 'var(--accent-primary)' }}>Contact Support</Link>
+          Need a custom plan? <Link href="/contact-us" style={{ color: 'var(--accent-primary)' }}>Contact Support</Link>
         </p>
       </div>
 
