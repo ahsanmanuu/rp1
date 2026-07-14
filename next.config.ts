@@ -92,6 +92,10 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: '*.semanticscholar.org',
       },
+      {
+        protocol: 'https',
+        hostname: 'journals.aps.org',
+      },
     ],
   },
   // Keep all Prisma and Prisma-related dependencies external on the server to prevent bundler resolution hijacking
