@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Sparkles, ArrowRight, CheckCircle2, Zap, Shield, Globe, Users, Brain, BookOpen, Target, Heart, Quote } from 'lucide-react';
 import LoginPromptModal from '@/components/LoginPromptModal';
