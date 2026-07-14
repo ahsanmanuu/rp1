@@ -17,6 +17,8 @@ services:
         sync: false
       - key: NEXTAUTH_URL
         value: https://rp1-gg10.onrender.com
+      - key: PB_DATA_DIR
+        value: /opt/render/project/src/pb_data
       - key: POCKETBASE_URL
         value: http://127.0.0.1:8090
       - key: POCKETBASE_ADMIN_EMAIL
