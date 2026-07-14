@@ -132,9 +132,9 @@ export default function CareersPage() {
           <div className="p-8 md:p-12 rounded-3xl text-center relative overflow-hidden"
             style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent-primary) 8%, transparent), color-mix(in srgb, #6b38d4 5%, transparent))', border: '1px solid color-mix(in srgb, var(--accent-primary) 15%, transparent)' }}>
             <h2 className="text-2xl md:text-3xl font-black mb-3">Don't see the right role?</h2>
-            <p className="text-sm opacity-70 mb-6 max-w-xl mx-auto">
-              We are always looking for talented LaTeX developers, AI specialists, and UI enthusiasts. Drop us your resume, and we will contact you when a fit arises.
-            </p>
+             <p className="text-sm opacity-70 mb-6 max-w-4xl mx-auto text-justify" style={{ textAlignLast: 'justify' }}>
+               We are always looking for talented LaTeX developers, AI specialists, and UI enthusiasts. Drop us your resume, and we will contact you when a fit arises.
+             </p>
             <div className="flex justify-center">
               <Link href="/contact-us" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white transition-all hover:scale-[1.02]" style={{ background: 'linear-gradient(135deg, var(--accent-primary), #6b38d4)' }}>
                 Send Open Application <ArrowRight size={16} />
