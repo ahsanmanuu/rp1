@@ -310,6 +310,13 @@ startPocketBase().then(async () => {
   } catch (setupErr) {
     log('PocketBase auto-setup failed (non-fatal)', setupErr);
   }
+  log('Starting background sync worker...');
+  try {
+    const { startSyncWorker } = await import('./src/lib/sync/syncWorker.js');
+    startSyncWorker();
+  } catch (syncErr) {
+    log('Background sync worker failed to start (non-fatal)', syncErr);
+  }
   log('Starting Next.js standalone server...');
   import('./.next/standalone/server.js');
 });
