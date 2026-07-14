@@ -775,8 +775,8 @@ export async function setupPocketBase() {
             type: def.type,
             fields: fields,
             indexes: def.indexes || [],
-            listRule: null,
-            viewRule: null,
+            listRule: "",
+            viewRule: "",
             createRule: null,
             updateRule: null,
             deleteRule: null,
@@ -907,6 +907,26 @@ export async function setupPocketBase() {
     console.warn('[PB Setup] Failed to seed footer links:', e.message);
   }
 
+  // Seed default institution logos
+  try {
+    const logoCount = (await pb.collection('institution_logos').getFullList()).length;
+    if (logoCount === 0) {
+      const defaultLogos = [
+        { name: 'MIT', icon: 'School', isActive: true, sortOrder: 1 },
+        { name: 'Stanford', icon: 'Building2', isActive: true, sortOrder: 2 },
+        { name: 'Oxford', icon: 'BookOpen', isActive: true, sortOrder: 3 },
+        { name: 'CERN', icon: 'Atom', isActive: true, sortOrder: 4 },
+        { name: 'Harvard', icon: 'GraduationCap', isActive: true, sortOrder: 5 },
+      ];
+      for (const logo of defaultLogos) {
+        await pb.collection('institution_logos').create(logo);
+      }
+      console.log('[PB Setup] Institution logos seeded.');
+    }
+  } catch (e) {
+    console.warn('[PB Setup] Failed to seed institution logos:', e.message);
+  }
+
   // Seed admin_users collection — ensures the admin profile record exists in PB
   // so the profile/change-password routes can find it without relying on env vars.
   if (authenticated) {
@@ -980,6 +1000,8 @@ export async function setupPocketBase() {
   // Ensure public read rules for homepage content collections
   if (authenticated) {
     try {
+      // Re-fetch fresh collection list to pick up collections created above
+      const allCollections = await pb.collections.getFullList();
       const publicCollections = [
         'banners', 'testimonials', 'how_it_works', 'gallery_items',
         'institution_logos', 'features', 'benefits', 'product_details',
@@ -987,7 +1009,7 @@ export async function setupPocketBase() {
       ];
       console.log('[PB Setup] Ensuring public read rules for homepage collections...');
       for (const name of publicCollections) {
-        const col = existing.find(c => c.name === name);
+        const col = allCollections.find(c => c.name === name);
         if (col) {
           if (col.listRule !== "" || col.viewRule !== "") {
             await pb.collections.update(col.id, {
