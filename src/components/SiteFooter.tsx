@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useSession } from "@/lib/pb-auth-react";
-import { LatexifyLogo } from "./LatexifyLogo";
+import LatexifyLogo from "./LatexifyLogo";
 import { Share2, Code2, MessageSquare } from "lucide-react";
 
 interface FooterLink {
