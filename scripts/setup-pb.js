@@ -956,7 +956,7 @@ export async function setupPocketBase() {
     const videoCount = (await pb.collection('videos').getFullList()).length;
     if (videoCount === 0) {
       const defaultVideos = [
-        { title: 'Getting Started', description: 'A quick tour of Latexify.', videoUrl: '', posterUrl: '', isActive: true, sortOrder: 1 },
+        { title: 'Getting Started', description: 'A quick tour of Latexify.', videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', posterUrl: '', isActive: true, sortOrder: 1 },
       ];
       for (const v of defaultVideos) {
         await pb.collection('videos').create(v);
@@ -1079,27 +1079,41 @@ export async function setupPocketBase() {
         ];
 
         for (const [colName, items] of Object.entries(contentData)) {
-          const existingColRecords = await pb.collection(colName).getFullList({ requestKey: `sync_check_${colName}` });
-          const existingMap = new Map(existingColRecords.map(r => [r.id, r]));
-
-          for (const item of items) {
-            if (existingMap.has(item.id)) {
-              // Update existing
-              await pb.collection(colName).update(item.id, item);
-            } else {
-              // Create new
-              await pb.collection(colName).create(item);
+          try {
+            let existingColRecords = [];
+            try {
+              existingColRecords = await pb.collection(colName).getFullList({ requestKey: `sync_check_${colName}` });
+            } catch (fetchErr) {
+              console.warn(`[PB Setup] Sync: skipping ${colName} (collection not found): ${fetchErr.message}`);
+              continue;
             }
-          }
+            const existingMap = new Map(existingColRecords.map(r => [r.id, r]));
 
-          // Delete records not in whitelisted JSON data
-          if (deleteAllowedCollections.includes(colName)) {
-            const incomingIds = new Set(items.map(item => item.id));
-            for (const existingRec of existingColRecords) {
-              if (!incomingIds.has(existingRec.id)) {
-                await pb.collection(colName).delete(existingRec.id).catch(() => {});
+            for (const item of items) {
+              try {
+                const { id, ...data } = item;
+                if (existingMap.has(id)) {
+                  await pb.collection(colName).update(id, data);
+                } else {
+                  await pb.collection(colName).create(data);
+                }
+              } catch (itemErr) {
+                const detail = itemErr?.data ? JSON.stringify(itemErr.data) : itemErr?.message || String(itemErr);
+                console.warn(`[PB Setup] Sync: skipping record in ${colName} (${item.id || item.title || 'unknown'}): ${detail}`);
               }
             }
+
+            // Delete records not in whitelisted JSON data
+            if (deleteAllowedCollections.includes(colName)) {
+              const incomingIds = new Set(items.map(item => item.id));
+              for (const existingRec of existingColRecords) {
+                if (!incomingIds.has(existingRec.id)) {
+                  await pb.collection(colName).delete(existingRec.id).catch(() => {});
+                }
+              }
+            }
+          } catch (colErr) {
+            console.warn(`[PB Setup] Sync: error processing ${colName}: ${colErr.message}`);
           }
         }
         console.log('[PB Setup] Homepage content synced successfully.');
