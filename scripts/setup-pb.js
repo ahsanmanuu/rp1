@@ -534,6 +534,14 @@ const COLLECTIONS = [
     { name: 'isActive', type: 'bool' },
     { name: 'sortOrder', type: 'number' },
   ], indexes: ['CREATE INDEX idx_floating_banners_active ON floating_banners (isActive, sortOrder);'] },
+  { name: 'videos', type: 'base', schema: [
+    { name: 'title', type: 'text', required: true },
+    { name: 'description', type: 'text' },
+    { name: 'videoUrl', type: 'url', required: true },
+    { name: 'posterUrl', type: 'url' },
+    { name: 'isActive', type: 'bool' },
+    { name: 'sortOrder', type: 'number' },
+  ], indexes: [] },
   { name: 'site_settings', type: 'base', schema: [
     { name: 'key', type: 'text', required: true, unique: true },
     { name: 'value', type: 'json' },
@@ -927,6 +935,38 @@ export async function setupPocketBase() {
     console.warn('[PB Setup] Failed to seed institution logos:', e.message);
   }
 
+  // Seed default floating banners
+  try {
+    const fbCount = (await pb.collection('floating_banners').getFullList()).length;
+    if (fbCount === 0) {
+      const defaultFloatingBanners = [
+        { title: 'Welcome!', imageUrl: '', linkUrl: '', targetType: 'global', targetEmail: '', width: 4, height: 6, duration: 5, isActive: true, sortOrder: 1 },
+      ];
+      for (const fb of defaultFloatingBanners) {
+        await pb.collection('floating_banners').create(fb);
+      }
+      console.log('[PB Setup] Floating banners seeded.');
+    }
+  } catch (e) {
+    console.warn('[PB Setup] Failed to seed floating banners:', e.message);
+  }
+
+  // Seed default videos
+  try {
+    const videoCount = (await pb.collection('videos').getFullList()).length;
+    if (videoCount === 0) {
+      const defaultVideos = [
+        { title: 'Getting Started', description: 'A quick tour of Latexify.', videoUrl: '', posterUrl: '', isActive: true, sortOrder: 1 },
+      ];
+      for (const v of defaultVideos) {
+        await pb.collection('videos').create(v);
+      }
+      console.log('[PB Setup] Videos seeded.');
+    }
+  } catch (e) {
+    console.warn('[PB Setup] Failed to seed videos:', e.message);
+  }
+
   // Seed admin_users collection — ensures the admin profile record exists in PB
   // so the profile/change-password routes can find it without relying on env vars.
   if (authenticated) {
@@ -1005,7 +1045,8 @@ export async function setupPocketBase() {
       const publicCollections = [
         'banners', 'testimonials', 'how_it_works', 'gallery_items',
         'institution_logos', 'features', 'benefits', 'product_details',
-        'footer_links', 'tasar_stats', 'platform_stats', 'floating_banners'
+        'footer_links', 'tasar_stats', 'platform_stats', 'floating_banners',
+        'videos', 'announcements'
       ];
       console.log('[PB Setup] Ensuring public read rules for homepage collections...');
       for (const name of publicCollections) {
@@ -1033,7 +1074,8 @@ export async function setupPocketBase() {
         const deleteAllowedCollections = [
           'banners', 'testimonials', 'how_it_works', 'gallery_items',
           'institution_logos', 'features', 'benefits', 'product_details',
-          'footer_links', 'tasar_stats', 'floating_banners'
+          'footer_links', 'tasar_stats', 'floating_banners',
+          'videos', 'announcements'
         ];
 
         for (const [colName, items] of Object.entries(contentData)) {
