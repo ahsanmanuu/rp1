@@ -96,7 +96,7 @@ async function ensurePocketBaseBinary() {
 }
 
 // ============================================================
-// Start PocketBase as a child process (Linux/macOS only)
+// Start PocketBase as a child process
 // ============================================================
 async function startPocketBase() {
   // NOTE: The old database corruption check (checking for the custom
@@ -109,6 +109,17 @@ async function startPocketBase() {
   if (!pbBinary) {
     const pbUrl = process.env.POCKETBASE_URL || 'http://127.0.0.1:8090';
     log(`No PocketBase binary available. Ensure PocketBase is running externally at ${pbUrl}`);
+    // Background check: log when PB becomes available
+    const hcInterval = setInterval(async () => {
+      try {
+        const resp = await fetch(pbUrl + '/api/health', { signal: AbortSignal.timeout(3000) });
+        if (resp.ok) {
+          log(`PocketBase is now reachable at ${pbUrl}`);
+          clearInterval(hcInterval);
+        }
+      } catch {}
+    }, 15000);
+    hcInterval.unref();
     return;
   }
 
@@ -149,37 +160,71 @@ async function startPocketBase() {
     fs.mkdirSync(migrationsDir, { recursive: true });
 
     log(`Starting PocketBase from ${pbBinary}...`);
-    const pb = spawn(pbBinary, ['serve', '--http=0.0.0.0:8090', `--dir=${pbDataDir}`, `--migrationsDir=${migrationsDir}`], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env },
-    });
 
-    pb.stdout.on('data', (data) => {
-      const msg = data.toString();
-      process.stdout.write(`[PB] ${msg}`);
-      if (msg.includes('Server started')) {
-        log('PocketBase is ready.');
-        resolve();
-      }
-    });
+    let pbResolved = false;
+    let pbProcess = null;
+    let monitorInterval = null;
 
-    pb.stderr.on('data', (data) => {
-      process.stderr.write(`[PB] ${data.toString()}`);
-    });
+    function spawnPocketBase() {
+      pbProcess = spawn(pbBinary, ['serve', '--http=0.0.0.0:8090', `--dir=${pbDataDir}`, `--migrationsDir=${migrationsDir}`], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env },
+      });
 
-    pb.on('error', (err) => {
-      log('Failed to start PocketBase process', err);
-      resolve(); // Don't block startup — fall through to Next.js
-    });
+      pbProcess.stdout.on('data', (data) => {
+        const msg = data.toString();
+        process.stdout.write(`[PB] ${msg}`);
+        if (msg.includes('Server started') && !pbResolved) {
+          pbResolved = true;
+          log('PocketBase is ready.');
+          resolve();
+          // Start background health monitor to restart PB if it dies later
+          startMonitor();
+        }
+      });
 
-    pb.on('exit', (code) => {
-      log(`PocketBase exited with code ${code}`);
-    });
+      pbProcess.stderr.on('data', (data) => {
+        process.stderr.write(`[PB] ${data.toString()}`);
+      });
+
+      pbProcess.on('error', (err) => {
+        log('Failed to start PocketBase process', err);
+        if (!pbResolved) {
+          pbResolved = true;
+          resolve(); // Don't block startup
+        }
+      });
+
+      pbProcess.on('exit', (code) => {
+        log(`PocketBase exited with code ${code}`);
+        pbProcess = null;
+        if (code !== 0 && !pbResolved) {
+          log('PocketBase crashed before ready — will retry in 5s...');
+          setTimeout(spawnPocketBase, 5000);
+        }
+      });
+    }
+
+    function startMonitor() {
+      // Check PB every 30s; restart if process died
+      monitorInterval = setInterval(async () => {
+        if (pbProcess && pbProcess.exitCode === null) return; // still running
+        if (!pbProcess || pbProcess.exitCode !== null) {
+          log('[PB Monitor] PocketBase is not running — restarting...');
+          spawnPocketBase();
+        }
+      }, 30000);
+      monitorInterval.unref();
+    }
+
+    spawnPocketBase();
 
     // Timeout: if PocketBase doesn't start within 30s, continue anyway
     setTimeout(() => {
-      log('PocketBase startup timeout — continuing without confirmed readiness.');
-      resolve();
+      if (!pbResolved) {
+        pbResolved = true;
+        log('PocketBase startup timeout — continuing without confirmed readiness.');
+      }
     }, 30000);
   });
 }

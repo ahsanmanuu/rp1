@@ -569,16 +569,18 @@ function collectionProxy(collectionName: string) {
 /** Get a PocketBase admin client with caching and fallback. */
 let _cachedClient: PocketBase | null = null;
 async function getClient(): Promise<PocketBase> {
-  if (_cachedClient) return _cachedClient;
+  if (_cachedClient) {
+    if (_cachedClient.authStore && _cachedClient.authStore.isValid) return _cachedClient;
+    _cachedClient = null;
+  }
   try {
     const client = await pbAdmin();
     _cachedClient = client;
     return client;
   } catch (err) {
     console.error('[pb-adapter] Failed to get admin client, using unauthenticated client:', err);
-    const client = createPb();
-    _cachedClient = client;
-    return client;
+    // Don't cache unauthenticated fallback — retry pbAdmin on next call
+    return createPb();
   }
 }
 

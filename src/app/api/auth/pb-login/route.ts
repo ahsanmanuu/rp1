@@ -141,7 +141,12 @@ export async function POST(req: NextRequest) {
     response.headers.append("Set-Cookie", setAuthCookie(authData.token));
     return response;
   } catch (err: any) {
-    const message = err?.status === 400 ? "Invalid credentials" : err?.message || "Login failed";
+    const msg = err?.message || String(err);
+    const isConnError = msg.includes('Failed to fetch') || msg.includes('ECONNREFUSED') || msg.includes('fetch failed') || msg.includes('unreachable');
+    if (isConnError) {
+      return NextResponse.json({ error: 'Authentication service is temporarily unavailable. Please try again later.' }, { status: 503 });
+    }
+    const message = err?.status === 400 ? "Invalid credentials" : msg || "Login failed";
     return NextResponse.json({ error: message }, { status: err?.status || 500 });
   }
 }
