@@ -20,12 +20,12 @@ import {
 } from "lucide-react";
 
 const FALLBACK_FEATURES = [
-  { title: 'Latexify Dashboard', description: 'A modern, powerful, collaborative LaTeX editor designed for the web. Write with joy, compile with speed, share with ease.', icon: 'FileEdit', iconBg: 'var(--accent-primary)', glow: 'var(--accent-primary)', tags: ['Real-time Collab', 'Cloud Sync'], href: '/latex-studio' },
+  { title: 'Latexify Dashboard', description: 'A modern, powerful, collaborative LaTeX editor designed for the web. Write with joy, compile with speed, share with ease.', icon: 'FileEdit', iconBg: 'var(--accent-primary)', glow: 'var(--accent-primary)', tags: ['Real-time Collab', 'Cloud Sync'], href: '/latex-studio/projects' },
   { title: 'Doc2Latex', description: 'Instantly convert Word documents into clean, well-structured LaTeX code. Bridge the gap with co-authors seamlessly.', icon: 'Wand2', iconBg: 'var(--accent-secondary)', glow: 'var(--accent-secondary)', tags: ['DOCX → LaTeX', 'Smart Parsing'], href: '/upload' },
-  { title: 'Diagram Studio', description: 'Create beautiful TikZ diagrams with an intuitive visual canvas. No more wrestling with coordinates and syntax.', icon: 'PenTool', iconBg: '#f59e0b', glow: '#f59e0b', tags: ['Visual Editor', 'TikZ Export'], href: '/diagrams' },
-  { title: 'Template Migrator', description: 'Switch journals effortlessly. One click updates your document styling, margins, and bibliography formats instantly.', icon: 'Layout', iconBg: '#0891b2', glow: '#0891b2', tags: ['55+ Templates', 'IEEE, Nature, ACM'], href: '/template-migrator' },
-  { title: 'Citation Studio', description: 'Manage your bibliography seamlessly. Auto-fetch metadata via DOI, organize references with tags and export BibTeX.', icon: 'Library', iconBg: '#059669', glow: '#059669', tags: ['DOI Auto-fetch', 'BibTeX Export'], href: '/citations' },
-  { title: 'AI Peer Reviewer', description: 'Get instant, scholarly feedback on clarity, argumentation, and methodology. Like having a senior researcher on speed dial.', icon: 'Brain', iconBg: '#dc2626', glow: '#dc2626', tags: ['Logic Check', 'Grammar AI'], href: '/reviewer' },
+  { title: 'Diagram Studio', description: 'Create beautiful TikZ diagrams with an intuitive visual canvas. No more wrestling with coordinates and syntax.', icon: 'PenTool', iconBg: '#f59e0b', glow: '#f59e0b', tags: ['Visual Editor', 'TikZ Export'], href: '/diagrams/editor' },
+  { title: 'Template Migrator', description: 'Switch journals effortlessly. One click updates your document styling, margins, and bibliography formats instantly.', icon: 'Layout', iconBg: '#0891b2', glow: '#0891b2', tags: ['55+ Templates', 'IEEE, Nature, ACM'], href: '/template-migrator/studio' },
+  { title: 'Citation Studio', description: 'Manage your bibliography seamlessly. Auto-fetch metadata via DOI, organize references with tags and export BibTeX.', icon: 'Library', iconBg: '#059669', glow: '#059669', tags: ['DOI Auto-fetch', 'BibTeX Export'], href: '/citations/studio' },
+  { title: 'AI Peer Reviewer', description: 'Get instant, scholarly feedback on clarity, argumentation, and methodology. Like having a senior researcher on speed dial.', icon: 'Brain', iconBg: '#dc2626', glow: '#dc2626', tags: ['Logic Check', 'Grammar AI'], href: '/reviewer/studio' },
 ];
 
 const ICON_MAP: Record<string, React.ComponentType<any>> = {

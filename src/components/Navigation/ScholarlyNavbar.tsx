@@ -12,12 +12,12 @@ import ThemeSwitcher from "@/components/scholarly-editor/ThemeSwitcher";
 import LatexifyLogo from "@/components/LatexifyLogo";
 
 const TOOLS = [
-  { label: "Latexify Studio", desc: "LaTeX editor & compiler", href: "/latex-studio", icon: FileEdit, color: "var(--accent-primary)" },
+  { label: "Latexify Studio", desc: "LaTeX editor & compiler", href: "/latex-studio/projects", icon: FileEdit, color: "var(--accent-primary)" },
   { label: "Doc2LateX Studio", desc: "Word → LaTeX conversion", href: "/upload", icon: Wand2, color: "#6b38d4" },
-  { label: "AI Diagram Studio", desc: "Visual TikZ diagrams", href: "/diagrams", icon: PenTool, color: "#f59e0b" },
-  { label: "Template Migrator", desc: "Switch journal templates", href: "/template-migrator", icon: Layout, color: "#0891b2" },
-  { label: "AI Citation Studio", desc: "BibTeX & DOI manager", href: "/citations", icon: Library, color: "#059669" },
-  { label: "AI Peer Reviewer", desc: "Latexify AI feedback", href: "/reviewer", icon: Brain, color: "#dc2626" },
+  { label: "AI Diagram Studio", desc: "Visual TikZ diagrams", href: "/diagrams/editor", icon: PenTool, color: "#f59e0b" },
+  { label: "Template Migrator", desc: "Switch journal templates", href: "/template-migrator/studio", icon: Layout, color: "#0891b2" },
+  { label: "AI Citation Studio", desc: "BibTeX & DOI manager", href: "/citations/studio", icon: Library, color: "#059669" },
+  { label: "AI Peer Reviewer", desc: "Latexify AI feedback", href: "/reviewer/studio", icon: Brain, color: "#dc2626" },
 ];
 
 const NAV_LINKS = [

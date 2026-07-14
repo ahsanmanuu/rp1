@@ -996,7 +996,7 @@ export default function DashboardPage() {
                   const Icon = studio.icon;
                   return (
                     <div key={studio.id} className="glass-card rounded-xl border border-outline hover:border-primary/50 hover:shadow-ambient-soft transition-all group overflow-hidden relative z-0">
-                      <Link href={studio.id === 'DOC2LATEX' ? '/upload' : studio.id === 'LATEX_STUDIO' ? '/latex-studio' : studio.id === 'DIAGRAM' ? '/diagrams' : '#'} className="block p-md border-b border-outline bg-surface/40 relative z-10 hover:bg-surface-container-low transition-colors">
+                      <Link href={studio.id === 'DOC2LATEX' ? '/upload' : studio.id === 'LATEX_STUDIO' ? '/latex-studio/projects' : studio.id === 'DIAGRAM' ? '/diagrams/editor' : '#'} className="block p-md border-b border-outline bg-surface/40 relative z-10 hover:bg-surface-container-low transition-colors">
                         <div className="flex items-center mb-4">
                           <div className={`w-12 h-12 rounded-lg ${studio.bg} flex items-center justify-center mr-4 shadow-sm border border-black/5`}>
                             <Icon className={studio.color} size={32} />

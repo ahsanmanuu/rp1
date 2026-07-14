@@ -224,7 +224,7 @@ function ArchiveContent() {
                       <span>{p.imageCount || p.stats?.images || 0} images</span>
                     </div>
                     <Link 
-                      href={p.projectType === 'REVIEWER' ? '/reviewer' : p.projectType === 'CITATION' ? '/citations' : `/editor/${p.id}`}
+                      href={p.projectType === 'REVIEWER' ? '/reviewer/studio' : p.projectType === 'CITATION' ? '/citations/studio' : `/editor/${p.id}`}
                       onClick={(e) => e.stopPropagation()}
                       className="h-10 px-6 bg-surface-container-low text-secondary rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-on-background hover:text-white transition-all shadow-sm group/btn"
                     >

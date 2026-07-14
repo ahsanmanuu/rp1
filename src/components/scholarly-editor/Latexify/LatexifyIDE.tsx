@@ -879,7 +879,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
             <div style={{ width: 1, height: 24, background: 'var(--border)', flexShrink: 0 }} />
 
             <div 
-              onClick={() => window.location.href = '/latex-studio'} 
+              onClick={() => window.location.href = '/latex-studio/projects'} 
               style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', cursor: 'pointer', flexShrink: 0 }}
             >
                <LatexifyLogo size={40} />

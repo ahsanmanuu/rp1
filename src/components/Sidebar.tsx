@@ -24,12 +24,12 @@ import LatexifyLogo from '@/components/LatexifyLogo';
 
 const NAV_ITEMS = [
   { href: '/dashboard',         icon: LayoutDashboard,   label: 'Dashboard',   color: 'text-primary' },
-  { href: '/latex-studio',      icon: FileEdit,   label: 'Latexify Studio',   color: 'text-primary' },
+  { href: '/latex-studio/projects', icon: FileEdit,   label: 'Latexify Studio',   color: 'text-primary' },
   { href: '/upload',            icon: FileText,   label: 'Doc2LateX Studio',  color: 'text-blue-500' },
-  { href: '/diagrams',          icon: Network,    label: 'AI Diagram Studio',   color: 'text-amber-500' },
-  { href: '/template-migrator', icon: RefreshCw,  label: 'Template Migrator', color: 'text-purple-500' },
-  { href: '/reviewer',          icon: Brain,      label: 'AI Peer Reviewer',  color: 'text-indigo-500' },
-  { href: '/citations',         icon: Quote,      label: 'AI Citation Studio', color: 'text-rose-500' },
+  { href: '/diagrams/editor',   icon: Network,    label: 'AI Diagram Studio',   color: 'text-amber-500' },
+  { href: '/template-migrator/studio', icon: RefreshCw,  label: 'Template Migrator', color: 'text-purple-500' },
+  { href: '/reviewer/studio',   icon: Brain,      label: 'AI Peer Reviewer',  color: 'text-indigo-500' },
+  { href: '/citations/studio',  icon: Quote,      label: 'AI Citation Studio', color: 'text-rose-500' },
   { href: '/templates',         icon: Grid,   label: 'Template Gallery', color: 'text-emerald-500' },
   { href: '/dashboard/ai-usage', icon: Zap,      label: 'AI Usage & Caps',  color: 'text-amber-500' },
   { href: '/history',           icon: History,     label: 'History', color: 'text-secondary' },

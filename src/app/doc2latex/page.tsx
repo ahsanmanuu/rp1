@@ -60,7 +60,7 @@ export default function Doc2LatexPage() {
               style={{ background: 'linear-gradient(135deg, #6b38d4, var(--accent-primary))' }}>
               <Upload size={18} /> Convert Document Now <ArrowRight size={18} />
             </Link>
-            <Link href="/latex-studio"
+            <Link href="/latex-studio/projects"
               className="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-base font-bold transition-all hover:scale-[1.02]"
               style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
               Try LaTeX Studio <ArrowRight size={18} />

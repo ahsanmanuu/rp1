@@ -272,7 +272,7 @@ function HistoryContent() {
                         <div className="flex items-center gap-1.5" title="References"><BookOpen size={14} className="text-primary/70"/> {p.stats?.references || 0}</div>
                      </div>
                      <Link 
-                        href={p.isLocal ? `/latex-studio/${p.id}` : (p.type === 'REVIEWER' ? `/reviewer` : `/editor/${p.id}`)}
+                        href={p.isLocal ? `/latex-studio/${p.id}` : (p.type === 'REVIEWER' ? `/reviewer/studio` : `/editor/${p.id}`)}
                         onClick={(e) => e.stopPropagation()}
                         className="h-10 px-6 bg-surface-container-low text-secondary rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-on-background hover:text-white transition-all shadow-sm group/btn"
                      >

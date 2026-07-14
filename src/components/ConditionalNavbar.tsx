@@ -13,7 +13,7 @@ export function ConditionalNavbar() {
     pathname.startsWith('/doc2latex/') || 
     pathname.startsWith('/guest-studio') || 
     pathname.startsWith('/template-migrator/') ||
-    pathname.startsWith('/citations') ||
+    pathname.startsWith('/citations/') ||
     pathname.startsWith('/share/') ||
     pathname.startsWith('/admin');
   
