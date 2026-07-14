@@ -16,13 +16,7 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await loginAdmin(email, password);
-
-    if (!result) {
-      return NextResponse.json(
-        { success: false, error: "Invalid credentials. Access denied." },
-        { status: 401 }
-      );
-    }
+    if (!result) throw new Error("Invalid credentials. Access denied.");
 
     const { token, admin } = result;
 
@@ -38,10 +32,12 @@ export async function POST(req: NextRequest) {
 
     return response;
   } catch (err: any) {
-    console.error("[ADMIN_AUTH] Login error:", err.message);
+    const msg = err?.message || "Invalid credentials. Access denied.";
+    const isAuthErr = msg.toLowerCase().includes('invalid credentials') || msg.toLowerCase().includes('access denied');
+    console.error("[ADMIN_AUTH] Login error:", msg);
     return NextResponse.json(
-      { success: false, error: process.env.NODE_ENV === "development" ? err.message : "Internal server error." },
-      { status: 500 }
+      { success: false, error: msg },
+      { status: isAuthErr ? 401 : 503 }
     );
   }
 }

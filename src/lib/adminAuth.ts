@@ -52,8 +52,10 @@ export async function loginAdmin(email: string, password: string): Promise<{ tok
       },
     };
   } catch (err: any) {
-    console.error('[ADMIN_AUTH] Login failed:', err.message);
-    return null;
+    const msg = err?.message || String(err);
+    const isConnError = msg.includes('Failed to fetch') || msg.includes('ECONNREFUSED') || msg.includes('fetch') || msg.includes('Network');
+    console.error(`[ADMIN_AUTH] Login failed: ${isConnError ? 'PocketBase unreachable' : msg}`);
+    throw new Error(isConnError ? 'PocketBase server is not reachable. Please try again later.' : 'Invalid credentials. Access denied.');
   }
 }
 
