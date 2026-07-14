@@ -53,18 +53,7 @@ export default function ReviewerPage() {
             Get instant, intelligent feedback on your academic manuscripts — from grammar and style 
             to logical reasoning and methodological rigor. Strengthen every paper before peer review.
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/reviewer/studio"
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-base font-bold text-white transition-all hover:scale-[1.02] hover:shadow-xl"
-              style={{ background: 'linear-gradient(135deg, #6b38d4, var(--accent-primary))' }}>
-              <Brain size={18} /> Start AI Review <ArrowRight size={18} />
-            </Link>
-            <Link href="/pricing"
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-base font-bold transition-all hover:scale-[1.02]"
-              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-              View Plans <ArrowRight size={18} />
-            </Link>
-          </div>
+          
         </div>
       </section>
 
@@ -147,24 +136,6 @@ export default function ReviewerPage() {
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-20 px-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="p-8 md:p-14 rounded-3xl text-center relative overflow-hidden"
-            style={{ background: 'linear-gradient(135deg, color-mix(in srgb, #6b38d4 10%, transparent), color-mix(in srgb, var(--accent-primary) 8%, transparent))', border: '1px solid color-mix(in srgb, #6b38d4 20%, transparent)' }}>
-            <h2 className="text-2xl md:text-4xl font-black mb-4">Ready for Smarter Reviews?</h2>
-            <p className="text-base opacity-70 mb-8 max-w-xl mx-auto">
-              Submit your manuscript and get AI-powered feedback on grammar, logic, methodology, structure, and citations — all in one place.
-            </p>
-            <Link href="/reviewer/studio"
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-base font-bold text-white transition-all hover:scale-[1.02] hover:shadow-xl"
-              style={{ background: 'linear-gradient(135deg, #6b38d4, var(--accent-primary))' }}>
-              <Brain size={18} /> Start AI Review <ArrowRight size={18} />
-            </Link>
           </div>
         </div>
       </section>

@@ -53,18 +53,7 @@ export default function TemplateMigratorPage() {
             Instantly migrate your LaTeX projects between journal templates — IEEE, Nature, ACM, Elsevier, and more.
             Preserve every equation, citation, figure, and section while switching formats with zero manual rework.
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/template-migrator/studio"
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-base font-bold text-white transition-all hover:scale-[1.02] hover:shadow-xl"
-              style={{ background: 'linear-gradient(135deg, #6b38d4, var(--accent-primary))' }}>
-              <RefreshCw size={18} /> Launch Template Migrator <ArrowRight size={18} />
-            </Link>
-            <Link href="/templates"
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-base font-bold transition-all hover:scale-[1.02]"
-              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-              Browse Templates <ArrowRight size={18} />
-            </Link>
-          </div>
+          
         </div>
       </section>
 
@@ -147,24 +136,6 @@ export default function TemplateMigratorPage() {
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-20 px-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="p-8 md:p-14 rounded-3xl text-center relative overflow-hidden"
-            style={{ background: 'linear-gradient(135deg, color-mix(in srgb, #6b38d4 10%, transparent), color-mix(in srgb, var(--accent-primary) 8%, transparent))', border: '1px solid color-mix(in srgb, #6b38d4 20%, transparent)' }}>
-            <h2 className="text-2xl md:text-4xl font-black mb-4">Ready to Switch Templates?</h2>
-            <p className="text-base opacity-70 mb-8 max-w-xl mx-auto">
-              Launch Template Migrator Studio to browse, preview, and migrate between 120+ journal templates. No signup required.
-            </p>
-            <Link href="/template-migrator/studio"
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-base font-bold text-white transition-all hover:scale-[1.02] hover:shadow-xl"
-              style={{ background: 'linear-gradient(135deg, #6b38d4, var(--accent-primary))' }}>
-              <RefreshCw size={18} /> Launch Template Migrator <ArrowRight size={18} />
-            </Link>
           </div>
         </div>
       </section>
