@@ -26,25 +26,53 @@ if (typeof window === 'undefined') {
   } catch (err: any) {
     console.warn('[PB System] Failed to configure undici global dispatcher:', err?.message || err);
   }
+
+  try {
+    const dns = require('dns');
+    if (typeof dns.setDefaultResultOrder === 'function') {
+      dns.setDefaultResultOrder('ipv4first');
+      console.log('[PB System] Forced DNS IPv4-first resolution order');
+    }
+  } catch (err: any) {
+    console.warn('[PB System] Failed to configure DNS resolution order:', err?.message || err);
+  }
 }
 
-const PB_URL = process.env.POCKETBASE_URL || (typeof window !== 'undefined' ? '/pb' : 'http://localhost:8090');
+const PB_URL = process.env.POCKETBASE_URL || (typeof window !== 'undefined' ? '/pb' : 'http://127.0.0.1:8090');
 
 /** Fresh unauthenticated client (use for public reads). */
 export function createPb() {
   return new PocketBase(PB_URL);
 }
 
+const tokenCache = new Map<string, { pb: PocketBase; expiry: number }>();
+
 /**
  * Server-side PocketBase client rehydrated from an auth token cookie.
  * Automatically loads the user record so authStore.record is available.
+ * Cached for 15 seconds to avoid redundant authRefresh calls during concurrent sub-requests.
  */
 export async function authFromToken(token: string) {
+  const now = Date.now();
+
+  // Clean up cache if too large
+  if (tokenCache.size > 1000) {
+    for (const [k, v] of tokenCache.entries()) {
+      if (v.expiry < now) tokenCache.delete(k);
+    }
+  }
+
+  const cached = tokenCache.get(token);
+  if (cached && cached.expiry > now && cached.pb.authStore.isValid && cached.pb.authStore.record) {
+    return cached.pb;
+  }
+
   const pb = new PocketBase(PB_URL);
   pb.authStore.save(token, null);
   if (pb.authStore.isValid) {
     try {
       await pb.collection('users').authRefresh({ requestKey: 'auth_refresh' });
+      tokenCache.set(token, { pb, expiry: now + 15000 });
     } catch {
       pb.authStore.clear();
     }
@@ -120,6 +148,12 @@ function getAdminCredentials(): { email: string; password: string } {
   return { email, password };
 }
 
+function base64UrlDecode(str: string): string {
+  let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (base64.length % 4) base64 += '=';
+  return atob(base64);
+}
+
 export async function pbAdmin(): Promise<PocketBase> {
   // Return cached valid client
   if (_adminPb) {
@@ -138,9 +172,48 @@ export async function pbAdmin(): Promise<PocketBase> {
   const pb = new PocketBase(PB_URL);
   const { email, password } = getAdminCredentials();
 
+  // Try to load cached token from disk first to bypass costly authWithPassword (bcrypt)
+  if (typeof window === 'undefined') {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const pbDataDir = process.env.PB_DATA_DIR || path.join(process.cwd(), 'pb_data');
+      const tokenPath = path.join(pbDataDir, 'admin_token.json');
+      if (fs.existsSync(tokenPath)) {
+        const data = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+        if (data.token && data.model && data.email === email) {
+          const payload = JSON.parse(base64UrlDecode(data.token.split('.')[1]));
+          const now = Date.now();
+          if (payload.exp && payload.exp * 1000 > now) {
+            pb.authStore.save(data.token, data.model);
+            _adminPb = pb;
+            return pb;
+          }
+        }
+      }
+    } catch {}
+  }
+
   _adminAuthPromise = (async () => {
     // PocketBase v0.23+: admins are now _superusers collection
     await pb.collection('_superusers').authWithPassword(email, password);
+
+    // Save token to disk for caching across hot-reloads
+    if (typeof window === 'undefined') {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const pbDataDir = process.env.PB_DATA_DIR || path.join(process.cwd(), 'pb_data');
+        const tokenPath = path.join(pbDataDir, 'admin_token.json');
+        fs.mkdirSync(path.dirname(tokenPath), { recursive: true });
+        fs.writeFileSync(tokenPath, JSON.stringify({
+          token: pb.authStore.token,
+          model: pb.authStore.record,
+          email,
+        }, null, 2));
+      } catch {}
+    }
+
     _adminPb = pb;
     _adminAuthPromise = null;
     return pb;
