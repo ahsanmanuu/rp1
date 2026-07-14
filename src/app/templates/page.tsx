@@ -196,16 +196,6 @@ function TemplatesContent() {
     return filtered;
   }, [searchQuery, activeCategory, activeSubCategory, allTemplates]);
 
-  const handleCardClick = (templateId: string) => {
-    setSelected(templateId);
-    setPendingTemplateId(templateId);
-    if (projectId) {
-      handleApplyClick({ stopPropagation: () => {} } as any, templateId);
-    } else {
-      setShowModal(true);
-    }
-  };
-
   const handleApplyClick = async (e: React.MouseEvent, templateId: string) => {
     e.stopPropagation(); // Don't trigger the manage modal
     setSelected(templateId);
@@ -482,40 +472,38 @@ function TemplatesContent() {
                        animate={{ opacity: 1, y: 0 }}
                        exit={{ opacity: 0, scale: 0.95 }}
                        transition={{ delay: idx * 0.01 }}
-                       className={`group relative bg-[var(--card-bg)] rounded-2xl p-3.5 cursor-pointer overflow-hidden flex flex-col min-h-[240px] h-auto border-2 transition-all duration-300 shadow-[0_4px_12px_-2px_rgba(0,0,0,0.05)] hover:shadow-joy-premium ${
+                       className={`group relative bg-white rounded-2xl p-4 overflow-hidden flex flex-col min-h-[260px] h-auto border-2 transition-all duration-300 shadow-sm ${
                          selected === tpl.id ? "border-primary-joy bg-white" : "border-slate-200 hover:border-primary-joy/40"
                        }`}
-                       onClick={() => handleCardClick(tpl.id)}
                      >
                        <div className="relative z-10 flex flex-col h-full">
-                          <div className="flex justify-between items-start mb-2.5">
-                             <div className="w-8 h-8 rounded-lg bg-white shadow-sm overflow-hidden flex items-center justify-center p-1.5 border border-slate-100 group-hover:-translate-y-0.5 transition-all">
+                          <div className="flex justify-between items-start mb-3">
+                             <div className="w-10 h-10 rounded-lg bg-white shadow-sm overflow-hidden flex items-center justify-center p-1.5 border border-slate-100">
                                 <TemplateIcon src={tpl.icon} label={tpl.label} category={tpl.category} />
                              </div>
                               {(tpl.assetFolder || tpl.isCustom) && (
                                  <div className="flex items-center gap-1.5">
                                     <button 
                                       onClick={(e) => {
-                                         e.stopPropagation();
                                          setSelected(tpl.id);
                                          setPendingTemplateId(tpl.id);
                                          setShowManageModal(true);
                                       }}
-                                      className="p-1 text-slate-300 hover:text-primary-joy transition-colors bg-white rounded-md border border-slate-100 hover:border-primary-joy/20 shadow-sm"
+                                      className="p-1.5 text-slate-400 hover:text-primary-joy transition-colors bg-white rounded-md border border-slate-200 hover:border-primary-joy/20 shadow-sm"
                                       title="Manage Template Files"
                                     >
-                                       <Settings size={10} />
+                                       <Settings size={14} />
                                     </button>
                                     {tpl.isCustom && (
                                        <button 
                                          onClick={(e) => handleDeleteTemplate(e, tpl.id)}
-                                         className="p-1 text-slate-300 hover:text-rose-500 transition-colors bg-white rounded-md border border-slate-100 hover:border-rose-100 shadow-sm"
+                                         className="p-1.5 text-slate-400 hover:text-rose-500 transition-colors bg-white rounded-md border border-slate-200 hover:border-rose-100 shadow-sm"
                                          title="Delete Template"
                                        >
-                                          <Trash2 size={10} />
+                                          <Trash2 size={14} />
                                        </button>
                                     )}
-                                    <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[6px] font-black uppercase tracking-widest border ${
+                                    <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${
                                       tpl.isCustom ? "bg-blue-50 text-blue-600 border-blue-100" : "bg-emerald-50 text-emerald-600 border-emerald-100"
                                     }`}>
                                        {tpl.isCustom ? "Custom" : "Pro"}
@@ -524,57 +512,57 @@ function TemplatesContent() {
                               )}
                           </div>
 
-                          <div className="flex-1 space-y-1">
-                             <span className="text-[7.5px] font-black uppercase tracking-[0.15em] text-primary-joy/60">{tpl.publisher || (tpl.isCustom ? "User Content" : "LaTeX Archive")}</span>
-                             <h3 className="text-sm font-black tracking-tight text-slate-900 leading-tight group-hover:text-primary-joy transition-colors line-clamp-2">
+                          <div className="flex-1 space-y-1.5">
+                             <span className="text-xs font-black uppercase tracking-widest text-primary-joy/70">{tpl.publisher || (tpl.isCustom ? "User Content" : "LaTeX Archive")}</span>
+                             <h3 className="text-base font-black tracking-tight text-slate-900 leading-tight group-hover:text-primary-joy transition-colors line-clamp-2">
                                 {tpl.label}
                              </h3>
-                             <p className="text-slate-500 text-[10px] font-medium line-clamp-2 leading-snug">
+                             <p className="text-slate-600 text-sm font-medium line-clamp-2 leading-snug">
                                 {tpl.desc}
                              </p>
                           </div>
 
-                           <div className="mt-2 pt-2 border-t border-slate-100 flex flex-col gap-2.5">
+                           <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col gap-3">
                               <div className="flex flex-wrap gap-1.5">
                                  {tpl.fileExtensions?.map(ext => (
-                                    <span key={ext} className="px-1 py-0.5 rounded-md bg-slate-100/60 text-slate-400 text-[10px] font-black uppercase tracking-widest border border-slate-200/40">
+                                    <span key={ext} className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-xs font-bold uppercase tracking-widest border border-slate-200">
                                        {ext.startsWith('.') ? ext : `.${ext}`}
                                     </span>
                                  ))}
                                  {(!tpl.fileExtensions || tpl.fileExtensions.length === 0) && (
-                                    <span className="px-1 py-0.5 rounded-md bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest italic">
+                                    <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 text-xs font-bold uppercase tracking-widest italic">
                                        .source
                                     </span>
                                  )}
                               </div>
                               <div className="flex items-center justify-between">
-                                 <div className="flex flex-col gap-0.5">
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quality</span>
+                                 <div className="flex flex-col gap-1">
+                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Quality</span>
                                     <div className="flex gap-0.5">
                                        {[1,2,3,4,5].map(i => (
-                                          <div key={i} className={`w-1.5 h-0.5 rounded-full ${i <= (tpl.isCustom ? 5 : 4) ? "bg-primary-joy/30" : "bg-slate-100"}`} />
+                                          <div key={i} className={`w-2 h-1 rounded-full ${i <= (tpl.isCustom ? 5 : 4) ? "bg-primary-joy/40" : "bg-slate-200"}`} />
                                        ))}
                                     </div>
                                  </div>
                                  <button 
                                    onClick={(e) => handleApplyClick(e, tpl.id)}
-                                   className={`h-6 px-2.5 rounded-md font-black text-[7px] uppercase tracking-widest flex items-center gap-1.5 transition-all shadow-sm ${
+                                   className={`h-8 px-3 rounded-lg font-bold text-xs uppercase tracking-widest flex items-center gap-1.5 transition-all shadow-sm ${
                                      selected === tpl.id 
                                        ? "bg-primary-joy text-white" 
-                                       : "bg-white text-slate-600 border border-slate-100 hover:bg-slate-900 hover:text-white group-hover:border-transparent group-hover:shadow-md"
+                                       : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-900 hover:text-white"
                                    }`}
                                  >
                                     Use this Template
-                                    <ArrowUpRight size={8} />
+                                    <ArrowUpRight size={12} />
                                  </button>
                               </div>
                            </div>
                        </div>
                     </motion.div>
                  ))}
-               </AnimatePresence>
-            </div>
-         </div>
+              </AnimatePresence>
+           </div>
+        </div>
 
          <AnimatePresence>
             {showManageModal && (
