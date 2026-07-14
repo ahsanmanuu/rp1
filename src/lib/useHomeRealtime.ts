@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { createPb } from './pb';
 
 export interface HomeData {
   banners: any[];
@@ -15,9 +14,9 @@ export interface HomeData {
   footerLinks: any[];
   tasarStats: any[];
   platformStats: any[];
+  videos: any[];
+  floatingBanners: any[];
 }
-
-const ACTIVE_FILTER = 'isActive=true';
 
 const FALLBACK_DATA: HomeData = {
   banners: [
@@ -68,14 +67,13 @@ const FALLBACK_DATA: HomeData = {
     { groupTitle: 'Platform', label: 'Latexify', href: '/', sortOrder: 1 },
     { groupTitle: 'Platform', label: 'Pricing', href: '/pricing', sortOrder: 2 },
     { groupTitle: 'Platform', label: 'About Us', href: '/about', sortOrder: 3 },
-    { groupTitle: 'Platform', label: 'Contact Us', href: '/contact', sortOrder: 4 },
-    { groupTitle: 'Features', label: 'Latex Studio', href: '/latex-studio', sortOrder: 5 },
-    { groupTitle: 'Features', label: 'Templates', href: '/templates', sortOrder: 6 },
-    { groupTitle: 'Features', label: 'AI Review', href: '/reviewer', sortOrder: 7 },
-    { groupTitle: 'Support', label: 'Help Center', href: '/help', sortOrder: 8 },
-    { groupTitle: 'Support', label: 'Documentation', href: '/docs', sortOrder: 9 },
-    { groupTitle: 'Legal', label: 'Terms of Service', href: '/terms', sortOrder: 10 },
-    { groupTitle: 'Legal', label: 'Privacy Policy', href: '/privacy', sortOrder: 11 },
+    { groupTitle: 'Features', label: 'Latex Studio', href: '/latex-studio', sortOrder: 4 },
+    { groupTitle: 'Features', label: 'Templates', href: '/templates', sortOrder: 5 },
+    { groupTitle: 'Features', label: 'AI Review', href: '/reviewer', sortOrder: 6 },
+    { groupTitle: 'Support', label: 'Help Center', href: '/help', sortOrder: 7 },
+    { groupTitle: 'Support', label: 'Documentation', href: '/docs', sortOrder: 8 },
+    { groupTitle: 'Legal', label: 'Terms of Service', href: '/terms', sortOrder: 9 },
+    { groupTitle: 'Legal', label: 'Privacy Policy', href: '/privacy', sortOrder: 10 },
   ],
   tasarStats: [
     { label: 'Papers Processed', value: '12500', suffix: '+', sortOrder: 1, category: 'tools' },
@@ -91,31 +89,25 @@ const FALLBACK_DATA: HomeData = {
     { key: 'scholarsActive', value: 18450 },
     { key: 'systemsOperational', value: 1 },
   ],
+  videos: [],
+  floatingBanners: [],
 };
-
-const COLLECTIONS: { key: keyof HomeData; collection: string; filter?: string; sort: string }[] = [
-  { key: 'banners', collection: 'banners', filter: ACTIVE_FILTER, sort: 'sortOrder' },
-  { key: 'testimonials', collection: 'testimonials', filter: ACTIVE_FILTER, sort: 'sortOrder' },
-  { key: 'howItWorks', collection: 'how_it_works', filter: ACTIVE_FILTER, sort: 'sortOrder' },
-  { key: 'galleryItems', collection: 'gallery_items', filter: ACTIVE_FILTER, sort: 'sortOrder' },
-  { key: 'institutionLogos', collection: 'institution_logos', filter: ACTIVE_FILTER, sort: 'sortOrder' },
-  { key: 'features', collection: 'features', filter: ACTIVE_FILTER, sort: 'sortOrder' },
-  { key: 'benefits', collection: 'benefits', filter: ACTIVE_FILTER, sort: 'sortOrder' },
-  { key: 'productDetails', collection: 'product_details', filter: ACTIVE_FILTER, sort: 'sortOrder' },
-  { key: 'footerLinks', collection: 'footer_links', filter: ACTIVE_FILTER, sort: 'sortOrder' },
-  { key: 'tasarStats', collection: 'tasar_stats', filter: ACTIVE_FILTER, sort: 'sortOrder' },
-  { key: 'platformStats', collection: 'platform_stats', filter: undefined, sort: '' },
-];
 
 const INITIAL_DATA: HomeData = {
   banners: [], testimonials: [], howItWorks: [], galleryItems: [],
   institutionLogos: [], features: [], benefits: [], productDetails: [],
-  footerLinks: [], tasarStats: [], platformStats: [],
+  footerLinks: [], tasarStats: [], platformStats: [], videos: [], floatingBanners: [],
 };
+
+const HOME_KEYS: (keyof HomeData)[] = [
+  'banners', 'testimonials', 'howItWorks', 'galleryItems', 'institutionLogos',
+  'features', 'benefits', 'productDetails', 'footerLinks', 'tasarStats',
+  'platformStats', 'videos', 'floatingBanners',
+];
 
 function mergeWithFallback(fetched: HomeData): HomeData {
   const merged = { ...fetched };
-  for (const key of Object.keys(FALLBACK_DATA) as (keyof HomeData)[]) {
+  for (const key of HOME_KEYS) {
     if (!merged[key] || merged[key].length === 0) {
       merged[key] = FALLBACK_DATA[key];
     }
@@ -125,58 +117,22 @@ function mergeWithFallback(fetched: HomeData): HomeData {
 
 let cachedData: HomeData | null = null;
 
-async function fetchAllCollections(timeout = 2000): Promise<HomeData> {
-  const pb = createPb();
-  const results = await Promise.allSettled(
-    COLLECTIONS.map(({ key, collection, filter, sort }) =>
-      new Promise<{ key: keyof HomeData; records: any[] }>((resolve) => {
-        const timer = setTimeout(() => resolve({ key, records: [] }), timeout);
-        (async () => {
-          try {
-            const opts: any = { sort: sort || undefined };
-            if (filter) opts.filter = filter;
-            const records = await pb.collection(collection).getFullList(opts);
-            clearTimeout(timer);
-            resolve({ key, records });
-          } catch {
-            clearTimeout(timer);
-            resolve({ key, records: [] });
-          }
-        })();
-      })
-    )
-  );
-  const data = { ...INITIAL_DATA };
-  for (const r of results) {
-    if (r.status === 'fulfilled') {
-      (data as any)[r.value.key] = r.value.records;
+async function fetchAllCollections(): Promise<HomeData> {
+  try {
+    const res = await fetch('/api/content/homepage', { cache: 'no-store' });
+    const json = await res.json();
+    if (json.success && json.data) {
+      return mergeWithFallback(json.data);
     }
-  }
-  return mergeWithFallback(rewriteUrls(data));
-}
-
-function rewriteUrls(obj: any): any {
-  if (typeof obj === 'string') {
-    return obj.replace(/http:\/\/(127\.0\.0\.1|localhost):8090/g, '/pb');
-  }
-  if (Array.isArray(obj)) {
-    return obj.map(rewriteUrls);
-  }
-  if (obj !== null && typeof obj === 'object') {
-    const newObj: any = {};
-    for (const [key, value] of Object.entries(obj)) {
-      newObj[key] = rewriteUrls(value);
-    }
-    return newObj;
-  }
-  return obj;
+  } catch {}
+  return mergeWithFallback({ ...INITIAL_DATA });
 }
 
 export function useHomeRealtime(skip = false) {
   const [data, setData] = useState<HomeData>(cachedData || INITIAL_DATA);
 
   const fetchAll = useCallback(async () => {
-    const result = await fetchAllCollections(2000);
+    const result = await fetchAllCollections();
     cachedData = result;
     setData(result);
   }, []);

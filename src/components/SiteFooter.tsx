@@ -56,6 +56,7 @@ function resolveHref(link: FooterLink): string {
 interface SiteFooterProps {
   onProductClick?: (linkKey: string) => void;
   onLoginRequired?: () => void;
+  footerLinks?: any[];
 }
 
 const FALLBACK_LINKS: FooterLink[] = [
@@ -71,16 +72,20 @@ const FALLBACK_LINKS: FooterLink[] = [
   { id: 'fb-10', groupTitle: 'Legal', label: 'Privacy Policy', href: '/privacy', isActive: true, sortOrder: 10 },
 ];
 
-export default function SiteFooter({ onProductClick, onLoginRequired }: SiteFooterProps) {
+export default function SiteFooter({ onProductClick, onLoginRequired, footerLinks }: SiteFooterProps) {
   const [links, setLinks] = useState<FooterLink[]>([]);
   const { data: session } = useSession();
 
   useEffect(() => {
+    if (footerLinks && footerLinks.length > 0) {
+      setLinks(footerLinks);
+      return;
+    }
     fetch("/api/content/footer_links?activeOnly=true&sort=sortOrder")
       .then(r => r.json())
       .then(d => { if (d.success && d.data.length > 0) setLinks(d.data); else setLinks(FALLBACK_LINKS); })
       .catch(() => setLinks(FALLBACK_LINKS));
-  }, []);
+  }, [footerLinks]);
 
   const groups = links.reduce<Record<string, FooterLink[]>>((acc, link) => {
     if (!acc[link.groupTitle]) acc[link.groupTitle] = [];

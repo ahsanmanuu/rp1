@@ -160,7 +160,6 @@ export default function Home() {
   const [activeHowItWorks, setActiveHowItWorks] = useState<number>(0);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showHowItWorksModal, setShowHowItWorksModal] = useState(false);
-  const [videos, setVideos] = useState<any[]>([]);
 
   const banners = homeData.banners;
   const testimonials = homeData.testimonials;
@@ -173,6 +172,7 @@ export default function Home() {
   const howItWorks = homeData.howItWorks;
   const tasarStats = homeData.tasarStats;
   const platformStats = homeData.platformStats;
+  const videos = homeData.videos;
 
   const statResearchers = platformStats.find((s: any) => s.key === 'totalResearchers')?.value || 50000;
   const statPagesCompiled = platformStats.find((s: any) => s.key === 'pagesCompiled')?.value || 1200000;
@@ -188,17 +188,6 @@ export default function Home() {
     setMounted(true);
     if (status === "authenticated") router.replace("/dashboard");
   }, [status]);
-
-  useEffect(() => {
-    fetch('/api/content/videos')
-      .then(r => r.json())
-      .then(d => {
-        if (d.success && d.data.length > 0) {
-          setVideos(d.data.filter((v: any) => v.isActive).sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0)));
-        }
-      })
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     const len = testimonials.length || 1;
@@ -800,7 +789,7 @@ export default function Home() {
       </section>
 
       {/* ═══════════════ FOOTER ═══════════════ */}
-      <SiteFooter onProductClick={(key) => setActiveProduct(key)} onLoginRequired={() => setShowLoginModal(true)} />
+      <SiteFooter footerLinks={homeData.footerLinks} onProductClick={(key) => setActiveProduct(key)} onLoginRequired={() => setShowLoginModal(true)} />
 
       {/* ── Product Modal ── */}
       {activeProduct && (() => {
@@ -867,7 +856,7 @@ export default function Home() {
   return (
     <>
       {mainContent}
-      <FloatingBanner userEmail={session?.user?.email} />
+      <FloatingBanner userEmail={session?.user?.email} banners={homeData.floatingBanners} />
     </>
   );
 }

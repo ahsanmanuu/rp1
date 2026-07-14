@@ -17,34 +17,37 @@ interface FloatingBannerItem {
   sortOrder: number;
 }
 
-export default function FloatingBanner({ userEmail }: { userEmail?: string | null }) {
+export default function FloatingBanner({ userEmail, banners: propBanners }: { userEmail?: string | null; banners?: FloatingBannerItem[] }) {
   const [banner, setBanner] = useState<FloatingBannerItem | null>(null);
   const [visible, setVisible] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/content/floating_banners?activeOnly=true&sort=sortOrder")
-      .then(r => r.json())
-      .then(d => {
-        if (!d.success || cancelled) return;
-        const items: FloatingBannerItem[] = d.data || [];
-        const matched = items.find(b =>
-          b.targetType === "global" ||
-          (b.targetType === "specific" && b.targetEmail && userEmail && b.targetEmail.toLowerCase() === userEmail.toLowerCase())
-        );
-        if (matched) {
-          setBanner(matched);
-          requestAnimationFrame(() => {
-            if (!cancelled) setVisible(true);
-          });
-          const ms = (matched.duration || 5) * 1000;
-          setTimeout(() => { if (!cancelled) setVisible(false); }, ms + 600);
-        }
-      })
-      .catch(() => {});
+
+    function pickMatched(items: FloatingBannerItem[]) {
+      const matched = items.find(b =>
+        b.targetType === "global" ||
+        (b.targetType === "specific" && b.targetEmail && userEmail && b.targetEmail.toLowerCase() === userEmail.toLowerCase())
+      );
+      if (matched && !cancelled) {
+        setBanner(matched);
+        requestAnimationFrame(() => { if (!cancelled) setVisible(true); });
+        const ms = (matched.duration || 5) * 1000;
+        setTimeout(() => { if (!cancelled) setVisible(false); }, ms + 600);
+      }
+    }
+
+    if (propBanners && propBanners.length > 0) {
+      pickMatched(propBanners);
+    } else {
+      fetch("/api/content/floating_banners?activeOnly=true&sort=sortOrder")
+        .then(r => r.json())
+        .then(d => { if (d.success && !cancelled) pickMatched(d.data || []); })
+        .catch(() => {});
+    }
     return () => { cancelled = true; };
-  }, [userEmail]);
+  }, [userEmail, propBanners]);
 
   const handleClose = useCallback(() => {
     setVisible(false);
