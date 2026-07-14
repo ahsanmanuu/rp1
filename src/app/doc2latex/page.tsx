@@ -54,18 +54,7 @@ export default function Doc2LatexPage() {
             Our intelligent parsing engine preserves every equation, table, citation, and formatting rule — 
             bridging the gap between word processors and academic publishing.
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/upload"
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-base font-bold text-white transition-all hover:scale-[1.02] hover:shadow-xl"
-              style={{ background: 'linear-gradient(135deg, #6b38d4, var(--accent-primary))' }}>
-              <Upload size={18} /> Convert Document Now <ArrowRight size={18} />
-            </Link>
-            <Link href="/latex-studio/projects"
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-base font-bold transition-all hover:scale-[1.02]"
-              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-              Try LaTeX Studio <ArrowRight size={18} />
-            </Link>
-          </div>
+          
         </div>
       </section>
 
@@ -148,24 +137,6 @@ export default function Doc2LatexPage() {
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-20 px-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="p-8 md:p-14 rounded-3xl text-center relative overflow-hidden"
-            style={{ background: 'linear-gradient(135deg, color-mix(in srgb, #6b38d4 10%, transparent), color-mix(in srgb, var(--accent-primary) 8%, transparent))', border: '1px solid color-mix(in srgb, #6b38d4 20%, transparent)' }}>
-            <h2 className="text-2xl md:text-4xl font-black mb-4">Ready to Convert Your Document?</h2>
-            <p className="text-base opacity-70 mb-8 max-w-xl mx-auto">
-              Upload your Word document now and get clean, compilable LaTeX code in seconds. No signup required for basic conversion.
-            </p>
-            <Link href="/upload"
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-base font-bold text-white transition-all hover:scale-[1.02] hover:shadow-xl"
-              style={{ background: 'linear-gradient(135deg, #6b38d4, var(--accent-primary))' }}>
-              <Upload size={18} /> Start Conversion <ArrowRight size={18} />
-            </Link>
           </div>
         </div>
       </section>
