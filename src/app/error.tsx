@@ -5,6 +5,19 @@ import { motion } from 'framer-motion';
 import { AlertTriangle, RefreshCw, Home, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
 
+function isChunkLoadError(error: any): boolean {
+  const msg = error?.message || '';
+  const name = error?.name || '';
+  return (
+    msg.includes('Loading chunk') ||
+    msg.includes('Loading CSS') ||
+    msg.includes('Failed to fetch dynamically imported module') ||
+    msg.includes('A dynamic import failed') ||
+    name === 'ChunkLoadError' ||
+    name === 'ImportModuleError'
+  );
+}
+
 export default function GlobalError({
   error,
   reset,
@@ -13,11 +26,52 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Log the error to an error reporting service
+    if (isChunkLoadError(error)) {
+      const reloadKey = '__chunk_reload_' + window.location.pathname;
+      if (!sessionStorage.getItem(reloadKey)) {
+        sessionStorage.setItem(reloadKey, '1');
+        console.warn('[CHUNK_LOAD_ERROR] Auto-reloading...', error.message);
+        window.location.reload();
+        return;
+      }
+      sessionStorage.removeItem(reloadKey);
+      console.warn('[CHUNK_LOAD_ERROR] Reload already attempted, showing error UI');
+    }
     console.error('[GLOBAL_ERROR_BOUNDARY]', error);
   }, [error]);
 
+  const isChunk = isChunkLoadError(error);
   const isPrismaLock = error.message?.includes('locked') || error.message?.includes('EBUSY');
+
+  if (isChunk) {
+    return (
+      <div style={{
+        height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', background: '#050505',
+        color: '#fff', fontFamily: 'Inter, system-ui, sans-serif', textAlign: 'center'
+      }}>
+        <motion.div
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}
+        >
+          <div style={{
+            width: '64px', height: '64px', borderRadius: '16px',
+            background: 'rgba(56, 189, 248, 0.1)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center'
+          }}>
+            <RefreshCw size={32} color="#38bdf8" className="animate-spin" />
+          </div>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 900, letterSpacing: '-0.03em', margin: 0 }}>
+            Updating Application...
+          </h1>
+          <p style={{ fontSize: '0.95rem', color: 'rgba(255,255,255,0.5)', margin: 0 }}>
+            A new version is available. Reloading now...
+          </p>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div style={{

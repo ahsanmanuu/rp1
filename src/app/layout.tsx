@@ -65,7 +65,57 @@ export default function RootLayout({
       <head>
         <link rel="preload" href="/fonts/material-symbols-outlined.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
         <Script id="chunk-retry" strategy="afterInteractive">
-          {`(function(){var origCreateElement=document.createElement.bind(document);var retryMap={};document.createElement=function(tagName,options){var el=origCreateElement(tagName,options);if(tagName&&tagName.toLowerCase()==='script'&&el.src&&el.src.includes('/_next/static/chunks/')){var origSrc=el.src;(function(el2,src){var retries=0;el2.addEventListener('error',function errorHandler(){if(retries<3){retries++;retryMap[src]=retries;var newEl=origCreateElement('script',options);newEl.src=src+(src.includes('?')?'&':'?')+'retry='+retries;newEl.onload=function(){el2.onerror=null;el2.parentNode&&el2.parentNode.replaceChild(newEl,el2);};newEl.onerror=errorHandler;el2.parentNode&&el2.parentNode.insertBefore(newEl,el2.nextSibling);}else{el2.onerror=null;delete retryMap[src];}});})(el,origSrc);}return el;};if(typeof __webpack_chunk_load__!=='undefined'){var origChunkLoad=__webpack_chunk_load__;__webpack_chunk_load__=function(chunkId){var retries=0;function load(){return origChunkLoad(chunkId)['catch'](function(e){if(retries<3&&e&&(e.message&&e.message.includes('Loading chunk')||e.name==='ChunkLoadError')){retries++;return new Promise(function(r){setTimeout(r,1000*retries)})['then'](load);}throw e;});}return load();};}window.addEventListener('unhandledrejection',function(e){var msg=e.reason&&(e.reason.message||e.reason+'')||'';if(msg.includes('Loading chunk')||msg.includes('ChunkLoadError')||e.reason&&e.reason.name==='ChunkLoadError'){e.preventDefault();}});})()`}
+          {`(function(){
+var MAX_RETRIES=3;
+function isChunkError(e){
+  var m=(e&&(e.message||e.name))||'';
+  return m.indexOf('Loading chunk')!==-1||m.indexOf('Loading CSS')!==-1||m.indexOf('ChunkLoadError')!==-1||m.indexOf('Failed to fetch dynamically imported module')!==-1||m.indexOf('ImportModuleError')!==-1;
+}
+function forceReload(){setTimeout(function(){window.location.reload()},500)}
+
+/* Layer 1: Monkey-patch document.createElement for <script> tags */
+var origCreateElement=document.createElement.bind(document);
+document.createElement=function(tagName,options){
+  var el=origCreateElement(tagName,options);
+  if(tagName&&tagName.toLowerCase()==='script'&&el.src&&el.src.indexOf('/_next/static/chunks/')!==-1){
+    var origSrc=el.src,retries=0;
+    el.addEventListener('error',function errorHandler(){
+      if(retries<MAX_RETRIES){retries++;var d=new Date();var sep=origSrc.indexOf('?')!==-1?'&':'?';
+        var newEl=origCreateElement('script',{src:origSrc+sep+'_r='+retries+'&_t='+d.getTime()});
+        newEl.onerror=errorHandler;
+        el.parentNode&&el.parentNode.insertBefore(newEl,el.nextSibling);
+      }else{forceReload()}
+    });
+  }
+  return el;
+};
+
+/* Layer 2: Webpack runtime chunk loader */
+if(typeof __webpack_chunk_load__!=='undefined'){
+  var origChunkLoad=__webpack_chunk_load__;
+  __webpack_chunk_load__=function(chunkId){
+    var retries=0;
+    function load(){return origChunkLoad(chunkId).catch(function(e){
+      if(retries<MAX_RETRIES&&isChunkError(e)){retries++;return new Promise(function(r){setTimeout(r,1500*retries)}).then(load)}
+      throw e;
+    })}
+    return load();
+  };
+}
+
+/* Layer 3: window.onerror for script errors */
+window.addEventListener('error',function(e){
+  var t=e.target||{};
+  if(t.tagName==='SCRIPT'&&t.src&&t.src.indexOf('/_next/static/chunks/')!==-1){
+    e.preventDefault&&e.preventDefault();
+  }
+},true);
+
+/* Layer 4: Unhandled rejection guard (reload after retries exhausted) */
+window.addEventListener('unhandledrejection',function(e){
+  if(isChunkError(e.reason)){e.preventDefault();forceReload()}
+});
+})()`}
         </Script>
       </head>
       <body className="antialiased font-body" suppressHydrationWarning>
