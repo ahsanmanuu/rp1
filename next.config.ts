@@ -24,6 +24,10 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'brand.ieee.org',
       },
+      {
+        protocol: 'https',
+        hostname: 'www.cambridge.org',
+      },
     ],
   },
   // Keep all Prisma and Prisma-related dependencies external on the server to prevent bundler resolution hijacking
