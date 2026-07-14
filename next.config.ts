@@ -28,6 +28,70 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'www.cambridge.org',
       },
+      {
+        protocol: 'https',
+        hostname: '*.nature.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.springer.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.springeropen.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.acm.org',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.wiley.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.tandfonline.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.sagepub.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.oup.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.sciencedirect.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.arxiv.org',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.mdpi.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.frontiersin.org',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.plos.org',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.biorxiv.org',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.researchgate.net',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.semanticscholar.org',
+      },
     ],
   },
   // Keep all Prisma and Prisma-related dependencies external on the server to prevent bundler resolution hijacking
