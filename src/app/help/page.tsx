@@ -136,10 +136,10 @@ export default function HelpCenter() {
       {/* Support CTA */}
       <section className="py-16 px-6">
         <div className="max-w-4xl mx-auto">
-          <div className="p-8 md:p-12 rounded-3xl text-center relative overflow-hidden" 
+          <div className="p-8 md:p-12 rounded-3xl relative overflow-hidden" 
             style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent-primary) 8%, transparent), color-mix(in srgb, #6b38d4 5%, transparent))', border: '1px solid color-mix(in srgb, var(--accent-primary) 15%, transparent)' }}>
-            <h2 className="text-2xl md:text-3xl font-black mb-3">Still have questions?</h2>
-            <p className="text-sm opacity-70 mb-6 max-w-xl mx-auto text-justify">
+            <h2 className="text-2xl md:text-3xl font-black mb-3 text-center">Still have questions?</h2>
+            <p className="text-sm opacity-70 mb-6 max-w-xl mx-auto" style={{ textAlign: 'justify', textAlignLast: 'justify' }}>
               Our support team is here to assist you with LaTeX template integrations, custom API setup, or billing issues.
             </p>
             <div className="flex justify-center gap-3">
