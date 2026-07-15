@@ -2114,7 +2114,7 @@ export default function AdminAiCapsPage() {
                             {rule.agentFilter && rule.agentFilter !== '*' && (
                               <>
                                 <span className="w-1 h-1 rounded-full" style={{ backgroundColor: 'var(--color-admin-outline-variant)' }} />
-                                <span>Agents: {JSON.parse(rule.agentFilter).join(', ')}</span>
+                                <span>Agents: {(() => { try { return JSON.parse(rule.agentFilter).join(', '); } catch { return rule.agentFilter || '*'; } })()}</span>
                               </>
                             )}
                             <span className="w-1 h-1 rounded-full" style={{ backgroundColor: 'var(--color-admin-outline-variant)' }} />

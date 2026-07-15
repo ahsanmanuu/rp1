@@ -459,7 +459,7 @@ export default function AdminAnomaliesPage() {
                     <div className="mt-4 pt-4 border-t text-xs font-mono" style={{ borderColor: "var(--color-admin-outline-variant)" }}>
                       <p className="font-semibold mb-2" style={{ color: "var(--color-admin-on-surface-variant)" }}>Metadata</p>
                       <pre className="p-3 rounded-lg overflow-x-auto" style={{ backgroundColor: "var(--color-admin-surface-container-high)", color: "var(--color-admin-on-surface)" }}>
-                        {JSON.stringify(typeof alert.metadata === "string" ? JSON.parse(alert.metadata) : alert.metadata, null, 2)}
+                        {JSON.stringify((() => { try { return typeof alert.metadata === "string" ? JSON.parse(alert.metadata) : alert.metadata; } catch { return alert.metadata || {}; } })(), null, 2)}
                       </pre>
                     </div>
                   )}
