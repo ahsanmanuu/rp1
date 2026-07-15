@@ -60,16 +60,23 @@ interface SiteFooterProps {
 }
 
 const FALLBACK_LINKS: FooterLink[] = [
-  { id: 'fb-1', groupTitle: 'Platform', label: 'Latexify', href: '/', isActive: true, sortOrder: 1 },
-  { id: 'fb-2', groupTitle: 'Platform', label: 'Pricing', href: '/pricing', isActive: true, sortOrder: 2 },
-  { id: 'fb-3', groupTitle: 'Platform', label: 'About Us', href: '/about', isActive: true, sortOrder: 3 },
-  { id: 'fb-4', groupTitle: 'Features', label: 'Latex Studio', href: '/latex-studio', isActive: true, sortOrder: 4 },
-  { id: 'fb-5', groupTitle: 'Features', label: 'Templates', href: '/templates', isActive: true, sortOrder: 5 },
-  { id: 'fb-6', groupTitle: 'Features', label: 'AI Review', href: '/reviewer/studio', isActive: true, sortOrder: 6 },
-  { id: 'fb-7', groupTitle: 'Support', label: 'Help Center', href: '/help', isActive: true, sortOrder: 7 },
-  { id: 'fb-8', groupTitle: 'Support', label: 'Documentation', href: '/docs', isActive: true, sortOrder: 8 },
-  { id: 'fb-9', groupTitle: 'Legal', label: 'Terms of Service', href: '/terms', isActive: true, sortOrder: 9 },
-  { id: 'fb-10', groupTitle: 'Legal', label: 'Privacy Policy', href: '/privacy', isActive: true, sortOrder: 10 },
+  { id: 'fb-1', groupTitle: 'Products', label: 'Latexify Studio', href: '/latex-studio', linkKey: 'Latexify Studio', isActive: true, sortOrder: 1 },
+  { id: 'fb-2', groupTitle: 'Products', label: 'Doc2Latex', href: '/upload', linkKey: 'Doc2Latex', isActive: true, sortOrder: 2 },
+  { id: 'fb-3', groupTitle: 'Products', label: 'Diagram Studio', href: '/diagrams/editor', linkKey: 'Diagram Studio', isActive: true, sortOrder: 3 },
+  { id: 'fb-4', groupTitle: 'Products', label: 'Template Migrator', href: '/template-migrator/studio', linkKey: 'Template Migrator', isActive: true, sortOrder: 4 },
+  { id: 'fb-5', groupTitle: 'Products', label: 'Citation Studio', href: '/citations/studio', linkKey: 'Citation Studio', isActive: true, sortOrder: 5 },
+  { id: 'fb-6', groupTitle: 'Products', label: 'AI Peer Reviewer', href: '/reviewer/studio', linkKey: 'AI Peer Reviewer', isActive: true, sortOrder: 6 },
+  { id: 'fb-7', groupTitle: 'Resources', label: 'Pricing', href: '/pricing', isActive: true, sortOrder: 1 },
+  { id: 'fb-8', groupTitle: 'Resources', label: 'Templates Gallery', href: '/templates', isActive: true, sortOrder: 2 },
+  { id: 'fb-9', groupTitle: 'Resources', label: 'Help Center', href: '/help', isActive: true, sortOrder: 3 },
+  { id: 'fb-10', groupTitle: 'Company', label: 'About Us', href: '/about', isActive: true, sortOrder: 1 },
+  { id: 'fb-11', groupTitle: 'Company', label: 'Careers', href: '/careers', isActive: true, sortOrder: 2 },
+  { id: 'fb-12', groupTitle: 'Company', label: 'Blog', href: '/blog', isActive: true, sortOrder: 3 },
+  { id: 'fb-13', groupTitle: 'Company', label: 'Contact', href: '/contact', isActive: true, sortOrder: 4 },
+  { id: 'fb-14', groupTitle: 'Legal', label: 'Privacy Policy', href: '/privacy', isActive: true, sortOrder: 1 },
+  { id: 'fb-15', groupTitle: 'Legal', label: 'Terms of Service', href: '/terms', isActive: true, sortOrder: 2 },
+  { id: 'fb-16', groupTitle: 'Legal', label: 'Cookie Policy', href: '/cookies', isActive: true, sortOrder: 3 },
+  { id: 'fb-17', groupTitle: 'Legal', label: 'GDPR', href: '/gdpr', isActive: true, sortOrder: 4 },
 ];
 
 export default function SiteFooter({ onProductClick, onLoginRequired, footerLinks }: SiteFooterProps) {

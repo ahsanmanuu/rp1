@@ -789,7 +789,7 @@ export default function Home() {
       </section>
 
       {/* ═══════════════ FOOTER ═══════════════ */}
-      <SiteFooter footerLinks={homeData.footerLinks} onProductClick={(key) => setActiveProduct(key)} onLoginRequired={() => setShowLoginModal(true)} />
+      <SiteFooter onProductClick={(key) => setActiveProduct(key)} onLoginRequired={() => setShowLoginModal(true)} />
 
       {/* ── Product Modal ── */}
       {activeProduct && (() => {
