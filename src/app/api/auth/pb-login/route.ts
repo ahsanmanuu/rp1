@@ -115,23 +115,6 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    try {
-      const { pbAdmin } = await import("@/lib/pb");
-      const admPb = await pbAdmin();
-      await admPb.collection("user_sessions").create({
-        userId,
-        sessionToken,
-        machineId: clientMachineId,
-        ipAddress,
-        location,
-        userAgent,
-        lastActiveAt: new Date().toISOString(),
-        expiresAt: expiresAt.toISOString(),
-      });
-    } catch (pbErr: any) {
-      console.error("[AUTH] PocketBase user_sessions sync failed:", pbErr.message);
-    }
-
     const user = {
       id: record.id,
       email: record.email,

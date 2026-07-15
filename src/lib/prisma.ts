@@ -265,7 +265,8 @@ function collectionProxy(collectionName: string) {
                 }
               }
               return result;
-            } catch {
+            } catch (e: any) {
+              console.error(`[pb-adapter] aggregate failed for ${collectionName}:`, e?.message || e);
               return { _count: {}, _sum: {}, _avg: {}, _min: {}, _max: {} };
             }
           }
@@ -300,7 +301,8 @@ function collectionProxy(collectionName: string) {
                 // Include other aggregate keys as needed
                 return entry;
               });
-            } catch {
+            } catch (e: any) {
+              console.error(`[pb-adapter] groupBy failed for ${collectionName}:`, e?.message || e);
               return [];
             }
           }

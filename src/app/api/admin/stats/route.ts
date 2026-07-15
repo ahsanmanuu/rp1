@@ -183,19 +183,19 @@ export async function GET(_req: NextRequest) {
     }
 
     // 3. Query actual count aggregates (parallelize independent DB queries)
-    const [realUserCount, realProjectCount, rechargeTx, membershipTx, tokensAgg, activeUserIds, premiumUsersCount] = await Promise.all([
+    const [realUserCount, realProjectCount, rechargeTx, membershipTx, tokensAgg, activeSessionsRaw, premiumUsersCount] = await Promise.all([
       prisma.user.count(),
       prisma.project.count(),
       prisma.pointTransaction.findMany({ where: { type: 'recharge' }, select: { amount: true } }),
       prisma.membershipTransaction.findMany({ where: { paymentStatus: 'paid' }, select: { amount: true } }),
       prisma.aiUsageLog.aggregate({ _sum: { totalTokens: true } }),
-      prisma.userSession.groupBy({
-        by: ['userId'],
+      // Use findMany + JS dedup instead of groupBy (more reliable with PB proxy)
+      prisma.userSession.findMany({
         where: {
           lastActiveAt: { gte: new Date(Date.now() - 15 * 60 * 1000) },
           expiresAt: { gte: new Date() },
         },
-        _count: { id: true },
+        select: { userId: true },
       }),
       prisma.user.count({
         where: {
@@ -204,6 +204,7 @@ export async function GET(_req: NextRequest) {
         },
       }),
     ]);
+    const activeUserIds = [...new Set(activeSessionsRaw.map((s: any) => s.userId))];
     let rechargesInr = 0;
     rechargeTx.forEach((tx: any) => {
       if (tx.amount === 50) rechargesInr += 415;
@@ -516,15 +517,15 @@ export async function GET(_req: NextRequest) {
     for (let i = 3; i >= 0; i--) {
       const windowEnd = new Date(now.getTime() - i * 60 * 60 * 1000);
       const windowStart = new Date(now.getTime() - (i + 1) * 60 * 60 * 1000);
-      const activeUsers = await prisma.userSession.groupBy({
-        by: ['userId'],
+      const activeSessions = await prisma.userSession.findMany({
         where: {
           lastActiveAt: { gte: windowStart, lt: windowEnd },
           expiresAt: { gte: new Date() },
         },
-        _count: { id: true },
+        select: { userId: true },
       });
-      activeNowTrend.push(activeUsers.length);
+      const uniqueUsers = [...new Set(activeSessions.map((s: any) => s.userId))];
+      activeNowTrend.push(uniqueUsers.length);
     }
 
     const [premiumTrend, freeTierTrend, blacklistedTrend, abnormalTrend] = await Promise.all([
