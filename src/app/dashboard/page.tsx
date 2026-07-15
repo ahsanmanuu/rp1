@@ -694,11 +694,16 @@ export default function DashboardPage() {
     ];
   }, []);
 
+  useEffect(() => {
+    if (status === "unauthenticated" && !_loading && !session) {
+      router.replace("/login");
+    }
+  }, [status, _loading, session, router]);
+
   if (status === "loading" || _loading) {
     return <ProLoader />;
   }
   if (!session) {
-    router.replace("/login");
     return <ProLoader />;
   }
 

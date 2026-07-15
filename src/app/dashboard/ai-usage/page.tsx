@@ -141,12 +141,17 @@ export default function AiUsagePage() {
     };
   }, [status, fetchStatus, fetchHistory]);
 
+  useEffect(() => {
+    if (status === 'unauthenticated' && !loading && !session) {
+      router.replace("/login");
+    }
+  }, [status, loading, session, router]);
+
   if (status === 'loading' || loading) {
     return <ProLoader />;
   }
 
   if (!session) {
-    router.replace("/register");
     return <ProLoader />;
   }
 
