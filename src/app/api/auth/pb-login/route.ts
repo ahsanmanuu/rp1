@@ -68,22 +68,27 @@ export async function POST(req: NextRequest) {
     const userAgent = geo.userAgent || req.headers.get("user-agent") || "unknown";
     const clientMachineId = machineId || "unknown";
 
-    // Check for any existing active sessions for this user
+    // Check for existing active sessions from OTHER machines
     const existingSessions = await prisma.userSession.findMany({
       where: {
         userId,
         expiresAt: { gte: new Date() },
+        machineId: { not: clientMachineId },
       },
     });
 
     if (existingSessions.length > 0) {
-      // Return 409 to trigger the duplicate login modal on the client
+      // Return 2 most recent other sessions
+      const recentTwo = existingSessions
+        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 2);
+
       return NextResponse.json(
         {
           error: "ALREADY_LOGGED_IN",
           message: "Active session detected on another device.",
           existingSessionCount: existingSessions.length,
-          sessionDetails: existingSessions.map((s: any) => ({
+          sessionDetails: recentTwo.map((s: any) => ({
             ipAddress: s.ipAddress || "Unknown IP",
             location: s.location || "Unknown Location",
             machineId: s.machineId || "Unknown Machine",

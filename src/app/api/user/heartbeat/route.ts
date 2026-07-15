@@ -22,23 +22,9 @@ export async function POST(_req: NextRequest) {
       data: { lastActiveAt: now, expiresAt: newExpiresAt },
     });
 
-    // If session was deleted (e.g. force-login from another device), recreate it
+    // Session was deleted (force-logout from another device) — do NOT recreate
     if (count === 0) {
-      const { getClientGeoInfo } = await import("@/lib/clientGeo");
-      const geo = await getClientGeoInfo(_req);
-
-      await prisma.userSession.create({
-        data: {
-          userId,
-          sessionToken: token,
-          machineId: "heartbeat-recovered",
-          ipAddress: geo.ipAddress || "unknown",
-          location: geo.location || "Unknown Location",
-          userAgent: geo.userAgent || _req.headers.get("user-agent") || "unknown",
-          lastActiveAt: now,
-          expiresAt: newExpiresAt,
-        },
-      });
+      return NextResponse.json({ success: false, error: "Session terminated" }, { status: 401 });
     }
 
     return NextResponse.json({ success: true });

@@ -54,20 +54,27 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
           setData(json);
           setStatus("authenticated");
           sessionTokenRef.current = json.token || null;
+          // Store token in localStorage for PB real-time subscription
+          if (json.token && typeof window !== "undefined") {
+            localStorage.setItem("auth-token", json.token);
+          }
         } else {
           setData(null);
           setStatus("unauthenticated");
           sessionTokenRef.current = null;
+          if (typeof window !== "undefined") localStorage.removeItem("auth-token");
         }
       } else {
         setData(null);
         setStatus("unauthenticated");
         sessionTokenRef.current = null;
+        if (typeof window !== "undefined") localStorage.removeItem("auth-token");
       }
     } catch {
       setData(null);
       setStatus("unauthenticated");
       sessionTokenRef.current = null;
+      if (typeof window !== "undefined") localStorage.removeItem("auth-token");
     } finally {
       isFetching.current = false;
     }
@@ -161,11 +168,9 @@ export function useSession(options?: { required?: boolean; onUnauthenticated?: (
 }
 
 export async function signOut(options?: { callbackUrl?: string }) {
-  // Set a global flag so AutoLogoutWatcher in both providers knows
-  // this is an explicit user-initiated logout and should NOT race
-  // with router.push("/login") against the full page navigation below.
   if (typeof window !== "undefined") {
     (window as any).__latexy_signOutInProgress = true;
+    localStorage.removeItem("auth-token");
   }
   try {
     await fetch("/api/auth/pb-logout", { method: "POST" });

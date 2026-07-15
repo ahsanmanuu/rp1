@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useSession } from '@/lib/pb-auth-react';
 
 export function Heartbeat() {
-  const { data: session } = useSession();
+  const { data: session, update } = useSession();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -17,9 +17,12 @@ export function Heartbeat() {
     }
 
     const ping = () => {
-      fetch('/api/user/heartbeat', { method: 'POST' }).catch((err) => {
-        console.warn('[HEARTBEAT] Failed to ping:', err);
-      });
+      fetch('/api/user/heartbeat', { method: 'POST' }).then((res) => {
+        if (res.status === 401) {
+          // Session was deleted (force-logout) — refresh to sync state
+          update();
+        }
+      }).catch(() => {});
     };
 
     ping();
@@ -31,7 +34,7 @@ export function Heartbeat() {
         intervalRef.current = null;
       }
     };
-  }, [session?.user]);
+  }, [session?.user, update]);
 
   return null;
 }
