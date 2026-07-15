@@ -38,7 +38,7 @@ export default function FloatingBanner({ userEmail, banners: propBanners }: { us
       }
     }
 
-    if (propBanners && propBanners.length > 0) {
+    if (propBanners !== undefined) {
       pickMatched(propBanners);
     } else {
       fetch("/api/content/floating_banners?activeOnly=true&sort=sortOrder")

@@ -161,9 +161,9 @@ export default function Home() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showHowItWorksModal, setShowHowItWorksModal] = useState(false);
 
-  const banners = homeData.banners;
+  const banners = homeData.banners.filter((b: any) => b.imageUrl && b.imageUrl !== 'null');
   const testimonials = homeData.testimonials;
-  const galleryItems = homeData.galleryItems;
+  const galleryItems = homeData.galleryItems.filter((g: any) => g.imageUrl && g.imageUrl !== 'null');
   const institutionLogos = homeData.institutionLogos;
   const features = homeData.features.length > 0 ? homeData.features : FALLBACK_FEATURES;
   const benefits = homeData.benefits;
@@ -232,10 +232,10 @@ export default function Home() {
                   <div key={banner.id || `fb-${idx}`} className="w-full flex-shrink-0 relative">
                     {banner.linkUrl ? (
                       <a href={banner.linkUrl} target="_blank" rel="noopener noreferrer">
-                        <Image src={banner.imageUrl} alt={banner.title} width={1200} height={400} className="w-full h-[300px] md:h-[400px] object-cover rounded-2xl" />
+                        <Image src={banner.imageUrl} alt={banner.title || 'Banner'} width={1200} height={400} className="w-full h-[300px] md:h-[400px] object-cover rounded-2xl" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                       </a>
                     ) : (
-                      <Image src={banner.imageUrl} alt={banner.title} width={1200} height={400} className="w-full h-[300px] md:h-[400px] object-cover rounded-2xl" />
+                      <Image src={banner.imageUrl} alt={banner.title || 'Banner'} width={1200} height={400} className="w-full h-[300px] md:h-[400px] object-cover rounded-2xl" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent rounded-2xl" />
                     <div className="absolute bottom-6 left-6 text-white">

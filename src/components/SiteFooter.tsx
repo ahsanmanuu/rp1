@@ -77,8 +77,8 @@ export default function SiteFooter({ onProductClick, onLoginRequired, footerLink
   const { data: session } = useSession();
 
   useEffect(() => {
-    if (footerLinks && footerLinks.length > 0) {
-      setLinks(footerLinks);
+    if (footerLinks !== undefined) {
+      setLinks(footerLinks.length > 0 ? footerLinks : FALLBACK_LINKS);
       return;
     }
     fetch("/api/content/footer_links?activeOnly=true&sort=sortOrder")
