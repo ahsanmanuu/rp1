@@ -35,38 +35,71 @@ export function createPb() {
   return new PocketBase(PB_URL);
 }
 
-const tokenCache = new Map<string, { pb: PocketBase; expiry: number }>();
+const recordCache = new Map<string, { record: any; expiry: number }>();
+const recordAuthPromises = new Map<string, Promise<any>>();
 
 /**
  * Server-side PocketBase client rehydrated from an auth token cookie.
  * Automatically loads the user record so authStore.record is available.
  * Cached for 60 seconds to avoid redundant authRefresh calls during concurrent sub-requests.
+ * Concurrent requests for the same token are deduplicated using in-flight record promises.
+ * Always returns a fresh, independent PocketBase client instance to prevent request contamination.
  */
-export async function authFromToken(token: string) {
+export async function authFromToken(token: string): Promise<PocketBase> {
   const now = Date.now();
 
   // Clean up cache if too large
-  if (tokenCache.size > 1000) {
-    for (const [k, v] of tokenCache.entries()) {
-      if (v.expiry < now) tokenCache.delete(k);
+  if (recordCache.size > 1000) {
+    for (const [k, v] of recordCache.entries()) {
+      if (v.expiry < now) recordCache.delete(k);
     }
   }
 
-  const cached = tokenCache.get(token);
-  if (cached && cached.expiry > now && cached.pb.authStore.isValid && cached.pb.authStore.record) {
-    return cached.pb;
-  }
-
+  // Create a fresh PocketBase client instance for this request
   const pb = new PocketBase(PB_URL);
-  pb.authStore.save(token, null);
-  if (pb.authStore.isValid) {
-    try {
-      await pb.collection('users').authRefresh({ requestKey: 'auth_refresh' });
-      tokenCache.set(token, { pb, expiry: now + 60000 });
-    } catch {
-      pb.authStore.clear();
-    }
+
+  // 1. Check completed cache
+  const cached = recordCache.get(token);
+  if (cached && cached.expiry > now && cached.record) {
+    pb.authStore.save(token, cached.record);
+    return pb;
   }
+
+  // 2. Check in-flight promise to deduplicate concurrent requests for the same token
+  let promise = recordAuthPromises.get(token);
+  if (!promise) {
+    // Create a temporary client instance just to fetch the record
+    const tempPb = new PocketBase(PB_URL);
+    tempPb.authStore.save(token, null);
+    if (!tempPb.authStore.isValid) {
+      pb.authStore.save(token, null);
+      return pb;
+    }
+
+    promise = (async () => {
+      try {
+        // Disable auto-cancellation inside PocketBase SDK by setting requestKey: null
+        const authData = await tempPb.collection('users').authRefresh({ requestKey: null });
+        const record = authData.record;
+        recordCache.set(token, { record, expiry: Date.now() + 60000 });
+        return record;
+      } catch (err) {
+        console.warn('[PB System] authRefresh failed for token:', err);
+        throw err;
+      } finally {
+        recordAuthPromises.delete(token);
+      }
+    })();
+    recordAuthPromises.set(token, promise);
+  }
+
+  try {
+    const record = await promise;
+    pb.authStore.save(token, record);
+  } catch (err) {
+    pb.authStore.clear();
+  }
+
   return pb;
 }
 
