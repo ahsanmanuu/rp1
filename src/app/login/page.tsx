@@ -6,7 +6,6 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { LogIn, Mail, Lock, AlertCircle, Loader2 } from "lucide-react";
 import LatexifyLogo from "@/components/LatexifyLogo";
-import ProLoader from "@/components/ProLoader";
 import { useSession } from "@/lib/pb-auth-react";
 
 export default function LoginPage() {
@@ -109,7 +108,12 @@ export default function LoginPage() {
     }
   };
 
-  if (status === "loading") return <ProLoader variant="login" />;
+  // If already authenticated, redirect to dashboard
+  useEffect(() => {
+    if (status === "authenticated") {
+      router.replace("/dashboard");
+    }
+  }, [status, router]);
 
   return (
     <div 

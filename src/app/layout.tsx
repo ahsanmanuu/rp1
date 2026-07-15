@@ -1,7 +1,6 @@
 import { Inter, Newsreader, Outfit, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { NextAuthProvider } from "@/components/Auth/NextAuthProvider";
-import { PocketBaseProvider } from "@/components/Auth/PocketBaseProvider";
 import { ConditionalNavbar } from "@/components/ConditionalNavbar";
 import { Toaster } from "react-hot-toast";
 import Script from "next/script";
@@ -10,7 +9,6 @@ import BroadcastBanner from "@/components/BroadcastBanner";
 import SecurityBlockOverlay from "@/components/SecurityBlockOverlay";
 import AiCapWarning from "@/components/AiCapWarning";
 import { Heartbeat } from "@/components/Heartbeat";
-import { getLogoUrlFromPb } from '@/lib/logo';
 
 const inter = Inter({
   subsets: ["latin"],
@@ -40,10 +38,7 @@ const newsreader = Newsreader({
 });
 
 export async function generateMetadata() {
-  let logoUrl = '/logo.png';
-  try {
-    logoUrl = await getLogoUrlFromPb();
-  } catch {}
+  const logoUrl = '/logo.png';
   return {
     title: "Latexify | Professional LaTeX Editorial for Researchers",
     description: "AI-powered LaTeX Studio: browser-based IDE with pdfLaTeX/LuaLaTeX/XeLaTeX, template gallery, PDF preview, and Word-to-LaTeX conversion. 100% free.",
@@ -119,31 +114,29 @@ window.addEventListener('unhandledrejection',function(e){
         </Script>
       </head>
       <body className="antialiased font-body" suppressHydrationWarning>
-        <PocketBaseProvider>
-          <NextAuthProvider>
-            <SecurityBlockOverlay />
-            <BroadcastBanner />
-            <InternetMonitor />
-            <Toaster 
-              position="bottom-right"
-              toastOptions={{
-                style: {
-                  background: '#ffffff',
-                  color: '#121c2a',
-                  border: '1px solid #c4c6cf',
-                  borderRadius: '12px',
-                  padding: '12px 24px',
-                },
-              }}
-            />
-            <ConditionalNavbar />
-            <AiCapWarning />
-            <Heartbeat />
-            <main>
-              {children}
-            </main>
-          </NextAuthProvider>
-        </PocketBaseProvider>
+        <NextAuthProvider>
+          <SecurityBlockOverlay />
+          <BroadcastBanner />
+          <InternetMonitor />
+          <Toaster 
+            position="bottom-right"
+            toastOptions={{
+              style: {
+                background: '#ffffff',
+                color: '#121c2a',
+                border: '1px solid #c4c6cf',
+                borderRadius: '12px',
+                padding: '12px 24px',
+              },
+            }}
+          />
+          <ConditionalNavbar />
+          <AiCapWarning />
+          <Heartbeat />
+          <main>
+            {children}
+          </main>
+        </NextAuthProvider>
       </body>
     </html>
   );

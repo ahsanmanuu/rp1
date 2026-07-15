@@ -26,49 +26,6 @@ export async function GET(req: NextRequest) {
     return response;
   }
 
-  // Dynamically detect user IP or location changes and update sessions
-  try {
-    const { getClientGeoInfo } = await import("@/lib/clientGeo");
-    const geo = await getClientGeoInfo(req);
-    
-    const currentIp = geo.ipAddress;
-    const currentLoc = geo.location || "Unknown Location";
-    
-    const ipChanged = currentIp && currentIp !== sessionRecord.ipAddress;
-    const locChanged = currentLoc && currentLoc !== "Unknown Location" && currentLoc !== sessionRecord.location;
-
-    if (ipChanged || locChanged) {
-      const nextIp = currentIp || sessionRecord.ipAddress;
-      const nextLoc = (currentLoc && currentLoc !== "Unknown Location") ? currentLoc : sessionRecord.location;
-
-      // Update Prisma
-      await prisma.userSession.update({
-        where: { id: sessionRecord.id },
-        data: {
-          ipAddress: nextIp,
-          location: nextLoc,
-        }
-      }).catch(() => null);
-
-      // Update PocketBase
-      try {
-        const { pbAdmin } = await import("@/lib/pb");
-        const admPb = await pbAdmin();
-        const pbRecord = await admPb.collection("user_sessions").getFirstListItem(`sessionToken = "${token}"`);
-        if (pbRecord) {
-          await admPb.collection("user_sessions").update(pbRecord.id, {
-            ipAddress: nextIp,
-            location: nextLoc,
-          });
-        }
-      } catch (pbErr: any) {
-        console.error("[SESSION] PocketBase user_sessions dynamic location update failed:", pbErr.message);
-      }
-    }
-  } catch (err: any) {
-    console.error("[SESSION] Live geolocation dynamic update failed:", err.message);
-  }
-
   const record = pb.authStore.record;
   const user = {
     id: record.id,
@@ -80,6 +37,43 @@ export async function GET(req: NextRequest) {
     membership: record.membership || "free",
     role: record.role || "user",
   };
+
+  // Fire-and-forget: update IP/location in background (non-blocking)
+  Promise.resolve().then(async () => {
+    try {
+      const { getClientGeoInfo } = await import("@/lib/clientGeo");
+      const geo = await getClientGeoInfo(req);
+
+      const currentIp = geo.ipAddress;
+      const currentLoc = geo.location || "Unknown Location";
+
+      const ipChanged = currentIp && currentIp !== sessionRecord.ipAddress;
+      const locChanged = currentLoc && currentLoc !== "Unknown Location" && currentLoc !== sessionRecord.location;
+
+      if (ipChanged || locChanged) {
+        const nextIp = currentIp || sessionRecord.ipAddress;
+        const nextLoc = (currentLoc && currentLoc !== "Unknown Location") ? currentLoc : sessionRecord.location;
+
+        prisma.userSession.update({
+          where: { id: sessionRecord.id },
+          data: { ipAddress: nextIp, location: nextLoc }
+        }).catch(() => null);
+
+        import("@/lib/pb").then(({ pbAdmin }) =>
+          pbAdmin().then(admPb =>
+            admPb.collection("user_sessions").getFirstListItem(`sessionToken = "${token}"`)
+              .then(pbRecord => {
+                if (pbRecord) {
+                  admPb.collection("user_sessions").update(pbRecord.id, {
+                    ipAddress: nextIp, location: nextLoc,
+                  }).catch(() => null);
+                }
+              })
+          )
+        ).catch(() => null);
+      }
+    } catch {}
+  });
 
   return NextResponse.json({ user, token });
 }

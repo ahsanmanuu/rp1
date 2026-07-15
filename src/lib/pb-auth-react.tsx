@@ -47,7 +47,7 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
     if (isFetching.current) return;
     isFetching.current = true;
     try {
-      const res = await fetch("/api/auth/pb-session");
+      const res = await fetch("/api/auth/pb-session", { signal: AbortSignal.timeout(10000) });
       if (res.ok) {
         const json = await res.json();
         if (json.user) {

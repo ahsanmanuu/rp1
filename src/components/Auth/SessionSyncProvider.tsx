@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useEffect } from "react";
-import { usePbSession } from "./PocketBaseProvider";
+import { useSession } from "@/lib/pb-auth-react";
 
 export function SessionSyncProvider({ children }: { children: React.ReactNode }) {
-  const { user, update } = usePbSession();
+  const { data: session, update } = useSession();
 
   useEffect(() => {
+    const user = session?.user;
     if (!user?.id) return;
 
     const checkSync = async () => {
@@ -18,10 +19,7 @@ export function SessionSyncProvider({ children }: { children: React.ReactNode })
           const currentPoints = user?.points;
           const currentMembership = user?.membership;
           if (data.points !== currentPoints || data.membership !== currentMembership) {
-            await update({
-              points: data.points,
-              membership: data.membership,
-            } as any);
+            await update();
           }
         }
       } catch (err) {
@@ -31,7 +29,7 @@ export function SessionSyncProvider({ children }: { children: React.ReactNode })
 
     const intervalId = setInterval(checkSync, 10000);
     return () => clearInterval(intervalId);
-  }, [user, update]);
+  }, [session, update]);
 
   return <>{children}</>;
 }

@@ -698,7 +698,7 @@ export default function DashboardPage() {
     return <ProLoader />;
   }
   if (!session) {
-    router.replace("/register");
+    router.replace("/login");
     return <ProLoader />;
   }
 
