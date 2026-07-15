@@ -10,6 +10,7 @@ export function ConditionalNavbar() {
   const hideNavbar = 
     pathname.startsWith('/latex-studio/') || 
     pathname.startsWith('/editor/') || 
+    pathname.startsWith('/diagrams/') || 
     pathname.startsWith('/doc2latex/') || 
     pathname.startsWith('/guest-studio') || 
     pathname.startsWith('/template-migrator/') ||

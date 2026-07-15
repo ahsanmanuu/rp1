@@ -636,7 +636,7 @@ function DiagramStudio() {
           return;
         }
         if (data.projectId) {
-          router.replace(`/diagrams?id=${data.projectId}`);
+          router.replace(`/diagrams/editor?id=${data.projectId}`);
         }
       })
       .catch(console.error);
@@ -1805,7 +1805,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                           }
                           if (data.projectId) {
                             setRecentMenuOpen(false);
-                            router.push(`/diagrams?id=${data.projectId}`);
+                            router.push(`/diagrams/editor?id=${data.projectId}`);
                           }
                         })
                         .catch(console.error)
@@ -1850,7 +1850,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                             key={proj.id}
                             onClick={() => {
                               setRecentMenuOpen(false);
-                              router.push(`/diagrams?id=${proj.id}`);
+                              router.push(`/diagrams/editor?id=${proj.id}`);
                             }}
                             className={`w-full text-left px-3 py-2.5 rounded-xl transition-all border flex items-start gap-3 group cursor-pointer ${
                               isActive
