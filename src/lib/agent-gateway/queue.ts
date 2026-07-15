@@ -132,4 +132,4 @@ export class AgentQueue {
   }
 }
 
-export const gatewayQueue = new AgentQueue(100, 60, 60_000);
+export const gatewayQueue = new AgentQueue(10, 60, 60_000);

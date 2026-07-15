@@ -122,12 +122,16 @@ let monitorTimer: ReturnType<typeof setInterval> | null = null;
 async function runTokenMonitor(): Promise<void> {
   try {
     const logs = await prisma.aiUsageLog.findMany({
+      where: {
+        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      },
       select: {
         model: true,
         promptTokens: true,
         completionTokens: true,
         totalTokens: true,
       },
+      take: 5000,
     });
 
     let opencodeTokens = 0;

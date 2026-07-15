@@ -236,7 +236,9 @@ function collectionProxy(collectionName: string) {
               const filter = toFilter(args?.where);
               const opts: Record<string, any> = { requestKey: `${collectionName}_aggregate_${filter || 'all'}_${Math.random().toString(36).slice(2, 6)}` };
               if (filter) opts.filter = filter;
-              const all = await col.getFullList(opts);
+              // Safety cap to prevent OOM on unbounded collections
+              if (args?.take) opts.requestKey += `_take${args.take}`;
+              const all = await col.getFullList({ ...opts, $autoCancel: false });
               const result: any = { _count: {}, _sum: {}, _avg: {}, _min: {}, _max: {} };
               if (args._count) {
                 result._count = Object.fromEntries(Object.keys(args._count).map(k => [k, all.length]));
@@ -273,7 +275,7 @@ function collectionProxy(collectionName: string) {
               const filter = toFilter(args?.where);
               const opts: Record<string, any> = { requestKey: `${collectionName}_groupBy_${filter || 'all'}_${Math.random().toString(36).slice(2, 6)}` };
               if (filter) opts.filter = filter;
-              const all = await col.getFullList(opts);
+              const all = await col.getFullList({ ...opts, $autoCancel: false });
               const byFields = args.by || [];
               const groups: Record<string, any[]> = {};
               for (const rec of all) {
@@ -396,6 +398,7 @@ function collectionProxy(collectionName: string) {
             case 'update': {
               const id = args?.where?.id;
               if (!id) throw new Error(`update requires where.id for collection ${collectionName}`);
+              for (let attempt = 0; attempt < 3; attempt++) {
               try {
                 let finalData = args?.data;
                 let hasNumericOp = false;
@@ -423,20 +426,24 @@ function collectionProxy(collectionName: string) {
                   }
                 }
                 const r = await col.update(id, mapWriteData(finalData), {
-                  requestKey: `${collectionName}_update_${id}`,
+                  requestKey: `${collectionName}_update_${id}_${attempt}`,
                 });
                 return mapRecord(r as any);
               } catch (e: any) {
                 if (e?.status === 404) return null;
+                if (attempt < 2) continue;
                 throw e;
               }
+              }
+              return null;
             }
 
             // ──────────────────────────────────────────────
             case 'upsert': {
+              for (let attempt = 0; attempt < 3; attempt++) {
               try {
                 const uFilter = toFilter(args?.where);
-                const uOpts: Record<string, any> = { requestKey: `${collectionName}_upsert_check` };
+                const uOpts: Record<string, any> = { requestKey: `${collectionName}_upsert_check_${attempt}` };
                 if (uFilter) uOpts.filter = uFilter;
                 const existing = await col.getList(1, 1, uOpts);
                 if (existing.items.length) {
@@ -467,18 +474,22 @@ function collectionProxy(collectionName: string) {
                     }
                   }
                   const r = await col.update(recordId, mapWriteData(finalUpdate), {
-                    requestKey: `${collectionName}_upsert_update`,
+                    requestKey: `${collectionName}_upsert_update_${recordId}`,
                   });
                   return mapRecord(r as any);
                 }
                 const r = await col.create(args?.create, {
-                  requestKey: `${collectionName}_upsert_create`,
+                  requestKey: `${collectionName}_upsert_create_${attempt}`,
                 });
                 return mapRecord(r as any);
               } catch (e: any) {
+                // Race condition: another request created the record between our check and create
+                if (e?.status === 400 && attempt < 2) continue;
                 if (e?.status === 404) return null;
                 throw e;
               }
+              }
+              return null;
             }
 
             // ──────────────────────────────────────────────

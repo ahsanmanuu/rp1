@@ -11,6 +11,7 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 };
 
 let cache: { data: any; expiry: number } | null = null;
+let inflight: Promise<NextResponse> | null = null;
 const CACHE_TTL = 30_000;
 
 export async function GET() {
@@ -19,21 +20,24 @@ export async function GET() {
     return NextResponse.json(cache.data);
   }
 
-  try {
-    const [userCount, projectCount, templateCount, recentUsers] = await Promise.all([
-      withTimeout(prisma.user.count(), 4000, 10),
-      withTimeout(prisma.project.count(), 4000, 25),
-      withTimeout(prisma.template.count(), 4000, 55),
-      withTimeout(
-        prisma.user.findMany({
-          take: 5,
-          orderBy: { createdAt: 'desc' },
-          select: { name: true, email: true }
-        }),
-        4000,
-        []
-      ),
-    ]);
+  if (inflight) return inflight;
+
+  inflight = (async () => {
+    try {
+      const [userCount, projectCount, templateCount, recentUsers] = await Promise.all([
+        withTimeout(prisma.user.count(), 4000, 10),
+        withTimeout(prisma.project.count(), 4000, 25),
+        withTimeout(prisma.template.count(), 4000, 55),
+        withTimeout(
+          prisma.user.findMany({
+            take: 5,
+            orderBy: { createdAt: 'desc' },
+            select: { name: true, email: true }
+          }),
+          4000,
+          []
+        ),
+      ]);
 
     const defaultInitials = ['E', 'J', 'S', 'A', 'R'];
     const initials = recentUsers.map((u: any) => {
@@ -76,5 +80,10 @@ export async function GET() {
       journalTemplates: 55,
       uptime: 100.0
     });
+  } finally {
+    inflight = null;
   }
+  })();
+
+  return inflight;
 }

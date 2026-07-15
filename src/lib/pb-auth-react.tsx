@@ -122,7 +122,7 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
               setStatus("unauthenticated");
               sessionTokenRef.current = null;
               // Clear cookie via logout endpoint
-              fetch("/api/auth/pb-logout", { method: "POST" }).catch(() => {});
+              fetch("/api/auth/pb-logout", { method: "POST", signal: AbortSignal.timeout(10000) }).catch(() => {});
             }
           }
         });
@@ -173,7 +173,7 @@ export async function signOut(options?: { callbackUrl?: string }) {
     localStorage.removeItem("auth-token");
   }
   try {
-    await fetch("/api/auth/pb-logout", { method: "POST" });
+    await fetch("/api/auth/pb-logout", { method: "POST", signal: AbortSignal.timeout(10000) });
   } catch { }
   if (typeof window !== "undefined") {
     window.location.href = options?.callbackUrl || "/login";

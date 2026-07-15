@@ -46,6 +46,7 @@ async function handler(request: NextRequest) {
       method: request.method,
       headers,
       body: body || null,
+      signal: AbortSignal.timeout(30000),
     });
 
     const resHeaders = new Headers(res.headers);

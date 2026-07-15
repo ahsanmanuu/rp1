@@ -21,6 +21,7 @@ export async function POST(request: Request) {
       headers: {
         'Accept': 'application/pdf',
       },
+      signal: AbortSignal.timeout(60000),
     });
 
     if (!response.ok) {

@@ -3,6 +3,10 @@ import { pbAdmin } from '@/lib/pb';
 
 export const dynamic = 'force-dynamic';
 
+let cache: { data: any; expiry: number } | null = null;
+let inflight: Promise<NextResponse> | null = null;
+const CACHE_TTL = 30_000;
+
 const COLLECTIONS: { key: string; collection: string; filter?: string; sort: string }[] = [
   { key: 'banners', collection: 'banners', filter: 'isActive = true', sort: 'sortOrder' },
   { key: 'testimonials', collection: 'testimonials', filter: 'isActive = true', sort: 'sortOrder' },
@@ -37,6 +41,14 @@ function rewriteUrls(obj: any): any {
 }
 
 export async function GET() {
+  const now = Date.now();
+  if (cache && cache.expiry > now) {
+    return NextResponse.json(cache.data);
+  }
+
+  if (inflight) return inflight;
+
+  inflight = (async () => {
   try {
     const pb = await pbAdmin();
     const results = await Promise.allSettled(
@@ -45,7 +57,7 @@ export async function GET() {
           try {
             const opts: any = { sort: sort || undefined };
             if (filter) opts.filter = filter;
-            const records = await pb.collection(collection).getFullList(opts);
+            const records = await pb.collection(collection).getFullList({ ...opts, $autoCancel: false });
             return { key, records };
           } catch {
             return { key, records: [] };
@@ -59,8 +71,15 @@ export async function GET() {
         data[r.value.key] = r.value.records;
       }
     }
-    return NextResponse.json({ success: true, data: rewriteUrls(data) });
+    const response = NextResponse.json({ success: true, data: rewriteUrls(data) });
+    cache = { data: { success: true, data: rewriteUrls(data) }, expiry: Date.now() + CACHE_TTL };
+    return response;
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } finally {
+    inflight = null;
   }
+  })();
+
+  return inflight;
 }

@@ -21,9 +21,10 @@ export async function POST() {
         const records = await admPb.collection("user_sessions").getFullList({
           filter: `sessionToken = "${token}"`,
           requestKey: null,
+          $autoCancel: false,
         });
-        for (const r of records) {
-          await admPb.collection("user_sessions").delete(r.id);
+        if (records.length > 0) {
+          await Promise.all(records.map((r: any) => admPb.collection("user_sessions").delete(r.id)));
         }
       } catch {}
     }

@@ -9,7 +9,7 @@ export function startBackgroundSync(): void {
     try {
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/admin/stats`,
-        { method: 'GET', headers: { 'x-internal-sync': 'true' } }
+        { method: 'GET', headers: { 'x-internal-sync': 'true' }, signal: AbortSignal.timeout(15000) }
       );
       if (res.ok) {
         lastSync = Date.now();

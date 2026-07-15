@@ -102,7 +102,7 @@ export const authOptions: NextAuthOptions = {
               
             if (ip && ip !== "127.0.0.1" && ip !== "::1" && ip !== "localhost") {
               const geoUrl = `http://ip-api.com/json/${ip}?fields=query,country,countryCode,regionName,city`;
-              const geoRes = await fetch(geoUrl).then(r => r.json()).catch(() => null);
+              const geoRes = await fetch(geoUrl, { signal: AbortSignal.timeout(5000) }).then(r => r.json()).catch(() => null);
               if (geoRes && geoRes.query) {
                 const parts = [geoRes.city, geoRes.regionName, geoRes.country].filter(Boolean);
                 location = parts.length > 0 ? parts.join(", ") : null;

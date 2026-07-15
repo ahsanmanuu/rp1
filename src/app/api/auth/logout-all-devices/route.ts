@@ -40,10 +40,13 @@ export async function POST(req: NextRequest) {
       const admPb = await pbAdmin();
       const list = await admPb.collection("user_sessions").getFullList({
         filter: `userId = "${userId}"`,
-        requestKey: null
+        requestKey: null,
+        $autoCancel: false,
       });
-      for (const s of list) {
-        await admPb.collection("user_sessions").delete(s.id);
+      // Batch delete to avoid N+1 sequential deletes
+      const ids = list.map((s: any) => s.id);
+      if (ids.length > 0) {
+        await Promise.all(ids.map((id: string) => admPb.collection("user_sessions").delete(id)));
       }
     } catch (pbErr: any) {
       console.error("[LOGOUT_ALL_DEVICES] PocketBase session deletion failed:", pbErr.message);

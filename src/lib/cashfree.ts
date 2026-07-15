@@ -39,7 +39,8 @@ export async function createCashfreeOrder(params: CashfreeOrderParams) {
       "x-client-id": CLIENT_ID,
       "x-client-secret": CLIENT_SECRET
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30000),
   });
 
   const data = await response.json();
@@ -65,7 +66,8 @@ export async function getCashfreeOrder(orderId: string) {
       "x-api-version": "2025-01-01",
       "x-client-id": CLIENT_ID,
       "x-client-secret": CLIENT_SECRET
-    }
+    },
+    signal: AbortSignal.timeout(15000),
   });
 
   const data = await response.json();

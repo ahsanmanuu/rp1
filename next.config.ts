@@ -230,7 +230,7 @@ const nextConfig: NextConfig = {
 
   experimental: {
     serverActions: {
-      bodySizeLimit: '2000mb',
+      bodySizeLimit: '100mb',
     },
     optimizePackageImports: ['lucide-react', 'pdfjs-dist', 'framer-motion'],
   },

@@ -776,7 +776,7 @@ export default function AdminUsersPage() {
     return matchesSearch && matchesTier && matchesStatus && matchesBehavior;
   });
 
-  if (!mounted || (loading && users.length === 0)) {
+  if (!mounted) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-slate-950 text-white relative overflow-hidden select-none">
         {/* Ambient glowing background */}
@@ -1313,7 +1313,9 @@ export default function AdminUsersPage() {
                     className={`p-4 rounded-xl border flex flex-col justify-between gap-3 cursor-pointer group select-none ${isActive ? 'shadow-lg' : 'hover:-translate-y-1 hover:shadow-lg'} transition-all duration-300 active:scale-[0.97]`}
                     style={{
                       backgroundColor: isActive ? s.color : 'var(--color-admin-surface-container)',
-                      borderColor: isActive ? s.color : 'var(--color-admin-outline-variant)',
+                      borderTopColor: isActive ? s.color : 'var(--color-admin-outline-variant)',
+                      borderLeftColor: isActive ? s.color : 'var(--color-admin-outline-variant)',
+                      borderRightColor: isActive ? s.color : 'var(--color-admin-outline-variant)',
                       borderBottomWidth: '3px',
                       borderBottomColor: s.color,
                     }}>

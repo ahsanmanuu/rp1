@@ -417,7 +417,7 @@ export default function Home() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {howItWorks.sort((a: any, b: any) => a.sortOrder - b.sortOrder).map((step: any, i: number) => (
-                <div key={step.id} className="relative group">
+                <div key={step.id ?? `hw-${i}`} className="relative group">
                   <div className="absolute -top-3 -left-3 w-12 h-12 rounded-2xl flex items-center justify-center text-white text-lg font-black"
                     style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))' }}>
                     {step.stepNumber || i + 1}
@@ -505,14 +505,14 @@ export default function Home() {
               </h2>
             </div>
             <div className="flex flex-wrap justify-center gap-4">
-              {tasarStats.sort((a: any, b: any) => a.sortOrder - b.sortOrder).map((stat: any) => {
+              {tasarStats.sort((a: any, b: any) => a.sortOrder - b.sortOrder).map((stat: any, i: number) => {
                 const catColors: Record<string, string> = {
                   tools: '#4f46e5', academic: '#059669', statistical: '#f59e0b',
                   analytics: '#0891b2', research: '#dc2626',
                 };
                 const color = stat.color || catColors[stat.category] || 'var(--accent-primary)';
                 return (
-                  <div key={stat.id} className="relative group w-[calc(50%-0.5rem)] md:w-[calc(20%-1rem)] min-w-[140px] max-w-[220px]">
+                  <div key={stat.id ?? `ts-${i}`} className="relative group w-[calc(50%-0.5rem)] md:w-[calc(20%-1rem)] min-w-[140px] max-w-[220px]">
                     <div className="p-6 rounded-2xl text-center transition-all duration-300 group-hover:shadow-xl group-hover:-translate-y-1"
                       style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
                       <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-3"
@@ -698,7 +698,7 @@ export default function Home() {
               <div className="flex transition-transform duration-500 ease-in-out"
                 style={{ transform: `translateX(-${activeTestimonial * 100}%)` }}>
                 {testimonials.map((t, i) => (
-                  <div key={t.id} className="w-full flex-shrink-0 px-4">
+                  <div key={t.id ?? `tm-${i}`} className="w-full flex-shrink-0 px-4">
                     <div className="p-8 md:p-10 rounded-3xl text-center max-w-2xl mx-auto"
                       style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)' }}>
                       <p className="text-base md:text-lg leading-relaxed mb-6 italic" style={{ color: 'var(--text-primary)', opacity: 0.9 }}>

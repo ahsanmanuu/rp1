@@ -19,10 +19,10 @@ if (typeof window === 'undefined') {
   try {
     const { setGlobalDispatcher, Agent } = require('undici');
     setGlobalDispatcher(new Agent({
-      connections: 5000,
-      pipelining: 10,
+      connections: 50,
+      pipelining: 5,
     }));
-    console.log('[PB System] undici global connection pool size increased to 5000');
+    console.log('[PB System] undici global connection pool size configured to 50');
   } catch (err: any) {
     console.warn('[PB System] Failed to configure undici global dispatcher:', err?.message || err);
   }

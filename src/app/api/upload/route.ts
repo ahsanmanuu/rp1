@@ -15,9 +15,7 @@ if (!(globalThis as any).__console_wrapped) {
     const time = new Date().toISOString();
     const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
     const line = `[${time}] [${type}] ${msg}\n`;
-    try {
-      fs.appendFileSync(runtimeLogPath, line);
-    } catch {}
+    fs.promises.appendFile(runtimeLogPath, line).catch(() => {});
   };
 
   console.log = (...args: any[]) => {

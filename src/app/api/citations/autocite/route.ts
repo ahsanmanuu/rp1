@@ -11,7 +11,8 @@ export async function POST(req: NextRequest) {
     if (id.includes('10.') || id.startsWith('doi:')) {
       const doi = id.replace('doi:', '').trim();
       const res = await fetch(`https://api.crossref.org/works/${doi}`, {
-        headers: { 'User-Agent': 'ScholarlyStudio/1.0 (mailto:support@scholarlystudio.com)' }
+        headers: { 'User-Agent': 'ScholarlyStudio/1.0 (mailto:support@scholarlystudio.com)' },
+        signal: AbortSignal.timeout(15000),
       });
       
       if (res.ok) {
@@ -34,7 +35,9 @@ export async function POST(req: NextRequest) {
     // 2. Check if it's an ISBN
     const cleanIsbn = id.replace(/[- ]/g, '');
     if (cleanIsbn.length === 10 || cleanIsbn.length === 13) {
-      const res = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${cleanIsbn}&format=json&jscmd=data`);
+      const res = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${cleanIsbn}&format=json&jscmd=data`, {
+        signal: AbortSignal.timeout(15000),
+      });
       const data = await res.json();
       const bookKey = `ISBN:${cleanIsbn}`;
       
@@ -68,7 +71,8 @@ export async function POST(req: NextRequest) {
 
     // 4. Fallback to Title Search via CrossRef
     const searchRes = await fetch(`https://api.crossref.org/works?query=${encodeURIComponent(id)}&rows=10`, {
-      headers: { 'User-Agent': 'ScholarlyStudio/1.0 (mailto:support@scholarlystudio.com)' }
+      headers: { 'User-Agent': 'ScholarlyStudio/1.0 (mailto:support@scholarlystudio.com)' },
+      signal: AbortSignal.timeout(15000),
     });
 
     if (searchRes.ok) {

@@ -11,6 +11,9 @@ const STATS_CACHE_TTL = 30_000; // 30 seconds
 // --- Seed once per cold start (never re-seed on every request) ---
 let _seeded = false;
 
+// --- Prevent cache stampede: only one concurrent computation at a time ---
+let _inflight: Promise<NextResponse> | null = null;
+
 // Helper to format Date as YYYY-MM-DD
 function getISODateStr(d: Date): string {
   return d.toISOString().split("T")[0];
@@ -117,12 +120,17 @@ async function seedInitialData() {
 }
 
 export async function GET(_req: NextRequest) {
+  // Serve from cache if fresh (avoids 45+ DB queries every 10s poll)
+  const nowTs = Date.now();
+  if (_statsCache && _statsCache.expiry > nowTs) {
+    return NextResponse.json(_statsCache.data);
+  }
+
+  // If another request is already computing, wait for it instead of starting a new one
+  if (_inflight) return _inflight;
+
+  _inflight = (async () => {
   try {
-    // Serve from cache if fresh (avoids 45+ DB queries every 10s poll)
-    const nowTs = Date.now();
-    if (_statsCache && _statsCache.expiry > nowTs) {
-      return NextResponse.json(_statsCache.data);
-    }
 
     const now = new Date();
     // 1. Ensure initial stats are seeded (only once per cold start)
@@ -587,7 +595,12 @@ export async function GET(_req: NextRequest) {
       { success: false, error: error.message || "Failed to retrieve statistics" },
       { status: 500 }
     );
+  } finally {
+    _inflight = null;
   }
+  })();
+
+  return _inflight;
 }
 
 // POST endpoint to handle system alerts broadcasts (POST ALERT)
