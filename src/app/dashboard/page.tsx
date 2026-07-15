@@ -695,10 +695,10 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (status === "unauthenticated" && !_loading && !session) {
+    if (status === "unauthenticated" && !session) {
       router.replace("/login");
     }
-  }, [status, _loading, session, router]);
+  }, [status, session, router]);
 
   if (status === "loading") {
     return <ProLoader />;

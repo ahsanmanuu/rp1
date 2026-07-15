@@ -142,10 +142,10 @@ export default function AiUsagePage() {
   }, [status, fetchStatus, fetchHistory]);
 
   useEffect(() => {
-    if (status === 'unauthenticated' && !loading && !session) {
+    if (status === 'unauthenticated' && !session) {
       router.replace("/login");
     }
-  }, [status, loading, session, router]);
+  }, [status, session, router]);
 
   if (status === 'loading') {
     return <ProLoader />;

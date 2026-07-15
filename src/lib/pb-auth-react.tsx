@@ -44,7 +44,6 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
   const sessionTokenRef = useRef<string | null>(null);
 
   const update = useCallback(async () => {
-    if (isFetching.current) return;
     isFetching.current = true;
     try {
       const res = await fetch("/api/auth/pb-session", { signal: AbortSignal.timeout(10000) });
