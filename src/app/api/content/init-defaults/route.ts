@@ -47,11 +47,11 @@ const PRODUCT_DETAILS = [
 
 const FOOTER_LINKS = [
   { groupTitle: 'Products', label: 'Latexify Studio', href: '/latex-studio', linkKey: 'Latexify Studio', isActive: true, sortOrder: 1 },
-  { groupTitle: 'Products', label: 'Doc2Latex', href: '/doc2latex', linkKey: 'Doc2Latex', isActive: true, sortOrder: 2 },
-  { groupTitle: 'Products', label: 'Diagram Studio', href: '/diagrams', linkKey: 'Diagram Studio', isActive: true, sortOrder: 3 },
-  { groupTitle: 'Products', label: 'Template Migrator', href: '/template-migrator', linkKey: 'Template Migrator', isActive: true, sortOrder: 4 },
-  { groupTitle: 'Products', label: 'Citation Studio', href: '/citations', linkKey: 'Citation Studio', isActive: true, sortOrder: 5 },
-  { groupTitle: 'Products', label: 'AI Peer Reviewer', href: '/reviewer', linkKey: 'AI Peer Reviewer', isActive: true, sortOrder: 6 },
+  { groupTitle: 'Products', label: 'Doc2Latex', href: '/upload', linkKey: 'Doc2Latex', isActive: true, sortOrder: 2 },
+  { groupTitle: 'Products', label: 'Diagram Studio', href: '/diagrams/editor', linkKey: 'Diagram Studio', isActive: true, sortOrder: 3 },
+  { groupTitle: 'Products', label: 'Template Migrator', href: '/template-migrator/studio', linkKey: 'Template Migrator', isActive: true, sortOrder: 4 },
+  { groupTitle: 'Products', label: 'Citation Studio', href: '/citations/studio', linkKey: 'Citation Studio', isActive: true, sortOrder: 5 },
+  { groupTitle: 'Products', label: 'AI Peer Reviewer', href: '/reviewer/studio', linkKey: 'AI Peer Reviewer', isActive: true, sortOrder: 6 },
   { groupTitle: 'Resources', label: 'Pricing', href: '/pricing', isActive: true, sortOrder: 1 },
   { groupTitle: 'Resources', label: 'Templates Gallery', href: '/templates', isActive: true, sortOrder: 2 },
   { groupTitle: 'Resources', label: 'Help Center', href: '/help', isActive: true, sortOrder: 3 },

@@ -5,7 +5,7 @@ import { createPb } from '@/lib/pb';
 
 export function usePbRealtime<T = any>(
   collection: string,
-  onEvent: (action: string, record: T) => void,
+  onEvent: (action?: string, record?: T) => void,
   options?: { filter?: string; enabled?: boolean }
 ) {
   const unsubRef = useRef<(() => void) | null>(null);
@@ -20,7 +20,12 @@ export function usePbRealtime<T = any>(
         const pb = createPb();
         const unsub = await pb.collection(collection).subscribe('*', (e) => {
           if (!cancelled) {
-            onEvent(e.action, e.record as unknown as T);
+            const handler = onEvent as any;
+            if (typeof handler.length === 'number' && handler.length === 0) {
+              handler();
+            } else {
+              onEvent(e.action, e.record as unknown as T);
+            }
           }
         }, options?.filter ? { filter: options.filter } : undefined);
         if (!cancelled) {

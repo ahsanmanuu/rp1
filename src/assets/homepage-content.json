@@ -13,7 +13,7 @@
       "id": "m3iu997a0lfnn0t",
       "imageUrl": "/ai_peer_reviewer_dashboard_1777058436599.png",
       "isActive": true,
-      "linkUrl": "/reviewer",
+      "linkUrl": "/reviewer/studio",
       "sortOrder": 2,
       "subtitle": "Get instant, scholarly feedback on clarity, argumentation, and methodology.",
       "title": "AI Peer Reviewer"
@@ -22,7 +22,7 @@
       "id": "6xb18lpphphn212",
       "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuCOfpdp7avfxHVymJ06UtjZny3PXYwWBlHy4rpi8PV7-YGXFfygei_YZV65NdCKAQfE4DuhwJVAdCrE4-JoRKmljz10dSgkNXgv5F3blSGIPbm-6vQRe0_OrtZzV49Mxi7nwF-XXZzkzf8YjZrLYr2o4KLZflRtfrY3WY0NNTblCY-q7F0rLGOfjwoHMxC6LNP6KqqBj_jnRgs7NOX4Me-ldmMJtt38-V4YCjxpmuUxTRgfP3TncR6coVeklb0q5ABJYPH4zCIbqmoe",
       "isActive": true,
-      "linkUrl": "/diagrams",
+      "linkUrl": "/diagrams/editor",
       "sortOrder": 3,
       "subtitle": "Create beautiful TikZ diagrams with an intuitive visual canvas. No more coordinate wrestling.",
       "title": "Create TikZ Diagrams visually"
@@ -227,7 +227,7 @@
     {
       "description": "Create beautiful TikZ diagrams with an intuitive visual canvas. No more wrestling with coordinates and syntax.",
       "glow": "#f59e0b",
-      "href": "https://www.latexify.in/diagrams",
+      "href": "https://www.latexify.in/diagrams/editor",
       "icon": "PenTool",
       "iconBg": "#f59e0b",
       "id": "3953o49li70ug4c",
@@ -242,7 +242,7 @@
     {
       "description": "Switch journals effortlessly. One click updates your document styling, margins, and bibliography formats instantly.",
       "glow": "#0891b2",
-      "href": "https://www.latexify.in/template-migrator",
+      "href": "https://www.latexify.in/template-migrator/studio",
       "icon": "Layout",
       "iconBg": "#0891b2",
       "id": "99adt568f4da703",
@@ -257,7 +257,7 @@
     {
       "description": "Manage your bibliography seamlessly. Auto-fetch metadata via DOI, organize references with tags and export BibTeX.",
       "glow": "#059669",
-      "href": "https://www.latexify.in/citations",
+      "href": "https://www.latexify.in/citations/studio",
       "icon": "Library",
       "iconBg": "#059669",
       "id": "9b3ol2oe8896xwe",
@@ -272,7 +272,7 @@
     {
       "description": "Get instant, scholarly feedback on clarity, argumentation, and methodology. Like having a senior researcher on speed dial.",
       "glow": "#dc2626",
-      "href": "https://www.latexify.in/reviewer",
+      "href": "https://www.latexify.in/reviewer/studio",
       "icon": "Brain",
       "iconBg": "#dc2626",
       "id": "t6zy1d6ru8t1z38",
@@ -373,7 +373,7 @@
         "Real-time preview",
         "Import from Visio & Draw.io"
       ],
-      "href": "https://www.latexify.in/diagrams",
+      "href": "https://www.latexify.in/diagrams/editor",
       "icon": "PenTool",
       "id": "48222071ta26e6y",
       "isActive": true,
@@ -392,7 +392,7 @@
         "IEEE, Nature, ACM, Elsevier support",
         "Custom template import"
       ],
-      "href": "https://www.latexify.in/template-migrator",
+      "href": "https://www.latexify.in/template-migrator/studio",
       "icon": "Layout",
       "id": "5g5xevqq2z5do73",
       "isActive": true,
@@ -411,7 +411,7 @@
         "Multi-style formatting",
         "Zotero & Mendeley import"
       ],
-      "href": "https://www.latexify.in/citations",
+      "href": "https://www.latexify.in/citations/studio",
       "icon": "Library",
       "id": "zm388812tr7wtlf",
       "isActive": true,
@@ -430,7 +430,7 @@
         "Readability scoring",
         "Revision suggestions"
       ],
-      "href": "https://www.latexify.in/reviewer",
+      "href": "https://www.latexify.in/reviewer/studio",
       "icon": "Brain",
       "id": "d2ws734eah9lx90",
       "isActive": true,
@@ -452,7 +452,7 @@
     },
     {
       "groupTitle": "Products",
-      "href": "/doc2latex",
+      "href": "/upload",
       "id": "adu0d8p21173233",
       "isActive": true,
       "isTargetBlank": false,
@@ -462,7 +462,7 @@
     },
     {
       "groupTitle": "Products",
-      "href": "/diagrams",
+      "href": "/diagrams/editor",
       "id": "8m5725qfc0sg65a",
       "isActive": true,
       "isTargetBlank": false,
@@ -472,7 +472,7 @@
     },
     {
       "groupTitle": "Products",
-      "href": "/template-migrator",
+      "href": "/template-migrator/studio",
       "id": "a1w05m7u403c938",
       "isActive": true,
       "isTargetBlank": false,
@@ -482,7 +482,7 @@
     },
     {
       "groupTitle": "Products",
-      "href": "/citations",
+      "href": "/citations/studio",
       "id": "aeph8sfd4j5i95o",
       "isActive": true,
       "isTargetBlank": false,
@@ -492,7 +492,7 @@
     },
     {
       "groupTitle": "Products",
-      "href": "/reviewer",
+      "href": "/reviewer/studio",
       "id": "00we6mk142rn7h0",
       "isActive": true,
       "isTargetBlank": false,

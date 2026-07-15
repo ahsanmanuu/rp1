@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { usePbRealtime } from '@/lib/usePbRealtime';
 
 export interface HomeData {
   banners: any[];
@@ -69,7 +70,7 @@ const FALLBACK_DATA: HomeData = {
     { groupTitle: 'Platform', label: 'About Us', href: '/about', sortOrder: 3 },
     { groupTitle: 'Features', label: 'Latex Studio', href: '/latex-studio', sortOrder: 4 },
     { groupTitle: 'Features', label: 'Templates', href: '/templates', sortOrder: 5 },
-    { groupTitle: 'Features', label: 'AI Review', href: '/reviewer', sortOrder: 6 },
+    { groupTitle: 'Features', label: 'AI Review', href: '/reviewer/studio', sortOrder: 6 },
     { groupTitle: 'Support', label: 'Help Center', href: '/help', sortOrder: 7 },
     { groupTitle: 'Support', label: 'Documentation', href: '/docs', sortOrder: 8 },
     { groupTitle: 'Legal', label: 'Terms of Service', href: '/terms', sortOrder: 9 },
@@ -90,7 +91,9 @@ const FALLBACK_DATA: HomeData = {
     { key: 'systemsOperational', value: 1 },
   ],
   videos: [],
-  floatingBanners: [],
+  floatingBanners: [
+    { id: 'fallback-1', title: 'Welcome to Latexify', imageUrl: 'https://placehold.co/400x600/4f46e5/ffffff?text=Try+AI+Review', linkUrl: '/reviewer', targetType: 'global', width: 4, height: 6, duration: 5, isActive: true, sortOrder: 1 },
+  ],
 };
 
 const INITIAL_DATA: HomeData = {
@@ -105,6 +108,15 @@ const HOME_KEYS: (keyof HomeData)[] = [
   'platformStats', 'videos', 'floatingBanners',
 ];
 
+const CACHE_TTL_MS = 30_000; // 30 seconds
+
+interface CacheEntry {
+  data: HomeData;
+  timestamp: number;
+}
+
+let cache: CacheEntry | null = null;
+
 function mergeWithFallback(fetched: HomeData): HomeData {
   const merged = { ...fetched };
   for (const key of HOME_KEYS) {
@@ -115,44 +127,74 @@ function mergeWithFallback(fetched: HomeData): HomeData {
   return merged;
 }
 
-let cachedData: HomeData | null = null;
-
 async function fetchAllCollections(): Promise<HomeData> {
   try {
-    const res = await fetch('/api/content/homepage', { cache: 'no-store' });
+    const res = await fetch('/api/content/homepage', { 
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10_000), // 10s timeout
+    });
     const json = await res.json();
     if (json.success && json.data) {
       return mergeWithFallback(json.data);
     }
-  } catch {}
+  } catch (err) {
+    console.warn('[useHomeRealtime] Fetch failed:', err);
+  }
   return mergeWithFallback({ ...INITIAL_DATA });
 }
 
-export function useHomeRealtime(skip = false) {
-  const [data, setData] = useState<HomeData>(cachedData || INITIAL_DATA);
+export function useHomeRealtime(skip = false, pollIntervalMs = 30_000) {
+  const [data, setData] = useState<HomeData>(() => {
+    if (cache && Date.now() - cache.timestamp < CACHE_TTL_MS) {
+      return cache.data;
+    }
+    return INITIAL_DATA;
+  });
+  const [loading, setLoading] = useState(!cache);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchAll = useCallback(async () => {
-    const result = await fetchAllCollections();
-    cachedData = result;
-    setData(result);
+    try {
+      setLoading(true);
+      const result = await fetchAllCollections();
+      cache = { data: result, timestamp: Date.now() };
+      setData(result);
+    } catch (err) {
+      console.error('[useHomeRealtime] Fetch error:', err);
+      if (!cache || Date.now() - cache.timestamp > CACHE_TTL_MS) {
+        setData(INITIAL_DATA);
+      }
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     if (skip) return;
-    if (cachedData) return;
     fetchAll();
   }, [skip, fetchAll]);
 
+  // Polling fallback for auto-refresh
   useEffect(() => {
-    if (skip) return;
-    const onOnline = () => { cachedData = null; fetchAll(); };
-    window.addEventListener('online', onOnline);
-    window.addEventListener('online-restored', onOnline);
-    return () => {
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('online-restored', onOnline);
-    };
-  }, [skip, fetchAll]);
+    if (skip || pollIntervalMs <= 0) return;
+    
+    pollRef.current = setInterval(() => {
+      fetchAll();
+    }, pollIntervalMs);
 
-  return { data, loading: !cachedData && !skip, refresh: fetchAll };
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [skip, pollIntervalMs, fetchAll]);
+
+  // Real-time subscription for immediate updates
+  usePbRealtime('banners', () => fetchAll(), { enabled: !skip });
+  usePbRealtime('testimonials', () => fetchAll(), { enabled: !skip });
+  usePbRealtime('floating_banners', () => fetchAll(), { enabled: !skip });
+  usePbRealtime('features', () => fetchAll(), { enabled: !skip });
+
+  return { data, loading, refresh: fetchAll };
 }
