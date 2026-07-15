@@ -15,14 +15,24 @@ export async function GET() {
   const userEmail = session.user.email as string | undefined;
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        aiCapPlanId: true,
-        aiDailyCapOverride: true,
-        aiAgentReactivatesAt: true,
-      },
-    });
+    const today = new Date().toISOString().slice(0, 10);
+    const nowMs = Date.now();
+
+    const [user, summary, ruleMatch, freePlan] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          aiCapPlanId: true,
+          aiDailyCapOverride: true,
+          aiAgentReactivatesAt: true,
+        },
+      }),
+      prisma.aiUsageDailySummary.findUnique({
+        where: { userId_date: { userId, date: today } },
+      }),
+      userEmail ? findMatchingRule({ email: userEmail }).catch(() => null) : Promise.resolve(null),
+      prisma.aiCapPlan.findFirst({ where: { name: 'free' } }),
+    ]);
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -34,10 +44,9 @@ export async function GET() {
       : null;
 
     if (!plan) {
-      const freePlan = await prisma.aiCapPlan.findFirst({ where: { name: 'free' } });
+      plan = freePlan;
+      planId = freePlan?.id ?? null;
       if (freePlan) {
-        plan = freePlan;
-        planId = freePlan.id;
         await prisma.user.update({
           where: { id: userId },
           data: { aiCapPlanId: freePlan.id }
@@ -48,27 +57,11 @@ export async function GET() {
     const dailyCap = user.aiDailyCapOverride || plan?.dailyTokenCap || 0;
     const planName = plan?.label ?? "None";
 
-    const today = new Date().toISOString().slice(0, 10);
-
-    // Check for active capping rules matching user's email
-    let ruleMatch = null;
-    if (userEmail) {
-      try {
-        ruleMatch = await findMatchingRule({ email: userEmail });
-      } catch {
-        // fail-silent for rule check
-      }
-    }
-
     const effectiveDailyCap = ruleMatch?.matched && ruleMatch.capType === 'daily_tokens' && ruleMatch.capValue !== undefined
       ? Math.min(dailyCap || Infinity, ruleMatch.capValue)
       : dailyCap;
 
     const isRuleBlocked = ruleMatch?.matched && ruleMatch.capType === 'block';
-
-    const summary = await prisma.aiUsageDailySummary.findUnique({
-      where: { userId_date: { userId, date: today } },
-    });
 
     const usedToday = summary?.totalTokens ?? 0;
     const remaining = Math.max(0, effectiveDailyCap - usedToday);
@@ -85,10 +78,8 @@ export async function GET() {
       }
     }
 
-    // Calculate when the daily quota resets — always midnight UTC of next calendar day
-    const nowMs = Date.now();
     const todayUtcMidnight = new Date(today + 'T00:00:00.000Z');
-    const nextResetUtc = new Date(todayUtcMidnight.getTime() + 24 * 60 * 60 * 1000); // +1 day
+    const nextResetUtc = new Date(todayUtcMidnight.getTime() + 24 * 60 * 60 * 1000);
 
     return NextResponse.json({
       isCapped,
@@ -100,18 +91,13 @@ export async function GET() {
       agentBreakdown,
       ruleName: ruleMatch?.matched ? ruleMatch.ruleName : null,
 
-      // Aliases for compatibility with AiCapWarning.tsx CapStatus type
       used: usedToday,
       limit: effectiveDailyCap,
       percentage: effectiveDailyCap > 0 ? (usedToday / effectiveDailyCap) * 100 : 0,
       reactivateAt: reactivatesAt,
 
-      // Quota scheduling — when does the daily token count reset?
-      // quotaResetAt: always next UTC midnight (daily counter resets regardless of block status)
       quotaResetAt: nextResetUtc.toISOString(),
-      // capExpiresAt: the block/rule override expires at this time (null if not admin-blocked)
       capExpiresAt: reactivatesAt ? reactivatesAt.toISOString() : null,
-      // msUntilReset: milliseconds until quota resets (client can derive countdown)
       msUntilReset: nextResetUtc.getTime() - nowMs,
     });
   } catch (error: any) {

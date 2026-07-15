@@ -41,14 +41,22 @@ async function logAiUsage(
 
 async function checkAiCap(userId: string): Promise<{ capped: boolean; reactivatesAt?: Date; dailyCap?: number; usedToday?: number }> {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        aiDailyCapOverride: true,
-        aiAgentReactivatesAt: true,
-        aiCapPlanId: true,
-      },
-    });
+    const today = new Date().toISOString().slice(0, 10);
+
+    const [user, summary] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          aiDailyCapOverride: true,
+          aiAgentReactivatesAt: true,
+          aiCapPlanId: true,
+        },
+      }),
+      prisma.aiUsageDailySummary.findUnique({
+        where: { userId_date: { userId, date: today } },
+        select: { totalTokens: true },
+      }),
+    ]);
 
     if (!user) return { capped: false };
 
@@ -59,7 +67,6 @@ async function checkAiCap(userId: string): Promise<{ capped: boolean; reactivate
       });
     }
 
-    // If user has a reactivation date set and it's in the future, they are capped
     if (user.aiAgentReactivatesAt && user.aiAgentReactivatesAt > new Date()) {
       return {
         capped: true,
@@ -69,23 +76,15 @@ async function checkAiCap(userId: string): Promise<{ capped: boolean; reactivate
       };
     }
 
-    // If reactivation date is in the past, clear it (auto-reactivate)
     if (user.aiAgentReactivatesAt && user.aiAgentReactivatesAt <= new Date()) {
-      await prisma.user.update({
+      prisma.user.update({
         where: { id: userId },
         data: { aiAgentReactivatesAt: null },
-      });
+      }).catch(() => {});
     }
 
     const dailyCap = user.aiDailyCapOverride || plan?.dailyTokenCap || 0;
-    if (dailyCap <= 0) return { capped: false }; // No cap = unlimited
-
-    // Check today's usage
-    const today = new Date().toISOString().slice(0, 10);
-    const summary = await prisma.aiUsageDailySummary.findUnique({
-      where: { userId_date: { userId, date: today } },
-      select: { totalTokens: true },
-    });
+    if (dailyCap <= 0) return { capped: false };
 
     const usedToday = summary?.totalTokens ?? 0;
 
@@ -96,7 +95,7 @@ async function checkAiCap(userId: string): Promise<{ capped: boolean; reactivate
     return { capped: false, dailyCap, usedToday };
   } catch (error) {
     console.warn('[AiCap] Error checking cap:', error);
-    return { capped: false }; // Fail-open: don't block on errors
+    return { capped: false };
   }
 }
 
@@ -105,7 +104,6 @@ async function updateDailyUsage(userId: string, agent: string, promptTokens: num
     const today = new Date().toISOString().slice(0, 10);
     const totalTokens = promptTokens + completionTokens;
 
-    // Fetch existing summary first to correctly merge agentBreakdown
     const existing = await prisma.aiUsageDailySummary.findUnique({
       where: { userId_date: { userId, date: today } },
       select: { agentBreakdown: true },
@@ -166,9 +164,21 @@ export async function routeToAgent(req: GatewayRequest): Promise<GatewayResponse
     }
   }
 
-  // ─── AI Cap Enforcement (plan-based) ─────────────────────────────────────
+  // ─── Parallel AI Cap Enforcement + Security Check ──────────────────────────
+  let capResult: { capped: boolean; reactivatesAt?: Date; dailyCap?: number; usedToday?: number } = { capped: false };
+  let anomalyResult: { blocked: boolean; blockedUntil: Date | null; reason: string | null } = { blocked: false, blockedUntil: null, reason: null };
+
   if (userId) {
-    const cap = await checkAiCap(userId);
+    const [cap, anomaly] = await Promise.all([
+      checkAiCap(userId),
+      (async () => {
+        const { checkUserAnomaly } = await import('../security');
+        return checkUserAnomaly(userId);
+      })(),
+    ]);
+    capResult = cap;
+    anomalyResult = anomaly;
+
     if (cap.capped) {
       console.log(`[AiCap] User ${userId} blocked — daily cap reached`);
       return {
@@ -179,21 +189,20 @@ export async function routeToAgent(req: GatewayRequest): Promise<GatewayResponse
         timing: { queueWait: 0, llmCall: 0, total: 0 },
       };
     }
-  }
 
-  if (userId) {
-    const { checkUserAnomaly, logToolUsage } = await import('../security');
-    const result = await checkUserAnomaly(userId);
-    if (result.blocked) {
+    if (anomaly.blocked) {
       return {
         success: false,
-        error: `BLOCKED:${result.blockedUntil ? result.blockedUntil.toISOString() : ''}`,
+        error: `BLOCKED:${anomaly.blockedUntil ? anomaly.blockedUntil.toISOString() : ''}`,
         agent: req.agent,
         model: 'security-block',
         timing: { queueWait: 0, llmCall: 0, total: 0 },
       };
     }
-    
+  }
+
+  // ─── Tool Usage Logging (fire-and-forget, non-blocking) ────────────────────
+  if (userId) {
     let toolName = 'latexify_studio';
     let action = 'chat';
     if (req.agent === 'reviewer') {
@@ -212,7 +221,10 @@ export async function routeToAgent(req: GatewayRequest): Promise<GatewayResponse
       toolName = 'doc2latex';
       action = 'ai_enhance';
     }
-    await logToolUsage(userId, toolName, action);
+    // Fire-and-forget: don't await, don't block the request
+    import('../security').then(({ logToolUsage }) => {
+      logToolUsage(userId, toolName, action).catch(() => {});
+    });
   }
 
   const agentConfig = AGENT_REGISTRY.get(req.agent);
@@ -367,7 +379,6 @@ export async function routeToAgent(req: GatewayRequest): Promise<GatewayResponse
         connections: req.context?.connections || []
       };
     } else if (req.agent === 'doc2latex') {
-      // Fail-safe: return baseline quality assessment — upload is not blocked by this
       syntheticData = {
         qualityScore: 70,
         verdict: 'Good',
@@ -389,7 +400,6 @@ export async function routeToAgent(req: GatewayRequest): Promise<GatewayResponse
       const userId = req.context?.userId ? String(req.context.userId) : null;
       logAiUsage(userId, req.agent, 'synthetic-fail-safe', duration, responseContent, promptContent);
 
-      // Update daily usage even for synthetic responses
       if (userId) {
         const pt = Math.max(1, Math.round(promptContent.length / 4));
         const ct = Math.max(1, Math.round(responseContent.length / 4));

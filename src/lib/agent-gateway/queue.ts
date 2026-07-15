@@ -2,23 +2,38 @@ import type { QueueTask, AgentId } from './types';
 
 const rng = () => crypto.randomUUID();
 
+export interface QueueOptions {
+  maxConcurrency?: number;
+  priority?: number;
+  skipRateLimit?: boolean;
+}
+
 export class AgentQueue {
   private tasks: QueueTask[] = [];
   private active = 0;
   private limits = new Map<AgentId, { count: number; windowStart: number }>();
   private running = false;
+  private maxConcurrency: number;
+  private rateLimitPerAgent: number;
+  private rateWindowMs: number;
 
   constructor(
-    private maxConcurrency: number,
-    private rateLimitPerAgent: number,
-    private rateWindowMs: number,
-  ) {}
+    maxConcurrency: number = 100,
+    rateLimitPerAgent: number = 60,
+    rateWindowMs: number = 60_000,
+  ) {
+    this.maxConcurrency = maxConcurrency;
+    this.rateLimitPerAgent = rateLimitPerAgent;
+    this.rateWindowMs = rateWindowMs;
+  }
 
   enqueue<T>(
     agent: AgentId,
     priority: number,
     fn: () => Promise<T>,
+    options: QueueOptions = {}
   ): Promise<T> {
+    const { skipRateLimit = false } = options;
     return new Promise<T>((resolve, reject) => {
       const task: QueueTask = {
         id: rng(),
@@ -28,11 +43,25 @@ export class AgentQueue {
         resolve: resolve as (v: unknown) => void,
         reject,
         enqueuedAt: Date.now(),
+        skipRateLimit,
       };
       this.tasks.push(task);
       this.tasks.sort((a, b) => b.priority - a.priority);
       this.drain();
     });
+  }
+
+  enqueueParallel<T>(
+    agent: AgentId,
+    tasks: Array<{ fn: () => Promise<T>; priority?: number }>,
+    options: QueueOptions = {}
+  ): Promise<T[]> {
+    const { priority = 0 } = options;
+    return Promise.all(
+      tasks.map(({ fn, priority: taskPriority = priority }) =>
+        this.enqueue(agent, taskPriority, fn, options)
+      )
+    );
   }
 
   private drain() {
@@ -41,7 +70,7 @@ export class AgentQueue {
     while (this.active < this.maxConcurrency && this.tasks.length > 0) {
       const task = this.tasks.shift();
       if (!task) break;
-      if (!this.checkRateLimit(task.agent)) {
+      if (!task.skipRateLimit && !this.checkRateLimit(task.agent)) {
         this.tasks.unshift(task);
         break;
       }
@@ -77,6 +106,29 @@ export class AgentQueue {
 
   getActiveCount(): number {
     return this.active;
+  }
+
+  getStats(): { pending: number; active: number; maxConcurrency: number; rateLimitPerAgent: number } {
+    return {
+      pending: this.tasks.length,
+      active: this.active,
+      maxConcurrency: this.maxConcurrency,
+      rateLimitPerAgent: this.rateLimitPerAgent,
+    };
+  }
+
+  setMaxConcurrency(concurrency: number): void {
+    this.maxConcurrency = Math.max(1, concurrency);
+  }
+
+  setRateLimit(agent: AgentId, limit: number, windowMs: number): void {
+    this.rateLimitPerAgent = limit;
+    this.rateWindowMs = windowMs;
+    this.limits.set(agent, { count: 0, windowStart: Date.now() });
+  }
+
+  clearRateLimit(agent: AgentId): void {
+    this.limits.delete(agent);
   }
 }
 

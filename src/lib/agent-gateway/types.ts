@@ -54,4 +54,16 @@ export interface QueueTask {
   resolve: (value: unknown) => void;
   reject: (error: unknown) => void;
   enqueuedAt: number;
+  skipRateLimit?: boolean;
+}
+
+export interface QueueOptions {
+  maxConcurrency?: number;
+  priority?: number;
+  skipRateLimit?: boolean;
+}
+
+export interface ParallelTask<T = unknown> {
+  fn: () => Promise<T>;
+  priority?: number;
 }

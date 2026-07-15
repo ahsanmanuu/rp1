@@ -19,6 +19,7 @@ export interface AiCapRuleData {
   lastHitAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  _compiledRegex?: RegExp;
 }
 
 export interface RuleMatchResult {
@@ -118,7 +119,11 @@ async function getActiveRules(): Promise<AiCapRuleData[]> {
     where: { isActive: true },
     orderBy: { priority: 'asc' },
   });
-  rulesCache.rules = rules as AiCapRuleData[];
+  const rulesWithRegex = rules.map((rule: AiCapRuleData) => ({
+    ...rule,
+    _compiledRegex: rule.matchType === 'email_regex' ? new RegExp(rule.matchValue, 'i') : undefined,
+  })) as AiCapRuleData[];
+  rulesCache.rules = rulesWithRegex;
   rulesCache.fetchedAt = now;
   return rulesCache.rules;
 }
@@ -134,6 +139,11 @@ export async function findMatchingRule(ctx: MatchContext): Promise<RuleMatchResu
     return null;
   }
 
+  const emailLower = ctx.email?.toLowerCase();
+  const ipAddress = ctx.ipAddress;
+  const locationLower = (ctx.location || '').toLowerCase();
+  const countryLower = (ctx.country || '').toLowerCase();
+
   for (const rule of rules) {
     let matched = false;
 
@@ -142,24 +152,43 @@ export async function findMatchingRule(ctx: MatchContext): Promise<RuleMatchResu
         matched = true;
         break;
       case 'email_exact':
-      case 'email_domain':
-      case 'email_regex':
-        if (ctx.email) matched = matchesEmail(rule.matchValue, ctx.email, rule.matchType);
+        if (emailLower) matched = emailLower === rule.matchValue.toLowerCase();
         break;
+      case 'email_domain': {
+        if (emailLower) {
+          const domain = rule.matchValue.startsWith('@') ? rule.matchValue : `@${rule.matchValue}`;
+          matched = emailLower.endsWith(domain.toLowerCase());
+        }
+        break;
+      }
+      case 'email_regex': {
+        if (emailLower && rule._compiledRegex) {
+          matched = rule._compiledRegex.test(emailLower);
+        }
+        break;
+      }
       case 'ip_exact':
+        if (ipAddress) matched = ipAddress === rule.matchValue;
+        break;
       case 'ip_cidr':
-        if (ctx.ipAddress) matched = matchesIp(rule.matchValue, ctx.ipAddress, rule.matchType);
+        if (ipAddress) matched = matchesIp(rule.matchValue, ipAddress, rule.matchType);
         break;
       case 'location_country':
+        matched = countryLower === rule.matchValue.toLowerCase() || countryLower.startsWith(rule.matchValue.toLowerCase());
+        break;
       case 'location_city':
-        matched = matchesLocation(rule.matchValue, ctx.location ?? null, ctx.country ?? null, rule.matchType);
+        matched = locationLower.includes(rule.matchValue.toLowerCase());
         break;
     }
 
     if (matched) {
       if (rule.agentFilter && rule.agentFilter !== '*' && ctx.agent) {
-        const agents: string[] = JSON.parse(rule.agentFilter);
-        if (!agents.includes(ctx.agent)) continue;
+        try {
+          const agents: string[] = JSON.parse(rule.agentFilter);
+          if (!agents.includes(ctx.agent)) continue;
+        } catch {
+          continue;
+        }
       }
 
       // Fire-and-forget hit count update — never block enforcement on this
@@ -209,60 +238,42 @@ export async function enforceAiCapRules(
       };
     }
 
-    if (match.capType === 'daily_tokens') {
+    if (match.capType === 'daily_tokens' || match.capType === 'daily_requests') {
       const capVal = match.capValue ?? 0;
+      const selectField = match.capType === 'daily_tokens' ? { totalTokens: true } : { requestCount: true };
+      
       const summary = await prisma.aiUsageDailySummary.findUnique({
         where: { userId_date: { userId, date: today } },
-        select: { totalTokens: true },
+        select: selectField,
       });
-      const usedToday = summary?.totalTokens ?? 0;
+      
+      const usedToday = match.capType === 'daily_tokens' 
+        ? summary?.totalTokens ?? 0 
+        : summary?.requestCount ?? 0;
       const remaining = Math.max(0, capVal - usedToday);
 
       if (usedToday >= capVal) {
+        const reasonText = match.capType === 'daily_tokens'
+          ? `Token cap (${capVal}/day) from rule: ${match.ruleName}`
+          : `Request cap (${capVal}/day) from rule: ${match.ruleName}`;
+        const overrideField = match.capType === 'daily_tokens' ? 'dailyCapOverride' : 'requestCapOverride';
+        
         return {
           capped: true,
           ruleMatched: true,
           ruleName: match.ruleName,
-          reason: `Token cap (${capVal}/day) from rule: ${match.ruleName}`,
-          dailyCapOverride: capVal,
+          reason: reasonText,
+          [overrideField]: capVal,
           remaining: 0,
         };
       }
 
+      const overrideField = match.capType === 'daily_tokens' ? 'dailyCapOverride' : 'requestCapOverride';
       return {
         capped: false,
         ruleMatched: true,
         ruleName: match.ruleName,
-        dailyCapOverride: capVal,
-        remaining,
-      };
-    }
-
-    if (match.capType === 'daily_requests') {
-      const capVal = match.capValue ?? 0;
-      const summary = await prisma.aiUsageDailySummary.findUnique({
-        where: { userId_date: { userId, date: today } },
-        select: { requestCount: true },
-      });
-      const usedToday = summary?.requestCount ?? 0;
-      const remaining = Math.max(0, capVal - usedToday);
-
-      if (usedToday >= capVal) {
-        return {
-          capped: true,
-          ruleMatched: true,
-          ruleName: match.ruleName,
-          reason: `Request cap (${capVal}/day) from rule: ${match.ruleName}`,
-          requestCapOverride: capVal,
-          remaining: 0,
-        };
-      }
-
-      return {
-        capped: false,
-        ruleMatched: true,
-        ruleName: match.ruleName,
-        requestCapOverride: capVal,
+        [overrideField]: capVal,
         remaining,
       };
     }
