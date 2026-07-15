@@ -59,6 +59,8 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${outfit.variable} ${jetbrains.variable} ${newsreader.variable}`} suppressHydrationWarning>
       <head>
         <link rel="preload" href="/fonts/material-symbols-outlined.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+      </head>
+      <body className="antialiased font-body" suppressHydrationWarning>
         <Script id="chunk-retry" strategy="afterInteractive">
           {`(function(){
 var MAX_RETRIES=3;
@@ -68,7 +70,6 @@ function isChunkError(e){
 }
 function forceReload(){setTimeout(function(){window.location.reload()},500)}
 
-/* Layer 1: Monkey-patch document.createElement for <script> tags */
 var origCreateElement=document.createElement.bind(document);
 document.createElement=function(tagName,options){
   var el=origCreateElement(tagName,options);
@@ -85,7 +86,6 @@ document.createElement=function(tagName,options){
   return el;
 };
 
-/* Layer 2: Webpack runtime chunk loader */
 if(typeof __webpack_chunk_load__!=='undefined'){
   var origChunkLoad=__webpack_chunk_load__;
   __webpack_chunk_load__=function(chunkId){
@@ -98,7 +98,6 @@ if(typeof __webpack_chunk_load__!=='undefined'){
   };
 }
 
-/* Layer 3: window.onerror for script errors */
 window.addEventListener('error',function(e){
   var t=e.target||{};
   if(t.tagName==='SCRIPT'&&t.src&&t.src.indexOf('/_next/static/chunks/')!==-1){
@@ -106,14 +105,11 @@ window.addEventListener('error',function(e){
   }
 },true);
 
-/* Layer 4: Unhandled rejection guard (reload after retries exhausted) */
 window.addEventListener('unhandledrejection',function(e){
   if(isChunkError(e.reason)){e.preventDefault();forceReload()}
 });
 })()`}
         </Script>
-      </head>
-      <body className="antialiased font-body" suppressHydrationWarning>
         <NextAuthProvider>
           <SecurityBlockOverlay />
           <BroadcastBanner />
