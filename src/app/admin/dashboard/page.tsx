@@ -714,7 +714,7 @@ export default function AdminDashboardPage() {
   useAdminRealtime({
     triggerCollections: ['users', 'projects', 'support_tickets', 'ai_usage_logs', 'admin_tasks', 'announcements', 'ai_usage_daily_summaries', 'user_sessions', 'banners', 'testimonials', 'how_it_works', 'gallery_items', 'institution_logos', 'features', 'benefits', 'product_details', 'footer_links', 'tasar_stats', 'platform_stats'],
     onRefresh: refreshAll,
-    pollIntervalMs: 10000,
+    pollIntervalMs: 30000,
     onPoll: refreshAll,
   });
 

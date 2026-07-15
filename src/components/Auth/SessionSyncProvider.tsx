@@ -27,7 +27,7 @@ export function SessionSyncProvider({ children }: { children: React.ReactNode })
       }
     };
 
-    const intervalId = setInterval(checkSync, 10000);
+    const intervalId = setInterval(checkSync, 30000);
     return () => clearInterval(intervalId);
   }, [session, update]);
 

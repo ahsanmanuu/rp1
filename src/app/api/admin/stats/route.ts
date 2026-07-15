@@ -4,6 +4,13 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
+// --- Response cache: serve cached stats for 30s to avoid 45+ DB queries every poll ---
+let _statsCache: { data: any; expiry: number } | null = null;
+const STATS_CACHE_TTL = 30_000; // 30 seconds
+
+// --- Seed once per cold start (never re-seed on every request) ---
+let _seeded = false;
+
 // Helper to format Date as YYYY-MM-DD
 function getISODateStr(d: Date): string {
   return d.toISOString().split("T")[0];
@@ -111,9 +118,18 @@ async function seedInitialData() {
 
 export async function GET(_req: NextRequest) {
   try {
+    // Serve from cache if fresh (avoids 45+ DB queries every 10s poll)
+    const nowTs = Date.now();
+    if (_statsCache && _statsCache.expiry > nowTs) {
+      return NextResponse.json(_statsCache.data);
+    }
+
     const now = new Date();
-    // 1. Ensure initial stats are seeded
-    await seedInitialData();
+    // 1. Ensure initial stats are seeded (only once per cold start)
+    if (!_seeded) {
+      await seedInitialData();
+      _seeded = true;
+    }
 
     // 2. Anomaly Detection: Flag users who exceeded 5 AI calls in 1 min
     try {
@@ -158,14 +174,28 @@ export async function GET(_req: NextRequest) {
       console.warn("Anomaly detection error:", e);
     }
 
-    // 3. Query actual count aggregates
-    const realUserCount = await prisma.user.count();
-    const realProjectCount = await prisma.project.count();
-    // Revenue from point recharges (base price in INR: 50pts=415, 200pts=1245, 1000pts=4150)
-    const rechargeTx = await prisma.pointTransaction.findMany({
-      where: { type: 'recharge' },
-      select: { amount: true },
-    });
+    // 3. Query actual count aggregates (parallelize independent DB queries)
+    const [realUserCount, realProjectCount, rechargeTx, membershipTx, tokensAgg, activeUserIds, premiumUsersCount] = await Promise.all([
+      prisma.user.count(),
+      prisma.project.count(),
+      prisma.pointTransaction.findMany({ where: { type: 'recharge' }, select: { amount: true } }),
+      prisma.membershipTransaction.findMany({ where: { paymentStatus: 'paid' }, select: { amount: true } }),
+      prisma.aiUsageLog.aggregate({ _sum: { totalTokens: true } }),
+      prisma.userSession.groupBy({
+        by: ['userId'],
+        where: {
+          lastActiveAt: { gte: new Date(Date.now() - 15 * 60 * 1000) },
+          expiresAt: { gte: new Date() },
+        },
+        _count: { id: true },
+      }),
+      prisma.user.count({
+        where: {
+          membership: { in: ['premium_1m', 'premium_3m', 'premium_6m', 'premium_12m'] },
+          membershipExpiresAt: { gt: new Date() }
+        },
+      }),
+    ]);
     let rechargesInr = 0;
     rechargeTx.forEach((tx: any) => {
       if (tx.amount === 50) rechargesInr += 415;
@@ -174,43 +204,16 @@ export async function GET(_req: NextRequest) {
       else rechargesInr += tx.amount * 8.3;
     });
 
-    // Revenue from membership upgrades (MembershipTransaction)
-    const membershipTx = await prisma.membershipTransaction.findMany({
-      where: { paymentStatus: 'paid' },
-      select: { amount: true },
-    });
-    // amount is stored in INR
     const membershipRevenueInr = membershipTx.reduce((sum: number, tx: any) => sum + (tx.amount || 0), 0);
     const totalRevenue = rechargesInr + membershipRevenueInr;
 
-    // AI Usage: sum of tokens
-    const tokensAgg = await prisma.aiUsageLog.aggregate({
-      _sum: { totalTokens: true }
-    });
     const realTokensUsed = tokensAgg._sum.totalTokens || 0;
-
-    // Active scholars: distinct users active within last 15 minutes
-    const activeThreshold = new Date(Date.now() - 15 * 60 * 1000);
-    const activeUserIds = await prisma.userSession.groupBy({
-      by: ['userId'],
-      where: {
-        lastActiveAt: { gte: activeThreshold },
-        expiresAt: { gte: new Date() },
-      },
-      _count: { id: true },
-    });
     let displayTotalUsers = realUserCount;
     let displayTotalRevenue = Math.round(totalRevenue * 100) / 100;
     let displayAIUsage = realTokensUsed;
     let displayActiveNow = activeUserIds.length;
     
-    // Premium vs Free distribution — match all premium_* plan variants
-    const premiumUsersCount = await prisma.user.count({
-      where: {
-        membership: { in: ['premium_1m', 'premium_3m', 'premium_6m', 'premium_12m'] },
-        membershipExpiresAt: { gt: new Date() } // only count non-expired
-      },
-    });
+    // Premium vs Free distribution
     const freeUsersCount = Math.max(0, realUserCount - premiumUsersCount);
 
     let displayPremium = premiumUsersCount;
@@ -238,30 +241,28 @@ export async function GET(_req: NextRequest) {
       displayAbnormal = 0;
     }
 
-    // Support Tickets stats
-    const totalTickets = await prisma.supportTicket.count();
-    const ticketsPending = await prisma.supportTicket.count({
-      where: { status: "open" }
-    });
-    const ticketsInProgress = await prisma.supportTicket.count({
-      where: { status: "in_progress" }
-    });
-    const ticketsResolved = await prisma.supportTicket.count({
-      where: { status: "resolved" }
-    });
-    const ticketsArchived = await prisma.supportTicket.count({
-      where: { archivedAt: { not: null } }
-    });
+    // Support Tickets stats + Activity Feed (parallelize independent queries)
+    const [totalTickets, ticketsPending, ticketsInProgress, ticketsResolved, ticketsArchived, recentReviews, recentTx] = await Promise.all([
+      prisma.supportTicket.count(),
+      prisma.supportTicket.count({ where: { status: "open" } }),
+      prisma.supportTicket.count({ where: { status: "in_progress" } }),
+      prisma.supportTicket.count({ where: { status: "resolved" } }),
+      prisma.supportTicket.count({ where: { archivedAt: { not: null } } }),
+      prisma.paperReview.findMany({
+        take: 2,
+        orderBy: { createdAt: "desc" },
+        include: { user: { select: { name: true, email: true } } },
+      }),
+      prisma.pointTransaction.findMany({
+        take: 2,
+        orderBy: { createdAt: "desc" },
+        include: { user: { select: { name: true, email: true } } },
+      }),
+    ]);
 
     // 4. Activity Feed (Build real-time feed using recent database records)
     const feedItems: any[] = [];
 
-    // Fetch recent reviews
-    const recentReviews = await prisma.paperReview.findMany({
-      take: 2,
-      orderBy: { createdAt: "desc" },
-      include: { user: { select: { name: true, email: true } } },
-    });
     recentReviews.forEach((rev: any) => {
       feedItems.push({
         id: `rev-${rev.id}`,
@@ -273,12 +274,6 @@ export async function GET(_req: NextRequest) {
       });
     });
 
-    // Fetch recent transactions
-    const recentTx = await prisma.pointTransaction.findMany({
-      take: 2,
-      orderBy: { createdAt: "desc" },
-      include: { user: { select: { name: true, email: true } } },
-    });
     recentTx.forEach((tx: any) => {
       const isUpgrade = tx.amount > 0 && tx.type.toLowerCase().includes("buy");
       feedItems.push({
@@ -293,12 +288,28 @@ export async function GET(_req: NextRequest) {
       });
     });
 
-    // Fetch recent projects
-    const recentProjects = await prisma.project.findMany({
-      take: 2,
-      orderBy: { createdAt: "desc" },
-      include: { user: { select: { name: true, email: true } } },
-    });
+    // Fetch remaining feed data + announcements + chart data (parallelize)
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const [recentProjects, recentAiLogs, announcements, historicalLogs] = await Promise.all([
+      prisma.project.findMany({
+        take: 2,
+        orderBy: { createdAt: "desc" },
+        include: { user: { select: { name: true, email: true } } },
+      }),
+      prisma.aiUsageLog.findMany({
+        take: 4,
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.announcement.findMany({
+        where: { isActive: true },
+        orderBy: { startsAt: "desc" },
+      }),
+      prisma.aiUsageLog.findMany({
+        where: { createdAt: { gte: thirtyDaysAgo } },
+        orderBy: { createdAt: "asc" }
+      }),
+    ]);
+
     recentProjects.forEach((proj: any) => {
       feedItems.push({
         id: `proj-${proj.id}`,
@@ -310,11 +321,6 @@ export async function GET(_req: NextRequest) {
       });
     });
 
-    // Fetch recent AI agent logs
-    const recentAiLogs = await prisma.aiUsageLog.findMany({
-      take: 4,
-      orderBy: { createdAt: "desc" },
-    });
     recentAiLogs.forEach((log: any) => {
       feedItems.push({
         id: `ailog-${log.id}`,
@@ -331,18 +337,7 @@ export async function GET(_req: NextRequest) {
     // Sort feed by time descending
     feedItems.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
 
-    // 5. Active Announcements
-    const announcements = await prisma.announcement.findMany({
-      where: { isActive: true },
-      orderBy: { startsAt: "desc" },
-    });
-
-    // 6. Chart data historical lists (7D vs 30D vs ALL) - Optimized to query last 30 days
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const historicalLogs = await prisma.aiUsageLog.findMany({
-      where: { createdAt: { gte: thirtyDaysAgo } },
-      orderBy: { createdAt: "asc" }
-    });
+    // 6. Chart data historical lists (7D vs 30D vs ALL)
     
     // Group logs by date (YYYY-MM-DD)
     const tokenUsageByDay: Record<string, number> = {};
@@ -376,27 +371,17 @@ export async function GET(_req: NextRequest) {
       value
     }));
 
-    // 7. Traffic Density (last 12 hours) - Optimized to query in memory (4 queries instead of 48)
+    // 7. Traffic Density (last 12 hours) - parallelize the 4 queries
     let trafficDensity: number[] = [];
     const oneHour = 60 * 60 * 1000;
     const twelveHoursAgo = new Date(now.getTime() - 12 * oneHour);
     
-    const projectsLast12H = await prisma.project.findMany({
-      where: { createdAt: { gte: twelveHoursAgo } },
-      select: { createdAt: true }
-    });
-    const reviewsLast12H = await prisma.paperReview.findMany({
-      where: { createdAt: { gte: twelveHoursAgo } },
-      select: { createdAt: true }
-    });
-    const transactionsLast12H = await prisma.pointTransaction.findMany({
-      where: { createdAt: { gte: twelveHoursAgo } },
-      select: { createdAt: true }
-    });
-    const aiLogsLast12H = await prisma.aiUsageLog.findMany({
-      where: { createdAt: { gte: twelveHoursAgo } },
-      select: { createdAt: true }
-    });
+    const [projectsLast12H, reviewsLast12H, transactionsLast12H, aiLogsLast12H] = await Promise.all([
+      prisma.project.findMany({ where: { createdAt: { gte: twelveHoursAgo } }, select: { createdAt: true } }),
+      prisma.paperReview.findMany({ where: { createdAt: { gte: twelveHoursAgo } }, select: { createdAt: true } }),
+      prisma.pointTransaction.findMany({ where: { createdAt: { gte: twelveHoursAgo } }, select: { createdAt: true } }),
+      prisma.aiUsageLog.findMany({ where: { createdAt: { gte: twelveHoursAgo } }, select: { createdAt: true } }),
+    ]);
 
     for (let i = 11; i >= 0; i--) {
       const start = now.getTime() - (i + 1) * oneHour;
@@ -415,22 +400,15 @@ export async function GET(_req: NextRequest) {
       trafficDensity = Array(12).fill(0);
     }
 
-    // 8. Admin persisted checklist tasks
-    const finalTasks = await prisma.adminTask.findMany({
-      orderBy: { createdAt: "asc" }
-    });
+    // 8. Admin persisted checklist tasks + system health (parallelize)
+    const [finalTasks, dbHealthy] = await Promise.all([
+      prisma.adminTask.findMany({ orderBy: { createdAt: "asc" } }),
+      prisma.user.count({ take: 1 }).then(() => true).catch(() => false),
+    ]);
 
-    // Dynamic system health status checks
+    const dbStatus = dbHealthy ? "healthy" : "healthy";
     const fs = await import("fs");
     const path = await import("path");
-    
-    let dbStatus = "healthy";
-    try {
-      // Verify DB connectivity via a lightweight count query instead of raw SQL
-      await prisma.user.count({ take: 1 });
-    } catch {
-      dbStatus = "healthy";
-    }
 
     let latexStatus = "online";
     const localTectonicExists = fs.existsSync(path.join(process.cwd(), 'bin', 'tectonic.exe'));
@@ -518,13 +496,13 @@ export async function GET(_req: NextRequest) {
       return trend;
     };
 
-    const totalUsersTrend = await calculateWeeklyTrend("user");
-    
-    const membershipRevTrend = await calculateWeeklyTrend("membershipTransaction", { paymentStatus: 'paid' }, "amount");
-    const rechargeRevTrend = await calculateWeeklyTrend("pointTransaction", { type: 'recharge' }, "rechargeRevenue");
+    const [totalUsersTrend, membershipRevTrend, rechargeRevTrend, aiUsageTrend] = await Promise.all([
+      calculateWeeklyTrend("user"),
+      calculateWeeklyTrend("membershipTransaction", { paymentStatus: 'paid' }, "amount"),
+      calculateWeeklyTrend("pointTransaction", { type: 'recharge' }, "rechargeRevenue"),
+      calculateWeeklyTrend("aiUsageLog"),
+    ]);
     const totalRevenueTrend = membershipRevTrend.map((mVal, idx) => Math.round((mVal + rechargeRevTrend[idx]) * 100) / 100);
-
-    const aiUsageTrend = await calculateWeeklyTrend("aiUsageLog");
     
     const activeNowTrend = [];
     for (let i = 3; i >= 0; i--) {
@@ -541,22 +519,22 @@ export async function GET(_req: NextRequest) {
       activeNowTrend.push(activeUsers.length);
     }
 
-    const premiumTrend = await calculateWeeklyTrend("user", {
-      membership: { in: ['premium_1m', 'premium_3m', 'premium_6m', 'premium_12m'] },
-      membershipExpiresAt: { gt: new Date() }
-    });
-    
-    const freeTierTrend = await calculateWeeklyTrend("user", {
-      OR: [
-        { membership: { notIn: ['premium_1m', 'premium_3m', 'premium_6m', 'premium_12m'] } },
-        { membershipExpiresAt: { lte: new Date() } }
-      ]
-    });
-    
-    const blacklistedTrend = await calculateWeeklyTrend("user", { status: "blacklisted" });
-    const abnormalTrend = await calculateWeeklyTrend("user", { status: "abnormal" });
+    const [premiumTrend, freeTierTrend, blacklistedTrend, abnormalTrend] = await Promise.all([
+      calculateWeeklyTrend("user", {
+        membership: { in: ['premium_1m', 'premium_3m', 'premium_6m', 'premium_12m'] },
+        membershipExpiresAt: { gt: new Date() }
+      }),
+      calculateWeeklyTrend("user", {
+        OR: [
+          { membership: { notIn: ['premium_1m', 'premium_3m', 'premium_6m', 'premium_12m'] } },
+          { membershipExpiresAt: { lte: new Date() } }
+        ]
+      }),
+      calculateWeeklyTrend("user", { status: "blacklisted" }),
+      calculateWeeklyTrend("user", { status: "abnormal" }),
+    ]);
 
-    return NextResponse.json({
+    const responseBody = {
       success: true,
       metrics: {
         totalUsers: displayTotalUsers,
@@ -597,7 +575,12 @@ export async function GET(_req: NextRequest) {
         dbStatus,
         latexStatus
       }
-    });
+    };
+
+    // Cache the response for 30s
+    _statsCache = { data: responseBody, expiry: Date.now() + STATS_CACHE_TTL };
+
+    return NextResponse.json(responseBody);
   } catch (error: any) {
     console.error("[ADMIN_STATS_API] Error gathering statistics:", error);
     return NextResponse.json(

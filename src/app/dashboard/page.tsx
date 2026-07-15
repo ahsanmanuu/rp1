@@ -49,7 +49,7 @@ export default function DashboardPage() {
     error: membershipError,
     refetch: refetchMembership,
   } = useMembershipRealtime({
-    pollIntervalMs: 10000,
+    pollIntervalMs: 30000,
     userId: session?.user?.id,
     onMembershipChange: (prev, next) => {
       if (next !== 'free') setShowUpgradeModal(false);
@@ -529,7 +529,7 @@ export default function DashboardPage() {
       fetchUserOffers();
       fetchAnnouncements();
       loadAllHistory(false);
-    }, 10000);
+    }, 30000);
 
     // Check payment redirect statuses
     if (typeof window !== 'undefined') {

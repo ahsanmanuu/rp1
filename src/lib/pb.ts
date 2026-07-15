@@ -40,7 +40,7 @@ const tokenCache = new Map<string, { pb: PocketBase; expiry: number }>();
 /**
  * Server-side PocketBase client rehydrated from an auth token cookie.
  * Automatically loads the user record so authStore.record is available.
- * Cached for 15 seconds to avoid redundant authRefresh calls during concurrent sub-requests.
+ * Cached for 60 seconds to avoid redundant authRefresh calls during concurrent sub-requests.
  */
 export async function authFromToken(token: string) {
   const now = Date.now();
@@ -62,7 +62,7 @@ export async function authFromToken(token: string) {
   if (pb.authStore.isValid) {
     try {
       await pb.collection('users').authRefresh({ requestKey: 'auth_refresh' });
-      tokenCache.set(token, { pb, expiry: now + 15000 });
+      tokenCache.set(token, { pb, expiry: now + 60000 });
     } catch {
       pb.authStore.clear();
     }

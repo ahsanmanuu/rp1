@@ -32,8 +32,8 @@ function AutoLogoutWatcher() {
 export const NextAuthProvider = ({ children }: { children: React.ReactNode }) => {
   return (
     <SessionProvider
-      // Poll aggressively so force-logout from another device is detected quickly
-      refetchInterval={15}
+      // Poll every 30s — fast enough for session expiry, low enough to avoid hammering the server
+      refetchInterval={30}
       refetchOnWindowFocus={true}
     >
       <AutoLogoutWatcher />
