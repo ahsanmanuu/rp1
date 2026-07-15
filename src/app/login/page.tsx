@@ -108,12 +108,8 @@ export default function LoginPage() {
     }
   };
 
-  // If already authenticated, redirect to dashboard
-  useEffect(() => {
-    if (status === "authenticated") {
-      router.replace("/dashboard");
-    }
-  }, [status, router]);
+  // No useEffect redirect needed — handleSubmit already navigates to /dashboard on success.
+  // A useEffect redirect here would fire AFTER handleSubmit's router.push, causing double navigation.
 
   return (
     <div 

@@ -924,7 +924,7 @@ export default function AdminDashboardPage() {
     }
   };
 
-  if (!mounted || loading) {
+  if (!mounted) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-slate-950 text-white relative overflow-hidden select-none">
         {/* Background ambient glowing orbs */}

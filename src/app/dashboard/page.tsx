@@ -700,7 +700,7 @@ export default function DashboardPage() {
     }
   }, [status, _loading, session, router]);
 
-  if (status === "loading" || _loading) {
+  if (status === "loading") {
     return <ProLoader />;
   }
   if (!session) {

@@ -147,7 +147,7 @@ export default function AiUsagePage() {
     }
   }, [status, loading, session, router]);
 
-  if (status === 'loading' || loading) {
+  if (status === 'loading') {
     return <ProLoader />;
   }
 
