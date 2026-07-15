@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAuthPb } from "@/lib/auth-pb";
+import { getAuthPb, setAuthCookie } from "@/lib/auth-pb";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 
@@ -16,11 +16,26 @@ export async function GET(req: NextRequest) {
   }
 
   // Validate session exists in DB
-  const sessionRecord = await prisma.userSession.findUnique({
-    where: { sessionToken: token }
-  }).catch(() => null);
+  let sessionRecord = null;
+  let dbError = false;
+  try {
+    sessionRecord = await prisma.userSession.findUnique({
+      where: { sessionToken: token }
+    });
+  } catch (dbErr) {
+    console.error("[PB-Session API] Database session validation query failed:", dbErr);
+    dbError = true;
+  }
 
-  if (!sessionRecord || new Date(sessionRecord.expiresAt).getTime() < Date.now()) {
+  // Only fail auth and delete cookie if the database query succeeded and found no session record
+  if (!dbError && !sessionRecord) {
+    const response = NextResponse.json({ user: null }, { status: 401 });
+    response.headers.append("Set-Cookie", "pb_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+    return response;
+  }
+
+  // If expired, fail auth and delete cookie
+  if (sessionRecord && new Date(sessionRecord.expiresAt).getTime() < Date.now()) {
     const response = NextResponse.json({ user: null }, { status: 401 });
     response.headers.append("Set-Cookie", "pb_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
     return response;
@@ -75,5 +90,7 @@ export async function GET(req: NextRequest) {
     } catch {}
   });
 
-  return NextResponse.json({ user, token });
+  const response = NextResponse.json({ user, token });
+  response.headers.append("Set-Cookie", setAuthCookie(token));
+  return response;
 }

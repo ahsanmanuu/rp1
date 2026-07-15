@@ -83,11 +83,24 @@ export async function getServerSession(): Promise<PbServerSession | null> {
   if (!pb.authStore.isValid || !pb.authStore.record) return null;
 
   // Validate session exists in DB
-  const sessionRecord = await prisma.userSession.findUnique({
-    where: { sessionToken: token }
-  }).catch(() => null);
+  let sessionRecord = null;
+  let dbError = false;
+  try {
+    sessionRecord = await prisma.userSession.findUnique({
+      where: { sessionToken: token }
+    });
+  } catch (dbErr) {
+    console.error("[AUTH] Database session validation query failed:", dbErr);
+    dbError = true;
+  }
 
-  if (!sessionRecord || new Date(sessionRecord.expiresAt).getTime() < Date.now()) {
+  // Only fail auth if the database lookup explicitly completed and found no session record
+  if (!dbError && !sessionRecord) {
+    return null;
+  }
+
+  // Check if session has expired
+  if (sessionRecord && new Date(sessionRecord.expiresAt).getTime() < Date.now()) {
     return null;
   }
 

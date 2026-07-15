@@ -114,8 +114,12 @@ export async function authFromToken(token: string): Promise<PocketBase> {
         const record = authData.record;
         recordCache.set(token, { record, expiry: Date.now() + 60000 });
         return record;
-      } catch (err) {
-        console.warn('[PB System] authRefresh failed for token:', err);
+      } catch (err: any) {
+        if (err?.status === 401) {
+          console.log('[PB System] Token is invalid or expired (401)');
+        } else {
+          console.warn('[PB System] authRefresh failed for token:', err?.message || err);
+        }
         throw err;
       } finally {
         recordAuthPromises.delete(token);
