@@ -537,7 +537,7 @@ export default function AdminDashboardPage() {
       const res = await fetch("/api/admin/stats", { cache: "no-store" });
       const data = await safeJson(res);
       if (data.success) {
-        setMetrics(prev => ({ ...prev, ...data.metrics }));
+        setMetrics((prev: any) => ({ ...prev, ...data.metrics }));
         setFeed(data.feed);
         setAnnouncements(data.announcements);
         setCharts(data.charts);
@@ -738,7 +738,7 @@ export default function AdminDashboardPage() {
       const results = await Promise.all(
         CONTENT_COLLECTIONS.map(c => pb.collection(c.name).getFullList().then(recs => ({ c, recs })).catch(() => ({ c, recs: [] })))
       );
-      setMetrics(prev => {
+      setMetrics((prev: any) => {
         const updates: any = {};
         for (const { c, recs } of results) {
           updates[c.totalKey] = recs.length;
