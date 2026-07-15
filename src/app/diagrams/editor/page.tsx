@@ -1,6 +1,6 @@
 "use client";
 
-import './diagrams.css';
+import '../diagrams.css';
 import React, {
   useState, useEffect, useRef, useCallback, useMemo
 } from 'react';
@@ -1683,10 +1683,12 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
     };
   }, [selectedNode, selectedConnId, multiSelect, deleteSelected, copySelected, cutSelected, pasteSelected, pasteFromText, undo, redo, nodes, connections, saveToServer, duplicateNode, updateNode, isHand, setTool]);
 
+  const isLight = canvasBg === 'white';
+
   return (
     <div
-      className="flex h-screen text-[#d4e4fa] font-sans overflow-hidden select-none"
-      style={{ background: '#051424' }}
+      className={`flex h-screen font-sans overflow-hidden select-none ${isLight ? 'theme-light text-slate-900' : 'theme-dark text-[#d4e4fa]'}`}
+      style={{ background: isLight ? '#f3f4f6' : '#051424' }}
       onMouseMove={onCanvasMouseMove}
       onMouseUp={onCanvasMouseUp}
     >
@@ -1702,8 +1704,8 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
           TOP HEADER
       ══════════════════════════════════════════════════════════════════════ */}
       <header
-        className="glass rim fixed top-16 w-full h-14 border-b flex justify-between items-center px-5 z-50"
-        style={{ borderColor: 'rgba(69,71,75,0.25)' }}
+        className="glass rim fixed top-0 w-full h-14 border-b flex justify-between items-center px-5 z-50"
+        style={{ borderColor: isLight ? 'var(--editor-border)' : 'rgba(69,71,75,0.25)' }}
       >
         {/* Left: brand + nav */}
         <div className="flex items-center gap-3">
@@ -2207,14 +2209,14 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
       </header>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          MAIN BODY (offset for both parent nav 64px + studio header 56px = 120px)
+          MAIN BODY (offset for studio header 56px)
       ══════════════════════════════════════════════════════════════════════ */}
-      <div className="flex w-full" style={{ paddingTop: 120 }}>
+      <div className="flex w-full" style={{ paddingTop: 56 }}>
 
         {/* ── LEFT TOOLBOX ────────────────────────────────────────────────── */}
         <aside
           className="glass rim fixed left-3 bottom-3 w-[258px] border border-white/10 shadow-2xl flex flex-col z-40 rounded-2xl overflow-hidden"
-          style={{ top: 144 }}
+          style={{ top: 68 }}
         >
           {/* Tool Nav */}
           <nav className="px-3 pt-3 pb-2 border-b border-white/8 flex gap-2 text-xs font-semibold">
@@ -2539,7 +2541,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
           style={{
             marginLeft: 270,
             marginRight: codeFreeMode ? 0 : 310,
-            height: 'calc(100vh - 120px)',
+            height: 'calc(100vh - 56px)',
             cursor: isPanning ? 'grabbing' : panMode ? 'grab' : connectingFrom ? 'crosshair' : draggingId ? 'grabbing' : 'default',
           }}
           ref={canvasRef}
@@ -3389,7 +3391,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
         {!codeFreeMode && (
           <aside
             className="glass rim fixed right-3 bottom-3 w-[302px] rounded-2xl shadow-2xl flex flex-col z-40 overflow-hidden border border-white/10"
-            style={{ top: 144 }}
+            style={{ top: 68 }}
           >
           {/* Tab bar */}
           <div className="flex border-b border-white/8 text-xs font-semibold flex-shrink-0">

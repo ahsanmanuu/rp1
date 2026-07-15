@@ -65,7 +65,38 @@ export async function authFromToken(token: string): Promise<PocketBase> {
     return pb;
   }
 
-  // 2. Check in-flight promise to deduplicate concurrent requests for the same token
+  // 2. Fetch session from database first to avoid token invalidation caused by PocketBase authRefresh
+  try {
+    const { prisma } = await import('./prisma');
+    const sessionRecord = await prisma.userSession.findUnique({
+      where: { sessionToken: token },
+      include: { user: true }
+    }).catch(() => null);
+
+    if (sessionRecord && sessionRecord.user && new Date(sessionRecord.expiresAt).getTime() > now) {
+      const dbUser = sessionRecord.user;
+      const record = {
+        id: dbUser.id,
+        email: dbUser.email,
+        name: dbUser.name || dbUser.email.split("@")[0] || "",
+        avatar: dbUser.avatar,
+        theme: dbUser.theme || "dark",
+        points: dbUser.points ?? 50,
+        membership: dbUser.membership || "free",
+        role: dbUser.role || "user",
+      };
+
+      // Save to cache
+      recordCache.set(token, { record, expiry: now + 60000 });
+
+      pb.authStore.save(token, record);
+      return pb;
+    }
+  } catch (dbErr) {
+    console.warn('[PB System] authFromToken database lookup failed, falling back to PB:', dbErr);
+  }
+
+  // 3. Fallback: Check in-flight promise to deduplicate concurrent requests for the same token
   let promise = recordAuthPromises.get(token);
   if (!promise) {
     // Create a temporary client instance just to fetch the record

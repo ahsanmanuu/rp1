@@ -191,3 +191,124 @@ input[type=range] {
 .accordion-entry {
   animation: accordion-slide 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* Theme variables */
+.theme-dark {
+  --editor-bg: #051424;
+  --editor-panel-bg: rgba(11, 14, 20, 0.78);
+  --editor-border: rgba(255, 255, 255, 0.10);
+  --editor-border-subtle: rgba(255, 255, 255, 0.06);
+  --editor-text: #d4e4fa;
+  --editor-text-muted: #c6c6cb;
+  --editor-text-title: #ffffff;
+  --editor-btn-bg: #1c2b3c;
+  --editor-btn-hover-bg: #27374d;
+  --editor-input-bg: #0b1424;
+  --editor-input-text: #ffffff;
+  --editor-glass-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+}
+
+.theme-light {
+  --editor-bg: #f3f4f6;
+  --editor-panel-bg: rgba(255, 255, 255, 0.85);
+  --editor-border: rgba(0, 0, 0, 0.08);
+  --editor-border-subtle: rgba(0, 0, 0, 0.05);
+  --editor-text: #1f2937;
+  --editor-text-muted: #4b5563;
+  --editor-text-title: #111827;
+  --editor-btn-bg: #e5e7eb;
+  --editor-btn-hover-bg: #d1d5db;
+  --editor-input-bg: #ffffff;
+  --editor-input-text: #111827;
+  --editor-glass-shadow: 0 20px 50px rgba(0, 0, 0, 0.08);
+}
+
+.glass {
+  background: var(--editor-panel-bg, rgba(11, 14, 20, 0.78)) !important;
+  box-shadow: var(--editor-glass-shadow) !important;
+}
+
+/* Light theme style overrides */
+.theme-light .glass {
+  background: rgba(255, 255, 255, 0.82) !important;
+}
+
+.theme-light .rim {
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.6), inset -1px -1px 0 rgba(0, 0, 0, 0.05) !important;
+}
+
+.theme-light .custom-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15) !important;
+}
+
+.theme-light .border-white\/10 {
+  border-color: var(--editor-border) !important;
+}
+.theme-light .border-white\/8 {
+  border-color: var(--editor-border-subtle) !important;
+}
+.theme-light .text-\[\#c6c6cb\] {
+  color: var(--editor-text-muted) !important;
+}
+.theme-light .text-white {
+  color: var(--editor-text-title) !important;
+}
+.theme-light .bg-\[\#1c2b3c\] {
+  background-color: var(--editor-btn-bg) !important;
+}
+.theme-light .bg-\[\#1c2b3c\]:hover {
+  background-color: var(--editor-btn-hover-bg) !important;
+}
+.theme-light .hover\:text-white:hover {
+  color: var(--editor-text-title) !important;
+}
+.theme-light .text-violet-400 {
+  color: #7c3aed !important;
+}
+.theme-light .border-violet-400 {
+  border-color: #7c3aed !important;
+}
+.theme-light .hover\:bg-white\/5:hover {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+}
+.theme-light .bg-white\/4 {
+  background-color: rgba(0, 0, 0, 0.03) !important;
+}
+.theme-light .bg-white\/8 {
+  background-color: rgba(0, 0, 0, 0.06) !important;
+}
+.theme-light .hover\:bg-white\/8:hover {
+  background-color: rgba(0, 0, 0, 0.06) !important;
+}
+.theme-light .bg-white\/10 {
+  background-color: var(--editor-border) !important;
+}
+.theme-light input, 
+.theme-light select, 
+.theme-light textarea {
+  background-color: var(--editor-input-bg) !important;
+  color: var(--editor-input-text) !important;
+  border-color: var(--editor-border) !important;
+}
+.theme-light .text-\[\#d4e4fa\] {
+  color: var(--editor-text) !important;
+}
+.theme-light .hover\:border-white\/20:hover {
+  border-color: rgba(0, 0, 0, 0.15) !important;
+}
+.theme-light .bg-\[\#0b1424\] {
+  background-color: var(--editor-input-bg) !important;
+  color: var(--editor-input-text) !important;
+  border-color: var(--editor-border) !important;
+}
+.theme-light .bg-\[\#071321\] {
+  background-color: var(--editor-bg) !important;
+}
+.theme-light .bg-\[\#273647\] {
+  background-color: #d1d5db !important;
+  color: #111827 !important;
+}
+.theme-light .bg-\[\#273647\]:hover {
+  background-color: #c7d2fe !important;
+}
+
