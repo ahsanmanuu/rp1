@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 import path from "path";
 
+// Increase Node.js threadpool size to parallelize Webpack and file I/O compilation tasks
+if (typeof process !== 'undefined') {
+  process.env.UV_THREADPOOL_SIZE = "64";
+}
+
 const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
@@ -236,6 +241,18 @@ const nextConfig: NextConfig = {
   },
   turbopack: {},
   webpack: (config, { isServer, webpack }) => {
+    // Enable parallel compilation and thread pooling for Webpack modules
+    config.parallelism = 200;
+
+    // Parallelize asset minimization using multiple threads
+    if (config.optimization && config.optimization.minimizer) {
+      config.optimization.minimizer.forEach((minimizer: any) => {
+        if (minimizer.options) {
+          minimizer.options.parallel = true;
+        }
+      });
+    }
+
     // Force NormalModuleReplacement for Prisma to bypass edge-light hijacked resolution
     if (webpack) {
       config.plugins.push(
