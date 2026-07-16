@@ -1846,6 +1846,12 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
   }, [selectedNode, selectedConnId, multiSelect, deleteSelected, copySelected, cutSelected, pasteSelected, pasteFromText, undo, redo, nodes, connections, saveToServer, duplicateNode, updateNode, isHand, setTool]);
 
   const isLight = canvasBg === 'white' || isAppLight;
+  // Theme-aware card/button background and text for inline styles (cannot be targeted by CSS selectors)
+  const cardBg   = isAppLight ? '#f0f2f5' : '#1c2b3c';
+  const cardText  = isAppLight ? '#1f2937' : '#c6c6cb';
+  const inputBg  = isAppLight ? '#ffffff' : '#0b1424';
+  const inputText = isAppLight ? '#111827' : '#ffffff';
+  const panelBg  = isAppLight ? 'rgba(255,255,255,0.92)' : 'rgba(7,16,28,0.97)';
 
   return (
     <div
@@ -1942,7 +1948,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                 className="absolute left-0 top-full mt-2 z-[200] rounded-2xl border border-white/10 shadow-2xl overflow-hidden"
                 style={{
                   width: 320,
-                  background: 'rgba(7,16,28,0.97)',
+                  background: panelBg,
                   backdropFilter: 'blur(24px)',
                   boxShadow: '0 24px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(139,92,246,0.1)',
                 }}
@@ -2325,7 +2331,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                           ? 'border-violet-400 shadow-md'
                           : 'border-white/8 hover:border-white/20'
                       }`}
-                      style={{ background: canvasBg === opt.id ? 'rgba(139,92,246,0.15)' : '#1c2b3c' }}
+                      style={{ background: canvasBg === opt.id ? 'rgba(139,92,246,0.15)' : cardBg }}
                       title={opt.label}
                     >
                       {/* Mini preview */}
@@ -2418,7 +2424,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
               <input
                 type="text" placeholder="Search tools…"
                 className="w-full rounded-lg py-2 pl-8 pr-3 text-xs text-white focus:outline-none placeholder-white/30 border border-white/8"
-                style={{ background: '#1c2b3c' }}
+                style={{ background: cardBg }}
               />
               <span className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-white/40" style={{ fontSize: 16 }}>search</span>
             </div>
@@ -2455,7 +2461,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                         <button key={s.label} onClick={() => addNode(s.type)}
                           title={`Add ${s.type} node`}
                           className="flex flex-col items-center gap-1 py-1.5 rounded-xl text-[#c6c6cb] hover:text-white border border-white/8 hover:border-violet-500/40 transition-all text-[9px] font-semibold"
-                          style={{ background: '#1c2b3c' }}>
+                          style={{ background: cardBg }}>
                           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{s.icon}</span>
                           {s.label}
                         </button>
@@ -2479,7 +2485,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                         <button key={s.label} onClick={() => addNode(s.type)}
                           title={`Add ${s.type} node`}
                           className="flex flex-col items-center gap-1 py-1.5 rounded-xl text-[#c6c6cb] hover:text-white border border-white/8 hover:border-violet-500/40 transition-all text-[9px] font-semibold"
-                          style={{ background: '#1c2b3c' }}>
+                          style={{ background: cardBg }}>
                           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{s.icon}</span>
                           {s.label}
                         </button>
@@ -2500,7 +2506,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                         <button key={s.label} onClick={() => addNode(s.type)}
                           title={`Add ${s.type} node`}
                           className="flex flex-col items-center gap-1 py-1.5 rounded-xl text-[#c6c6cb] hover:text-white border border-white/8 hover:border-violet-500/40 transition-all text-[9px] font-semibold"
-                          style={{ background: '#1c2b3c' }}>
+                          style={{ background: cardBg }}>
                           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{s.icon}</span>
                           {s.label}
                         </button>
@@ -2523,7 +2529,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                         <button key={s.label} onClick={() => addNode(s.type)}
                           title={`Add ${s.type} node`}
                           className="flex flex-col items-center gap-1 py-1.5 rounded-xl text-[#c6c6cb] hover:text-white border border-white/8 hover:border-violet-500/40 transition-all text-[9px] font-semibold"
-                          style={{ background: '#1c2b3c' }}>
+                          style={{ background: cardBg }}>
                           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{s.icon}</span>
                           {s.label}
                         </button>
@@ -2537,7 +2543,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                     <button onClick={() => document.getElementById('canvas-image-upload')?.click()}
                       title="Upload image as node component"
                       className="w-full flex flex-col items-center gap-1 py-1.5 rounded-xl text-[#c6c6cb] hover:text-white border border-white/8 hover:border-violet-500/40 transition-all text-[9px] font-semibold"
-                      style={{ background: '#1c2b3c' }}>
+                      style={{ background: cardBg }}>
                       <span className="material-symbols-outlined" style={{ fontSize: 16 }}>upload_file</span>
                       Upload Image
                     </button>
@@ -2563,7 +2569,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                         if (selectedConnId) updateConnection(selectedConnId, { type: t });
                       }} title={t}
                         className={`aspect-square rounded flex items-center justify-center text-[#c6c6cb] border transition-all ${activeConnType === t ? 'border-violet-400 bg-violet-400/15 text-violet-200' : 'border-white/8 hover:border-white/20'}`}
-                        style={{ background: activeConnType === t ? undefined : '#1c2b3c' }}>
+                        style={{ background: activeConnType === t ? undefined : cardBg }}>
                         <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
                           {t === 'Orthogonal' ? 'route' : t === 'Curved' ? 'gesture' : t === 'Straight' ? 'horizontal_rule' : 'linear_scale'}
                         </span>
@@ -2578,7 +2584,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                         if (selectedConnId) updateConnection(selectedConnId, { arrowhead: a });
                       }} title={a}
                         className={`aspect-square rounded flex items-center justify-center text-[#c6c6cb] border transition-all ${activeArrow === a ? 'border-blue-400 bg-blue-400/15 text-blue-200' : 'border-white/8 hover:border-white/20'}`}
-                        style={{ background: activeArrow === a ? undefined : '#1c2b3c' }}>
+                        style={{ background: activeArrow === a ? undefined : cardBg }}>
                         <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
                           {a === 'Arrow' ? 'trending_flat' : a === 'Dot' ? 'radio_button_checked' : a === 'Diamond' ? 'diamond' : 'fork_left'}
                         </span>
@@ -2614,7 +2620,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                         }}
                           title={preset.label}
                           className={`py-2 px-1.5 rounded-lg border transition-all flex flex-col items-center justify-center gap-1 ${isSelected ? 'border-emerald-400 text-emerald-300 bg-emerald-400/10' : 'border-white/8 text-[#c6c6cb] hover:border-white/20'}`}
-                          style={{ background: isSelected ? undefined : '#1c2b3c' }}>
+                          style={{ background: isSelected ? undefined : cardBg }}>
                           <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{preset.icon}</span>
                           <span className="text-[9px] font-bold text-center truncate w-full">{preset.label}</span>
                         </button>
@@ -2796,6 +2802,8 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                 const markerId = conn.arrowhead === 'Dot' ? 'dot' : conn.arrowhead === 'Diamond' ? 'diamond' : conn.arrowhead === "Crow's Foot" ? 'crow' : (conn.type === 'Curved' ? 'arrow-violet' : 'arrow');
                 const isSelectedConn = selectedConnId === conn.id;
                 const strokeW = conn.thickness || 2;
+                // Compute port coordinates for label/handle placement
+                const { fromPort, toPort } = getBestPorts(fromNode, toNode);
                 return (
                   <g key={conn.id} className="pointer-events-auto cursor-pointer" onClick={e => {
                     e.stopPropagation();
@@ -2832,7 +2840,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                         setSelectedConnId(conn.id);
                         setSelectedNode(null);
                       }}>
-                        <rect x={((fromPort.x + toPort.x) / 2) - 30} y={((fromPort.y + toPort.y) / 2) - 10} width={60} height={20} rx={4} fill={LIGHT_CANVASES.has(canvasBg) ? '#ffffff' : '#1c2b3c'} stroke={isSelectedConn ? '#8b5cf6' : 'rgba(255,255,255,0.1)'} strokeWidth={1} />
+                        <rect x={((fromPort.x + toPort.x) / 2) - 30} y={((fromPort.y + toPort.y) / 2) - 10} width={60} height={20} rx={4} fill={isLight ? '#ffffff' : '#1c2b3c'} stroke={isSelectedConn ? '#8b5cf6' : 'rgba(255,255,255,0.1)'} strokeWidth={1} />
                         <text x={(fromPort.x + toPort.x) / 2} y={((fromPort.y + toPort.y) / 2) + 4} textAnchor="middle" fill={LIGHT_CANVASES.has(canvasBg) ? '#1e293b' : '#c6c6cb'} fontSize={10} fontFamily="sans-serif">{conn.label}</text>
                       </g>
                     )}
@@ -2850,7 +2858,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                             () => { deleteConnection(conn.id); setSelectedConnId(null); }
                           );
                         }}>
-                          <circle cx={mx} cy={my - 16} r={8} fill={LIGHT_CANVASES.has(canvasBg) ? '#ffffff' : '#1c2b3c'} stroke="#f43f5e" strokeWidth={1.5} className="cursor-pointer" />
+                          <circle cx={mx} cy={my - 16} r={8} fill={isLight ? '#ffffff' : '#1c2b3c'} stroke="#f43f5e" strokeWidth={1.5} className="cursor-pointer" />
                           <text x={mx} y={my - 12.5} textAnchor="middle" fill="#f43f5e" fontSize={10} fontFamily="sans-serif" className="cursor-pointer">×</text>
                         </g>
                       );
@@ -3596,7 +3604,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                       {/* Group Alignment */}
                       <div>
                         <span className="block font-black text-[10px] text-[#c6c6cb] uppercase tracking-wider mb-2">Group Alignment</span>
-                        <div className="grid grid-cols-6 gap-1 rounded-lg p-1 border border-white/8 mb-1.5" style={{ background: '#1c2b3c' }}>
+                        <div className="grid grid-cols-6 gap-1 rounded-lg p-1 border border-white/8 mb-1.5" style={{ background: cardBg }}>
                           {[
                             { icon: 'align_horizontal_left',   axis: 'left',    title: 'Align Lefts' },
                             { icon: 'align_horizontal_center', axis: 'centerX', title: 'Align Centers Horiz' },
@@ -3618,11 +3626,11 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                         <span className="block font-black text-[10px] text-[#c6c6cb] uppercase tracking-wider mb-2">Distribution</span>
                         <div className="grid grid-cols-2 gap-2">
                           <button onClick={() => distributeSelected('horizontal')}
-                            className="flex items-center justify-center gap-1.5 py-2 rounded-lg border border-white/8 text-[#c6c6cb] hover:text-white hover:border-violet-500/40 transition-colors" style={{ background: '#1c2b3c' }}>
+                            className="flex items-center justify-center gap-1.5 py-2 rounded-lg border border-white/8 text-[#c6c6cb] hover:text-white hover:border-violet-500/40 transition-colors" style={{ background: cardBg }}>
                             <span className="material-symbols-outlined" style={{ fontSize: 16 }}>align_space_between</span>Distribute Horiz
                           </button>
                           <button onClick={() => distributeSelected('vertical')}
-                            className="flex items-center justify-center gap-1.5 py-2 rounded-lg border border-white/8 text-[#c6c6cb] hover:text-white hover:border-violet-500/40 transition-colors" style={{ background: '#1c2b3c' }}>
+                            className="flex items-center justify-center gap-1.5 py-2 rounded-lg border border-white/8 text-[#c6c6cb] hover:text-white hover:border-violet-500/40 transition-colors" style={{ background: cardBg }}>
                             <span className="material-symbols-outlined" style={{ fontSize: 16 }}>align_space_around</span>Distribute Vert
                           </button>
                         </div>
@@ -3633,11 +3641,11 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                         <span className="block font-black text-[10px] text-[#c6c6cb] uppercase tracking-wider mb-2">Bulk Operations</span>
                         <div className="grid grid-cols-2 gap-2">
                           <button onClick={copySelected}
-                            className="flex items-center justify-center gap-1.5 py-2 rounded-lg border border-white/8 text-[#c6c6cb] hover:text-white transition-colors" style={{ background: '#1c2b3c' }}>
+                            className="flex items-center justify-center gap-1.5 py-2 rounded-lg border border-white/8 text-[#c6c6cb] hover:text-white transition-colors" style={{ background: cardBg }}>
                             <span className="material-symbols-outlined" style={{ fontSize: 16 }}>content_copy</span>Copy Selected
                           </button>
                           <button onClick={cutSelected}
-                            className="flex items-center justify-center gap-1.5 py-2 rounded-lg border border-white/8 text-[#c6c6cb] hover:text-white transition-colors" style={{ background: '#1c2b3c' }}>
+                            className="flex items-center justify-center gap-1.5 py-2 rounded-lg border border-white/8 text-[#c6c6cb] hover:text-white transition-colors" style={{ background: cardBg }}>
                             <span className="material-symbols-outlined" style={{ fontSize: 16 }}>content_cut</span>Cut Selected
                           </button>
                           <button onClick={deleteSelected}
@@ -3650,7 +3658,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                   ) : (
                     <>
                       {/* Quick Actions */}
-              <div className="flex justify-between items-center rounded-xl p-2.5 border border-white/8" style={{ background: '#1c2b3c' }}>
+              <div className="flex justify-between items-center rounded-xl p-2.5 border border-white/8" style={{ background: cardBg }}>
                 {[
                   { icon: 'format_align_center', title: 'Auto Layout', action: autoLayout },
                   { icon: 'palette', title: 'Cycle Colors', action: () => selected && updateNode(selected.id, { color: (Object.keys(DARK_COLOR_MAP) as NodeColor[])[(Object.keys(DARK_COLOR_MAP).indexOf(selected.color) + 1) % Object.keys(DARK_COLOR_MAP).length], customFill: undefined }) },
@@ -3690,7 +3698,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
               {/* Alignment */}
               <div>
                 <span className="block font-black text-[10px] text-[#c6c6cb] uppercase tracking-wider mb-2">Alignment</span>
-                <div className="grid grid-cols-6 gap-1 rounded-lg p-1 border border-white/8 mb-1.5" style={{ background: '#1c2b3c' }}>
+                <div className="grid grid-cols-6 gap-1 rounded-lg p-1 border border-white/8 mb-1.5" style={{ background: cardBg }}>
                   {([
                     { icon: 'align_horizontal_left',   axis: 'left',    title: 'Align Left' },
                     { icon: 'align_horizontal_center', axis: 'centerH', title: 'Center H' },
@@ -3761,7 +3769,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                     {(['Process','Square','Decision','Database','Cloud','People','Business','Technical','Computer','Oval','Diamond','Parallelogram','Document','Hexagon','Triangle','Swimlane','Gantt','UMLClass','EREntity','CircuitResistor','CircuitCapacitor','CircuitGround','CircuitSource','VennCircle','BarSegment','PieWedge','LinePoint','ScatterPoint','HistogramBar','DFDProcess','DFDDataStore','DFDExternalEntity'] as NodeType[]).map(t => (
                       <button key={t} onClick={() => updateNode(selected.id, { type: t })}
                         className={`py-1.5 rounded-lg text-[9px] font-bold flex flex-col items-center gap-0.5 border transition-all ${selected.type === t ? 'border-violet-400 text-violet-300' : 'border-white/8 text-[#c6c6cb] hover:border-white/20'}`}
-                        style={{ background: selected.type === t ? 'rgba(139,92,246,0.15)' : '#1c2b3c' }}>
+                        style={{ background: selected.type === t ? 'rgba(139,92,246,0.15)' : cardBg }}>
                         <span className="material-symbols-outlined" style={{ fontSize: 15 }}>{TYPE_ICON[t]}</span>
                         <span className="truncate w-full px-1 text-center">{t}</span>
                       </button>
@@ -3781,7 +3789,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                       { label: 'W', key: 'width', val: selected.width },
                       { label: 'H', key: 'height', val: selected.height },
                     ] as { label: string; key: keyof DiagramNode; val: number }[]).map(f => (
-                      <div key={f.key} className="rounded-lg p-2 flex flex-col" style={{ background: '#1c2b3c' }}>
+                      <div key={f.key} className="rounded-lg p-2 flex flex-col" style={{ background: cardBg }}>
                         <span className="text-[10px] text-[#c6c6cb] mb-1">{f.label}</span>
                         <input
                           type="number"
@@ -3817,7 +3825,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                               ? 'border-violet-400 text-violet-300 bg-violet-400/10'
                               : 'border-white/8 text-[#c6c6cb] hover:border-white/20'
                           }`}
-                          style={{ background: '#1c2b3c' }}
+                          style={{ background: cardBg }}
                         >
                           {angle}°
                         </button>
@@ -3827,7 +3835,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
 
                   <div>
                     <span className="block font-black text-[10px] text-[#c6c6cb] uppercase tracking-wider mb-2">Sticky Notes</span>
-                    <div className="rounded-xl p-3 border border-white/8 space-y-2" style={{ background: '#1c2b3c' }}>
+                    <div className="rounded-xl p-3 border border-white/8 space-y-2" style={{ background: cardBg }}>
                       <textarea
                         value={selected.notes || ''}
                         onChange={e => updateNode(selected.id, { notes: e.target.value })}
@@ -3844,7 +3852,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
               {selected && (
                 <div>
                   <span className="block font-black text-[10px] text-[#c6c6cb] uppercase tracking-wider mb-2">Text Style</span>
-                  <div className="rounded-xl p-3 border border-white/8 space-y-3" style={{ background: '#1c2b3c' }}>
+                  <div className="rounded-xl p-3 border border-white/8 space-y-3" style={{ background: cardBg }}>
                     {/* Title Font Size */}
                     <div>
                       <div className="flex justify-between items-center mb-1">
@@ -3934,7 +3942,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                   ].map(a => (
                     <button key={a.label} onClick={a.action}
                       className="py-1.5 rounded-lg border border-white/8 text-white hover:bg-white/10 transition-colors flex items-center justify-center gap-1.5 font-semibold"
-                      style={{ background: '#1c2b3c' }}>
+                      style={{ background: cardBg }}>
                       <span className="material-symbols-outlined" style={{ fontSize: 15 }}>{a.icon}</span>{a.label}
                     </button>
                   ))}
@@ -3980,7 +3988,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                   <div className="space-y-4">
                     <div>
                       <span className="block font-black text-[10px] text-[#c6c6cb] uppercase tracking-wider mb-2">Connection Style</span>
-                      <div className="rounded-xl p-3 border border-white/8 space-y-4" style={{ background: '#1c2b3c' }}>
+                      <div className="rounded-xl p-3 border border-white/8 space-y-4" style={{ background: cardBg }}>
                         
                         {/* Line Type */}
                         <div>
@@ -4231,7 +4239,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                   </div>
                 )}
 
-                <div className="flex items-center gap-2 rounded-full pl-2 pr-1 py-1 border border-white/10 focus-within:border-violet-500/50 transition-colors" style={{ background: '#1c2b3c' }}>
+                <div className="flex items-center gap-2 rounded-full pl-2 pr-1 py-1 border border-white/10 focus-within:border-violet-500/50 transition-colors" style={{ background: cardBg }}>
                   <input 
                     type="file" 
                     id="vision-upload" 
@@ -4711,7 +4719,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                 <button
                   onClick={() => setConfirmDialog(p => ({ ...p, isOpen: false }))}
                   className="px-4 py-2 rounded-xl text-xs font-semibold border border-white/10 text-[#c6c6cb] hover:bg-white/6 hover:text-white transition-all"
-                  style={{ background: '#1c2b3c' }}
+                  style={{ background: cardBg }}
                 >
                   Cancel
                 </button>

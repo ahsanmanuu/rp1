@@ -527,4 +527,155 @@ input[type=range] {
   font-size: 18px !important;
 }
 
+/* ─── Light Theme: Full Panel and Card Visibility ─── */
+
+/* Ensure glass panels get the light background */
+.theme-light.glass,
+.theme-light .glass {
+  background: rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+}
+
+/* All direct text in side panels must be dark in light mode */
+.theme-light aside *,
+.theme-light header * {
+  color: var(--editor-text, #1f2937);
+}
+
+/* Preserve accent/color-coded text */
+.theme-light aside .text-violet-400,
+.theme-light header .text-violet-400 {
+  color: var(--accent-primary, #7c3aed) !important;
+}
+.theme-light aside .text-blue-400,
+.theme-light header .text-blue-400 {
+  color: #2563eb !important;
+}
+.theme-light aside .text-emerald-400,
+.theme-light header .text-emerald-400 {
+  color: #059669 !important;
+}
+.theme-light aside .text-amber-400,
+.theme-light header .text-amber-400 {
+  color: #d97706 !important;
+}
+.theme-light aside .text-rose-400,
+.theme-light header .text-rose-400 {
+  color: #e11d48 !important;
+}
+.theme-light aside .text-violet-300,
+.theme-light header .text-violet-300 {
+  color: #7c3aed !important;
+}
+.theme-light aside .text-emerald-300,
+.theme-light header .text-emerald-300 {
+  color: #059669 !important;
+}
+
+/* White/muted text overrides in panels */
+.theme-light aside .text-white,
+.theme-light header .text-white {
+  color: var(--editor-text-title, #111827) !important;
+}
+.theme-light aside .text-white\/90,
+.theme-light header .text-white\/90 {
+  color: var(--editor-text-title, #111827) !important;
+}
+.theme-light aside .text-white\/80,
+.theme-light header .text-white\/80 {
+  color: var(--editor-text, #1f2937) !important;
+}
+.theme-light aside .text-white\/70,
+.theme-light header .text-white\/70 {
+  color: var(--editor-text, #1f2937) !important;
+}
+.theme-light aside .text-white\/60,
+.theme-light header .text-white\/60 {
+  color: var(--editor-text-muted, #4b5563) !important;
+}
+.theme-light aside .text-white\/50,
+.theme-light header .text-white\/50 {
+  color: var(--editor-text-muted, #4b5563) !important;
+}
+.theme-light aside .text-white\/40,
+.theme-light header .text-white\/40 {
+  color: var(--editor-text-muted, #6b7280) !important;
+}
+.theme-light aside .text-white\/30,
+.theme-light header .text-white\/30 {
+  color: var(--editor-text-muted, #9ca3af) !important;
+}
+.theme-light aside .text-white\/20,
+.theme-light header .text-white\/20 {
+  color: var(--editor-text-muted, #9ca3af) !important;
+}
+
+/* Named color text overrides */
+.theme-light aside .text-\[\#c6c6cb\],
+.theme-light header .text-\[\#c6c6cb\] {
+  color: var(--editor-text-muted, #4b5563) !important;
+}
+.theme-light aside .text-\[\#d4e4fa\],
+.theme-light header .text-\[\#d4e4fa\] {
+  color: var(--editor-text, #1f2937) !important;
+}
+.theme-light aside .text-\[\#6b7a8d\],
+.theme-light header .text-\[\#6b7a8d\] {
+  color: var(--editor-text-muted, #4b5563) !important;
+}
+
+/* Border overrides */
+.theme-light aside .border-white\/8,
+.theme-light header .border-white\/8 {
+  border-color: var(--editor-border, rgba(0,0,0,0.10)) !important;
+}
+.theme-light aside .border-white\/10,
+.theme-light header .border-white\/10 {
+  border-color: var(--editor-border, rgba(0,0,0,0.12)) !important;
+}
+.theme-light aside .border-white\/20,
+.theme-light header .border-white\/20 {
+  border-color: rgba(0,0,0,0.18) !important;
+}
+
+/* Hover background overrides */
+.theme-light aside .hover\:bg-white\/10:hover,
+.theme-light header .hover\:bg-white\/10:hover {
+  background-color: rgba(0,0,0,0.06) !important;
+}
+.theme-light aside .hover\:bg-white\/8:hover,
+.theme-light header .hover\:bg-white\/8:hover {
+  background-color: rgba(0,0,0,0.05) !important;
+}
+.theme-light aside .hover\:text-white:hover,
+.theme-light header .hover\:text-white:hover {
+  color: var(--editor-text-title, #111827) !important;
+}
+
+/* Input fields within panels */
+.theme-light aside input,
+.theme-light aside select,
+.theme-light aside textarea {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+  border-color: rgba(0,0,0,0.12) !important;
+}
+.theme-light aside input::placeholder {
+  color: #9ca3af !important;
+}
+
+/* Divider lines */
+.theme-light aside .bg-white\/10,
+.theme-light header .bg-white\/10 {
+  background-color: rgba(0,0,0,0.10) !important;
+}
+
+/* Gradient text backgrounds for section headers */
+.theme-light aside .text-\[\#6b7a8d\] {
+  color: #475569 !important;
+  font-weight: 700;
+}
+
+
 
