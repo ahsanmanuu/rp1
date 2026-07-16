@@ -1,10 +1,12 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import PocketBase from 'pocketbase';
 import { securityHeaders } from '@/lib/security/headers';
 import { checkRateLimit, type RateLimitConfig } from '@/lib/security/rateLimit';
 import { auditRequest, type AuditEntry } from '@/lib/security/audit';
 
 const COOKIE_NAME = 'admin_session';
+const PB_URL = process.env.POCKETBASE_URL || 'http://127.0.0.1:8090';
 
 function base64UrlDecode(str: string): string {
   let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
@@ -65,12 +67,11 @@ function applySecurityHeaders(res: NextResponse, requestId: string): void {
 function blockedResponse(
   requestId: string,
   status: number,
-  message: string,
-  extra: Record<string, string> = {},
+  message: string,Extra?: Record<string, string>,
 ): NextResponse {
   const res = new NextResponse(JSON.stringify({ error: message }), {
     status,
-    headers: { 'Content-Type': 'application/json', ...extra },
+    headers: { 'Content-Type': 'application/json', ...Extra },
   });
   applySecurityHeaders(res, requestId);
   return res;
@@ -93,18 +94,25 @@ export async function proxy(request: NextRequest) {
   const ip = getClientIp(request);
   const method = request.method;
 
-  // --- Existing admin route protection (unchanged behavior) ---
+  // --- Admin access page redirect helper ---
   if (pathname === '/admin' || pathname === '/admin-access') {
     const res = NextResponse.redirect(new URL('/admin/login', request.url));
     applySecurityHeaders(res, requestId);
     return res;
   }
 
-  if (pathname.startsWith('/admin') && !pathname.startsWith('/admin/login')) {
-    const token = request.cookies.get(COOKIE_NAME)?.value;
+  const isAdminPath = pathname.startsWith('/admin') && !pathname.startsWith('/admin/login');
+  const isAdminApi = pathname.startsWith('/api/admin') && !pathname.startsWith('/api/admin/auth');
+
+  // --- Admin Route Protection, Token Refresh, and Sliding Session ---
+  if (isAdminPath || isAdminApi) {
+    let token = request.cookies.get(COOKIE_NAME)?.value;
     const loginUrl = new URL('/admin/login', request.url);
 
     if (!token) {
+      if (isAdminApi) {
+        return blockedResponse(requestId, 401, 'Unauthorized');
+      }
       loginUrl.searchParams.set('redirect', pathname);
       const res = NextResponse.redirect(loginUrl);
       applySecurityHeaders(res, requestId);
@@ -113,6 +121,9 @@ export async function proxy(request: NextRequest) {
 
     const parts = token.split('.');
     if (parts.length !== 3) {
+      if (isAdminApi) {
+        return blockedResponse(requestId, 401, 'Unauthorized');
+      }
       const res = NextResponse.redirect(loginUrl);
       applySecurityHeaders(res, requestId);
       return res;
@@ -120,20 +131,67 @@ export async function proxy(request: NextRequest) {
 
     try {
       const payload = JSON.parse(base64UrlDecode(parts[1]));
-      if (payload.exp && payload.exp * 1000 < Date.now()) {
-        loginUrl.searchParams.set('expired', 'true');
-        const res = NextResponse.redirect(loginUrl);
-        applySecurityHeaders(res, requestId);
-        return res;
+      if (payload.exp) {
+        const expTime = payload.exp * 1000;
+        const now = Date.now();
+        if (expTime < now) {
+          if (isAdminApi) {
+            return blockedResponse(requestId, 401, 'Unauthorized (Session Expired)');
+          }
+          loginUrl.searchParams.set('expired', 'true');
+          const res = NextResponse.redirect(loginUrl);
+          applySecurityHeaders(res, requestId);
+          return res;
+        }
+
+        // If the PocketBase admin token is expiring in less than 30 minutes, refresh it!
+        const THIRTY_MINUTES = 30 * 60 * 1000;
+        if (expTime - now < THIRTY_MINUTES) {
+          try {
+            console.log(`[Proxy] Admin token is close to expiring, refreshing...`);
+            const pb = new PocketBase(PB_URL);
+            pb.authStore.save(token, null);
+            await pb.collection('_superusers').authRefresh();
+            if (pb.authStore.token) {
+              token = pb.authStore.token;
+              console.log(`[Proxy] Admin token refreshed successfully.`);
+            }
+          } catch (refreshErr: any) {
+            const msg = refreshErr?.message || String(refreshErr);
+            const isConnError = msg.includes('Failed to fetch') || 
+                                msg.includes('ECONNREFUSED') || 
+                                msg.includes('fetch') || 
+                                msg.includes('Network') ||
+                                refreshErr?.status === 0;
+            if (!isConnError) {
+              console.error("[Proxy] Admin token refresh failed (invalid token):", msg);
+              if (isAdminApi) {
+                return blockedResponse(requestId, 401, 'Unauthorized (Session Revoked)');
+              }
+              loginUrl.searchParams.set('expired', 'true');
+              const res = NextResponse.redirect(loginUrl);
+              applySecurityHeaders(res, requestId);
+              return res;
+            } else {
+              console.warn("[Proxy] PocketBase unreachable during admin token refresh, ignoring:", msg);
+            }
+          }
+        }
       }
-    } catch {
+      // Save the active token in request header to set cookie on final response
+      request.headers.set('x-admin-token', token);
+    } catch (e) {
+      console.error("[Proxy] Token decode or process error:", e);
+      if (isAdminApi) {
+        return blockedResponse(requestId, 401, 'Unauthorized');
+      }
       const res = NextResponse.redirect(loginUrl);
       applySecurityHeaders(res, requestId);
       return res;
     }
   }
 
-  // --- API hardening (the new security layer) ---
+  // --- API hardening (the security layer) ---
   if (pathname.startsWith('/api') || pathname.startsWith('/pb')) {
     if (isHardeningEnabled()) {
       // 1) Malicious URL screening (attack-only, never matches real paths).
@@ -174,17 +232,50 @@ export async function proxy(request: NextRequest) {
       applySecurityHeaders(res, requestId);
       res.headers.set('X-RateLimit-Limit', String(cfg.refillPerWindow));
       res.headers.set('X-RateLimit-Remaining', String(rl.remaining));
+
+      // Sliding session refresh for admin cookies on API routes
+      const refreshedToken = request.headers.get('x-admin-token');
+      if (refreshedToken) {
+        res.cookies.set(COOKIE_NAME, refreshedToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 60 * 60 * 24, // 24 hours
+          path: '/',
+        });
+      }
       return res;
     }
 
     // Hardening disabled: pass through with correlation id only.
     const res = NextResponse.next();
     res.headers.set('X-Request-Id', requestId);
+    const refreshedToken = request.headers.get('x-admin-token');
+    if (refreshedToken) {
+      res.cookies.set(COOKIE_NAME, refreshedToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24,
+        path: '/',
+      });
+    }
     return res;
   }
 
   // Non-api, non-admin paths: leave untouched (no workflow change).
-  return NextResponse.next();
+  const res = NextResponse.next();
+  const refreshedToken = request.headers.get('x-admin-token');
+  if (refreshedToken) {
+    res.cookies.set(COOKIE_NAME, refreshedToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24,
+      path: '/',
+    });
+  }
+  return res;
 }
 
 export const config = {

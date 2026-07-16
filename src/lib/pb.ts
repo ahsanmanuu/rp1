@@ -89,7 +89,7 @@ export async function authFromToken(token: string): Promise<PocketBase> {
       // Save to cache
       recordCache.set(token, { record, expiry: now + 60000 });
 
-      pb.authStore.save(token, record);
+      pb.authStore.save(token, record as any);
       return pb;
     }
   } catch (dbErr) {

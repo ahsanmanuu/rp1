@@ -12,7 +12,7 @@ const STATS_CACHE_TTL = 30_000; // 30 seconds
 let _seeded = false;
 
 // --- Prevent cache stampede: only one concurrent computation at a time ---
-let _inflight: Promise<NextResponse> | null = null;
+let _inflight: Promise<any> | null = null;
 
 // Helper to format Date as YYYY-MM-DD
 function getISODateStr(d: Date): string {
@@ -126,11 +126,22 @@ export async function GET(_req: NextRequest) {
     return NextResponse.json(_statsCache.data);
   }
 
-  // If another request is already computing, wait for it instead of starting a new one
-  if (_inflight) return _inflight;
+  // If another request is already computing, wait for it and return a fresh Response
+  if (_inflight) {
+    try {
+      const data = await _inflight;
+      return NextResponse.json(data);
+    } catch (error: any) {
+      console.error("[ADMIN_STATS_API] Error awaiting in-flight statistics:", error);
+      return NextResponse.json(
+        { success: false, error: error.message || "Failed to retrieve statistics" },
+        { status: 500 }
+      );
+    }
+  }
 
   _inflight = (async () => {
-  try {
+    try {
 
     const now = new Date();
     // 1. Ensure initial stats are seeded (only once per cold start)
@@ -589,19 +600,22 @@ export async function GET(_req: NextRequest) {
     // Cache the response for 30s
     _statsCache = { data: responseBody, expiry: Date.now() + STATS_CACHE_TTL };
 
-    return NextResponse.json(responseBody);
+    return responseBody;
+  } finally {
+    _inflight = null;
+  }
+  })();
+
+  try {
+    const data = await _inflight;
+    return NextResponse.json(data);
   } catch (error: any) {
     console.error("[ADMIN_STATS_API] Error gathering statistics:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to retrieve statistics" },
       { status: 500 }
     );
-  } finally {
-    _inflight = null;
   }
-  })();
-
-  return _inflight;
 }
 
 // POST endpoint to handle system alerts broadcasts (POST ALERT)
