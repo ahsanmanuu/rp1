@@ -14,6 +14,10 @@ let _seeded = false;
 // --- Prevent cache stampede: only one concurrent computation at a time ---
 let _inflight: Promise<any> | null = null;
 
+// --- Cache cloud status for 5 minutes ---
+let _cloudReachableCache: { status: boolean; expiry: number } | null = null;
+
+
 // Helper to format Date as YYYY-MM-DD
 function getISODateStr(d: Date): string {
   return d.toISOString().split("T")[0];
@@ -438,19 +442,28 @@ export async function GET(req: NextRequest) {
     const localTectonicExists = fs.existsSync(path.join(process.cwd(), 'bin', 'tectonic.exe'));
     
     let cloudReachable = false;
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
-      const ping = await fetch("https://latex.ytotech.com/builds/sync", { 
-        method: "HEAD", 
-        signal: controller.signal 
-      });
-      clearTimeout(timeoutId);
-      if (ping.ok || ping.status < 500) {
-        cloudReachable = true;
+    const nowMs = Date.now();
+    if (_cloudReachableCache && _cloudReachableCache.expiry > nowMs) {
+      cloudReachable = _cloudReachableCache.status;
+    } else {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const ping = await fetch("https://latex.ytotech.com/builds/sync", { 
+          method: "HEAD", 
+          signal: controller.signal 
+        });
+        clearTimeout(timeoutId);
+        if (ping.ok || ping.status < 500) {
+          cloudReachable = true;
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
+      _cloudReachableCache = {
+        status: cloudReachable,
+        expiry: nowMs + 5 * 60 * 1000 // 5 minutes cache
+      };
     }
 
     if (!localTectonicExists && !cloudReachable) {
@@ -468,56 +481,55 @@ export async function GET(req: NextRequest) {
       modelName: "user" | "membershipTransaction" | "pointTransaction" | "aiUsageLog",
       filterObj: any = {},
       sumField?: string
-    ) => {
-      const trend = [];
+    ): Promise<number[]> => {
       const nowMs = Date.now();
+      const promises: Promise<number>[] = [];
       for (let i = 3; i >= 0; i--) {
         const start = new Date(nowMs - (i + 1) * 7 * 24 * 60 * 60 * 1000);
         const end = new Date(nowMs - i * 7 * 24 * 60 * 60 * 1000);
-        
-        let val = 0;
         const baseFilter = { createdAt: { gte: start, lt: end }, ...filterObj };
         
+        let p: Promise<number>;
         if (modelName === "user") {
-          val = await prisma.user.count({ where: baseFilter });
+          p = prisma.user.count({ where: baseFilter });
         } else if (modelName === "membershipTransaction") {
           if (sumField === "amount") {
-            const agg = await prisma.membershipTransaction.aggregate({
+            p = prisma.membershipTransaction.aggregate({
               where: baseFilter,
               _sum: { amount: true }
-            });
-            val = agg._sum.amount || 0;
+            }).then((agg: any) => agg._sum.amount || 0);
           } else {
-            val = await prisma.membershipTransaction.count({ where: baseFilter });
+            p = prisma.membershipTransaction.count({ where: baseFilter });
           }
         } else if (modelName === "pointTransaction") {
-          const txs = await prisma.pointTransaction.findMany({
+          p = prisma.pointTransaction.findMany({
             where: baseFilter,
             select: { amount: true }
+          }).then((txs: any[]) => {
+            if (sumField === "rechargeRevenue") {
+              let rev = 0;
+              txs.forEach((tx: any) => {
+                if (tx.amount === 50) rev += 415;
+                else if (tx.amount === 200) rev += 1245;
+                else if (tx.amount === 1000) rev += 4150;
+                else rev += tx.amount * 8.3;
+              });
+              return rev;
+            } else {
+              return txs.length;
+            }
           });
-          if (sumField === "rechargeRevenue") {
-            let rev = 0;
-            txs.forEach((tx: any) => {
-              if (tx.amount === 50) rev += 415;
-              else if (tx.amount === 200) rev += 1245;
-              else if (tx.amount === 1000) rev += 4150;
-              else rev += tx.amount * 8.3;
-            });
-            val = rev;
-          } else {
-            val = txs.length;
-          }
         } else if (modelName === "aiUsageLog") {
-          const agg = await prisma.aiUsageLog.aggregate({
+          p = prisma.aiUsageLog.aggregate({
             where: baseFilter,
             _sum: { totalTokens: true }
-          });
-          val = agg._sum.totalTokens || 0;
+          }).then((agg: any) => Number(agg._sum.totalTokens || 0));
+        } else {
+          p = Promise.resolve(0);
         }
-        
-        trend.push(val);
+        promises.push(p);
       }
-      return trend;
+      return Promise.all(promises);
     };
 
     const [totalUsersTrend, membershipRevTrend, rechargeRevTrend, aiUsageTrend] = await Promise.all([
@@ -528,20 +540,24 @@ export async function GET(req: NextRequest) {
     ]);
     const totalRevenueTrend = membershipRevTrend.map((mVal, idx) => Math.round((mVal + rechargeRevTrend[idx]) * 100) / 100);
     
-    const activeNowTrend = [];
+    const activeNowTrendPromises: Promise<number>[] = [];
     for (let i = 3; i >= 0; i--) {
       const windowEnd = new Date(now.getTime() - i * 60 * 60 * 1000);
       const windowStart = new Date(now.getTime() - (i + 1) * 60 * 60 * 1000);
-      const activeSessions = await prisma.userSession.findMany({
-        where: {
-          lastActiveAt: { gte: windowStart, lt: windowEnd },
-          expiresAt: { gte: new Date() },
-        },
-        select: { userId: true },
-      });
-      const uniqueUsers = [...new Set(activeSessions.map((s: any) => s.userId))];
-      activeNowTrend.push(uniqueUsers.length);
+      activeNowTrendPromises.push(
+        prisma.userSession.findMany({
+          where: {
+            lastActiveAt: { gte: windowStart, lt: windowEnd },
+            expiresAt: { gte: new Date() },
+          },
+          select: { userId: true },
+        }).then((activeSessions: any[]) => {
+          const uniqueUsers = [...new Set(activeSessions.map((s: any) => s.userId))];
+          return uniqueUsers.length;
+        })
+      );
     }
+    const activeNowTrend = await Promise.all(activeNowTrendPromises);
 
     const [premiumTrend, freeTierTrend, blacklistedTrend, abnormalTrend] = await Promise.all([
       calculateWeeklyTrend("user", {
