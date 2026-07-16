@@ -1,3 +1,5 @@
+"use client";
+
 import AdminThemeStyles from "@/components/AdminThemeStyles";
 import Script from "next/script";
 
