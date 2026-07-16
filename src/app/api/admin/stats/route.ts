@@ -119,14 +119,18 @@ async function seedInitialData() {
   }
 }
 
-export async function GET(_req: NextRequest) {
-  // Serve from cache if fresh (avoids 45+ DB queries every 10s poll)
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const bypassCache = searchParams.get("bypassCache") === "true";
+
+  // Serve from cache if fresh (avoids 45+ DB queries every 10s poll), unless bypassed
   const nowTs = Date.now();
-  if (_statsCache && _statsCache.expiry > nowTs) {
+  if (!bypassCache && _statsCache && _statsCache.expiry > nowTs) {
     return NextResponse.json(_statsCache.data);
   }
 
   // If another request is already computing, wait for it and return a fresh Response
+
   if (_inflight) {
     try {
       const data = await _inflight;

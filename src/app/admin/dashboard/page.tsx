@@ -454,11 +454,13 @@ export default function AdminDashboardPage() {
   const [loadingInsight, setLoadingInsight] = useState(false);
   const [insightError, setInsightError] = useState<string | null>(null);
 
-  const fetchInsightData = async (type: string, title: string) => {
+  const fetchInsightData = async (type: string, title: string, background = false) => {
     setInsightType(type);
     setInsightTitle(title);
     setShowInsightModal(true);
-    setLoadingInsight(true);
+    if (!background) {
+      setLoadingInsight(true);
+    }
     setInsightError(null);
     try {
       const res = await fetch(`/api/admin/dashboard/insight?type=${type}`, { cache: "no-store" });
@@ -477,8 +479,10 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const fetchActiveSessions = async () => {
-    setLoadingSessions(true);
+  const fetchActiveSessions = async (background = false) => {
+    if (!background) {
+      setLoadingSessions(true);
+    }
     setSessionsError(null);
     try {
       const res = await fetch("/api/admin/active-sessions", { cache: "no-store" });
@@ -499,8 +503,9 @@ export default function AdminDashboardPage() {
 
   const handleActiveSessionsClick = () => {
     setShowActiveSessionsModal(true);
-    fetchActiveSessions();
+    fetchActiveSessions(false);
   };
+
 
   const handleTerminateSession = async (sessionId: string) => {
     setTerminatingSessionId(sessionId);
@@ -531,10 +536,11 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const fetchStats = async (showLoader = false) => {
+  const fetchStats = async (showLoader = false, bypassCache = false) => {
     if (showLoader) setLoading(true);
     try {
-      const res = await fetch("/api/admin/stats", { cache: "no-store" });
+      const url = bypassCache ? "/api/admin/stats?bypassCache=true" : "/api/admin/stats";
+      const res = await fetch(url, { cache: "no-store" });
       const data = await safeJson(res);
       if (data.success) {
         setMetrics((prev: any) => ({ ...prev, ...data.metrics }));
@@ -556,6 +562,7 @@ export default function AdminDashboardPage() {
       setLoading(false);
     }
   };
+
 
   const fetchTickets = async () => {
     try {
@@ -706,11 +713,17 @@ export default function AdminDashboardPage() {
   }, []);
 
   // ── Centralized Realtime Sync ──
-  const refreshAll = useCallback(() => {
-    fetchStats(false);
+  const refreshAll = useCallback((isRealtime = false) => {
+    fetchStats(false, isRealtime);
     fetchTickets();
     fetchTicketNotifications();
-  }, []);
+    if (showActiveSessionsModal) {
+      fetchActiveSessions(true);
+    }
+    if (showInsightModal && insightType) {
+      fetchInsightData(insightType, insightTitle, true);
+    }
+  }, [showActiveSessionsModal, showInsightModal, insightType, insightTitle]);
   useAdminRealtime({
     triggerCollections: ['users', 'projects', 'support_tickets', 'ai_usage_logs', 'admin_tasks', 'announcements', 'ai_usage_daily_summaries', 'user_sessions', 'banners', 'testimonials', 'how_it_works', 'gallery_items', 'institution_logos', 'features', 'benefits', 'product_details', 'footer_links', 'tasar_stats', 'platform_stats'],
     onRefresh: refreshAll,
@@ -2369,7 +2382,7 @@ export default function AdminDashboardPage() {
               </div>
               <div className="flex items-center gap-2">
                 <button 
-                  onClick={fetchActiveSessions} 
+                  onClick={() => fetchActiveSessions(false)} 
                   disabled={loadingSessions}
                   className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 text-slate-500 dark:text-slate-400 disabled:opacity-50 transition-all flex items-center justify-center"
                   title="Refresh active sessions"

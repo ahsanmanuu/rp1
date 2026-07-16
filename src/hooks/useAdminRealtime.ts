@@ -16,7 +16,7 @@ interface UseAdminRealtimeOptions {
   /** Collections to subscribe to that trigger `onRefresh` */
   triggerCollections?: string[];
   /** Called when any trigger collection changes */
-  onRefresh?: () => void;
+  onRefresh?: (isRealtime?: boolean) => void;
   /** Custom subscriptions with their own handlers */
   customSubscriptions?: SubscriptionDef[];
   /** Polling fallback interval (0 = disable) */
@@ -46,7 +46,7 @@ export function useAdminRealtime(options: UseAdminRealtimeOptions = {}) {
   onPollRef.current = onPoll;
 
   const triggerRefresh = useCallback(() => {
-    if (mountedRef.current) onRefreshRef.current?.();
+    if (mountedRef.current) onRefreshRef.current?.(true);
   }, []);
 
   useEffect(() => {
