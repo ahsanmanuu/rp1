@@ -365,6 +365,34 @@ function DiagramStudio() {
   const router = useRouter();
   const projectId = searchParams.get('id');
 
+  // ── Theme State & Real-time Observers ────────────────────────────────────────
+  const [isAppLight, setIsAppLight] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const checkTheme = () => {
+        const isL = document.documentElement.getAttribute('data-theme') === 'light';
+        setIsAppLight(isL);
+      };
+      checkTheme();
+      
+      const observer = new MutationObserver(checkTheme);
+      observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+      
+      // Apply preferred color palette class (theme-purple, theme-emerald, etc.)
+      const preferredTheme = localStorage.getItem('scholarly-preferred-theme') || 'purple';
+      const themes = ['indigo', 'purple', 'emerald', 'gold', 'slate'];
+      themes.forEach(t => {
+        document.documentElement.classList.remove(`theme-${t}`);
+        document.body.classList.remove(`theme-${t}`);
+      });
+      document.documentElement.classList.add(`theme-${preferredTheme}`);
+      document.body.classList.add(`theme-${preferredTheme}`);
+
+      return () => observer.disconnect();
+    }
+  }, []);
+
   // ── Canvas State ─────────────────────────────────────────────────────────────
   const [nodes, setNodes] = useState<DiagramNode[]>([]);
   const [connections, setConnections] = useState<DiagramConnection[]>([]);
@@ -1683,7 +1711,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
     };
   }, [selectedNode, selectedConnId, multiSelect, deleteSelected, copySelected, cutSelected, pasteSelected, pasteFromText, undo, redo, nodes, connections, saveToServer, duplicateNode, updateNode, isHand, setTool]);
 
-  const isLight = canvasBg === 'white';
+  const isLight = canvasBg === 'white' || isAppLight;
 
   return (
     <div
@@ -1704,7 +1732,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
           TOP HEADER
       ══════════════════════════════════════════════════════════════════════ */}
       <header
-        className="glass rim fixed top-0 w-full h-14 border-b flex justify-between items-center px-5 z-50"
+        className="glass rim fixed top-0 w-full h-[70px] border-b flex justify-between items-center px-6 z-50"
         style={{ borderColor: isLight ? 'var(--editor-border)' : 'rgba(69,71,75,0.25)' }}
       >
         {/* Left: brand + nav */}
@@ -2209,14 +2237,14 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
       </header>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          MAIN BODY (offset for studio header 56px)
+          MAIN BODY (offset for studio header 68px)
       ══════════════════════════════════════════════════════════════════════ */}
-      <div className="flex w-full" style={{ paddingTop: 56 }}>
+      <div className="flex w-full" style={{ paddingTop: 68 }}>
 
         {/* ── LEFT TOOLBOX ────────────────────────────────────────────────── */}
         <aside
-          className="glass rim fixed left-3 bottom-3 w-[258px] border border-white/10 shadow-2xl flex flex-col z-40 rounded-2xl overflow-hidden"
-          style={{ top: 68 }}
+          className="glass rim fixed left-4 bottom-4 w-[290px] border border-white/10 shadow-2xl flex flex-col z-40 rounded-2xl overflow-hidden"
+          style={{ top: 80 }}
         >
           {/* Tool Nav */}
           <nav className="px-3 pt-3 pb-2 border-b border-white/8 flex gap-2 text-xs font-semibold">
@@ -2539,9 +2567,9 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
         <main
           className={`canvas-${canvasBg} overflow-hidden relative`}
           style={{
-            marginLeft: 270,
-            marginRight: codeFreeMode ? 0 : 310,
-            height: 'calc(100vh - 56px)',
+            marginLeft: 306,
+            marginRight: codeFreeMode ? 0 : 356,
+            height: 'calc(100vh - 70px)',
             cursor: isPanning ? 'grabbing' : panMode ? 'grab' : connectingFrom ? 'crosshair' : draggingId ? 'grabbing' : 'default',
           }}
           ref={canvasRef}
@@ -3390,8 +3418,8 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
         {/* ── RIGHT PROPERTIES / CHAT PANEL ────────────────────────────── */}
         {!codeFreeMode && (
           <aside
-            className="glass rim fixed right-3 bottom-3 w-[302px] rounded-2xl shadow-2xl flex flex-col z-40 overflow-hidden border border-white/10"
-            style={{ top: 68 }}
+            className="glass rim fixed right-4 bottom-4 w-[340px] rounded-2xl shadow-2xl flex flex-col z-40 overflow-hidden border border-white/10"
+            style={{ top: 80 }}
           >
           {/* Tab bar */}
           <div className="flex border-b border-white/8 text-xs font-semibold flex-shrink-0">
