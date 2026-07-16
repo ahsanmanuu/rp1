@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -169,94 +169,95 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
       {showBlockModal && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}
           style={{ position: 'fixed', inset: 0, zIndex: 2147483647, display: 'flex', alignItems: 'center',
-            justifyContent: 'center', padding: '16px', backgroundColor: 'rgba(2,6,23,0.92)',
+            justifyContent: 'center', padding: '16px', backgroundColor: 'rgba(0,0,0,0.82)',
             backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}>
           <motion.div initial={{ opacity: 0, scale: 0.92, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 20 }} transition={{ duration: 0.3, ease: 'easeOut' }}
-            style={{ background: 'linear-gradient(145deg, #1a1a2e, #16213e)', border: '1px solid rgba(239,68,68,0.25)',
+            style={{ background: 'var(--bg-primary, #1e1e1e)', border: '1px solid var(--border, rgba(255,255,255,0.1))',
               borderRadius: '20px', padding: '36px', maxWidth: '480px', width: '100%',
-              boxShadow: '0 25px 60px rgba(0,0,0,0.7)', textAlign: 'center' }}>
+              boxShadow: '0 25px 60px rgba(0,0,0,0.5)', textAlign: 'center' }}>
 
-            <div style={{ width: '72px', height: '72px', background: 'radial-gradient(circle,rgba(239,68,68,0.18),rgba(239,68,68,0.04))',
-              border: '1px solid rgba(239,68,68,0.25)', borderRadius: '50%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
-              <Bot size={36} style={{ color: '#ef4444' }} />
+            <div style={{ width: '72px', height: '72px', background: 'var(--bg-secondary, rgba(255,255,255,0.03))',
+              border: '1px solid var(--accent-primary, #10b981)', borderRadius: '50%',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px',
+              boxShadow: '0 0 20px var(--accent-glow, rgba(16,185,129,0.1))' }}>
+              <Bot size={36} style={{ color: 'var(--accent-primary, #10b981)' }} />
             </div>
 
-            <h2 style={{ margin: '0 0 4px', color: '#fff', fontSize: '20px', fontWeight: '700', letterSpacing: '-0.3px' }}>
+            <h2 style={{ margin: '0 0 4px', color: 'var(--text-primary, #fff)', fontSize: '20px', fontWeight: '700', letterSpacing: '-0.3px', fontFamily: 'var(--font-headline)' }}>
               Daily AI Limit Reached
             </h2>
-            <p style={{ margin: '0 0 20px', color: '#ef4444', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            <p style={{ margin: '0 0 20px', color: 'var(--color-admin-error, #ef4444)', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'var(--font-headline)' }}>
               {isAdminBlocked ? `Cap Rule: ${status.ruleName ?? 'Admin Override'}` : 'Usage cap exceeded'}
             </p>
 
             {/* Usage bar */}
-            <div style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '14px', marginBottom: '14px', textAlign: 'left' }}>
-              <div style={{ width: '100%', height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.08)', overflow: 'hidden', marginBottom: '10px' }}>
+            <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.2))', border: '1px solid var(--border, rgba(255,255,255,0.05))', borderRadius: '12px', padding: '14px', marginBottom: '14px', textAlign: 'left' }}>
+              <div style={{ width: '100%', height: '8px', borderRadius: '4px', background: 'var(--bg-tertiary, rgba(255,255,255,0.08))', overflow: 'hidden', marginBottom: '10px' }}>
                 <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(status.percentage, 100)}%` }}
                   transition={{ duration: 0.8, ease: 'easeOut' }}
-                  style={{ height: '100%', borderRadius: '4px', background: 'linear-gradient(90deg,#ef4444,#dc2626)' }} />
+                  style={{ height: '100%', borderRadius: '4px', background: 'linear-gradient(90deg, var(--accent-primary, #10b981), var(--accent-secondary, var(--accent-primary, #10b981)))' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <p style={{ margin: 0, color: '#e5e7eb', fontSize: '13px', fontWeight: '600' }}>
+                <p style={{ margin: 0, color: 'var(--text-primary, #fff)', fontSize: '13px', fontWeight: '600' }}>
                   {(status.used ?? 0).toLocaleString()} / {(status.limit ?? 0).toLocaleString()} tokens
                 </p>
-                <span style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', fontSize: '11px', fontWeight: '700', padding: '2px 8px', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.2)' }}>
+                <span style={{ background: 'var(--bg-tertiary, rgba(255,255,255,0.05))', color: 'var(--text-secondary, #9ca3af)', fontSize: '11px', fontWeight: '700', padding: '2px 8px', borderRadius: '6px', border: '1px solid var(--border, rgba(255,255,255,0.05))' }}>
                   {status.planName} Plan
                 </span>
               </div>
             </div>
 
             {/* Quota schedule */}
-            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '12px', padding: '14px', marginBottom: '14px', textAlign: 'left' }}>
+            <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.1))', border: '1px solid var(--border, rgba(255,255,255,0.05))', borderRadius: '12px', padding: '14px', marginBottom: '14px', textAlign: 'left' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <RefreshCw size={14} style={{ color: 'var(--accent-primary,#10b981)', flexShrink: 0 }} />
-                  <span style={{ color: '#9ca3af', fontSize: '12px' }}>
+                  <span style={{ color: 'var(--text-secondary, #9ca3af)', fontSize: '12px' }}>
                     {isAdminBlocked ? 'Block expires in' : 'Quota resets in'}
                   </span>
                 </div>
-                <span style={{ color: '#d1d5db', fontSize: '15px', fontWeight: '800', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+                <span style={{ color: 'var(--accent-primary, #10b981)', fontSize: '15px', fontWeight: '800', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
                   {countdown || '…'}
                 </span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--border, rgba(255,255,255,0.05))' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Clock size={13} style={{ color: '#6b7280', flexShrink: 0 }} />
-                  <span style={{ color: '#9ca3af', fontSize: '11px' }}>Daily quota resets at</span>
+                  <Clock size={13} style={{ color: 'var(--text-secondary, #6b7280)', flexShrink: 0 }} />
+                  <span style={{ color: 'var(--text-secondary, #9ca3af)', fontSize: '11px' }}>Daily quota resets at</span>
                 </div>
-                <span style={{ color: '#9ca3af', fontSize: '11px', fontWeight: '600' }}>
+                <span style={{ color: 'var(--text-secondary, #9ca3af)', fontSize: '11px', fontWeight: '600' }}>
                   {fmtDate(status.quotaResetAt)}
                 </span>
               </div>
               {isAdminBlocked && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid rgba(239,68,68,0.12)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border, rgba(255,255,255,0.05))' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <AlertTriangle size={13} style={{ color: '#ef4444', flexShrink: 0 }} />
-                    <span style={{ color: '#9ca3af', fontSize: '11px' }}>Cap block lifts at</span>
+                    <AlertTriangle size={13} style={{ color: 'var(--color-admin-error, #ef4444)', flexShrink: 0 }} />
+                    <span style={{ color: 'var(--text-secondary, #9ca3af)', fontSize: '11px' }}>Cap block lifts at</span>
                   </div>
-                  <span style={{ color: '#ef4444', fontSize: '11px', fontWeight: '600' }}>{fmtDate(status.capExpiresAt)}</span>
+                  <span style={{ color: 'var(--color-admin-error, #ef4444)', fontSize: '11px', fontWeight: '600' }}>{fmtDate(status.capExpiresAt)}</span>
                 </div>
               )}
             </div>
 
             {/* Agent breakdown */}
             {agentEntries.length > 0 && (
-              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '12px', marginBottom: '14px', textAlign: 'left' }}>
+              <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.1))', border: '1px solid var(--border, rgba(255,255,255,0.05))', borderRadius: '12px', padding: '12px', marginBottom: '14px', textAlign: 'left' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
                   <Zap size={13} style={{ color: 'var(--accent-primary,#10b981)' }} />
-                  <span style={{ color: '#6b7280', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Token Usage by Agent</span>
+                  <span style={{ color: 'var(--text-secondary, #6b7280)', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Token Usage by Agent</span>
                 </div>
                 {agentEntries.map(([agent, tokens]) => {
                   const pct = status.limit > 0 ? Math.min((tokens / status.limit) * 100, 100) : 0;
                   return (
                     <div key={agent} style={{ marginBottom: '7px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                        <span style={{ color: '#9ca3af', fontSize: '11px' }}>{agentLabel(agent)}</span>
-                        <span style={{ color: '#d1d5db', fontSize: '11px', fontWeight: '600' }}>{tokens.toLocaleString()}</span>
+                        <span style={{ color: 'var(--text-secondary, #9ca3af)', fontSize: '11px' }}>{agentLabel(agent)}</span>
+                        <span style={{ color: 'var(--text-primary, #d1d5db)', fontSize: '11px', fontWeight: '600' }}>{tokens.toLocaleString()}</span>
                       </div>
-                      <div style={{ width: '100%', height: '3px', borderRadius: '2px', background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-                        <div style={{ width: `${pct}%`, height: '100%', borderRadius: '2px', background: 'linear-gradient(90deg,var(--accent-primary,#10b981),#059669)' }} />
+                      <div style={{ width: '100%', height: '3px', borderRadius: '2px', background: 'var(--bg-tertiary, rgba(255,255,255,0.06))', overflow: 'hidden' }}>
+                        <div style={{ width: `${pct}%`, height: '100%', borderRadius: '2px', background: 'linear-gradient(90deg, var(--accent-primary, #10b981), var(--accent-secondary, var(--accent-primary, #10b981)))' }} />
                       </div>
                     </div>
                   );
@@ -264,14 +265,53 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
               </div>
             )}
 
-            <button
-              onClick={() => { hasBeenDismissed.current = true; setShowBlockModal(false); }}
-              style={{ width: '100%', padding: '12px', background: 'var(--accent-primary,#10b981)', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '14px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'opacity 0.2s' }}
-              onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
-              onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-            >
-              Return to Dashboard
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button
+                onClick={() => {
+                  hasBeenDismissed.current = true;
+                  setShowBlockModal(false);
+                  window.location.href = '/dashboard';
+                }}
+                style={{
+                  width: '100%', padding: '12px',
+                  background: 'var(--accent-primary, #10b981)', border: 'none',
+                  borderRadius: '12px', color: '#fff', fontSize: '14px',
+                  fontWeight: '700', cursor: 'pointer', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', gap: '8px',
+                  boxShadow: '0 4px 12px var(--accent-glow, rgba(16,185,129,0.15))',
+                  transition: 'opacity 0.2s', fontFamily: 'var(--font-headline)'
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+              >
+                Return to Dashboard
+              </button>
+              
+              <button
+                onClick={() => {
+                  hasBeenDismissed.current = true;
+                  setShowBlockModal(false);
+                }}
+                style={{
+                  width: '100%', padding: '10px',
+                  background: 'transparent', border: '1px solid var(--border, rgba(255,255,255,0.1))',
+                  borderRadius: '12px', color: 'var(--text-secondary, #9ca3af)', fontSize: '12px',
+                  fontWeight: '600', cursor: 'pointer', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  transition: 'all 0.2s', fontFamily: 'var(--font-headline)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--bg-secondary, rgba(255,255,255,0.05))';
+                  e.currentTarget.style.color = 'var(--text-primary, #fff)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = 'var(--text-secondary, #9ca3af)';
+                }}
+              >
+                Continue in Read-Only Mode
+              </button>
+            </div>
           </motion.div>
         </motion.div>
       )}
