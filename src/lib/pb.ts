@@ -61,6 +61,7 @@ export async function authFromToken(token: string): Promise<PocketBase> {
   // 1. Check completed cache
   const cached = recordCache.get(token);
   if (cached && cached.expiry > now && cached.record) {
+    (pb.authStore as any).isTokenExpired = () => false;
     pb.authStore.save(token, cached.record);
     return pb;
   }
@@ -89,6 +90,7 @@ export async function authFromToken(token: string): Promise<PocketBase> {
       // Save to cache
       recordCache.set(token, { record, expiry: now + 60000 });
 
+      (pb.authStore as any).isTokenExpired = () => false;
       pb.authStore.save(token, record as any);
       return pb;
     }
@@ -130,6 +132,7 @@ export async function authFromToken(token: string): Promise<PocketBase> {
 
   try {
     const record = await promise;
+    (pb.authStore as any).isTokenExpired = () => false;
     pb.authStore.save(token, record);
   } catch (err) {
     pb.authStore.clear();
