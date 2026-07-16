@@ -295,7 +295,7 @@ export function parseMermaidRegex(source: string): { nodes: DiagramNode[]; conne
     }
   }
 
-  // 3. Parse explicit style directives (e.g., style A fill:#8b5cf6) to map to premium theme colors
+  // 4. Parse explicit style directives (e.g., style A fill:#8b5cf6) to map to premium theme colors
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed.startsWith('style ')) {
@@ -315,6 +315,25 @@ export function parseMermaidRegex(source: string): { nodes: DiagramNode[]; conne
             else if (fillVal.includes('f43f5e') || fillVal.includes('rose') || fillVal.includes('red')) node.color = 'rose';
             else if (fillVal.includes('6366f1') || fillVal.includes('indigo')) node.color = 'indigo';
             else if (fillVal.includes('64748b') || fillVal.includes('slate') || fillVal.includes('gray')) node.color = 'slate';
+          }
+        }
+      }
+    } else if (trimmed.startsWith('%%')) {
+      // Parse custom connection type directives like %% conn_style A->B: Curved
+      const connStyleMatch = trimmed.match(/%%\s*(?:conn_style|style|connection_type)\s+(\w+)\s*->\s*(\w+)\s*[:\s]\s*(\w+)/i);
+      if (connStyleMatch) {
+        const [, fromId, toId, styleName] = connStyleMatch;
+        const found = connections.find(c => c.from === fromId && c.to === toId);
+        if (found) {
+          const lowerStyle = styleName.toLowerCase();
+          if (lowerStyle.includes('curve') || lowerStyle.includes('round')) {
+            found.type = 'Curved';
+          } else if (lowerStyle.includes('elbow') || lowerStyle.includes('angle')) {
+            found.type = 'Elbow';
+          } else if (lowerStyle.includes('straight') || lowerStyle.includes('line')) {
+            found.type = 'Straight';
+          } else if (lowerStyle.includes('ortho')) {
+            found.type = 'Orthogonal';
           }
         }
       }
@@ -724,43 +743,44 @@ export function adaptConnectionsToContext(nodes: DiagramNode[], connections: Dia
     if (!fromNode || !toNode) return conn;
 
     const c = { ...conn };
+    const hasExplicitType = conn.type && conn.type !== 'Orthogonal';
 
     // 1. Electronic Circuits schematic context
     const isCircuit = fromNode.type.startsWith('Circuit') || toNode.type.startsWith('Circuit');
     if (isCircuit) {
-      c.type = 'Straight';
-      c.arrowhead = 'Arrow';
-      c.arrowDirection = 'none';
-      c.thickness = 2.5; // Solid wires
+      if (!hasExplicitType) c.type = 'Straight';
+      c.arrowhead = conn.arrowhead || 'Arrow';
+      c.arrowDirection = conn.arrowDirection || 'none';
+      c.thickness = conn.thickness || 2.5; // Solid wires
       return c;
     }
 
     // 2. Database ERD context
     const isERD = fromNode.type === 'EREntity' || toNode.type === 'EREntity';
     if (isERD) {
-      c.type = 'Orthogonal';
-      c.arrowhead = "Crow's Foot";
-      c.arrowDirection = 'forward';
-      c.lineStyle = 'solid';
+      if (!hasExplicitType) c.type = 'Orthogonal';
+      c.arrowhead = conn.arrowhead || "Crow's Foot";
+      c.arrowDirection = conn.arrowDirection || 'forward';
+      c.lineStyle = conn.lineStyle || 'solid';
       return c;
     }
 
     // 3. Gantt timeline roadmaps
     const isGantt = fromNode.type === 'Gantt' || toNode.type === 'Gantt';
     if (isGantt) {
-      c.type = 'Elbow';
-      c.arrowhead = 'Arrow';
-      c.arrowDirection = 'forward';
-      c.lineStyle = 'solid';
+      if (!hasExplicitType) c.type = 'Elbow';
+      c.arrowhead = conn.arrowhead || 'Arrow';
+      c.arrowDirection = conn.arrowDirection || 'forward';
+      c.lineStyle = conn.lineStyle || 'solid';
       return c;
     }
 
     // 4. UML Class models
     const isUML = fromNode.type === 'UMLClass' || toNode.type === 'UMLClass';
     if (isUML) {
-      c.type = 'Straight';
-      c.arrowhead = 'Arrow';
-      c.lineStyle = c.lineStyle || 'solid';
+      if (!hasExplicitType) c.type = 'Straight';
+      c.arrowhead = conn.arrowhead || 'Arrow';
+      c.lineStyle = conn.lineStyle || 'solid';
       return c;
     }
 
@@ -769,12 +789,12 @@ export function adaptConnectionsToContext(nodes: DiagramNode[], connections: Dia
                         ['BarSegment', 'PieWedge', 'LinePoint', 'ScatterPoint', 'HistogramBar', 'VennCircle'].includes(toNode.type);
     if (isDataChart) {
       if (fromNode.type === 'LinePoint' && toNode.type === 'LinePoint') {
-        c.type = 'Straight';
-        c.arrowDirection = 'forward';
-        c.arrowhead = 'Arrow';
+        if (!hasExplicitType) c.type = 'Straight';
+        c.arrowDirection = conn.arrowDirection || 'forward';
+        c.arrowhead = conn.arrowhead || 'Arrow';
       } else {
-        c.type = 'Straight';
-        c.arrowDirection = 'none';
+        if (!hasExplicitType) c.type = 'Straight';
+        c.arrowDirection = conn.arrowDirection || 'none';
       }
       return c;
     }
@@ -783,10 +803,10 @@ export function adaptConnectionsToContext(nodes: DiagramNode[], connections: Dia
     const isDFD = ['DFDProcess', 'DFDDataStore', 'DFDExternalEntity'].includes(fromNode.type) ||
                   ['DFDProcess', 'DFDDataStore', 'DFDExternalEntity'].includes(toNode.type);
     if (isDFD) {
-      c.type = 'Curved';
-      c.arrowDirection = 'forward';
-      c.arrowhead = 'Arrow';
-      c.lineStyle = 'solid';
+      if (!hasExplicitType) c.type = 'Curved';
+      c.arrowDirection = conn.arrowDirection || 'forward';
+      c.arrowhead = conn.arrowhead || 'Arrow';
+      c.lineStyle = conn.lineStyle || 'solid';
       return c;
     }
 

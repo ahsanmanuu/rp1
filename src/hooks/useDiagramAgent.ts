@@ -392,46 +392,82 @@ export function useDiagramAgent({
             }
 
             if (finalParsed) {
-              const { explanation, nodes: aiNodes, connections: aiConns } = finalParsed;
+              const { explanation, nodes: aiNodes, connections: aiConns, mode, deleteNodes } = finalParsed;
               const sanitizedNodes = (aiNodes || []).map((n: any, i: number) => sanitizeNode(n, i));
               const sanitizedConns = (aiConns || []).map((c: any, i: number) => sanitizeConnection(c, i));
-              const organizedNodes = organizeDiagramLayout(sanitizedNodes, sanitizedConns);
-              const adaptedConns = adaptConnectionsToContext(organizedNodes, sanitizedConns);
 
-              if (organizedNodes.length > 0) {
-                // ── Smart merge strategy ──────────────────────────────────
-                // Instead of setNodes([]) which destroys the canvas context:
-                //   • Nodes with matching IDs get updated in-place (edit/update)
-                //   • New IDs (not in currentNodes) are appended (add)
-                //   • Nodes that were in currentNodes but NOT in aiNodes are removed (delete)
-                // This correctly handles all three operations: add / update / delete.
-                const prevNodeIds = new Set(currentNodes.map(n => n.id));
+              const isPatch = mode === 'patch' || (
+                sanitizedNodes.length > 0 &&
+                sanitizedNodes.length < currentNodes.length &&
+                sanitizedNodes.some(n => currentNodes.some(existing => existing.id === n.id))
+              );
 
-                // Determine if this is a targeted edit (subset returned) or full replace
-                // If the AI returned >= 50% of current nodes, treat as full replace
-                // If the AI returned only a few nodes relative to current, do a patch
-                const isSelectorEdit = organizedNodes.length < Math.max(1, currentNodes.length) &&
-                  organizedNodes.every(n => prevNodeIds.has(n.id));
+              let finalNodes: DiagramNode[];
+              let finalConns: DiagramConnection[];
 
-                let finalNodes: DiagramNode[];
-                if (isSelectorEdit) {
-                  // Patch mode: update only the returned nodes, keep the rest
-                  finalNodes = currentNodes.map(existing => {
-                    const updated = organizedNodes.find(n => n.id === existing.id);
-                    return updated ? { ...updated, _animating: true } : existing;
+              if (isPatch) {
+                const deleteIds = new Set<string>(deleteNodes || []);
+                (aiNodes || []).forEach((n: any) => {
+                  if (n.deleted === true || n.status === 'deleted') {
+                    deleteIds.add(String(n.id));
+                  }
+                });
+
+                const incomingMap = new Map<string, DiagramNode>(sanitizedNodes.map(n => [n.id, n]));
+                const updatedNodes = currentNodes
+                  .filter(n => !deleteIds.has(n.id))
+                  .map(existing => {
+                    const incoming = incomingMap.get(existing.id);
+                    if (incoming) {
+                      incomingMap.delete(existing.id);
+                      return { ...incoming, _animating: true };
+                    }
+                    return existing;
                   });
-                } else {
-                  // Full replace mode: use AI's full node list
-                  finalNodes = organizedNodes;
-                }
 
+                const newNodesList: DiagramNode[] = [];
+                incomingMap.forEach(newNode => {
+                  if (!deleteIds.has(newNode.id)) {
+                    newNodesList.push({ ...newNode, _animating: true });
+                  }
+                });
+
+                finalNodes = [...updatedNodes, ...newNodesList];
+
+                // Merge connections
+                const newConnsMap = new Map<string, DiagramConnection>(sanitizedConns.map(c => [`${c.from}->${c.to}`, c]));
+                const mergedConns = currentConns
+                  .filter(c => !deleteIds.has(c.from) && !deleteIds.has(c.to))
+                  .map(existing => {
+                    const key = `${existing.from}->${existing.to}`;
+                    const incoming = newConnsMap.get(key);
+                    if (incoming) {
+                      newConnsMap.delete(key);
+                      return incoming;
+                    }
+                    return existing;
+                  });
+
+                newConnsMap.forEach(newConn => {
+                  if (!deleteIds.has(newConn.from) && !deleteIds.has(newConn.to)) {
+                    mergedConns.push(newConn);
+                  }
+                });
+
+                // Auto-route new connections if needed
+                finalConns = adaptConnectionsToContext(finalNodes, mergedConns);
+              } else {
+                finalNodes = organizeDiagramLayout(sanitizedNodes, sanitizedConns);
+                finalConns = adaptConnectionsToContext(finalNodes, sanitizedConns);
+              }
+
+              if (finalNodes.length > 0) {
                 applyNodesStaggered(finalNodes, setNodes, () => {
-                  setConnections(adaptedConns);
-                  debouncedSave(finalNodes, adaptedConns);
+                  setConnections(finalConns);
+                  debouncedSave(finalNodes, finalConns);
                   setStatus('done');
                 });
-              } else if (organizedNodes.length === 0 && currentNodes.length > 0) {
-                // AI returned no nodes — keep current canvas unchanged
+              } else if (finalNodes.length === 0 && currentNodes.length > 0) {
                 debouncedSave(currentNodes, currentConns);
                 setStatus('done');
               } else {

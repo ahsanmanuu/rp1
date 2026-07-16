@@ -418,15 +418,16 @@ There are already ${(ctx.nodes as any[]).length} nodes on the canvas. The user i
 
 ### CRITICAL OUTPUT MODES:
 **PATCH MODE** (use when user asks to modify, add, or remove specific shapes from the existing diagram):
-  - Return ONLY the nodes that changed, plus ALL updated connections for the FULL diagram.
+  - Set the "mode" key to "patch".
+  - Return ONLY the nodes that changed (created or updated), plus ALL updated connections for the FULL diagram.
   - Identify target nodes by their exact ID from the "Current Nodes" list below.
-  - For UPDATE: modify only the requested attributes; preserve all other attributes exactly (title, description, notes, color, customFill, customBorderColor, customBorderWidth, rotation, x, y, width, height, icon, variant, imageUrl).
-  - For ADD: include the new node plus all existing nodes in the "nodes" array. Assign a unique new ID.
-  - For DELETE: return the full node list WITHOUT the deleted node(s). Return all remaining nodes.
-  - NEVER omit unchanged node attributes — copy them exactly from the Current Nodes list.
-  - NEVER change node IDs. IDs are the primary key used to match and merge nodes.
+  - For UPDATE: modify only the requested attributes; preserve all other attributes exactly.
+  - For ADD: include the new node in the "nodes" array. Assign a unique new ID.
+  - For DELETE: specify the ID(s) to remove in the "deleteNodes" array.
+  - NEVER change node IDs for unchanged nodes.
 
 **FULL REPLACE MODE** (use ONLY when user asks for a completely new diagram, or the request has nothing to do with the current nodes):
+  - Set the "mode" key to "replace".
   - Return ALL nodes for the new diagram.
   - Use this mode sparingly — only when the user's request is fundamentally different from what's on canvas.` : `### CURRENT DIAGRAM STATE:
 The canvas is empty. Generate a new diagram based on the user's request.`}
@@ -442,6 +443,8 @@ IMPORTANT: You MUST output your response in the Valid JSON Block format (OPTION 
 ### OPTION A: Valid JSON Block (Mandatory for specialized diagram architectures)
 Return a valid JSON object matching this structure EXACTLY. Return ONLY the raw JSON block without explanations or text before/after the JSON block:
 {
+  "mode": "patch" | "replace", // Set to "patch" if modifying the current diagram; "replace" if starting fresh.
+  "deleteNodes": ["node_id_to_delete"], // Optional: IDs of nodes to remove (patch mode only)
   "explanation": "A concise 1-2 sentence summary explaining the diagram's flow, context, and structural design choices.",
   "nodes": [
     {
@@ -467,7 +470,7 @@ Return a valid JSON object matching this structure EXACTLY. Return ONLY the raw 
       "id": "unique_conn_id",
       "from": "source_node_id",
       "to": "target_node_id",
-      "type": "Orthogonal" | "Curved" | "Straight" | "Elbow",
+      "type": "Orthogonal" | "Curved" | "Straight" | "Elbow", // Choose Curved for round-angled arrows, Elbow or Orthogonal for angled lines, Straight for diagonal lines.
       "arrowhead": "Arrow" | "Dot" | "Diamond" | "Crow's Foot",
       "label": "Data flow label (e.g. 'Sends payload', 'JSON over HTTP')", // ALWAYS label your connections to describe the data flow clearly!
       "lineStyle": "solid" | "dashed" | "dotted",

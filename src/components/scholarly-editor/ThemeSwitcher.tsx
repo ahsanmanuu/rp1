@@ -73,6 +73,7 @@ export default function ThemeSwitcher({ onThemeChange, onAppearanceChange }: The
     }
 
     root.classList.add(resolvedMode);
+    root.setAttribute('data-theme', resolvedMode);
     localStorage.setItem('scholarly-appearance', mode);
     if (onAppearanceChange) onAppearanceChange(mode);
   };

@@ -20,6 +20,7 @@ import { DIAGRAM_TEMPLATES, DiagramTemplate } from '@/lib/diagramTemplates';
 import type { NodeColor, NodeType, ConnType, Arrowhead, DiagramNode, DiagramConnection, EditorMode } from '@/lib/diagramTypes';
 import ProjectLimitModal from '@/components/ProjectLimitModal';
 import { useProjectLimit } from '@/hooks/useProjectLimit';
+import ThemeSwitcher from '@/components/scholarly-editor/ThemeSwitcher';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -297,25 +298,158 @@ function buildPath(
     return `M ${fx} ${fy} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${tx} ${ty}`;
   }
   if (type === 'Orthogonal' || type === 'Elbow') {
-    if (type === 'Elbow') {
-      // Simple step
-      return `M ${fx} ${fy} L ${mx} ${fy} L ${mx} ${ty} L ${tx} ${ty}`;
+    // Safe clearance margin
+    const margin = 24;
+
+    // Helper to check if a vertical line segment intersects a node
+    const intersectsNode = (x: number, y1: number, y2: number, node: DiagramNode) => {
+      const minY = Math.min(y1, y2);
+      const maxY = Math.max(y1, y2);
+      return x >= node.x && x <= node.x + node.width && minY <= node.y + node.height && maxY >= node.y;
+    };
+
+    // Helper to check if a horizontal line segment intersects a node
+    const intersectsNodeH = (y: number, x1: number, x2: number, node: DiagramNode) => {
+      const minX = Math.min(x1, x2);
+      const maxX = Math.max(x1, x2);
+      return y >= node.y && y <= node.y + node.height && minX <= node.x + node.width && maxX >= node.x;
+    };
+
+    // Exiting points
+    let x1 = fx;
+    let y1 = fy;
+    if (fromDir === 'R') x1 = from.x + from.width + margin;
+    else if (fromDir === 'L') x1 = from.x - margin;
+    else if (fromDir === 'B') y1 = from.y + from.height + margin;
+    else if (fromDir === 'T') y1 = from.y - margin;
+
+    // Entering points
+    let x2 = tx;
+    let y2 = ty;
+    if (toDir === 'R') x2 = to.x + to.width + margin;
+    else if (toDir === 'L') x2 = to.x - margin;
+    else if (toDir === 'B') y2 = to.y + to.height + margin;
+    else if (toDir === 'T') y2 = to.y - margin;
+
+    const path: string[] = [`M ${fx} ${fy}`];
+    if (x1 !== fx || y1 !== fy) {
+      path.push(`L ${x1} ${y1}`);
     }
-    // Proper orthogonal routing based on port directions
+
     const isFromH = fromDir === 'R' || fromDir === 'L';
-    const isToH = toDir === 'R' || toDir === 'L';
-    
-    if (isFromH && isToH) {
-      return `M ${fx} ${fy} H ${mx} V ${ty} H ${tx}`;
-    } else if (!isFromH && !isToH) {
-      return `M ${fx} ${fy} V ${my} H ${tx} V ${ty}`;
-    } else if (isFromH && !isToH) {
-      return `M ${fx} ${fy} H ${tx} V ${ty}`;
+    if (isFromH) {
+      const x_mid = (x1 + x2) / 2;
+      if (!intersectsNode(x_mid, y1, y2, from) && !intersectsNode(x_mid, y1, y2, to)) {
+        path.push(`H ${x_mid}`, `V ${y2}`, `H ${tx}`);
+        if (y2 !== ty) path.push(`V ${ty}`);
+        return path.join(' ');
+      }
     } else {
-      return `M ${fx} ${fy} V ${ty} H ${tx}`;
+      const y_mid = (y1 + y2) / 2;
+      if (!intersectsNodeH(y_mid, x1, x2, from) && !intersectsNodeH(y_mid, x1, x2, to)) {
+        path.push(`V ${y_mid}`, `H ${x2}`, `V ${ty}`);
+        if (x2 !== tx) path.push(`H ${tx}`);
+        return path.join(' ');
+      }
     }
+
+    // Bypass routing
+    const y_above = Math.min(from.y, to.y) - margin;
+    const y_below = Math.max(from.y + from.height, to.y + to.height) + margin;
+    const y_safe = Math.abs(y1 - y_above) < Math.abs(y1 - y_below) ? y_above : y_below;
+
+    path.push(`V ${y_safe}`, `H ${x2}`, `V ${ty}`);
+    if (x2 !== tx) path.push(`H ${tx}`);
+    return path.join(' ');
   }
   return `M ${fx} ${fy} L ${tx} ${ty}`;
+}
+
+interface PathSegment {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+function parsePathSegments(d: string): PathSegment[] {
+  const segments: PathSegment[] = [];
+  const commands = d.match(/[MLHVCSZ][^MLHVCSZ]*/g) || [];
+  let cx = 0, cy = 0;
+  for (const cmd of commands) {
+    const type = cmd[0];
+    const args = cmd.substring(1).trim().split(/[\s,]+/).map(Number);
+    if (type === 'M') {
+      cx = args[0];
+      cy = args[1];
+    } else if (type === 'L') {
+      segments.push({ x1: cx, y1: cy, x2: args[0], y2: args[1] });
+      cx = args[0];
+      cy = args[1];
+    } else if (type === 'H') {
+      segments.push({ x1: cx, y1: cy, x2: args[0], y2: cy });
+      cx = args[0];
+    } else if (type === 'V') {
+      segments.push({ x1: cx, y1: cy, x2: cx, y2: args[0] });
+      cy = args[0];
+    }
+  }
+  return segments;
+}
+
+function applyLineJumps(d: string, otherPaths: string[]): string {
+  const segments = parsePathSegments(d);
+  if (segments.length === 0) return d;
+
+  const otherSegments: PathSegment[] = [];
+  for (const op of otherPaths) {
+    otherSegments.push(...parsePathSegments(op));
+  }
+
+  let newPath = `M ${segments[0].x1} ${segments[0].y1}`;
+
+  for (const seg of segments) {
+    const isH = Math.abs(seg.y1 - seg.y2) < 0.1;
+    if (isH) {
+      const intersections: number[] = [];
+      const y = seg.y1;
+      const minX = Math.min(seg.x1, seg.x2);
+      const maxX = Math.max(seg.x1, seg.x2);
+
+      for (const oSeg of otherSegments) {
+        const isOV = Math.abs(oSeg.x1 - oSeg.x2) < 0.1;
+        if (isOV) {
+          const oX = oSeg.x1;
+          const oMinY = Math.min(oSeg.y1, oSeg.y2);
+          const oMaxY = Math.max(oSeg.y1, oSeg.y2);
+
+          if (oX > minX + 10 && oX < maxX - 10 && y > oMinY + 10 && y < oMaxY - 10) {
+            intersections.push(oX);
+          }
+        }
+      }
+
+      if (intersections.length > 0) {
+        const drawDirRight = seg.x2 > seg.x1;
+        intersections.sort((a, b) => drawDirRight ? a - b : b - a);
+
+        let lastX = seg.x1;
+        for (const ix of intersections) {
+          const sign = drawDirRight ? 1 : -1;
+          newPath += ` L ${ix - 6 * sign} ${y}`;
+          newPath += ` A 6 6 0 0 1 ${ix + 6 * sign} ${y}`;
+          lastX = ix + 6 * sign;
+        }
+        newPath += ` L ${seg.x2} ${seg.y2}`;
+      } else {
+        newPath += ` L ${seg.x2} ${seg.y2}`;
+      }
+    } else {
+      newPath += ` L ${seg.x2} ${seg.y2}`;
+    }
+  }
+
+  return newPath;
 }
 
 const ASSETS_CATEGORIES = [
@@ -2225,6 +2359,10 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
 
           <div className="h-5 w-px bg-white/10" />
 
+          <ThemeSwitcher />
+
+          <div className="h-5 w-px bg-white/10" />
+
           <Link href="/" className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 bg-[#1c2b3c] text-[#c6c6cb] border border-white/8 hover:text-white hover:border-white/20 cursor-pointer" title="Return to Home">
             <span className="material-symbols-outlined" style={{ fontSize: 16 }}>home</span>
             Return to Home
@@ -2642,8 +2780,19 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                 const fromNode = nodes.find(n => n.id === conn.from);
                 const toNode = nodes.find(n => n.id === conn.to);
                 if (!fromNode || !toNode) return null;
-                const { fromPort, toPort } = getBestPorts(fromNode, toNode);
-                const d = buildPath(fromNode, toNode, conn.type, conn.routingOffset, smartRouting, conn.fromPort, conn.toPort, conn.routingOffsetY);
+                // Get other paths to find intersections
+                const otherPaths = lineJump ? connections
+                  .filter(c => c.id !== conn.id)
+                  .map(c => {
+                    const fNode = nodes.find(n => n.id === c.from);
+                    const tNode = nodes.find(n => n.id === c.to);
+                    if (!fNode || !tNode) return '';
+                    return buildPath(fNode, tNode, c.type, c.routingOffset, smartRouting, c.fromPort, c.toPort, c.routingOffsetY);
+                  })
+                  .filter(path => path !== '') : [];
+
+                const rawPath = buildPath(fromNode, toNode, conn.type, conn.routingOffset, smartRouting, conn.fromPort, conn.toPort, conn.routingOffsetY);
+                const d = lineJump ? applyLineJumps(rawPath, otherPaths) : rawPath;
                 const markerId = conn.arrowhead === 'Dot' ? 'dot' : conn.arrowhead === 'Diamond' ? 'diamond' : conn.arrowhead === "Crow's Foot" ? 'crow' : (conn.type === 'Curved' ? 'arrow-violet' : 'arrow');
                 const isSelectedConn = selectedConnId === conn.id;
                 const strokeW = conn.thickness || 2;
@@ -3636,8 +3785,15 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                         <span className="text-[10px] text-[#c6c6cb] mb-1">{f.label}</span>
                         <input
                           type="number"
-                          value={f.val}
-                          onChange={e => updateNode(selected.id, { [f.key]: Number(e.target.value) } as any)}
+                          value={f.val ?? ''}
+                          onChange={e => {
+                            const raw = e.target.value;
+                            if (raw === '') return;
+                            const val = Number(raw);
+                            if (isNaN(val)) return;
+                            if ((f.key === 'width' || f.key === 'height') && val < 10) return;
+                            updateNode(selected.id, { [f.key]: val } as any);
+                          }}
                           className="bg-transparent border-none p-0 text-white text-xs focus:ring-0 w-full outline-none font-semibold"
                         />
                       </div>

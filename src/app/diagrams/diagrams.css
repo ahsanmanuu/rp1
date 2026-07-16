@@ -500,3 +500,31 @@ input[type=range] {
   background-color: rgba(59, 130, 246, 0.2) !important;
 }
 
+/* ─── Premium Accessibility and Font Scale Controls ─── */
+.glass aside, 
+.glass header, 
+.glass button, 
+.glass input, 
+.glass select, 
+.glass textarea,
+.glass span,
+.glass div,
+.glass label,
+.glass a {
+  font-size: 12px !important;
+}
+
+/* Sub-labels and metadata can be slightly smaller, but at least 11px */
+.glass .text-\[8px\],
+.glass .text-\[9px\], 
+.glass .text-\[10px\],
+.glass .text-\[11px\] {
+  font-size: 11px !important;
+}
+
+/* Make sure Material ligatures/icons are not overridden */
+.glass .material-symbols-outlined {
+  font-size: 18px !important;
+}
+
+
