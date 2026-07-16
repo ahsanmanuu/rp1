@@ -57,6 +57,12 @@ services:
         value: sid.ilm6@gmail.com
       - key: RESEND_API_KEY
         sync: false
+      - key: CASHFREE_APP_ID
+        sync: false
+      - key: CASHFREE_SECRET_KEY
+        sync: false
+      - key: CASHFREE_ENV
+        value: test
     disk:
       name: pb-data
       mountPath: /opt/render/project/src/pb_data
