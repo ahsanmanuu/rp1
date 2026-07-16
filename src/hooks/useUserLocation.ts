@@ -115,6 +115,30 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
       }
     } catch (err: any) {
       if (!mountedRef.current) return;
+
+      // Exception handling: POST to notify server that geolocation access was denied/failed
+      try {
+        const res = await fetch('/api/user/location', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ latitude: null, longitude: null }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && mountedRef.current) {
+            setState(prev => ({
+              location: data.location,
+              loading: false,
+              error: null,
+              permissionDenied: true
+            }));
+            return;
+          }
+        }
+      } catch (postErr) {
+        console.error("Failed to post location block fallback:", postErr);
+      }
+
       if (err.code === 1) {
         setState(prev => ({ ...prev, permissionDenied: true, loading: false }));
       } else {

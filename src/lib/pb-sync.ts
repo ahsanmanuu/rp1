@@ -134,3 +134,52 @@ export async function ensurePbUserCollectionFields(): Promise<void> {
     // non-fatal
   }
 }
+
+export async function ensurePbSessionCollectionFields(): Promise<void> {
+  try {
+    const admPb = await pbAdmin();
+    const sessionCol = await admPb.collections.getOne('user_sessions').catch(() => null);
+    if (!sessionCol) return;
+
+    const existingFields = new Set(
+      ((sessionCol as any).schema || []).map((f: any) => f.name)
+    );
+    if (!existingFields.has('lastActiveAt')) {
+      const newSchema = [...((sessionCol as any).schema || [])];
+      newSchema.push({ name: 'lastActiveAt', type: 'date', required: false, unique: false });
+      await admPb.collections.update(sessionCol.id, { schema: newSchema });
+    }
+  } catch (err: any) {
+    console.error("Failed to update user_sessions collection in PocketBase:", err.message);
+  }
+}
+
+export async function ensurePbSessionActivitiesCollectionFields(): Promise<void> {
+  try {
+    const admPb = await pbAdmin();
+    const col = await admPb.collections.getOne('user_session_activities').catch(() => null);
+    if (!col) return;
+
+    const existingFields = new Set(
+      ((col as any).schema || []).map((f: any) => f.name)
+    );
+    const missingFields: { name: string; type: string }[] = [];
+    if (!existingFields.has('latitude')) {
+      missingFields.push({ name: 'latitude', type: 'number' });
+    }
+    if (!existingFields.has('longitude')) {
+      missingFields.push({ name: 'longitude', type: 'number' });
+    }
+
+    if (missingFields.length > 0) {
+      const newSchema = [...((col as any).schema || [])];
+      for (const field of missingFields) {
+        newSchema.push({ name: field.name, type: field.type, required: false, unique: false });
+      }
+      await admPb.collections.update(col.id, { schema: newSchema });
+    }
+  } catch (err: any) {
+    console.error("Failed to update user_session_activities collection in PocketBase:", err.message);
+  }
+}
+

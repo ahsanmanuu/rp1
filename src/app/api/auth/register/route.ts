@@ -77,7 +77,10 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. Create User in PocketBase
+    // 3. Find the free AI Cap plan
+    const freePlan = await prisma.aiCapPlan.findFirst({ where: { name: 'free' } }).catch(() => null);
+
+    // 4. Create User in PocketBase
     let record;
     try {
       record = await pb.collection("users").create({
@@ -90,50 +93,13 @@ export async function POST(req: Request) {
         membership: "free",
         role: "user",
         status: "active",
+        aiCapPlanId: freePlan?.id || null,
       });
     } catch (pbErr: any) {
       const details = pbErr?.data?.data || {};
       const firstError = Object.values(details)[0] as any;
       const message = firstError?.message || pbErr?.message || "Registration failed in authentication database.";
       return NextResponse.json({ error: message }, { status: 400 });
-    }
-
-    // 4. Create User in PostgreSQL (with Rollback on failure)
-    try {
-      const bcrypt = await import("bcryptjs");
-      const passwordHash = await bcrypt.hash(password, 10);
-      const freePlan = await prisma.aiCapPlan.findFirst({ where: { name: 'free' } });
-
-      await prisma.user.create({
-        data: {
-          id: record.id, // Keep IDs identical
-          email: cleanEmail,
-          name: cleanName || cleanEmail.split("@")[0],
-          password: passwordHash,
-          points: 50,
-          theme: "dark",
-          membership: "free",
-          role: "user",
-          status: "active",
-          aiCapPlanId: freePlan?.id || null,
-        }
-      });
-    } catch (dbErr: any) {
-      console.error("[REGISTER] Failed to create user in PostgreSQL. Rolling back PocketBase user...", dbErr);
-      
-      // Rollback: Delete the PocketBase user record
-      try {
-        const { pbAdmin } = await import("@/lib/pb");
-        const admPb = await pbAdmin();
-        await admPb.collection("users").delete(record.id);
-      } catch (rollbackErr: any) {
-        console.error("[REGISTER] Rollback of PocketBase user failed:", rollbackErr.message);
-      }
-
-      return NextResponse.json(
-        { error: "Registration failed due to a database synchronization error. Please try again." },
-        { status: 500 }
-      );
     }
 
     return NextResponse.json(

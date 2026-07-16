@@ -102,6 +102,13 @@ export async function POST(req: NextRequest) {
     // No duplicate: create a new session record
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
+    try {
+      const { ensurePbSessionCollectionFields } = await import("@/lib/pb-sync");
+      await ensurePbSessionCollectionFields();
+    } catch (e: any) {
+      console.warn("[AUTH pb-login] Schema sync failed (non-fatal):", e.message);
+    }
+
     await prisma.userSession.create({
       data: {
         userId,

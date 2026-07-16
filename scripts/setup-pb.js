@@ -182,6 +182,8 @@ const COLLECTIONS = [
     { name: 'ipAddress', type: 'text', required: true },
     { name: 'location', type: 'text' },
     { name: 'userAgent', type: 'text' },
+    { name: 'latitude', type: 'number' },
+    { name: 'longitude', type: 'number' },
   ] },
   { name: 'tool_usage_logs', type: 'base', schema: [
     { name: 'userId', type: 'relation', required: true, options: { collectionId: '_pb_users_collection_', cascadeDelete: true } },
@@ -356,6 +358,7 @@ const COLLECTIONS = [
     { name: 'ipAddress', type: 'text' },
     { name: 'location', type: 'text' },
     { name: 'userAgent', type: 'text' },
+    { name: 'lastActiveAt', type: 'date' },
     { name: 'expiresAt', type: 'date', required: true },
   ], indexes: ['CREATE INDEX idx_us_userId ON user_sessions (userId);'] },
   { name: 'verification_tokens', type: 'base', schema: [

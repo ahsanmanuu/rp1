@@ -221,8 +221,9 @@ export async function PUT(req: NextRequest) {
     }
 
     // MODE 1: Subscription Update
-    if ("membership" in body) {
-      const { membership, membershipExpiresAt } = body;
+    if ("membership" in body || "membershipExpiresAt" in body) {
+      const membership = "membership" in body ? body.membership : existingUser.membership;
+      const { membershipExpiresAt } = body;
       let finalExpiry: Date | null = null;
       if (membership !== "free" && membershipExpiresAt) {
         const parsed = new Date(membershipExpiresAt);

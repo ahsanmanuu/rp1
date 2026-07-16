@@ -13,12 +13,20 @@ async function reverseGeocode(lat: number, lng: number): Promise<string | null> 
     );
     if (!res.ok) return null;
     const data = await res.json();
-    if (data?.display_name) return data.display_name;
-    const parts: string[] = [];
-    if (data?.address?.city) parts.push(data.address.city);
-    if (data?.address?.state) parts.push(data.address.state);
-    if (data?.address?.country) parts.push(data.address.country);
-    return parts.length > 0 ? parts.join(", ") : null;
+    
+    // Extract a clean city/town name
+    const address = data?.address;
+    if (address) {
+      const city = address.city || address.town || address.village || address.municipality || address.suburb;
+      if (city) return city;
+    }
+    
+    if (data?.display_name) {
+      const parts = data.display_name.split(",").map((p: string) => p.trim());
+      if (parts.length > 1) return parts[1];
+      return parts[0];
+    }
+    return null;
   } catch {
     return null;
   }
@@ -63,24 +71,53 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { latitude, longitude } = body;
 
-    if (typeof latitude !== "number" || typeof longitude !== "number") {
-      return NextResponse.json({ error: "latitude and longitude (numbers) required" }, { status: 400 });
-    }
+    let locationName = "Unknown Location";
+    let lat: number | null = null;
+    let lng: number | null = null;
 
     const geo = await getClientGeoInfo(req);
-    const locationName = geo?.location || await reverseGeocode(latitude, longitude) || "Unknown";
+
+    if (latitude != null && longitude != null) {
+      if (typeof latitude !== "number" || typeof longitude !== "number") {
+        return NextResponse.json({ error: "latitude and longitude must be numbers" }, { status: 400 });
+      }
+      lat = latitude;
+      lng = longitude;
+      locationName = geo?.location || await reverseGeocode(lat, lng) || "Unknown Location";
+    } else {
+      locationName = geo?.location || "Unknown Location";
+    }
 
     const record = await prisma.userSessionActivity.create({
       data: {
         userId,
         ipAddress: geo?.ipAddress || "0.0.0.0",
         location: locationName,
-        latitude,
-        longitude,
+        latitude: lat,
+        longitude: lng,
         userAgent: geo?.userAgent || null,
       },
       select: { id: true, latitude: true, longitude: true, location: true, createdAt: true },
     });
+
+    // Real-time synchronization to PocketBase
+    try {
+      const { pbAdmin } = await import("@/lib/pb");
+      const { ensurePbSessionActivitiesCollectionFields } = await import("@/lib/pb-sync");
+      await ensurePbSessionActivitiesCollectionFields();
+
+      const admPb = await pbAdmin();
+      await admPb.collection("user_session_activities").create({
+        userId,
+        ipAddress: geo?.ipAddress || "0.0.0.0",
+        location: locationName,
+        latitude: lat,
+        longitude: lng,
+        userAgent: geo?.userAgent || null,
+      });
+    } catch (pbErr: any) {
+      console.error("[LOCATION] Failed to sync session activity to PocketBase:", pbErr.message);
+    }
 
     return NextResponse.json({
       success: true,

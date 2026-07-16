@@ -520,6 +520,9 @@ export default function AdminUsersPage() {
   const [isEditingPoints, setIsEditingPoints] = useState(false);
   const [editPointsValue, setEditPointsValue] = useState('');
   const [pointsSaving, setPointsSaving] = useState(false);
+  const [isEditingExpiry, setIsEditingExpiry] = useState(false);
+  const [editExpiryValue, setEditExpiryValue] = useState('');
+  const [expirySaving, setExpirySaving] = useState(false);
 
   // ── User Detail Modal state ────────────────────────────────────────────
   const [_uModalOpen, setUModalOpen] = useState<{ type: string; label: string; icon: string; color: string } | null>(null);
@@ -1563,7 +1566,14 @@ export default function AdminUsersPage() {
               {selectedUser && (
                 <div className="border rounded-xl p-6 relative overflow-hidden"
                   style={{ backgroundColor: 'var(--color-admin-surface-container)', borderColor: 'var(--color-admin-outline-variant)' }}>
-                  <p className="uppercase tracking-widest mb-2 text-[10px] font-bold" style={{ color: 'var(--color-admin-on-surface-variant)' }}>Selected User Health</p>
+                  <p className="uppercase tracking-widest mb-1.5 text-[10px] font-bold" style={{ color: 'var(--color-admin-on-surface-variant)' }}>Selected User Health</p>
+                  
+                  {/* Geo Location display */}
+                  <div className="mb-3 text-xs flex items-center gap-1 font-semibold" style={{ color: 'var(--color-admin-on-surface)' }}>
+                    <span className="material-symbols-outlined text-[15px] select-none" style={{ color: 'var(--color-admin-primary)', fontVariationSettings: "'FILL' 1" }}>location_on</span>
+                    <span>Geo Location: <strong style={{ color: 'var(--color-admin-on-surface)' }}>{selectedUser.lastLocation || 'Unknown Location'}</strong></span>
+                  </div>
+
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-lg font-bold truncate max-w-[140px]" style={{ color: 'var(--color-admin-on-surface)' }}>{selectedUser.name}</h3>
                     <div className="flex flex-col gap-1 items-end">
@@ -1604,17 +1614,95 @@ export default function AdminUsersPage() {
                             backgroundColor: 'rgba(195,192,255,0.05)'
                           }}
                         >
-                          Edit
+                          Tier
                         </button>
                       </div>
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex flex-col gap-0.5">
                           <PlanBadge membership={selectedUser.membership} membershipRaw={selectedUser.membershipRaw} />
                         </div>
-                        {selectedUser.membershipRaw !== 'free' && selectedUser.membershipExpiresAt && (
-                          <span className="text-[10px] text-right shrink-0" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
-                            Exp: {new Date(selectedUser.membershipExpiresAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                          </span>
+                        {selectedUser.membershipRaw !== 'free' && (
+                          <div className="flex flex-col items-end gap-1">
+                            {isEditingExpiry ? (
+                              <div className="flex flex-col items-end gap-1">
+                                <input
+                                  type="date"
+                                  value={editExpiryValue}
+                                  onChange={e => setEditExpiryValue(e.target.value)}
+                                  className="text-[11px] rounded border px-1.5 py-0.5 outline-none font-sans"
+                                  style={{
+                                    backgroundColor: 'var(--color-admin-surface-container-lowest)',
+                                    borderColor: 'var(--color-admin-outline-variant)',
+                                    color: 'var(--color-admin-on-surface)',
+                                    width: '120px'
+                                  }}
+                                />
+                                <div className="flex gap-1.5">
+                                  <button
+                                    disabled={expirySaving}
+                                    onClick={async () => {
+                                      setExpirySaving(true);
+                                      try {
+                                        const res = await fetch('/api/admin/users', {
+                                          method: 'PUT',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({
+                                            id: selectedUser.id,
+                                            membershipExpiresAt: editExpiryValue ? new Date(editExpiryValue).toISOString() : null
+                                          })
+                                        });
+                                        const data = await res.json();
+                                        if (data.success) {
+                                          setSelectedUser((prev: AdminUser | null) => prev ? {
+                                            ...prev,
+                                            membershipExpiresAt: data.user.membershipExpiresAt
+                                          } : null);
+                                          setIsEditingExpiry(false);
+                                          fetchUsers(true);
+                                        } else {
+                                          alert(data.error || "Failed to update expiry date");
+                                        }
+                                      } catch (e: any) {
+                                        alert(`Error: ${e.message}`);
+                                      } finally {
+                                        setExpirySaving(false);
+                                      }
+                                    }}
+                                    className="text-[9px] font-bold text-emerald-500 uppercase px-1 rounded hover:bg-black/5"
+                                  >
+                                    {expirySaving ? '...' : 'Save'}
+                                  </button>
+                                  <button
+                                    onClick={() => setIsEditingExpiry(false)}
+                                    className="text-[9px] font-bold text-rose-500 uppercase px-1 rounded hover:bg-black/5"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] text-right shrink-0" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
+                                  Exp: {selectedUser.membershipExpiresAt
+                                    ? new Date(selectedUser.membershipExpiresAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                                    : 'No expiry'}
+                                </span>
+                                <button
+                                  onClick={() => {
+                                    setEditExpiryValue(
+                                      selectedUser.membershipExpiresAt
+                                        ? new Date(selectedUser.membershipExpiresAt).toISOString().split('T')[0]
+                                        : ''
+                                    );
+                                    setIsEditingExpiry(true);
+                                  }}
+                                  className="text-[9px] font-bold text-primary uppercase px-1 rounded hover:bg-black/5"
+                                >
+                                  Edit
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
