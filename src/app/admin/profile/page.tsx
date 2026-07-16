@@ -89,6 +89,16 @@ export default function AdminProfilePage() {
   const [createPlanLoading, setCreatePlanLoading] = useState(false);
   const [deletingPlanId, setDeletingPlanId] = useState<string | null>(null);
 
+  // AI plans states
+  const [aiPlans, setAiPlans] = useState<any[]>([]);
+  const [loadingAiPlans, setLoadingAiPlans] = useState(true);
+  const [editingAiPlan, setEditingAiPlan] = useState<any | null>(null);
+  const [creatingAiPlan, setCreatingAiPlan] = useState(false);
+  const [newAiPlan, setNewAiPlan] = useState({ name: "", label: "", dailyTokenCap: "", description: "" });
+  const [saveAiPlanLoading, setSaveAiPlanLoading] = useState(false);
+  const [createAiPlanLoading, setCreateAiPlanLoading] = useState(false);
+  const [deletingAiPlanId, setDeletingAiPlanId] = useState<string | null>(null);
+
   const fetchPlans = async () => {
     try {
       const res = await fetch("/api/admin/plans");
@@ -174,6 +184,113 @@ export default function AdminProfilePage() {
     }
   };
 
+  const fetchAiPlans = async () => {
+    try {
+      setLoadingAiPlans(true);
+      const res = await fetch("/api/admin/ai-caps/plans");
+      const data = await res.json();
+      if (data.success) {
+        setAiPlans(data.plans);
+      }
+    } catch (err) {
+      console.error("Failed to fetch AI plans:", err);
+    } finally {
+      setLoadingAiPlans(false);
+    }
+  };
+
+  const handleCreateAiPlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAiPlan.name || !newAiPlan.label || !newAiPlan.dailyTokenCap) {
+      alert("Please fill in Name, Label and Daily Token Cap");
+      return;
+    }
+    setCreateAiPlanLoading(true);
+    try {
+      const res = await fetch("/api/admin/ai-caps/plans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newAiPlan.name,
+          label: newAiPlan.label,
+          dailyTokenCap: parseInt(newAiPlan.dailyTokenCap, 10),
+          description: newAiPlan.description,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewAiPlan({ name: "", label: "", dailyTokenCap: "", description: "" });
+        setCreatingAiPlan(false);
+        fetchAiPlans();
+        setMessage({ type: "success", text: "AI Plan created successfully!" });
+      } else {
+        alert(data.error || "Failed to create AI plan");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error creating AI plan");
+    } finally {
+      setCreateAiPlanLoading(false);
+    }
+  };
+
+  const handleUpdateAiPlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAiPlan) return;
+    setSaveAiPlanLoading(true);
+    try {
+      const res = await fetch("/api/admin/ai-caps/plans", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingAiPlan.id,
+          name: editingAiPlan.name,
+          label: editingAiPlan.label,
+          dailyTokenCap: parseInt(editingAiPlan.dailyTokenCap, 10),
+          description: editingAiPlan.description,
+          isActive: editingAiPlan.isActive,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEditingAiPlan(null);
+        fetchAiPlans();
+        setMessage({ type: "success", text: "AI Plan updated successfully!" });
+      } else {
+        alert(data.error || "Failed to update AI plan");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error updating AI plan");
+    } finally {
+      setSaveAiPlanLoading(false);
+    }
+  };
+
+  const handleDeleteAiPlan = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete AI Plan "${name}"? Users on this plan will revert to no cap override.`)) return;
+    setDeletingAiPlanId(id);
+    try {
+      const res = await fetch("/api/admin/ai-caps/plans", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchAiPlans();
+        setMessage({ type: "success", text: `AI Plan "${name}" deleted successfully!` });
+      } else {
+        alert(data.error || "Failed to delete AI plan");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error deleting AI plan");
+    } finally {
+      setDeletingAiPlanId(null);
+    }
+  };
+
   // Header Dropdown States
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -242,6 +359,7 @@ export default function AdminProfilePage() {
       .catch((err) => console.error("Failed to load admin profile info", err));
 
     fetchPlans();
+    fetchAiPlans();
   }, []);
 
   // Save Theme Selection
@@ -934,6 +1052,120 @@ export default function AdminProfilePage() {
             )}
           </div>
 
+          {/* AI Capping Plans Section */}
+          <div
+            className="border p-6 rounded-2xl mt-8"
+            style={{
+              backgroundColor: "var(--color-admin-surface-container)",
+              borderColor: "var(--color-admin-outline-variant)",
+            }}
+          >
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-base font-bold uppercase tracking-wider" style={{ color: "var(--color-admin-primary)" }}>
+                  AI Capping Plans
+                </h3>
+                <p className="text-xs opacity-75 mt-1" style={{ color: "var(--color-admin-on-surface-variant)" }}>
+                  Configure AI usage limits, display labels, and token capacities for capping/overrides.
+                </p>
+              </div>
+              <button
+                onClick={() => setCreatingAiPlan(true)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all hover:brightness-110 active:opacity-90"
+                style={{
+                  backgroundColor: "var(--color-admin-primary)",
+                  color: "var(--color-admin-surface, #0b1326)",
+                }}
+              >
+                <span className="material-symbols-outlined text-[16px]">add</span>
+                New AI Plan
+              </button>
+            </div>
+
+            {loadingAiPlans ? (
+              <div className="py-8 text-center text-sm opacity-60">Loading AI plans...</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b" style={{ borderColor: "var(--color-admin-outline-variant)" }}>
+                      <th className="py-3 px-2 opacity-60">Plan Name (System Key)</th>
+                      <th className="py-3 px-2 opacity-60">Display Label</th>
+                      <th className="py-3 px-2 opacity-60 text-right">Daily Token Cap</th>
+                      <th className="py-3 px-2 opacity-60 text-center">Status</th>
+                      <th className="py-3 px-2 opacity-60 text-center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {aiPlans.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-sm opacity-50">
+                          No AI plans defined yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      aiPlans.map((ap) => (
+                        <tr
+                          key={ap.id}
+                          className="border-b transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                          style={{ borderColor: "var(--color-admin-outline-variant)" }}
+                        >
+                          <td className="py-3.5 px-2 font-mono font-bold">{ap.name}</td>
+                          <td className="py-3.5 px-2 font-bold">{ap.label}</td>
+                          <td className="py-3.5 px-2 font-mono font-bold text-right text-emerald-400">
+                            {ap.dailyTokenCap.toLocaleString()} tokens
+                          </td>
+                          <td className="py-3.5 px-2 text-center">
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                                ap.isActive
+                                  ? "bg-emerald-500/10 text-emerald-400"
+                                  : "bg-red-500/10 text-red-400"
+                              }`}
+                            >
+                              {ap.isActive ? "Active" : "Inactive"}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-2 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => setEditingAiPlan({ ...ap })}
+                                className="px-3 py-1 rounded-lg text-xs font-bold transition-all hover:brightness-110 flex items-center gap-1"
+                                style={{
+                                  backgroundColor: "var(--color-admin-primary-container)",
+                                  color: "var(--color-admin-primary)",
+                                }}
+                              >
+                                <span className="material-symbols-outlined text-[14px]">edit</span>
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleDeleteAiPlan(ap.id, ap.name)}
+                                disabled={deletingAiPlanId === ap.id}
+                                className="px-3 py-1 rounded-lg text-xs font-bold transition-all hover:brightness-110 flex items-center gap-1 disabled:opacity-50"
+                                style={{
+                                  backgroundColor: "rgba(239,68,68,0.12)",
+                                  color: "#f87171",
+                                }}
+                              >
+                                {deletingAiPlanId === ap.id ? (
+                                  <div className="w-3.5 h-3.5 rounded-full border border-current border-t-transparent animate-spin shrink-0"></div>
+                                ) : (
+                                  <span className="material-symbols-outlined text-[14px]">delete</span>
+                                )}
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
           {/* Create Plan Modal */}
           {creatingPlan && (
             <div
@@ -1252,6 +1484,273 @@ export default function AdminProfilePage() {
                     Cancel
                   </button>
                 </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Create AI Plan Modal */}
+          {creatingAiPlan && (
+            <div
+              className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+              onClick={() => setCreatingAiPlan(false)}
+            >
+              <div
+                className="border p-8 rounded-2xl max-w-3xl w-full shadow-2xl transition-all duration-300 relative max-h-[90vh] overflow-y-auto custom-scroll"
+                style={{
+                  backgroundColor: "var(--color-admin-surface-container-high)",
+                  borderColor: "var(--color-admin-primary)",
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-sm font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: "var(--color-admin-primary)" }}>
+                    <span className="material-symbols-outlined">add_circle</span>
+                    Create New AI Capping Plan
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setCreatingAiPlan(false)}
+                    className="material-symbols-outlined opacity-70 hover:opacity-100 transition-opacity p-1 rounded-full hover:bg-white/5"
+                    style={{ color: "var(--color-admin-on-surface)" }}
+                  >
+                    close
+                  </button>
+                </div>
+                <form onSubmit={handleCreateAiPlan} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold mb-2 opacity-80">Plan Name (Key) <span className="text-rose-400">*</span></label>
+                      <input
+                        type="text"
+                        placeholder="e.g. premium_monthly_ai"
+                        value={newAiPlan.name}
+                        onChange={(e) => setNewAiPlan({ ...newAiPlan, name: e.target.value.toLowerCase().replace(/\s+/g, "_") })}
+                        required
+                        className="w-full px-4 py-3 rounded-xl border text-sm font-mono outline-none"
+                        style={{
+                          backgroundColor: "var(--color-admin-surface-container-lowest)",
+                          borderColor: "var(--color-admin-outline-variant)",
+                          color: "var(--color-admin-on-surface)",
+                        }}
+                      />
+                      <p className="text-[10px] opacity-50 mt-1">Unique identifier/system key, lowercase with underscores</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold mb-2 opacity-80">Display Label <span className="text-rose-400">*</span></label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Premium 100K Plan"
+                        value={newAiPlan.label}
+                        onChange={(e) => setNewAiPlan({ ...newAiPlan, label: e.target.value })}
+                        required
+                        className="w-full px-4 py-3 rounded-xl border text-sm font-medium outline-none"
+                        style={{
+                          backgroundColor: "var(--color-admin-surface-container-lowest)",
+                          borderColor: "var(--color-admin-outline-variant)",
+                          color: "var(--color-admin-on-surface)",
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold mb-2 opacity-80">Daily Token Cap <span className="text-rose-400">*</span></label>
+                      <input
+                        type="number"
+                        placeholder="e.g. 100000"
+                        value={newAiPlan.dailyTokenCap}
+                        onChange={(e) => setNewAiPlan({ ...newAiPlan, dailyTokenCap: e.target.value })}
+                        required
+                        min={0}
+                        className="w-full px-4 py-3 rounded-xl border text-sm font-medium outline-none"
+                        style={{
+                          backgroundColor: "var(--color-admin-surface-container-lowest)",
+                          borderColor: "var(--color-admin-outline-variant)",
+                          color: "var(--color-admin-on-surface)",
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold mb-2 opacity-80">Plan Description</label>
+                    <input
+                      type="text"
+                      placeholder="Description of the plan"
+                      value={newAiPlan.description}
+                      onChange={(e) => setNewAiPlan({ ...newAiPlan, description: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl border text-sm font-medium outline-none"
+                      style={{
+                        backgroundColor: "var(--color-admin-surface-container-lowest)",
+                        borderColor: "var(--color-admin-outline-variant)",
+                        color: "var(--color-admin-on-surface)",
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex gap-4 pt-2">
+                    <button
+                      type="submit"
+                      disabled={createAiPlanLoading}
+                      className="px-6 py-3 rounded-xl font-bold text-sm transition-all hover:brightness-110 active:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                      style={{
+                        backgroundColor: "var(--color-admin-primary)",
+                        color: "var(--color-admin-surface, #0b1326)",
+                      }}
+                    >
+                      {createAiPlanLoading ? (
+                        <>
+                          <div className="w-4 h-4 rounded-full border border-current border-t-transparent animate-spin shrink-0"></div>
+                          Creating...
+                        </>
+                      ) : (
+                        <>
+                          <span className="material-symbols-outlined text-[18px]">add_circle</span>
+                          Create Plan
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCreatingAiPlan(false)}
+                      className="px-6 py-3 rounded-xl font-bold text-sm border transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                      style={{
+                        color: "var(--color-admin-on-surface)",
+                        borderColor: "var(--color-admin-outline-variant)",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Edit AI Plan Modal */}
+          {editingAiPlan && (
+            <div
+              className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+              onClick={() => setEditingAiPlan(null)}
+            >
+              <div
+                className="border p-8 rounded-2xl max-w-3xl w-full shadow-2xl transition-all duration-300 relative max-h-[90vh] overflow-y-auto custom-scroll"
+                style={{
+                  backgroundColor: "var(--color-admin-surface-container-high)",
+                  borderColor: "var(--color-admin-primary)",
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-sm font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: "var(--color-admin-primary)" }}>
+                    <span className="material-symbols-outlined">edit_note</span>
+                    Edit AI Capping Plan: {editingAiPlan.name}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setEditingAiPlan(null)}
+                    className="material-symbols-outlined opacity-70 hover:opacity-100 transition-opacity p-1 rounded-full hover:bg-white/5"
+                    style={{ color: "var(--color-admin-on-surface)" }}
+                  >
+                    close
+                  </button>
+                </div>
+                <form onSubmit={handleUpdateAiPlan} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold mb-2 opacity-80">Display Label</label>
+                      <input
+                        type="text"
+                        value={editingAiPlan.label || ""}
+                        onChange={(e) => setEditingAiPlan({ ...editingAiPlan, label: e.target.value })}
+                        required
+                        className="w-full px-4 py-3 rounded-xl border text-sm font-medium outline-none"
+                        style={{
+                          backgroundColor: "var(--color-admin-surface-container-lowest)",
+                          borderColor: "var(--color-admin-outline-variant)",
+                          color: "var(--color-admin-on-surface)",
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold mb-2 opacity-80">Daily Token Cap</label>
+                      <input
+                        type="number"
+                        value={editingAiPlan.dailyTokenCap === undefined || isNaN(editingAiPlan.dailyTokenCap) ? "" : editingAiPlan.dailyTokenCap}
+                        onChange={(e) => setEditingAiPlan({ ...editingAiPlan, dailyTokenCap: parseInt(e.target.value, 10) })}
+                        required
+                        min={0}
+                        className="w-full px-4 py-3 rounded-xl border text-sm font-medium outline-none"
+                        style={{
+                          backgroundColor: "var(--color-admin-surface-container-lowest)",
+                          borderColor: "var(--color-admin-outline-variant)",
+                          color: "var(--color-admin-on-surface)",
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold mb-2 opacity-80">Plan Description</label>
+                    <input
+                      type="text"
+                      value={editingAiPlan.description || ""}
+                      onChange={(e) => setEditingAiPlan({ ...editingAiPlan, description: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl border text-sm font-medium outline-none"
+                      style={{
+                        backgroundColor: "var(--color-admin-surface-container-lowest)",
+                        borderColor: "var(--color-admin-outline-variant)",
+                        color: "var(--color-admin-on-surface)",
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="ai-plan-active-chk"
+                      checked={!!editingAiPlan.isActive}
+                      onChange={(e) => setEditingAiPlan({ ...editingAiPlan, isActive: e.target.checked })}
+                      className="w-4 h-4 rounded text-primary focus:ring-primary border-gray-300"
+                    />
+                    <label htmlFor="ai-plan-active-chk" className="text-xs font-bold select-none cursor-pointer">
+                      Plan is Active (Enabled for assignment)
+                    </label>
+                  </div>
+
+                  <div className="flex gap-4 pt-2">
+                    <button
+                      type="submit"
+                      disabled={saveAiPlanLoading}
+                      className="px-6 py-3 rounded-xl font-bold text-sm transition-all hover:brightness-110 active:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                      style={{
+                        backgroundColor: "var(--color-admin-primary)",
+                        color: "var(--color-admin-surface, #0b1326)",
+                      }}
+                    >
+                      {saveAiPlanLoading ? (
+                        <>
+                          <div className="w-4 h-4 rounded-full border border-current border-t-transparent animate-spin shrink-0"></div>
+                          Saving Plan...
+                        </>
+                      ) : (
+                        "Save Changes"
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingAiPlan(null)}
+                      className="px-6 py-3 rounded-xl font-bold text-sm border transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                      style={{
+                        color: "var(--color-admin-on-surface)",
+                        borderColor: "var(--color-admin-outline-variant)",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </form>
               </div>
             </div>

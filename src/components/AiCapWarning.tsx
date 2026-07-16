@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Clock, Bot, RefreshCw, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -59,6 +60,9 @@ function agentLabel(key: string): string {
 }
 
 export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
+  const pathname = usePathname();
+  const forceDashboardOnly = pathname && (pathname.startsWith('/doc2latex') || pathname.startsWith('/reviewer'));
+
   const [status, setStatus] = useState<CapStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +112,16 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
   }, [onStatusChange]);
 
   useEffect(() => { setMounted(true); fetchStatus(); }, [fetchStatus]);
+
+  useEffect(() => {
+    const handleCapTrigger = () => {
+      fetchStatus();
+    };
+    window.addEventListener('ai-cap-triggered', handleCapTrigger);
+    return () => {
+      window.removeEventListener('ai-cap-triggered', handleCapTrigger);
+    };
+  }, [fetchStatus]);
 
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
@@ -265,6 +279,42 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
               </div>
             )}
 
+            {/* Upgradation plan details (only rendered when forcing return to dashboard) */}
+            {forceDashboardOnly && (
+              <div style={{
+                background: 'rgba(251,191,36,0.06)',
+                border: '1px solid rgba(251,191,36,0.2)',
+                borderRadius: '12px',
+                padding: '14px',
+                marginBottom: '14px',
+                textAlign: 'left'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <Zap size={14} style={{ color: '#fbbf24' }} />
+                  <span style={{ color: '#fbbf24', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                    AI Plan Upgradation Options
+                  </span>
+                </div>
+                <p style={{ margin: '0 0 10px', color: '#d1d5db', fontSize: '12px', lineHeight: '1.4' }}>
+                  Unlock higher daily token limits and continuous agent access by subscribing to a premium plan.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11px', color: '#9ca3af' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '4px' }}>
+                    <span>Starter AI Plan:</span>
+                    <span style={{ color: '#fff', fontWeight: '600' }}>100,000 tokens/day</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '4px' }}>
+                    <span>Pro AI Plan:</span>
+                    <span style={{ color: '#fff', fontWeight: '600' }}>500,000 tokens/day</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Max Premium Cap:</span>
+                    <span style={{ color: '#fff', fontWeight: '600' }}>Unlimited API Access</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <button
                 onClick={() => {
@@ -287,30 +337,32 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
                 Return to Dashboard
               </button>
               
-              <button
-                onClick={() => {
-                  hasBeenDismissed.current = true;
-                  setShowBlockModal(false);
-                }}
-                style={{
-                  width: '100%', padding: '10px',
-                  background: 'transparent', border: '1px solid var(--border, rgba(255,255,255,0.1))',
-                  borderRadius: '12px', color: 'var(--text-secondary, #9ca3af)', fontSize: '12px',
-                  fontWeight: '600', cursor: 'pointer', display: 'flex',
-                  alignItems: 'center', justifyContent: 'center', gap: '6px',
-                  transition: 'all 0.2s', fontFamily: 'var(--font-headline)'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'var(--bg-secondary, rgba(255,255,255,0.05))';
-                  e.currentTarget.style.color = 'var(--text-primary, #fff)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.color = 'var(--text-secondary, #9ca3af)';
-                }}
-              >
-                Continue in Read-Only Mode
-              </button>
+              {!forceDashboardOnly && (
+                <button
+                  onClick={() => {
+                    hasBeenDismissed.current = true;
+                    setShowBlockModal(false);
+                  }}
+                  style={{
+                    width: '100%', padding: '10px',
+                    background: 'transparent', border: '1px solid var(--border, rgba(255,255,255,0.1))',
+                    borderRadius: '12px', color: 'var(--text-secondary, #9ca3af)', fontSize: '12px',
+                    fontWeight: '600', cursor: 'pointer', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', gap: '6px',
+                    transition: 'all 0.2s', fontFamily: 'var(--font-headline)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--bg-secondary, rgba(255,255,255,0.05))';
+                    e.currentTarget.style.color = 'var(--text-primary, #fff)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.color = 'var(--text-secondary, #9ca3af)';
+                  }}
+                >
+                  Continue in Read-Only Mode
+                </button>
+              )}
             </div>
           </motion.div>
         </motion.div>

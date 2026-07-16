@@ -24,13 +24,14 @@ export async function POST(req: NextRequest) {
     });
 
     if (!result.success) {
-      if (result.error?.startsWith('AI_CAP_REACHED:')) {
+      if (result.error?.startsWith('AI_CAP_REACHED:') || result.error?.startsWith('AI_CAP_RULE_BLOCKED:')) {
         const parts = result.error.split(':');
         return NextResponse.json({
-          error: 'AI_CAP_REACHED',
+          error: result.error?.startsWith('AI_CAP_RULE_BLOCKED:') ? 'AI_CAP_RULE_BLOCKED' : 'AI_CAP_REACHED',
           reactivatesAt: parts[1] || null,
           dailyCap: parseInt(parts[2]) || 0,
           usedToday: parseInt(parts[3]) || 0,
+          reason: result.error?.startsWith('AI_CAP_RULE_BLOCKED:') ? parts[2] : undefined
         }, { status: 429 });
       }
       return NextResponse.json({ error: result.error }, { status: 502 });

@@ -18,13 +18,15 @@ export async function GET() {
     const today = new Date().toISOString().slice(0, 10);
     const nowMs = Date.now();
 
-    const [user, summary, ruleMatch, freePlan] = await Promise.all([
+    const [user, summary, ruleMatch, freePlan, proPlan] = await Promise.all([
       prisma.user.findUnique({
         where: { id: userId },
         select: {
           aiCapPlanId: true,
           aiDailyCapOverride: true,
           aiAgentReactivatesAt: true,
+          membership: true,
+          membershipExpiresAt: true,
         },
       }),
       prisma.aiUsageDailySummary.findUnique({
@@ -32,6 +34,7 @@ export async function GET() {
       }),
       userEmail ? findMatchingRule({ email: userEmail }).catch(() => null) : Promise.resolve(null),
       prisma.aiCapPlan.findFirst({ where: { name: 'free' } }),
+      prisma.aiCapPlan.findFirst({ where: { name: 'pro' } }),
     ]);
 
     if (!user) {
@@ -43,14 +46,35 @@ export async function GET() {
       ? await prisma.aiCapPlan.findUnique({ where: { id: planId } })
       : null;
 
-    if (!plan) {
-      plan = freePlan;
-      planId = freePlan?.id ?? null;
-      if (freePlan) {
-        await prisma.user.update({
-          where: { id: userId },
-          data: { aiCapPlanId: freePlan.id }
-        });
+    // Check if user has an active premium subscription
+    const now = new Date();
+    const isPremiumMember = user.membership && user.membership !== 'free' && (!user.membershipExpiresAt || new Date(user.membershipExpiresAt) > now);
+
+    if (isPremiumMember) {
+      // Sync user to Pro AI plan if currently on Free plan or has no plan
+      if (!plan || plan.name === 'free') {
+        const targetPlan = proPlan || await prisma.aiCapPlan.findFirst({ where: { name: 'pro' } });
+        if (targetPlan) {
+          plan = targetPlan;
+          planId = targetPlan.id;
+          await prisma.user.update({
+            where: { id: userId },
+            data: { aiCapPlanId: targetPlan.id }
+          });
+        }
+      }
+    } else {
+      // Sync user back to Free AI plan if premium subscription has expired or is free, and they are on pro plan
+      if (!plan || plan.name === 'pro') {
+        const targetPlan = freePlan || await prisma.aiCapPlan.findFirst({ where: { name: 'free' } });
+        if (targetPlan) {
+          plan = targetPlan;
+          planId = targetPlan.id;
+          await prisma.user.update({
+            where: { id: userId },
+            data: { aiCapPlanId: targetPlan.id }
+          });
+        }
       }
     }
 

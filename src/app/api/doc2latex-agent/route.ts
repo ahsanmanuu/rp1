@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { routeToAgent } from "@/lib/agent-gateway";
 import { getServerSession } from "@/lib/auth-pb";
 import { getClientGeoInfo } from "@/lib/clientGeo";
@@ -67,6 +67,9 @@ export async function POST(req: NextRequest) {
 
     if (!result.success) {
       console.warn(`[doc2latex-agent] Gateway failed for project ${projectId}:`, result.error);
+      if (result.error?.startsWith('AI_CAP_REACHED:') || result.error?.startsWith('AI_CAP_RULE_BLOCKED:')) {
+        return NextResponse.json({ error: result.error }, { status: 429 });
+      }
       return NextResponse.json(result, { status: 502 });
     }
 

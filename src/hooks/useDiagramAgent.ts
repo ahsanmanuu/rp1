@@ -319,6 +319,9 @@ export function useDiagramAgent({
 
       if (!res.ok) {
         const errText = await res.text().catch(() => `HTTP ${res.status}`);
+        if (errText.includes('AI_CAP_REACHED') || errText.includes('AI_CAP_RULE_BLOCKED') || res.status === 403 || res.status === 429) {
+          throw new Error('AI_CAP_BLOCKED');
+        }
         throw new Error(errText);
       }
 
@@ -494,6 +497,31 @@ export function useDiagramAgent({
         setStreamingText('');
         return;
       }
+      if (err.message === 'AI_CAP_BLOCKED') {
+        setStatus('error');
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('ai-cap-triggered'));
+        }
+        try {
+          const capStatusRes = await fetch('/api/user/ai-cap/status');
+          const capData = await capStatusRes.json();
+          const renewDateStr = capData.quotaResetAt || capData.reactivatesAt || new Date(Date.now() + 86400000).toISOString();
+          const formattedDate = new Date(renewDateStr).toLocaleDateString(undefined, { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+          }) + ' at ' + new Date(renewDateStr).toLocaleTimeString(undefined, { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          });
+          onError(`AI_CAP_BLOCKED:You have consumed all tokens. Token will be renewed on ${formattedDate}. You can continue to work without AI agent.`);
+        } catch (capErr) {
+          const fallbackDate = new Date(Date.now() + 86400000).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+          onError(`AI_CAP_BLOCKED:You have consumed all tokens. Token will be renewed on ${fallbackDate}. You can continue to work without AI agent.`);
+        }
+        return;
+      }
       const streamErrorMsg = err?.message || 'Unknown streaming error';
       console.warn('[useDiagramAgent] Stream failed, attempting gateway fallback...', streamErrorMsg);
       setStreamingText('');
@@ -525,9 +553,37 @@ export function useDiagramAgent({
           onExplanation(explanation || 'Diagram updated (via fallback).');
           setStatus('done');
         } else {
+          if (fallbackData.error?.includes('AI_CAP_REACHED') || fallbackData.error?.includes('AI_CAP_RULE_BLOCKED')) {
+            throw new Error('AI_CAP_BLOCKED');
+          }
           throw new Error(fallbackData.error || 'Fallback failed');
         }
       } catch (fallbackErr: any) {
+        if (fallbackErr.message === 'AI_CAP_BLOCKED') {
+          setStatus('error');
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('ai-cap-triggered'));
+          }
+          try {
+            const capStatusRes = await fetch('/api/user/ai-cap/status');
+            const capData = await capStatusRes.json();
+            const renewDateStr = capData.quotaResetAt || capData.reactivatesAt || new Date(Date.now() + 86400000).toISOString();
+            const formattedDate = new Date(renewDateStr).toLocaleDateString(undefined, { 
+              weekday: 'long', 
+              year: 'numeric', 
+              month: 'long', 
+              day: 'numeric' 
+            }) + ' at ' + new Date(renewDateStr).toLocaleTimeString(undefined, { 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            });
+            onError(`AI_CAP_BLOCKED:You have consumed all tokens. Token will be renewed on ${formattedDate}. You can continue to work without AI agent.`);
+          } catch (capErr) {
+            const fallbackDate = new Date(Date.now() + 86400000).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+            onError(`AI_CAP_BLOCKED:You have consumed all tokens. Token will be renewed on ${fallbackDate}. You can continue to work without AI agent.`);
+          }
+          return;
+        }
         console.error('[useDiagramAgent] Both streaming and fallback failed:', fallbackErr);
         onError(`⚠️ All AI models are currently busy or rate-limited. Please try again in a moment.`);
         setStatus('error');

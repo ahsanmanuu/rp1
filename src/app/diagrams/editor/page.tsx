@@ -776,7 +776,8 @@ function DiagramStudio() {
       setChatMessages(prev => [...prev, { role: 'assistant', content: explanation }]);
     },
     onError: (msg) => {
-      setChatMessages(prev => [...prev, { role: 'assistant', content: msg }]);
+      const cleanMsg = msg.startsWith('AI_CAP_BLOCKED:') ? msg.replace('AI_CAP_BLOCKED:', '') : msg;
+      setChatMessages(prev => [...prev, { role: 'assistant', content: cleanMsg }]);
     },
     debouncedSave,
   });
@@ -4163,12 +4164,27 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
               <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scroll">
                 {chatMessages.map((msg, i) => (
                   <div key={i} className={`flex gap-2.5 group ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 border ${msg.role === 'user' ? 'bg-blue-500/20 border-blue-500/30 text-blue-300' : 'bg-violet-500/10 border-white/8 text-violet-400'}`}>
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 border ${
+                      msg.role === 'user'
+                        ? isAppLight
+                          ? 'bg-blue-500/10 border-blue-500/20 text-blue-700'
+                          : 'bg-blue-500/20 border-blue-500/30 text-blue-300'
+                        : isAppLight
+                          ? 'bg-violet-500/10 border-violet-500/20 text-violet-700'
+                          : 'bg-violet-500/10 border-white/8 text-violet-400'
+                    }`}>
                       <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{msg.role === 'user' ? 'person' : 'smart_toy'}</span>
                     </div>
                     <div className="flex flex-col max-w-[85%]">
-                      <div className={`p-3 rounded-2xl text-xs leading-relaxed ${msg.role === 'user' ? 'bg-blue-500/15 border border-blue-500/25 text-blue-100 rounded-tr-none' : 'border border-white/8 text-white rounded-tl-none'}`}
-                        style={{ background: msg.role === 'assistant' ? '#122131' : undefined }}>
+                      <div className={`p-3 rounded-2xl text-xs leading-relaxed border ${
+                        msg.role === 'user'
+                          ? isAppLight
+                            ? 'bg-blue-500/10 border-blue-500/20 text-blue-900 rounded-tr-none'
+                            : 'bg-blue-500/15 border-blue-500/25 text-blue-100 rounded-tr-none'
+                          : isAppLight
+                            ? 'bg-slate-100 border-slate-200 text-slate-800 rounded-tl-none'
+                            : 'bg-[#122131] border-white/8 text-white rounded-tl-none'
+                      }`}>
                         {msg.content}
                       </div>
                       
@@ -4180,7 +4196,9 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                             setCopiedIndex(i);
                             setTimeout(() => setCopiedIndex(null), 1500);
                           }}
-                          className="flex items-center text-white/40 hover:text-white transition-colors border-none bg-transparent cursor-pointer p-0.5"
+                          className={`flex items-center transition-colors border-none bg-transparent cursor-pointer p-0.5 ${
+                            isAppLight ? 'text-slate-400 hover:text-slate-700' : 'text-white/40 hover:text-white'
+                          }`}
                           title="Copy Message"
                         >
                           <span className="material-symbols-outlined" style={{ fontSize: 12 }}>{copiedIndex === i ? 'check' : 'content_copy'}</span>
@@ -4189,7 +4207,9 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                         
                         <button 
                           onClick={() => setChatMessages(prev => prev.filter((_, idx) => idx !== i))}
-                          className="flex items-center text-white/40 hover:text-rose-400 transition-colors border-none bg-transparent cursor-pointer p-0.5"
+                          className={`flex items-center transition-colors border-none bg-transparent cursor-pointer p-0.5 ${
+                            isAppLight ? 'text-slate-400 hover:text-rose-600' : 'text-white/40 hover:text-rose-400'
+                          }`}
                           title="Delete Message"
                         >
                           <span className="material-symbols-outlined" style={{ fontSize: 12 }}>delete</span>
@@ -4200,10 +4220,18 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                 ))}
                 {agentStatus === 'streaming' && streamingText && (
                   <div className="flex gap-2.5">
-                    <div className="w-7 h-7 rounded-full flex items-center justify-center bg-violet-500/10 border border-white/8 text-violet-400">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 border ${
+                      isAppLight
+                        ? 'bg-violet-500/10 border-violet-500/20 text-violet-700'
+                        : 'bg-violet-500/10 border-white/8 text-violet-400'
+                    }`}>
                       <span className="material-symbols-outlined" style={{ fontSize: 14 }}>smart_toy</span>
                     </div>
-                    <div className="p-3 rounded-2xl border border-white/8 text-white rounded-tl-none text-xs max-w-[85%] leading-relaxed bg-[#122131] relative">
+                    <div className={`p-3 rounded-2xl text-xs max-w-[85%] leading-relaxed rounded-tl-none border ${
+                      isAppLight
+                        ? 'bg-slate-100 border-slate-200 text-slate-800'
+                        : 'bg-[#122131] border-white/8 text-white'
+                    }`}>
                       {streamingText}
                       <span className="inline-flex ml-1 w-1.5 h-3 bg-violet-400 animate-pulse align-middle" />
                     </div>
@@ -4211,14 +4239,30 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                 )}
                 {(agentStatus === 'connecting' || agentStatus === 'applying') && (
                   <div className="flex gap-2.5">
-                    <div className="w-7 h-7 rounded-full flex items-center justify-center bg-violet-500/10 border border-white/8">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center border ${
+                      isAppLight
+                        ? 'bg-violet-500/10 border-violet-500/20 text-violet-700'
+                        : 'bg-violet-500/10 border-white/8'
+                    }`}>
                       <span className="material-symbols-outlined text-violet-400" style={{ fontSize: 14 }}>smart_toy</span>
                     </div>
-                    <div className="p-3 rounded-2xl border border-white/8 flex gap-1.5 items-center" style={{ background: '#122131' }}>
-                      <span className="text-[10px] text-violet-400/80 mr-1 font-bold uppercase tracking-wider">
+                    <div className={`p-3 rounded-2xl flex gap-1.5 items-center border ${
+                      isAppLight
+                        ? 'bg-slate-100 border-slate-200 text-slate-800'
+                        : 'bg-[#122131] border-white/8'
+                    }`}>
+                      <span className={`text-[10px] mr-1 font-bold uppercase tracking-wider ${
+                        isAppLight ? 'text-violet-700/80' : 'text-violet-400/80'
+                      }`}>
                         {agentStatus === 'connecting' ? 'Connecting to Gateway…' : 'Assembling Nodes…'}
                       </span>
-                      {[0,1,2].map(i => <div key={i} className="w-1.5 h-1.5 rounded-full bg-violet-400/80 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />)}
+                      {[0,1,2].map(i => (
+                        <div 
+                          key={i} 
+                          className={`w-1.5 h-1.5 rounded-full animate-bounce ${isAppLight ? 'bg-violet-600' : 'bg-violet-400'}`} 
+                          style={{ animationDelay: `${i * 0.15}s` }} 
+                        />
+                      ))}
                     </div>
                   </div>
                 )}
@@ -4226,13 +4270,17 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
               </div>
 
               {/* Input */}
-              <div className="p-3 border-t border-white/8 flex-shrink-0 flex flex-col gap-2" style={{ background: 'rgba(39,54,71,0.3)' }}>
+              <div className={`p-3 border-t flex-shrink-0 flex flex-col gap-2 ${
+                isAppLight ? 'border-slate-200 bg-slate-50' : 'border-white/8 bg-[#1c2b3c]/20'
+              }`}>
                 {chatImage && (
-                  <div className="flex items-center gap-2 bg-[#1c2b3c] border border-white/10 rounded-xl p-2 self-start relative group shadow-lg">
+                  <div className={`flex items-center gap-2 rounded-xl p-2 self-start relative group shadow-lg border ${
+                    isAppLight ? 'bg-slate-200 border-slate-300' : 'bg-[#1c2b3c] border-white/10'
+                  }`}>
                     <Image src={chatImage} alt="Upload preview" width={48} height={48} className="object-cover rounded-lg border border-white/10" unoptimized />
                     <div className="flex flex-col pr-6">
-                      <span className="text-[10px] font-bold text-white/90">Screenshot Loaded</span>
-                      <span className="text-[9px] text-[#c6c6cb] mt-0.5">Ready for Vision AI</span>
+                      <span className={`text-[10px] font-bold ${isAppLight ? 'text-slate-800' : 'text-white/90'}`}>Screenshot Loaded</span>
+                      <span className={`text-[9px] mt-0.5 ${isAppLight ? 'text-slate-500' : 'text-[#c6c6cb]'}`}>Ready for Vision AI</span>
                     </div>
                     <button 
                       onClick={() => setChatImage(null)}
