@@ -304,23 +304,23 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
             onClick={isReadOnly ? () => toast.error("Read-Only Mode: Daily credit limit reached. Please upgrade to Premium.") : compile}
             disabled={compiling}
             style={{
-              background: isReadOnly ? 'rgba(255,255,255,0.03)' : (compiling ? 'var(--ide-btn-bg)' : 'var(--accent-primary)'),
+              background: isReadOnly ? 'rgba(255,255,255,0.03)' : 'var(--accent-primary)',
               color: isReadOnly ? 'rgba(255,255,255,0.2)' : '#fff',
               border: 'none', padding: '0.38rem 0.85rem',
               borderRadius: '7px', fontWeight: 800, fontSize: '0.7rem',
-              cursor: compiling ? 'not-allowed' : (isReadOnly ? 'not-allowed' : 'pointer'),
+              cursor: compiling ? 'wait' : (isReadOnly ? 'not-allowed' : 'pointer'),
               display: 'flex', alignItems: 'center', gap: '0.4rem',
-              boxShadow: compiling || isReadOnly ? 'none' : '0 3px 12px var(--accent-glow)',
+              boxShadow: isReadOnly ? 'none' : '0 3px 12px var(--accent-glow)',
               fontFamily: 'var(--font-headline)', letterSpacing: '0.02em',
               whiteSpace: 'nowrap', flexShrink: 0,
-              opacity: isReadOnly ? 0.6 : 1
+              opacity: compiling ? 0.85 : (isReadOnly ? 0.6 : 1)
             }}
           >
             {compiling
               ? <RefreshCw size={13} className="spinner" />
               : <Command size={13} strokeWidth={2} />
             }
-            <span>{compiling ? 'Building...' : 'BUILD'}</span>
+            <span>{compiling ? 'BUILDING...' : 'BUILD'}</span>
           </motion.button>
         </div>
 

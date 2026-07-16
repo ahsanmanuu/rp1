@@ -63,7 +63,7 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
     },
     {
       name: 'IMAGE ASSETS',
-      files: files.filter(f => /\.(png|jpg|jpeg|gif|svg|webp|eps|pdf|heic|heif|tiff|tif|bmp|avif)$/i.test(f.path) && !f.path.includes('/')),
+      files: files.filter(f => /\.(png|jpg|jpeg|gif|svg|webp|eps|pdf|heic|heif|tiff|tif|bmp|avif)$/i.test(f.path)),
     },
     {
       name: 'TEMPLATE FILES',

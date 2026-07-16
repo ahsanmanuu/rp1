@@ -11,7 +11,8 @@ import JSZip from 'jszip';
 import { 
   X,
   Layout,
-  FileText
+  FileText,
+  Command
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { saveAs } from 'file-saver';
@@ -923,7 +924,74 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                       ))}
                   </div>
 
-                 <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }}>
+                    {isSyncing && (
+                      <div style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: 'rgba(10, 10, 10, 0.85)',
+                        backdropFilter: 'blur(8px)',
+                        zIndex: 50,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '1.5rem',
+                      }}>
+                        {/* Dynamic revolving icon */}
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+                          style={{
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '12px',
+                            background: 'linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary, #a855f7) 100%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 0 20px var(--accent-glow)',
+                          }}
+                        >
+                          <Command size={22} color="#fff" />
+                        </motion.div>
+                        
+                        <div style={{ textAlign: 'center' }}>
+                          <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 0.5rem 0', fontFamily: 'var(--font-headline)', letterSpacing: '0.05em' }}>
+                            LOADING LATEX MANUSCRIPT TEMPLATE
+                          </h4>
+                          <p style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', margin: 0, fontFamily: 'var(--font-body)' }}>
+                            Synchronizing source files and asset directories...
+                          </p>
+                        </div>
+
+                        {/* Progress Bar */}
+                        <div style={{
+                          width: '180px',
+                          height: '4px',
+                          background: 'rgba(255, 255, 255, 0.08)',
+                          borderRadius: '2px',
+                          overflow: 'hidden',
+                          position: 'relative'
+                        }}>
+                          <motion.div
+                            initial={{ left: '-100%' }}
+                            animate={{ left: '100%' }}
+                            transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              bottom: 0,
+                              width: '60px',
+                              background: 'var(--accent-primary)',
+                              boxShadow: '0 0 8px var(--accent-primary)',
+                              borderRadius: '2px'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     {isImage(activeFile) ? (
                       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', padding: '2rem' }}>
                           <div style={{ position: 'relative', maxWidth: '100%', maxHeight: '100%', boxShadow: '0 0 50px rgba(0,0,0,0.5)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
