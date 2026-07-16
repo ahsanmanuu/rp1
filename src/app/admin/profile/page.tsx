@@ -59,6 +59,9 @@ const themes: Record<Theme, Themes> = {
   }
 };
 
+let globalPlansCache: any[] = [];
+let globalAiPlansCache: any[] = [];
+
 export default function AdminProfilePage() {
   const [mounted, setMounted] = useState(false);
 
@@ -80,8 +83,8 @@ export default function AdminProfilePage() {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Plans states
-  const [plans, setPlans] = useState<any[]>([]);
-  const [loadingPlans, setLoadingPlans] = useState(true);
+  const [plans, setPlans] = useState<any[]>(globalPlansCache);
+  const [loadingPlans, setLoadingPlans] = useState(globalPlansCache.length === 0);
   const [editingPlan, setEditingPlan] = useState<any | null>(null);
   const [savePlanLoading, setSavePlanLoading] = useState(false);
   const [creatingPlan, setCreatingPlan] = useState(false);
@@ -90,8 +93,8 @@ export default function AdminProfilePage() {
   const [deletingPlanId, setDeletingPlanId] = useState<string | null>(null);
 
   // AI plans states
-  const [aiPlans, setAiPlans] = useState<any[]>([]);
-  const [loadingAiPlans, setLoadingAiPlans] = useState(true);
+  const [aiPlans, setAiPlans] = useState<any[]>(globalAiPlansCache);
+  const [loadingAiPlans, setLoadingAiPlans] = useState(globalAiPlansCache.length === 0);
   const [editingAiPlan, setEditingAiPlan] = useState<any | null>(null);
   const [creatingAiPlan, setCreatingAiPlan] = useState(false);
   const [newAiPlan, setNewAiPlan] = useState({ name: "", label: "", dailyTokenCap: "", description: "" });
@@ -101,10 +104,14 @@ export default function AdminProfilePage() {
 
   const fetchPlans = async () => {
     try {
+      if (globalPlansCache.length === 0) {
+        setLoadingPlans(true);
+      }
       const res = await fetch("/api/admin/plans");
       const data = await res.json();
       if (data.success) {
         setPlans(data.plans);
+        globalPlansCache = data.plans;
       }
     } catch (err) {
       console.error("Failed to fetch plans:", err);
@@ -186,11 +193,14 @@ export default function AdminProfilePage() {
 
   const fetchAiPlans = async () => {
     try {
-      setLoadingAiPlans(true);
+      if (globalAiPlansCache.length === 0) {
+        setLoadingAiPlans(true);
+      }
       const res = await fetch("/api/admin/ai-caps/plans");
       const data = await res.json();
       if (data.success) {
         setAiPlans(data.plans);
+        globalAiPlansCache = data.plans;
       }
     } catch (err) {
       console.error("Failed to fetch AI plans:", err);

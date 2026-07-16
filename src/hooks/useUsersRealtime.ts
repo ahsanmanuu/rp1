@@ -52,6 +52,9 @@ interface UseUsersOptions {
   onError?: (err: string) => void;
 }
 
+let globalUsersCache: AdminUser[] = [];
+let globalNotificationsCache: ExpiryNotification[] = [];
+
 export function useUsersRealtime(options: UseUsersOptions = {}) {
   const {
     pollIntervalMs = 10000,
@@ -60,12 +63,14 @@ export function useUsersRealtime(options: UseUsersOptions = {}) {
   } = options;
 
   const [state, setState] = useState<UsersState>({
-    users: [],
-    expiryNotifications: [],
-    loading: true,
+    users: globalUsersCache,
+    expiryNotifications: globalNotificationsCache,
+    loading: globalUsersCache.length === 0,
     error: null,
   });
-  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(
+    globalUsersCache.length > 0 ? globalUsersCache[0] : null
+  );
 
   const mountedRef = useRef(true);
   const unsubRef = useRef<(() => void) | null>(null);
@@ -75,16 +80,19 @@ export function useUsersRealtime(options: UseUsersOptions = {}) {
 
   const fetchUsers = useCallback(async (silent = false) => {
     try {
-      if (!silent) setState(prev => ({ ...prev, loading: true }));
+      const isSilent = silent || globalUsersCache.length > 0;
+      if (!isSilent) setState(prev => ({ ...prev, loading: true }));
       const res = await fetch('/api/admin/users');
       const data = await res.json();
       if (!mountedRef.current) return;
 
       if (data.success) {
-        setState(prev => {
-          const freshUsers = data.users || [];
-          const notifs = data.expiryNotifications || [];
+        const freshUsers = data.users || [];
+        const notifs = data.expiryNotifications || [];
+        globalUsersCache = freshUsers;
+        globalNotificationsCache = notifs;
 
+        setState(prev => {
           if (selectedUser) {
             const fresh = freshUsers.find((u: AdminUser) => u.id === selectedUser.id);
             if (fresh) setSelectedUser(fresh);
