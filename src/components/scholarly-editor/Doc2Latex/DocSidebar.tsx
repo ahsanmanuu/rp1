@@ -39,7 +39,7 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
     },
     {
       name: 'BODY SECTIONS',
-      files: files.filter(f => /^sections\//.test(f.path) && f.path.endsWith('.tex')),
+      files: files.filter(f => /^(?:sections|chapters|paragraphs)\//i.test(f.path) && f.path.endsWith('.tex')),
     },
     {
       name: 'TABLES',
@@ -61,10 +61,7 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
       name: 'REFERENCES',
       files: files.filter(f => /^references\//i.test(f.path)),
     },
-    {
-      name: 'IMAGE ASSETS',
-      files: files.filter(f => /\.(png|jpg|jpeg|gif|svg|webp|eps|pdf|heic|heif|tiff|tif|bmp|avif)$/i.test(f.path)),
-    },
+
     {
       name: 'TEMPLATE FILES',
       files: files.filter(f =>
