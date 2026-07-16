@@ -429,6 +429,42 @@ export async function sendExpiryReminderEmail(
   });
 }
 
+// ─── AI Plan Expiry Reminder Email ──────────────────────────────────────────
+export async function sendAiPlanExpiryReminderEmail(
+  email: string,
+  daysLeft: number,
+  expiryDateStr: string,
+  userName?: string | null,
+  userId?: string | null
+): Promise<string | null> {
+  const dashboardUrl = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/dashboard?upgrade=true`;
+  const html = emailWrapper(`
+    <p style="font-size:16px;line-height:1.6;color:#475569;margin-bottom:24px;">
+      ${greeting(userName)},
+    </p>
+    <p style="font-size:16px;line-height:1.6;color:#475569;margin-bottom:16px;">
+      Your Premium AI Plan access is scheduled to expire in <strong>${daysLeft} day${daysLeft > 1 ? "s" : ""}</strong> (on <strong>${expiryDateStr}</strong>).
+    </p>
+    <p style="font-size:14px;line-height:1.6;color:#64748b;margin-bottom:32px;">
+      To avoid losing access to unlimited daily tokens and high-priority AI-assisted reviews, renew your AI plan now.
+    </p>
+    <div style="text-align:center;margin:40px 0;">
+      <a href="${dashboardUrl}" style="background:linear-gradient(135deg,#e11d48,#be123c);color:white;padding:16px 32px;border-radius:14px;text-decoration:none;font-weight:800;font-size:16px;display:inline-block;box-shadow:0 10px 25px -5px rgba(225,29,72,0.3);">
+        Renew AI Plan
+      </a>
+    </div>
+  `);
+
+  return sendEmail({
+    to: email,
+    toName: userName,
+    subject: `Your Premium AI Plan Expires in ${daysLeft} Day${daysLeft > 1 ? "s" : ""} — Latexify Studio`,
+    html,
+    emailType: "expiry_reminder",
+    userId,
+  });
+}
+
 // ─── Ticket Created Email ───────────────────────────────────────────────────
 export async function sendTicketCreatedEmail(
   userEmail: string,

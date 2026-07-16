@@ -45,6 +45,9 @@ model User {
   syncLogs      SyncLog[]
   aiCapPlanId   String?
   aiCapPlan     AiCapPlan?   @relation(fields: [aiCapPlanId], references: [id])
+  aiPlanStartsAt DateTime?   @db.Timestamptz
+  aiPlanExpiresAt DateTime?  @db.Timestamptz
+  aiPlanExpiryWarnedAt DateTime? @db.Timestamptz
   aiCaps        UserAiCap[]
   aiUsageDailySummaries AiUsageDailySummary[]
   userSessions  UserSession[]

@@ -22,11 +22,17 @@ export async function GET() {
       prisma.user.findUnique({
         where: { id: userId },
         select: {
+          id: true,
+          email: true,
+          name: true,
           aiCapPlanId: true,
           aiDailyCapOverride: true,
           aiAgentReactivatesAt: true,
           membership: true,
           membershipExpiresAt: true,
+          aiPlanStartsAt: true,
+          aiPlanExpiresAt: true,
+          aiPlanExpiryWarnedAt: true,
         },
       }),
       prisma.aiUsageDailySummary.findUnique({
@@ -41,13 +47,38 @@ export async function GET() {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    let planId = user.aiCapPlanId;
+    const now = new Date();
+
+    // 1. Process AI Plan Expiration
+    let aiPlanExpiresAt = user.aiPlanExpiresAt;
+    let aiPlanStartsAt = user.aiPlanStartsAt;
+    let currentPlanId = user.aiCapPlanId;
+
+    if (aiPlanExpiresAt && new Date(aiPlanExpiresAt) <= now) {
+      // AI Plan has expired! Automatically convert to free plan
+      const targetPlan = freePlan || await prisma.aiCapPlan.findFirst({ where: { name: 'free' } });
+      if (targetPlan) {
+        currentPlanId = targetPlan.id;
+        aiPlanExpiresAt = null;
+        aiPlanStartsAt = null;
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            aiCapPlanId: targetPlan.id,
+            aiPlanStartsAt: null,
+            aiPlanExpiresAt: null,
+            aiPlanExpiryWarnedAt: null,
+          }
+        });
+      }
+    }
+
+    let planId = currentPlanId;
     let plan = planId
       ? await prisma.aiCapPlan.findUnique({ where: { id: planId } })
       : null;
 
     // Check if user has an active premium subscription
-    const now = new Date();
     const isPremiumMember = user.membership && user.membership !== 'free' && (!user.membershipExpiresAt || new Date(user.membershipExpiresAt) > now);
 
     if (isPremiumMember) {
@@ -74,6 +105,35 @@ export async function GET() {
             where: { id: userId },
             data: { aiCapPlanId: targetPlan.id }
           });
+        }
+      }
+    }
+
+    // 3. Process AI Plan Expiry Reminder (before 3 days)
+    if (aiPlanExpiresAt && plan && plan.name !== 'free') {
+      const expiryTime = new Date(aiPlanExpiresAt).getTime();
+      const diffTime = expiryTime - now.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays <= 3 && diffDays > 0) {
+        // Send email if not warned in the last 24h
+        const lastWarned = user.aiPlanExpiryWarnedAt ? new Date(user.aiPlanExpiryWarnedAt) : null;
+        const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+        if (!lastWarned || lastWarned < oneDayAgo) {
+          const { sendAiPlanExpiryReminderEmail } = await import("@/lib/mailer");
+          await sendAiPlanExpiryReminderEmail(
+            user.email,
+            diffDays,
+            new Date(aiPlanExpiresAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+            user.name,
+            user.id
+          ).catch(console.error);
+
+          await prisma.user.update({
+            where: { id: userId },
+            data: { aiPlanExpiryWarnedAt: now }
+          }).catch(console.error);
         }
       }
     }
@@ -105,6 +165,10 @@ export async function GET() {
     const todayUtcMidnight = new Date(today + 'T00:00:00.000Z');
     const nextResetUtc = new Date(todayUtcMidnight.getTime() + 24 * 60 * 60 * 1000);
 
+    const remainingDays = aiPlanExpiresAt
+      ? Math.max(0, Math.ceil((new Date(aiPlanExpiresAt).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+      : null;
+
     return NextResponse.json({
       isCapped,
       dailyCap: effectiveDailyCap,
@@ -123,6 +187,11 @@ export async function GET() {
       quotaResetAt: nextResetUtc.toISOString(),
       capExpiresAt: reactivatesAt ? reactivatesAt.toISOString() : null,
       msUntilReset: nextResetUtc.getTime() - nowMs,
+
+      aiPlanName: planName,
+      aiPlanStartsAt: aiPlanStartsAt ? new Date(aiPlanStartsAt).toISOString() : null,
+      aiPlanExpiresAt: aiPlanExpiresAt ? new Date(aiPlanExpiresAt).toISOString() : null,
+      aiPlanRemainingDays: remainingDays,
     });
   } catch (error: any) {
     console.error("[AI_CAP_STATUS_ERROR]", error);

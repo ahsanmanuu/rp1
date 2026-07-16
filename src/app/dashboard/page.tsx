@@ -968,6 +968,32 @@ export default function DashboardPage() {
                             </span>
                           )}
                         </div>
+
+                        {/* AI Plan Dates */}
+                        {(aiCapStatus.aiPlanStartsAt || aiCapStatus.aiPlanExpiresAt) && (
+                          <div className="pt-2.5 mt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex flex-col gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 font-semibold animate-fade-in">
+                            <div className="flex justify-between">
+                              <span>AI Plan Period:</span>
+                              <span className="text-slate-600 dark:text-slate-300 font-bold">
+                                {aiCapStatus.aiPlanStartsAt ? new Date(aiCapStatus.aiPlanStartsAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : "—"} to {aiCapStatus.aiPlanExpiresAt ? new Date(aiCapStatus.aiPlanExpiresAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : "Lifetime"}
+                              </span>
+                            </div>
+                            {aiCapStatus.aiPlanExpiresAt && (
+                              <div className="flex justify-between items-center">
+                                <span>Remaining Days:</span>
+                                <span className={`px-1.5 py-0.5 rounded font-black ${
+                                  aiCapStatus.aiPlanRemainingDays <= 3 
+                                    ? "bg-rose-500/10 text-rose-500" 
+                                    : aiCapStatus.aiPlanRemainingDays <= 7 
+                                    ? "bg-amber-500/10 text-amber-500" 
+                                    : "bg-emerald-500/10 text-emerald-500"
+                                }`}>
+                                  {aiCapStatus.aiPlanRemainingDays} day{aiCapStatus.aiPlanRemainingDays !== 1 ? 's' : ''} left
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <span className="text-xs text-secondary font-semibold">AI Quota information unavailable.</span>

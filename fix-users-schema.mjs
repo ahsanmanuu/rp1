@@ -80,6 +80,9 @@ const newFields = [
   textField("aiCapPlanId", { max: 100 }),
   dateField("emailVerified"),
   textField("image", { max: 500 }),
+  dateField("aiPlanStartsAt"),
+  dateField("aiPlanExpiresAt"),
+  dateField("aiPlanExpiryWarnedAt"),
 ];
 
 // Add only fields that don't already exist
@@ -120,6 +123,9 @@ addCol('users', 'aiAgentReactivatesAt', 'TEXT', "''");
 addCol('users', 'aiCapPlanId', 'TEXT', "''");
 addCol('users', 'emailVerified', 'TEXT', "''");
 addCol('users', 'image', 'TEXT', "''");
+addCol('users', 'aiPlanStartsAt', 'TEXT', "''");
+addCol('users', 'aiPlanExpiresAt', 'TEXT', "''");
+addCol('users', 'aiPlanExpiryWarnedAt', 'TEXT', "''");
 
 console.log('\nDone!');
 db.close();

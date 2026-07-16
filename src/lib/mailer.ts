@@ -1,1 +1,1 @@
-export { sendRecoveryEmail, sendExpiryReminderEmail } from "./emailService";
+export { sendRecoveryEmail, sendExpiryReminderEmail, sendAiPlanExpiryReminderEmail } from "./emailService";

@@ -25,6 +25,9 @@ export interface AdminUser {
   paidTransactions: any[];
   role: string;
   createdAt: string;
+  aiPlanStartsAt?: string | null;
+  aiPlanExpiresAt?: string | null;
+  aiCapPlanId?: string | null;
 }
 
 export interface ExpiryNotification {

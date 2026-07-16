@@ -48,6 +48,9 @@ interface AdminUser {
   paidTransactions: PaidTransaction[];
   role: string;
   createdAt: string;
+  aiPlanStartsAt?: string | null;
+  aiPlanExpiresAt?: string | null;
+  aiCapPlanId?: string | null;
 }
 
 function getDuration(membershipRaw: string): string {
@@ -523,6 +526,9 @@ export default function AdminUsersPage() {
   const [isEditingExpiry, setIsEditingExpiry] = useState(false);
   const [editExpiryValue, setEditExpiryValue] = useState('');
   const [expirySaving, setExpirySaving] = useState(false);
+  const [isEditingAiExpiry, setIsEditingAiExpiry] = useState(false);
+  const [editAiExpiryValue, setEditAiExpiryValue] = useState('');
+  const [aiExpirySaving, setAiExpirySaving] = useState(false);
 
   // ── User Detail Modal state ────────────────────────────────────────────
   const [_uModalOpen, setUModalOpen] = useState<{ type: string; label: string; icon: string; color: string } | null>(null);
@@ -1704,6 +1710,124 @@ export default function AdminUsersPage() {
                             )}
                           </div>
                         )}
+                      </div>
+                    </div>
+
+                    {/* AI Plan Info */}
+                    <div className="p-3 rounded-lg border animate-fade-in" style={{ backgroundColor: 'var(--color-admin-surface-container-low)', borderColor: 'var(--color-admin-outline-variant)' }}>
+                      <div className="flex justify-between items-center mb-2">
+                        <p className="text-[10px] uppercase tracking-wider font-bold" style={{ color: 'var(--color-admin-on-surface-variant)' }}>AI Plan</p>
+                        <button
+                          onClick={() => setSubscriptionTarget(selectedUser)}
+                          className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border hover:opacity-85 transition-opacity"
+                          style={{
+                            borderColor: 'var(--color-admin-primary)',
+                            color: 'var(--color-admin-primary)',
+                            backgroundColor: 'rgba(195,192,255,0.05)'
+                          }}
+                        >
+                          Change
+                        </button>
+                      </div>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-xs font-bold" style={{ color: 'var(--color-admin-on-surface)' }}>
+                            {selectedUser.aiCapPlanId === 'pro' || selectedUser.membershipRaw !== 'free' ? 'Pro Plan' : 'Free Plan'}
+                          </span>
+                          {selectedUser.aiPlanStartsAt && (
+                            <span className="text-[9px] opacity-70" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
+                              Started: {new Date(selectedUser.aiPlanStartsAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          {isEditingAiExpiry ? (
+                            <div className="flex flex-col items-end gap-1">
+                              <input
+                                type="date"
+                                value={editAiExpiryValue}
+                                onChange={e => setEditAiExpiryValue(e.target.value)}
+                                className="text-[11px] rounded border px-1.5 py-0.5 outline-none font-sans"
+                                style={{
+                                  backgroundColor: 'var(--color-admin-surface-container-lowest)',
+                                  borderColor: 'var(--color-admin-outline-variant)',
+                                  color: 'var(--color-admin-on-surface)',
+                                  width: '120px'
+                                }}
+                              />
+                              <div className="flex gap-1.5">
+                                <button
+                                  disabled={aiExpirySaving}
+                                  onClick={async () => {
+                                    setAiExpirySaving(true);
+                                    try {
+                                      const res = await fetch('/api/admin/users', {
+                                        method: 'PUT',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                          id: selectedUser.id,
+                                          aiPlanExpiresAt: editAiExpiryValue ? new Date(editAiExpiryValue).toISOString() : null,
+                                          aiPlanStartsAt: selectedUser.aiPlanStartsAt ? undefined : new Date().toISOString()
+                                        })
+                                      });
+                                      const data = await res.json();
+                                      if (data.success) {
+                                        setSelectedUser((prev: AdminUser | null) => prev ? {
+                                          ...prev,
+                                          aiPlanExpiresAt: data.user.aiPlanExpiresAt,
+                                          aiPlanStartsAt: data.user.aiPlanStartsAt || prev.aiPlanStartsAt
+                                        } : null);
+                                        setIsEditingAiExpiry(false);
+                                        fetchUsers(true);
+                                      } else {
+                                        alert(data.error || "Failed to update AI expiry date");
+                                      }
+                                    } catch (e: any) {
+                                      alert(`Error: ${e.message}`);
+                                    } finally {
+                                      setAiExpirySaving(false);
+                                    }
+                                  }}
+                                  className="text-[9px] font-bold text-emerald-500 uppercase px-1 rounded hover:bg-black/5"
+                                >
+                                  {aiExpirySaving ? '...' : 'Save'}
+                                </button>
+                                <button
+                                  onClick={() => setIsEditingAiExpiry(false)}
+                                  className="text-[9px] font-bold text-rose-500 uppercase px-1 rounded hover:bg-black/5"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-right shrink-0" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
+                                Exp: {selectedUser.aiPlanExpiresAt
+                                  ? new Date(selectedUser.aiPlanExpiresAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                                  : 'No expiry'}
+                              </span>
+                              <button
+                                onClick={() => {
+                                  setEditAiExpiryValue(
+                                    selectedUser.aiPlanExpiresAt
+                                      ? new Date(selectedUser.aiPlanExpiresAt).toISOString().split('T')[0]
+                                      : ''
+                                  );
+                                  setIsEditingAiExpiry(true);
+                                }}
+                                className="text-[9px] font-bold text-primary uppercase px-1 rounded hover:bg-black/5"
+                              >
+                                Edit
+                              </button>
+                            </div>
+                          )}
+                          {selectedUser.aiPlanExpiresAt && (
+                            <span className="text-[9px] font-bold text-emerald-400">
+                              ({Math.max(0, Math.ceil((new Date(selectedUser.aiPlanExpiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))} days remaining)
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 

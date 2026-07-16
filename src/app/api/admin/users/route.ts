@@ -115,6 +115,9 @@ export async function GET(req: NextRequest) {
         paidTransactions: u.membershipTransactions || [],
         role: u.role || "user",
         createdAt: u.createdAt,
+        aiPlanStartsAt: u.aiPlanStartsAt || null,
+        aiPlanExpiresAt: u.aiPlanExpiresAt || null,
+        aiCapPlanId: u.aiCapPlanId || null,
       };
     });
 
@@ -221,9 +224,9 @@ export async function PUT(req: NextRequest) {
     }
 
     // MODE 1: Subscription Update
-    if ("membership" in body || "membershipExpiresAt" in body) {
+    if ("membership" in body || "membershipExpiresAt" in body || "aiPlanExpiresAt" in body || "aiCapPlanId" in body || "aiPlanStartsAt" in body) {
       const membership = "membership" in body ? body.membership : existingUser.membership;
-      const { membershipExpiresAt } = body;
+      const { membershipExpiresAt, aiPlanExpiresAt, aiCapPlanId, aiPlanStartsAt } = body;
       let finalExpiry: Date | null = null;
       if (membership !== "free" && membershipExpiresAt) {
         const parsed = new Date(membershipExpiresAt);
@@ -257,13 +260,32 @@ export async function PUT(req: NextRequest) {
         });
       }
 
+      const updateData: any = {
+        membership: newPlan,
+        membershipExpiresAt: finalExpiry,
+      };
+
+      if ("aiCapPlanId" in body) {
+        updateData.aiCapPlanId = aiCapPlanId || null;
+      }
+      if ("aiPlanExpiresAt" in body) {
+        updateData.aiPlanExpiresAt = aiPlanExpiresAt ? new Date(aiPlanExpiresAt) : null;
+      }
+      if ("aiPlanStartsAt" in body) {
+        updateData.aiPlanStartsAt = aiPlanStartsAt ? new Date(aiPlanStartsAt) : null;
+      }
+
       const updatePromise = prisma.user.update({
         where: { id },
-        data: {
-          membership: newPlan,
-          membershipExpiresAt: finalExpiry,
-        },
-        select: { id: true, membership: true, membershipExpiresAt: true }
+        data: updateData,
+        select: {
+          id: true,
+          membership: true,
+          membershipExpiresAt: true,
+          aiCapPlanId: true,
+          aiPlanStartsAt: true,
+          aiPlanExpiresAt: true
+        }
       });
 
       const updated = txPromise
