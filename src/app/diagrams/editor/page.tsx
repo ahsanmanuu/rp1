@@ -1872,11 +1872,11 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
           TOP HEADER
       ══════════════════════════════════════════════════════════════════════ */}
       <header
-        className="glass rim fixed top-0 w-full h-[70px] border-b flex justify-between items-center px-6 z-50"
+        className="glass rim fixed top-0 w-full h-[70px] border-b flex justify-between items-center px-3 md:px-6 z-50 overflow-hidden gap-2"
         style={{ borderColor: isLight ? 'var(--editor-border)' : 'rgba(69,71,75,0.25)' }}
       >
-        {/* Left: brand + nav */}
-        <div className="flex items-center gap-3">
+        {/* Left: brand + nav — flex-1 allows shrink, min-w-0 prevents overflow */}
+        <div className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
           {/* App Brand + Project Title */}
           <div className="flex items-center gap-2.5">
             <span className="material-symbols-outlined text-amber-400 flex-shrink-0" style={{ fontSize: 22 }}>schema</span>
@@ -2118,9 +2118,9 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
             )}
           </div>
 
-          <div className="h-5 w-px bg-white/10 hidden md:block" />
+          <div className="h-5 w-px bg-white/10 hidden lg:block" />
 
-          <nav className="hidden md:flex gap-1 text-xs font-semibold">
+          <nav className="hidden md:flex gap-1 text-xs font-semibold flex-shrink-0">
             {/* Undo / Redo */}
             <div className="flex items-center bg-white/5 rounded-lg overflow-hidden mr-1">
               <button disabled={!canUndo} onClick={() => undo(nodes, connections)} title="Undo (Ctrl+Z)"
@@ -2132,20 +2132,20 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                 <span className="material-symbols-outlined" style={{ fontSize: 16 }}>redo</span>
             </button>
             <button onClick={() => setTool(isHand ? 'select' : 'hand')}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${isHand ? 'bg-violet-500/20 text-violet-300 border border-violet-500/50 shadow-[0_0_15px_rgba(139,92,246,0.2)]' : 'bg-[#1c2b3c] text-[#c6c6cb] border border-white/8 hover:text-white hover:border-white/20'}`}
+              className={`px-2 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${isHand ? 'bg-violet-500/20 text-violet-300 border border-violet-500/50 shadow-[0_0_15px_rgba(139,92,246,0.2)]' : 'bg-[#1c2b3c] text-[#c6c6cb] border border-white/8 hover:text-white hover:border-white/20'}`}
               title="Drag to pan canvas"
             >
               <span className="material-symbols-outlined" style={{ fontSize: 16 }}>pan_tool</span>
-              {isHand ? 'Pan Active' : 'Hand Tool'}
+              <span className="hidden xl:inline">{isHand ? 'Pan Active' : 'Hand'}</span>
             </button>
           </div>
 
           <button onClick={() => setShowMinimap(v => !v)}
-            className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${showMinimap ? 'bg-violet-500/20 text-violet-300 border border-violet-500/50 shadow-[0_0_15px_rgba(139,92,246,0.2)]' : 'bg-[#1c2b3c] text-[#c6c6cb] border border-white/8 hover:text-white hover:border-white/20'}`}
+            className={`px-2 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${showMinimap ? 'bg-violet-500/20 text-violet-300 border border-violet-500/50 shadow-[0_0_15px_rgba(139,92,246,0.2)]' : 'bg-[#1c2b3c] text-[#c6c6cb] border border-white/8 hover:text-white hover:border-white/20'}`}
             title="Toggle Minimap View"
           >
             <span className="material-symbols-outlined" style={{ fontSize: 16 }}>map</span>
-            {showMinimap ? 'Minimap' : 'Minimap'}
+            <span className="hidden xl:inline">Minimap</span>
           </button>
 
           <div className="h-5 w-px bg-white/10" />
@@ -2291,9 +2291,10 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
           </div>
 
           <button onClick={handleShare}
-            className="px-4 py-1.5 rounded-full text-xs font-semibold flex items-center gap-2 text-blue-200 border transition-all cursor-pointer"
+            className="px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 text-blue-200 border transition-all cursor-pointer"
             style={{ background: 'rgba(59,130,246,0.10)', borderColor: 'rgba(59,130,246,0.30)' }}>
-            {copied ? '✓ Copied' : 'Share'}
+            {copied ? '✓' : <span className="material-symbols-outlined" style={{ fontSize: 14 }}>share</span>}
+            <span className="hidden xl:inline">{copied ? 'Copied' : 'Share'}</span>
           </button>
           </div>
 
@@ -2363,20 +2364,23 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
           </nav>
 
 
-          <div className="h-5 w-px bg-white/10" />
+          <div className="h-5 w-px bg-white/10 flex-shrink-0" />
 
           <ThemeSwitcher />
 
-          <div className="h-5 w-px bg-white/10" />
+          <div className="h-5 w-px bg-white/10 flex-shrink-0" />
 
-          <Link href="/" className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 bg-[#1c2b3c] text-[#c6c6cb] border border-white/8 hover:text-white hover:border-white/20 cursor-pointer" title="Return to Home">
-            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>home</span>
-            Return to Home
-          </Link>
-          <Link href="/dashboard" className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 bg-[#1c2b3c] text-[#c6c6cb] border border-white/8 hover:text-white hover:border-white/20 cursor-pointer" title="Return to Dashboard">
-            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>dashboard</span>
-            Return to Dashboard
-          </Link>
+          {/* Right nav: Return links — icon-only on small screens, text on large */}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <Link href="/" className="px-2 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 bg-[#1c2b3c] text-[#c6c6cb] border border-white/8 hover:text-white hover:border-white/20 cursor-pointer" title="Return to Home">
+              <span className="material-symbols-outlined" style={{ fontSize: 15 }}>home</span>
+              <span className="hidden xl:inline">Home</span>
+            </Link>
+            <Link href="/dashboard" className="px-2 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 bg-[#1c2b3c] text-[#c6c6cb] border border-white/8 hover:text-white hover:border-white/20 cursor-pointer" title="Return to Dashboard">
+              <span className="material-symbols-outlined" style={{ fontSize: 15 }}>dashboard</span>
+              <span className="hidden xl:inline">Dashboard</span>
+            </Link>
+          </div>
         </div>
       </header>
 

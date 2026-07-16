@@ -1,5 +1,15 @@
 /* CSS Styles for AI Diagram Studio to prevent screen flickering */
 
+/* ── Header: ensure no overflow on small/laptop screens ── */
+.diagram-studio-header {
+  min-width: 0;
+  overflow: hidden;
+}
+.diagram-studio-header > * {
+  flex-shrink: 0;
+}
+
+
 @font-face {
   font-family: 'Material Symbols Outlined';
   font-style: normal;
