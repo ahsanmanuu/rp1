@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { UserPlus, Mail, Lock, User, AlertCircle, Loader2 } from "lucide-react";
 import LatexifyLogo from "@/components/LatexifyLogo";
+import { useSession } from "@/lib/pb-auth-react";
 
 export default function RegisterPage() {
   const [name, setName] = useState("");
@@ -16,7 +17,20 @@ export default function RegisterPage() {
   const [showTermsPopup, setShowTermsPopup] = useState(false);
   const [termsScrolledToBottom, setTermsScrolledToBottom] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [machineId, setMachineId] = useState("");
   const router = useRouter();
+  const { update } = useSession();
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      let mId = localStorage.getItem('machine_id');
+      if (!mId) {
+        mId = 'mch_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+        localStorage.setItem('machine_id', mId);
+      }
+      setMachineId(mId);
+    }
+  }, []);
 
   const performSubmit = async () => {
     setLoading(true);
@@ -52,12 +66,13 @@ export default function RegisterPage() {
       const loginRes = await fetch("/api/auth/pb-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, machineId }),
       });
 
       if (!loginRes.ok) {
         router.push("/login?registered=true");
       } else {
+        await update();
         router.push("/dashboard");
         router.refresh();
       }

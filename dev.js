@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
+import { execSync } from 'child_process';
 
 const PB_URL = process.env.POCKETBASE_URL || 'http://127.0.0.1:8090';
 const pbBinary = process.platform === 'win32' ? 'pocketbase.exe' : './pocketbase';
@@ -19,6 +20,24 @@ function getPort(url) {
   return m ? parseInt(m[1]) : 8090;
 }
 
+// Kill any process already bound to a TCP port (best-effort, Windows + *nix)
+function freePort(port) {
+  try {
+    if (process.platform === 'win32') {
+      const out = execSync(`netstat -ano | findstr :${port}`, { stdio: ['ignore', 'pipe', 'ignore'] })
+        .toString().split('\n');
+      for (const line of out) {
+        const m = line.match(new RegExp(`:${port}\\s+\\S+\\s+\\S+\\s+(\\d+)`));
+        if (m) {
+          try { execSync(`taskkill /PID ${m[1]} /F`, { stdio: 'ignore' }); } catch {}
+        }
+      }
+    } else {
+      execSync(`fuser -k ${port}/tcp`, { stdio: 'ignore' });
+    }
+  } catch {}
+}
+
 async function startPocketBase() {
   if (await isPortReachable(getPort(PB_URL))) {
     console.log(`\x1b[32mPocketBase already running at ${PB_URL}\x1b[0m`);
@@ -26,8 +45,7 @@ async function startPocketBase() {
   }
 
   if (!fs.existsSync(pbBinary)) {
-    console.log(`\x1b[33mPocketBase binary not found at ${pbBinary}\x1b[0m`);
-    console.log(`\x1b[33mStart it manually or place ${pbBinary} in the project root.\x1b[0m`);
+    console.log(`\x1b[33mPocketBase binary not found at ${pbBinary} — start it manually\x1b[0m`);
     return;
   }
 
@@ -40,7 +58,6 @@ async function startPocketBase() {
   pbProcess = spawn(pbBinary, ['serve', '--http=127.0.0.1:8090', `--dir=${pbDataDir}`, `--migrationsDir=${migrationsDir}`], {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-
   pbProcess.stdout.on('data', (d) => process.stdout.write(`\x1b[90m[PB] \x1b[0m${d}`));
   pbProcess.stderr.on('data', (d) => process.stderr.write(`\x1b[90m[PB] \x1b[0m${d}`));
 
@@ -55,37 +72,47 @@ async function startPocketBase() {
 }
 
 function startNext() {
-  console.log('\x1b[32mStarting Next.js dev server...\x1b[0m');
-  const nextCommand = `npx next dev -p 3000 --turbopack ${process.argv.slice(2).join(' ')}`;
-  const nextProc = spawn(nextCommand, [], { stdio: 'inherit', shell: true });
+  // Make sure nothing stale is holding port 3000
+  freePort(3000);
 
-  nextProc.on('exit', (code) => {
-    if (shuttingDown) return;
-    // Next.js 16 restarts itself via memory watchdog — if it exits, re-spawn
-    console.log(`\x1b[33mNext.js exited (code ${code}), re-spawning...\x1b[0m`);
-    // Clear stale turbopack cache on restart to prevent build artifacts accumulation
-    const devCache = path.resolve(process.cwd(), '.next', 'dev');
-    try { if (fs.existsSync(devCache)) fs.rmSync(devCache, { recursive: true, force: true }); } catch {}
-    startNext();
+  console.log('\x1b[32mStarting Next.js dev server...\x1b[0m');
+  const args = ['next', 'dev', '-p', '3000', '--turbopack', ...process.argv.slice(2)];
+  const nextProc = spawn('npx', args, {
+    stdio: 'inherit',
+    shell: process.platform === 'win32' ? true : false,
+    windowsHide: true,
+  });
+
+  let exited = false;
+  nextProc.on('exit', (code, signal) => {
+    if (shuttingDown || exited) return;
+    exited = true;
+    // Surface the real reason instead of blindly re-spawning into an EADDRINUSE loop
+    console.log(`\x1b[31mNext.js dev server stopped (code ${code}, signal ${signal}).\x1b[0m`);
+    console.log('\x1b[33mRun "npm run dev" again to restart. Press Ctrl+C to stop everything.\x1b[0m');
+  });
+
+  nextProc.on('error', (err) => {
+    console.log(`\x1b[31mFailed to launch Next.js: ${err.message}\x1b[0m`);
+    cleanup(1);
   });
 
   return nextProc;
 }
 
+function cleanup(code = 0) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  if (pbProcess && !pbProcess.killed) {
+    pbProcess.kill();
+    console.log('\x1b[33mPocketBase stopped\x1b[0m');
+  }
+  process.exit(code);
+}
+
 async function main() {
   await startPocketBase();
-  const nextProc = startNext();
-
-  const cleanup = (code = 0) => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    if (pbProcess && !pbProcess.killed) {
-      pbProcess.kill();
-      console.log('\x1b[33mPocketBase stopped\x1b[0m');
-    }
-    process.exit(code);
-  };
-
+  startNext();
   process.on('SIGINT', () => cleanup(0));
   process.on('SIGTERM', () => cleanup(0));
   process.on('SIGHUP', () => cleanup(0));
