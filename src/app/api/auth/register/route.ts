@@ -38,7 +38,7 @@ export async function POST(req: Request) {
 
     if (cleanName) {
       const existingUserByName = await prisma.user.findFirst({
-        where: { name: { equals: cleanName, mode: 'insensitive' } }
+        where: { name: cleanName }
       });
       if (existingUserByName) {
         return NextResponse.json(
