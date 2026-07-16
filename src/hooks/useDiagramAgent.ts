@@ -399,7 +399,7 @@ export function useDiagramAgent({
               const isPatch = mode === 'patch' || (
                 sanitizedNodes.length > 0 &&
                 sanitizedNodes.length < currentNodes.length &&
-                sanitizedNodes.some(n => currentNodes.some(existing => existing.id === n.id))
+                sanitizedNodes.some((n: DiagramNode) => currentNodes.some(existing => existing.id === n.id))
               );
 
               let finalNodes: DiagramNode[];
@@ -413,7 +413,7 @@ export function useDiagramAgent({
                   }
                 });
 
-                const incomingMap = new Map<string, DiagramNode>(sanitizedNodes.map(n => [n.id, n]));
+                const incomingMap = new Map<string, DiagramNode>(sanitizedNodes.map((n: DiagramNode) => [n.id, n] as [string, DiagramNode]));
                 const updatedNodes = currentNodes
                   .filter(n => !deleteIds.has(n.id))
                   .map(existing => {
@@ -435,7 +435,7 @@ export function useDiagramAgent({
                 finalNodes = [...updatedNodes, ...newNodesList];
 
                 // Merge connections
-                const newConnsMap = new Map<string, DiagramConnection>(sanitizedConns.map(c => [`${c.from}->${c.to}`, c]));
+                const newConnsMap = new Map<string, DiagramConnection>(sanitizedConns.map((c: DiagramConnection) => [`${c.from}->${c.to}`, c] as [string, DiagramConnection]));
                 const mergedConns = currentConns
                   .filter(c => !deleteIds.has(c.from) && !deleteIds.has(c.to))
                   .map(existing => {
