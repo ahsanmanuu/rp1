@@ -52,7 +52,7 @@ function UploadContent() {
       try {
         const [repRes, projRes] = await Promise.all([
           fetch('/api/reports'),
-          fetch('/api/projects')
+          fetch('/api/projects?type=DOC2LATEX')
         ]);
         
         if (repRes.ok) {

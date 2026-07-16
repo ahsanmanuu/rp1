@@ -25,12 +25,15 @@ export async function GET() {
       return NextResponse.json({ limitReached: false, count: 0, max: null });
     }
 
-    const count = await prisma.project.count({
-      where: { userId: session.user.id },
-    });
+    const [projectCount, citationCount, reviewCount] = await Promise.all([
+      prisma.project.count({ where: { userId: session.user.id } }),
+      prisma.citationProject.count({ where: { userId: session.user.id } }),
+      prisma.paperReview.count({ where: { userId: session.user.id } }),
+    ]);
 
-    const MAX = 5;
-    return NextResponse.json({ limitReached: count >= MAX, count, max: MAX, membership });
+    const totalCount = projectCount + citationCount + reviewCount;
+    const MAX = 7;
+    return NextResponse.json({ limitReached: totalCount >= MAX, count: totalCount, max: MAX, membership });
   } catch (error: any) {
     console.error("Limit status error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

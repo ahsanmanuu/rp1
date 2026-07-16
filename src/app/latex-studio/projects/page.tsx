@@ -89,7 +89,7 @@ export default function LaTeXStudioLanding() {
 
   const handleOpenNewModal = () => {
     const totalProjects = projects.length + dbProjectsCount;
-    if (membership === "free" && totalProjects >= 5) {
+    if (membership === "free" && totalProjects >= 7) {
       setShowLimitModal(true);
       return;
     }
@@ -247,7 +247,7 @@ export default function LaTeXStudioLanding() {
                   if (!file || !fs) return;
 
                   const totalProjects = projects.length + dbProjectsCount;
-                  if (membership === "free" && totalProjects >= 5) {
+                  if (membership === "free" && totalProjects >= 7) {
                     setShowLimitModal(true);
                     return;
                   }

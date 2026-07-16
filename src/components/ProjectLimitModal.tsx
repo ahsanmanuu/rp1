@@ -75,7 +75,7 @@ export default function ProjectLimitModal({ isOpen, onClose }: ProjectLimitModal
               Project Limit Reached
             </h2>
             <p style={{ color: '#9ca3af', fontSize: '0.95rem', margin: 0, maxWidth: '550px', lineHeight: 1.5 }}>
-              Free membership is restricted to a total of 5 projects. Upgrade to a Premium plan to unlock unlimited project creation and advanced LaTeX tools.
+              Free membership is restricted to a total of 7 projects across all tools. Upgrade to a Premium plan to unlock unlimited project creation and advanced LaTeX tools.
             </p>
           </div>
 
@@ -216,21 +216,7 @@ export default function ProjectLimitModal({ isOpen, onClose }: ProjectLimitModal
               <span>Go to Dashboard</span>
             </button>
 
-            {onClose && (
-              <button
-                onClick={onClose}
-                style={{
-                  padding: '0.65rem 1.5rem', borderRadius: '10px',
-                  background: 'transparent', border: '1px solid transparent',
-                  color: '#9ca3af', fontWeight: 600, fontSize: '0.85rem',
-                  cursor: 'pointer', transition: 'color 0.2s',
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.color = '#fff'}
-                onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
-              >
-                Cancel
-              </button>
-            )}
+            {/* Cancel button removed to enforce mandatory upgrade block */}
           </div>
         </motion.div>
       </div>

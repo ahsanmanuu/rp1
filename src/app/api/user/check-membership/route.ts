@@ -89,13 +89,17 @@ export async function GET(_req: NextRequest) {
 
     const totalDays = Math.ceil((now.getTime() - new Date(memberSince).getTime()) / (1000 * 60 * 60 * 24));
 
-    const [subscriptionCount, projectsCount, doc2latexCount, latexCount, diagramCount] = await Promise.all([
+    const [subscriptionCount, projectCount, citationCount, reviewCount, doc2latexCount, latexCount, diagramCount] = await Promise.all([
       prisma.membershipTransaction.count({ where: { userId, paymentStatus: "paid" } }),
       prisma.project.count({ where: { userId } }),
+      prisma.citationProject.count({ where: { userId } }),
+      prisma.paperReview.count({ where: { userId } }),
       prisma.project.count({ where: { userId, projectType: "DOC2LATEX" } }),
       prisma.project.count({ where: { userId, projectType: "LATEX_STUDIO" } }),
       prisma.project.count({ where: { userId, projectType: "DIAGRAM" } })
     ]);
+
+    const projectsCount = projectCount + citationCount + reviewCount;
 
     // Detect plan change and write lifecycle log
     const cacheKey = `membership_${userId}`;

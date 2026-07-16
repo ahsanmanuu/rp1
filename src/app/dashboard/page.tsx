@@ -631,7 +631,7 @@ export default function DashboardPage() {
   [pbLatexProjects]);
 
   const liveProjectsCount = useMemo(() => pbDoc2Latex.length + pbLatexProjects.length, [pbDoc2Latex, pbLatexProjects]);
-  const displayProjectsCount = projectsLoading ? (membership.projectsCount || 0) : pbAllProjects.length;
+  const displayProjectsCount = typeof membership.projectsCount === 'number' ? membership.projectsCount : pbAllProjects.length;
 
   const handleDownloadZip = async (p: any) => {
     if (!session?.user?.email) return;
@@ -863,29 +863,29 @@ export default function DashboardPage() {
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Active Projects</span>
                       <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md ${
-                        membership.membership === "free" && displayProjectsCount >= 5
+                        membership.membership === "free" && displayProjectsCount >= 7
                           ? "bg-rose-500/10 text-rose-500"
                           : "bg-primary/10 text-primary"
                       }`}>
                         {membership.membership === "free"
-                          ? `${Math.round(Math.min((displayProjectsCount / 5) * 100, 100))}% Used`
+                          ? `${Math.round(Math.min((displayProjectsCount / 7) * 100, 100))}% Used`
                           : "Unlimited"}
                       </span>
                     </div>
                     <div className="flex items-baseline gap-1.5 mb-2.5">
                       <span className="text-2xl font-black text-primary leading-none">{displayProjectsCount}</span>
                       <span className="text-sm font-bold text-slate-400 dark:text-slate-500 leading-none">
-                        / {membership.membership === "free" ? "5" : "∞"}
+                        / {membership.membership === "free" ? "7" : "∞"}
                       </span>
                     </div>
                     <div className="w-full bg-slate-100 dark:bg-slate-900/60 rounded-full h-2 overflow-hidden">
                       <div 
                         className={`h-full rounded-full transition-all duration-700 ease-out ${
-                          membership.membership === "free" && displayProjectsCount >= 5
+                          membership.membership === "free" && displayProjectsCount >= 7
                             ? "bg-gradient-to-r from-rose-500 to-rose-600"
                             : "bg-gradient-to-r from-primary to-primary-container"
                         }`}
-                        style={{ width: `${membership.membership === "free" ? Math.max(Math.min((displayProjectsCount / 5) * 100, 100), 4) : 100}%` }}
+                        style={{ width: `${membership.membership === "free" ? Math.max(Math.min((displayProjectsCount / 7) * 100, 100), 4) : 100}%` }}
                       />
                     </div>
                   </div>
@@ -1041,7 +1041,7 @@ export default function DashboardPage() {
                   </div>
                 )}
                 
-                {membership.membership === "free" && displayProjectsCount >= 5 && (
+                {membership.membership === "free" && displayProjectsCount >= 7 && (
                   <p className="text-[10px] text-rose-500 font-bold mt-4 flex items-center gap-1.5 border-t border-outline/10 pt-3">
                     <span className="relative flex h-2 w-2 shrink-0">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
