@@ -32,5 +32,6 @@ export async function POST() {
 
   const response = NextResponse.json({ success: true });
   response.headers.append("Set-Cookie", clearAuthCookie());
+  response.headers.append("Set-Cookie", "admin_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
   return response;
 }

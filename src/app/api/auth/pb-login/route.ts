@@ -66,7 +66,11 @@ export async function POST(req: NextRequest) {
     const ipAddress = geo.ipAddress || getClientIp(req);
     const location = geo.location || "Unknown Location";
     const userAgent = geo.userAgent || req.headers.get("user-agent") || "unknown";
-    const clientMachineId = machineId || "unknown";
+    let clientMachineId = machineId || "unknown";
+    if (clientMachineId === "unknown") {
+      const crypto = await import("crypto");
+      clientMachineId = "fp_" + crypto.createHash("md5").update(`${ipAddress}-${userAgent}`).digest("hex");
+    }
 
     // Check for existing active sessions from OTHER machines
     const existingSessions = await prisma.userSession.findMany({

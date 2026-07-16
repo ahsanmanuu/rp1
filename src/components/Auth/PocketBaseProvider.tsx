@@ -46,7 +46,7 @@ function AutoLogoutWatcher() {
       status === "unauthenticated" &&
       !(typeof window !== "undefined" && (window as any).__latexy_signOutInProgress)
     ) {
-      router.push("/login");
+      router.push("/");
     }
     prevStatus.current = status;
   }, [status, router]);
