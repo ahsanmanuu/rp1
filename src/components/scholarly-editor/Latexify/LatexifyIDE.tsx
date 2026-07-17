@@ -1177,6 +1177,49 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                      />
                   </div>
                </div>
+
+                {/* MODERN PROGRESSIVE COMPILING LOADER CARD */}
+                <AnimatePresence>
+                  {compiling && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.3, ease: 'easeInOut' }}
+                      style={{ 
+                        overflow: 'hidden',
+                        background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.12))',
+                        borderBottom: '1px solid var(--border)',
+                      }}
+                    >
+                      <div style={{ padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <RefreshCw className="spinner" size={14} style={{ color: 'var(--accent-primary)' }} />
+                            <span style={{ fontSize: '0.65rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.08em', fontFamily: 'var(--font-headline)' }}>COMPILING FILES</span>
+                          </div>
+                          <span className="pulsing-text" style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--accent-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Processing</span>
+                        </div>
+                        {/* Progressive loading bar */}
+                        <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden', position: 'relative' }}>
+                          <motion.div 
+                            initial={{ left: '-100%' }}
+                            animate={{ left: '100%' }}
+                            transition={{ repeat: Infinity, duration: 1.6, ease: 'easeInOut' }}
+                            style={{ 
+                              position: 'absolute', 
+                              top: 0, 
+                              bottom: 0, 
+                              width: '50%', 
+                              background: 'linear-gradient(90deg, transparent, var(--accent-primary), var(--accent-secondary), transparent)',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
                   {files.map(f => (
                     <motion.div 

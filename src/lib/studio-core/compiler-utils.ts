@@ -198,13 +198,31 @@ export function parseLog(log: string): DiagnosticError[] {
   const errors: DiagnosticError[] = [];
   const lines = (log || '').split('\n');
 
-  lines.forEach(rawLine => {
+  lines.forEach((rawLine, idx) => {
     const line = rawLine.trim();
     if (!line) return;
 
     // Pattern 1: Classic LaTeX error "! Error message"
     if (line.startsWith('!')) {
-      errors.push({ line: 0, type: 'error', message: line.substring(1).trim(), raw: line });
+      let errorLineNum = 0;
+      const errorMsg = line.substring(1).trim();
+      
+      // Lookahead up to 10 lines to find the line number (e.g., "l.42")
+      for (let j = idx + 1; j < Math.min(idx + 10, lines.length); j++) {
+        const nextLine = lines[j].trim();
+        const lMatch = nextLine.match(/^l\.(\d+)/);
+        if (lMatch) {
+          errorLineNum = parseInt(lMatch[1]);
+          break;
+        }
+      }
+
+      errors.push({ 
+        line: errorLineNum, 
+        type: 'error', 
+        message: errorMsg, 
+        raw: line 
+      });
       return;
     }
 
