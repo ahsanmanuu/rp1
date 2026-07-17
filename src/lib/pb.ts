@@ -132,8 +132,12 @@ export async function authFromToken(token: string): Promise<PocketBase> {
 
     promise = (async () => {
       try {
-        // Disable auto-cancellation inside PocketBase SDK by setting requestKey: null
-        const authData = await tempPb.collection('users').authRefresh({ requestKey: null });
+        // Abort PB authRefresh if PB is slow — 5 s is generous but prevents 80-second hangs
+        const authData = await tempPb.collection('users').authRefresh({
+          requestKey: null,
+          fetch: (url: string, opts?: any) =>
+            fetch(url, { ...opts, signal: AbortSignal.timeout(5000) }),
+        });
         const record = authData.record;
         recordCache.set(token, { record, expiry: Date.now() + 60000 });
         return record;
