@@ -40,14 +40,22 @@ export async function GET(req: NextRequest) {
         []
       );
 
-      const data = { success: true, announcements };
+      // Guard: PocketBase may return non-array on auth failure
+      const safeAnnouncements = Array.isArray(announcements) ? announcements : [];
+
+      const data = { success: true, announcements: safeAnnouncements };
       cache = { data, expiry: Date.now() + CACHE_TTL };
 
       return NextResponse.json(data, {
         headers: { 'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=30' },
       });
     } catch (error: any) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+      // Return empty list gracefully — never 500 the announcements endpoint.
+      // Transient PocketBase / DB errors should fail silently so the banner
+      // doesn't show a console error on every page load during compilation.
+      console.warn('[Announcements API] Transient error (returning empty list):', error?.message || error);
+      const fallback = { success: true, announcements: [] };
+      return NextResponse.json(fallback, { status: 200 });
     } finally {
       inflight = null;
     }

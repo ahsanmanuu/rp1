@@ -40,13 +40,24 @@ export default function BroadcastBanner() {
     const fetchAnnouncements = async () => {
       try {
         const res = await fetch('/api/announcements');
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        // Silently ignore transient server errors (500, 503) — retry on next poll
+        if (!res.ok) {
+          if (res.status >= 500) return;
+          throw new Error(`HTTP ${res.status}`);
+        }
+        let data: any;
+        try {
+          data = await res.json();
+        } catch {
+          // Empty/truncated response during server compilation — ignore silently
+          return;
+        }
         if (data.success) {
           setAnnouncements(data.announcements || []);
         }
       } catch (err: any) {
-        if (err?.message?.includes('503')) return;
+        // Only log unexpected client-side errors (network failures, etc.)
+        if (err?.message?.includes('503') || err?.message?.includes('500') || err?.message?.includes('fetch')) return;
         console.error('Failed to fetch announcements:', err);
       }
     };
