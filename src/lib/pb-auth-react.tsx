@@ -46,7 +46,13 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
   const update = useCallback(async () => {
     isFetching.current = true;
     try {
-      const res = await fetch("/api/auth/pb-session", { signal: AbortSignal.timeout(10000) });
+      const res = await fetch(`/api/auth/pb-session?_=${Date.now()}`, {
+        signal: AbortSignal.timeout(10000),
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache"
+        }
+      });
       if (res.ok) {
         const json = await res.json();
         if (json.user) {

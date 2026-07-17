@@ -3,16 +3,31 @@ import { getAuthPb, setAuthCookie } from "@/lib/auth-pb";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   const cookieStore = await cookies();
   const token = cookieStore.get('pb_token')?.value;
+
+  const noCacheHeaders = {
+    "Cache-Control": "no-store, max-age=0, must-revalidate",
+    "Pragma": "no-cache",
+    "CDN-Cache-Control": "no-store"
+  };
+
   if (!token) {
-    return NextResponse.json({ user: null }, { status: 401 });
+    const response = NextResponse.json({ user: null }, { status: 401 });
+    Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
+    return response;
   }
 
   const pb = await getAuthPb();
   if (!pb.authStore.isValid || !pb.authStore.record) {
-    return NextResponse.json({ user: null }, { status: 401 });
+    try { cookieStore.delete('pb_token'); } catch {}
+    const response = NextResponse.json({ user: null }, { status: 401 });
+    Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
+    response.headers.append("Set-Cookie", "pb_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT");
+    return response;
   }
 
   // Validate session exists in DB
@@ -29,15 +44,19 @@ export async function GET(req: NextRequest) {
 
   // Only fail auth and delete cookie if the database query succeeded and found no session record
   if (!dbError && !sessionRecord) {
+    try { cookieStore.delete('pb_token'); } catch {}
     const response = NextResponse.json({ user: null }, { status: 401 });
-    response.headers.append("Set-Cookie", "pb_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+    Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
+    response.headers.append("Set-Cookie", "pb_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT");
     return response;
   }
 
   // If expired, fail auth and delete cookie
   if (sessionRecord && new Date(sessionRecord.expiresAt).getTime() < Date.now()) {
+    try { cookieStore.delete('pb_token'); } catch {}
     const response = NextResponse.json({ user: null }, { status: 401 });
-    response.headers.append("Set-Cookie", "pb_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+    Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
+    response.headers.append("Set-Cookie", "pb_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT");
     return response;
   }
 
@@ -91,6 +110,9 @@ export async function GET(req: NextRequest) {
   });
 
   const response = NextResponse.json({ user, token });
+  response.headers.set("Cache-Control", "no-store, max-age=0, must-revalidate");
+  response.headers.set("Pragma", "no-cache");
+  response.headers.set("CDN-Cache-Control", "no-store");
   response.headers.append("Set-Cookie", setAuthCookie(token));
   return response;
 }

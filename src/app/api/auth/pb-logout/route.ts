@@ -4,8 +4,8 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 
 export async function POST() {
+  const cookieStore = await cookies();
   try {
-    const cookieStore = await cookies();
     const token = cookieStore.get('pb_token')?.value;
 
     if (token) {
@@ -28,10 +28,20 @@ export async function POST() {
         }
       } catch {}
     }
-  } catch {}
+  } catch (err) {
+    console.error("[AUTH pb-logout] Error deleting sessions:", err);
+  }
+
+  // Delete cookies via Next.js cookies API
+  try {
+    cookieStore.delete('pb_token');
+    cookieStore.delete('admin_session');
+  } catch (err) {
+    console.error("[AUTH pb-logout] Error deleting cookies via cookieStore:", err);
+  }
 
   const response = NextResponse.json({ success: true });
-  response.headers.append("Set-Cookie", clearAuthCookie());
-  response.headers.append("Set-Cookie", "admin_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+  response.headers.append("Set-Cookie", "pb_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT");
+  response.headers.append("Set-Cookie", "admin_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT");
   return response;
 }
