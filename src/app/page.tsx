@@ -298,18 +298,12 @@ export default function Home() {
 
               {/* CTAs */}
               <div className="flex flex-wrap items-center gap-4 pt-2">
-                <Link href="/register"
-                  className="glow-btn inline-flex items-center gap-3 px-8 py-4 rounded-2xl text-base font-bold text-white transition-all duration-300"
+                <Link href="/dashboard"
+                  className="glow-btn inline-flex items-center gap-4 px-8 py-4 rounded-2xl text-base font-bold text-white transition-all duration-300 hover:scale-105 active:scale-95 shadow-lg flex items-center"
                   style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', boxShadow: '0 4px 24px color-mix(in srgb, var(--accent-primary) 35%, transparent)' }}>
-                  Start Writing Free
+                  Return to Dashboard
                   <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                 </Link>
-                <button onClick={() => { if (videos.length > 0 || howItWorks.length > 0) { setActiveHowItWorks(0); setShowHowItWorksModal(true); } }}
-                  className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl text-base font-bold transition-all duration-300"
-                  style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-                  <PlayCircle size={22} style={{ color: 'var(--accent-primary)' }} />
-                  See How It Works
-                </button>
               </div>
 
               {/* Social proof */}
@@ -771,15 +765,10 @@ export default function Home() {
             Join 50,000+ researchers who have already made the switch. No credit card required.
           </p>
           <div className="flex flex-wrap justify-center gap-4 pt-2">
-            <Link href="/register"
-              className="glow-btn inline-flex items-center gap-3 px-10 py-4 rounded-2xl text-base font-bold text-white transition-all"
+            <Link href="/dashboard"
+              className="glow-btn inline-flex items-center gap-4 px-10 py-4 rounded-2xl text-base font-bold text-white transition-all hover:scale-105 active:scale-95 shadow-xl flex items-center"
               style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', boxShadow: '0 8px 32px color-mix(in srgb, var(--accent-primary) 50%, transparent)' }}>
-              Create Free Account <ArrowRight size={20} />
-            </Link>
-            <Link href="/login"
-              className="inline-flex items-center gap-3 px-10 py-4 rounded-2xl text-base font-bold transition-all"
-              style={{ background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>
-              Sign In
+              Return to Dashboard <ArrowRight size={20} />
             </Link>
           </div>
           <p className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>
