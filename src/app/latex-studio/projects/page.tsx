@@ -184,45 +184,7 @@ export default function LaTeXStudioLanding() {
 
   return (
     <div className="bg-background text-on-background min-h-screen flex flex-col font-body antialiased">
-      {/* TopNavBar */}
-      <nav className="bg-white dark:bg-black text-blue-600 dark:text-blue-500 font-['IBM_Plex_Sans'] antialiased text-sm tracking-tight docked full-width top-0 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center px-4 md:px-8 w-full h-12 shadow-md">
-        <div className="text-lg font-semibold tracking-tighter text-gray-900 dark:text-white flex items-center gap-2">
-          <span className="material-symbols-outlined" data-icon="edit_document">edit_document</span>
-          Latexify Studio
-        </div>
-        <div className="hidden sm:flex items-center gap-2 ml-4 border-l border-gray-200 dark:border-gray-800 pl-4">
-          <Link href="/" className="flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-gray-700 dark:text-white hover:text-primary transition-colors">
-            <span className="material-symbols-outlined text-[18px]" data-icon="home">home</span>
-            Return to Home
-          </Link>
-          <Link href="/dashboard" className="flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-gray-700 dark:text-white hover:text-primary transition-colors">
-            <span className="material-symbols-outlined text-[18px]" data-icon="dashboard">dashboard</span>
-            Return to Dashboard
-          </Link>
-        </div>
-        <div className="hidden md:flex items-center gap-6 h-full">
-          <a className="text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-black hover:bg-gray-100 dark:hover:bg-white transition-all duration-150 cursor-pointer active:opacity-80 flex items-center h-full px-4 font-bold">Editor</a>
-          <a className="text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-black hover:bg-gray-100 dark:hover:bg-white transition-all duration-150 cursor-pointer active:opacity-80 flex items-center h-full px-4 font-bold">Templates</a>
-          <a className="text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400 pb-1 hover:bg-gray-100 dark:hover:bg-white dark:hover:text-black transition-all duration-150 cursor-pointer active:opacity-80 flex items-center h-full px-4 font-bold mt-[2px]">Projects</a>
-          <a className="text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-black hover:bg-gray-100 dark:hover:bg-white transition-all duration-150 cursor-pointer active:opacity-80 flex items-center h-full px-4 font-bold">History</a>
-        </div>
-        <div className="flex items-center gap-4">
-          <button onClick={handleOpenNewModal} className="hidden md:flex items-center gap-2 bg-primary text-on-primary px-4 py-1.5 text-sm font-semibold hover:bg-primary-fixed-dim transition-colors cursor-pointer active:opacity-80">
-            <span className="material-symbols-outlined text-[18px]" data-icon="add">add</span>
-            New Project
-          </button>
-          <div className="flex items-center gap-2">
-            <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors duration-150 cursor-pointer active:opacity-80 text-gray-600 dark:text-gray-400">
-              <span className="material-symbols-outlined" data-icon="notifications">notifications</span>
-            </button>
-            <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors duration-150 cursor-pointer active:opacity-80 text-gray-600 dark:text-gray-400">
-              <span className="material-symbols-outlined" data-icon="account_circle">account_circle</span>
-            </button>
-          </div>
-        </div>
-      </nav>
-
-      <main className="flex-grow flex flex-col items-center w-full max-w-5xl mx-auto px-4 py-12 md:py-16 gap-16">
+      <main className="flex-grow flex flex-col items-center w-full max-w-5xl mx-auto px-4 pt-24 pb-12 md:pb-16 gap-16">
         {/* Header & Actions */}
         <section className="flex flex-col items-center text-center gap-6 w-full max-w-2xl">
           <div className="w-16 h-16 bg-surface-container-high flex items-center justify-center mb-2">

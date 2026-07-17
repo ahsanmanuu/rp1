@@ -8,7 +8,7 @@ export function ConditionalNavbar() {
   // Hide the global navbar inside specialized LaTeX Studio / Editor views
   // This preserves the full-screen IDE experience and avoids layout overlaps
   const hideNavbar = 
-    pathname.startsWith('/latex-studio/') || 
+    (pathname.startsWith('/latex-studio/') && pathname !== '/latex-studio/projects') || 
     pathname.startsWith('/editor/') || 
     pathname.startsWith('/diagrams/') || 
     pathname.startsWith('/doc2latex/') || 
