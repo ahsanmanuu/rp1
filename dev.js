@@ -76,7 +76,8 @@ function startNext() {
   freePort(3000);
 
   console.log('\x1b[32mStarting Next.js dev server...\x1b[0m');
-  const args = ['next', 'dev', '-p', '3000', '--turbopack', ...process.argv.slice(2)];
+  const useTurbo = process.argv.includes('--turbo') || process.argv.includes('--turbopack');
+  const args = ['next', 'dev', '-p', '3000', ...(useTurbo ? ['--turbopack'] : ['--webpack']), ...process.argv.slice(2).filter(x => x !== '--turbo' && x !== '--turbopack')];
   const nextProc = spawn('npx', args, {
     stdio: 'inherit',
     shell: process.platform === 'win32' ? true : false,
