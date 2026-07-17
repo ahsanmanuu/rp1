@@ -199,6 +199,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
   
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
+  const isSelfChange = useRef<boolean>(false);
   const filesRef = useRef<StudioFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currentPdfBlob = useRef<Blob | null>(null);
@@ -532,6 +533,10 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
   // Safely update editor value without resetting cursor position
   useEffect(() => {
     if (editorRef.current) {
+      if (isSelfChange.current) {
+        isSelfChange.current = false;
+        return;
+      }
       const currentValue = editorRef.current.getValue();
       const normalizeNewlines = (str: string) => str.replace(/\r\n/g, '\n');
       if (normalizeNewlines(code) !== normalizeNewlines(currentValue)) {
@@ -1423,7 +1428,10 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                             theme="vs-dark" 
                             language="latex" 
                             defaultValue={code}
-                            onChange={v => setCode(v || '')} 
+                            onChange={v => {
+                              isSelfChange.current = true;
+                              setCode(v || '');
+                            }}
                             onMount={(ed, mon) => { 
                               editorRef.current = ed; 
                               monacoRef.current = mon; 
