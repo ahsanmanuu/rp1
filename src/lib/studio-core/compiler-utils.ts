@@ -147,7 +147,29 @@ ${_B}fi
      }
   }
 
-  // 2. PHANTOM ARTIFACT SIEVE (Inline application to ensure final output is scrubbed)
+  // 2. OVERFLOW GUARD INJECTION — inject immediately after \begin{document}
+  // Prevents text, URLs, and code from overflowing beyond the page margin.
+  // These are standard LaTeX typesetting best-practices and are safe for ALL document classes.
+  if (modified.includes('\\begin{document}') && !modified.includes('% StudioOverflowGuards')) {
+    const overflowGuards = [
+      '% StudioOverflowGuards — injected by Latexify compiler for proper line breaking',
+      '\\sloppy',                                        // Allow looser line-breaking to prevent overflow
+      '\\emergencystretch=3em',                          // Extra stretch budget for very long lines
+      '\\hbadness=10000',                                // Suppress overfull hbox warnings in log
+      '\\tolerance=1000',                                // Standard tolerance (200=strict, 9999=very loose)
+      '\\ifdefined\\urlstyle\\urlstyle{same}\\fi',       // URL style: same font as surrounding text
+      '\\ifdefined\\Urlmuskip\\Urlmuskip=0mu plus 1mu\\fi', // URLs can break at any character
+      // Constrain ALL images to page width automatically (no manual width needed)
+      '\\ifdefined\\setkeys\\setkeys{Gin}{max width=\\linewidth,max height=0.85\\textheight,keepaspectratio}\\fi',
+    ].join('\n');
+
+    modified = modified.replace(
+      /\\begin\{document\}/,
+      `\\begin{document}\n${overflowGuards}`
+    );
+  }
+
+  // 3. PHANTOM ARTIFACT SIEVE (Inline application to ensure final output is scrubbed)
   modified = applyFinalSanitizationSieve(modified);
 
   return modified;
