@@ -84,6 +84,8 @@ export default function TemplateMigratorPage() {
   const assetInputRef = useRef<HTMLInputElement>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
   const previousPdfUrl = useRef<string | null>(null);
+  const editorRef = useRef<any>(null);
+  const isSelfChange = useRef<boolean>(false);
 
   // Robust Lifecycle Management for Blob URLs
   useEffect(() => {
@@ -91,6 +93,22 @@ export default function TemplateMigratorPage() {
       if (previousPdfUrl.current) URL.revokeObjectURL(previousPdfUrl.current);
     };
   }, []);
+
+  // Safely sync editor value when activeFile content changes (e.g. upload, switch tab)
+  useEffect(() => {
+    if (editorRef.current) {
+      if (isSelfChange.current) {
+        isSelfChange.current = false;
+        return;
+      }
+      const fileText = String(fileContents[activeFile] || '');
+      const currentValue = editorRef.current.getValue();
+      const normalizeNewlines = (str: string) => str.replace(/\r\n/g, '\n');
+      if (normalizeNewlines(fileText) !== normalizeNewlines(currentValue)) {
+        editorRef.current.setValue(fileText);
+      }
+    }
+  }, [activeFile, fileContents]);
 
   const base64ToBlob = (base64: string) => {
     try {
@@ -713,9 +731,19 @@ export default function TemplateMigratorPage() {
                               height="100%"
                               theme="vs-dark"
                               language="latex"
-                              value={String(fileContents[activeFile] || '')}
-                              onChange={(v) => setFileContents(prev => ({ ...prev, [activeFile]: v || '' }))}
-                              options={{ fontSize: 13, minimap: { enabled: false } }}
+                              defaultValue={String(fileContents[activeFile] || '')}
+                              onChange={(v) => {
+                                isSelfChange.current = true;
+                                setFileContents(prev => ({ ...prev, [activeFile]: v || '' }));
+                              }}
+                              onMount={(ed) => {
+                                editorRef.current = ed;
+                                const fileText = String(fileContents[activeFile] || '');
+                                if (fileText) {
+                                  ed.setValue(fileText);
+                                }
+                              }}
+                              options={{ fontSize: 13, minimap: { enabled: false }, wordWrap: 'on' }}
                             />
                           ) : (
                             <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>

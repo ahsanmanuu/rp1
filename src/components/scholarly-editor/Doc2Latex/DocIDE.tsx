@@ -86,6 +86,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
   const [jumpTo, setJumpTo] = useState<{ percentage: number; timestamp: number } | null>(null);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
+  const isSelfChange = useRef<boolean>(false);
   const filesRef = useRef<StudioFile[]>([]);
   const currentPdfBlob = useRef<Blob | null>(null);
   const compileRef = useRef<(() => Promise<void>) | null>(null);
@@ -340,6 +341,21 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     }
   }, [editorMood]);
 
+  // Safely update editor value without resetting cursor position
+  useEffect(() => {
+    if (editorRef.current) {
+      if (isSelfChange.current) {
+        isSelfChange.current = false;
+        return;
+      }
+      const currentValue = editorRef.current.getValue();
+      const normalizeNewlines = (str: string) => str.replace(/\r\n/g, '\n');
+      if (normalizeNewlines(code) !== normalizeNewlines(currentValue)) {
+        editorRef.current.setValue(code);
+      }
+    }
+  }, [code]);
+
   // Handle Diagnostic Markers (Error Squiggles) & Whole Line Highlights
   useEffect(() => {
     if (monacoRef.current && editorRef.current) {
@@ -366,6 +382,36 @@ export default function DocIDE({ projectId }: { projectId: string }) {
             endColumn: model.getLineMaxColumn(ln),
           };
         });
+      // --- CUSTOM LINTER: Text after \end{document} ---
+      if (activeFile.endsWith('.tex')) {
+        const lineCount = model.getLineCount();
+        let endDocumentLine = -1;
+        
+        for (let i = 1; i <= lineCount; i++) {
+          const lineContent = model.getLineContent(i);
+          if (lineContent.includes('\\end{document}')) {
+            endDocumentLine = i;
+            break;
+          }
+        }
+        
+        if (endDocumentLine !== -1) {
+          for (let i = endDocumentLine + 1; i <= lineCount; i++) {
+            const lineContent = model.getLineContent(i);
+            if (lineContent.trim().length > 0) {
+              markers.push({
+                severity: monaco.MarkerSeverity.Warning,
+                message: "Text occurring after \\end{document} is ignored by the LaTeX compiler",
+                startLineNumber: i,
+                startColumn: 1,
+                endLineNumber: i,
+                endColumn: model.getLineMaxColumn(i) || 1,
+              });
+            }
+          }
+        }
+      }
+
       monaco.editor.setModelMarkers(model, 'latex', markers);
 
       // 2. Whole-line background error decorations
@@ -863,6 +909,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
               handleFileUpload={handleFileUpload}
               exportProjectZip={exportProjectZip}
               isReadOnly={isOutOfCredits}
+              compiling={compiling}
             />
 
            {/* RESIZER SIDEBAR */}
@@ -1071,68 +1118,105 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                       </div>
                     ) : (
                       <MonacoEditor 
-                        height="100%" 
-                        theme="vs-dark" 
-                        language="latex" 
-                        value={code} 
-                        onChange={handleCodeChange} 
-                        onMount={(ed, mon) => { 
-                          editorRef.current = ed; 
-                          monacoRef.current = mon; 
-                          
-                          mon.languages.registerCompletionItemProvider('latex', {
-                            provideCompletionItems: (model: any, position: any) => {
-                              const word = model.getWordUntilPosition(position);
-                              const range = {
-                                startLineNumber: position.lineNumber,
-                                endLineNumber: position.lineNumber,
-                                startColumn: word.startColumn,
-                                endColumn: word.endColumn
-                              };
-                              return { suggestions: getLatexSuggestions(mon, range, filesRef.current) };
-                            }
-                          });
+                         height="100%" 
+                         theme="vs-dark" 
+                         language="latex" 
+                         defaultValue={code} 
+                         onChange={v => {
+                           isSelfChange.current = true;
+                           handleCodeChange(v || '');
+                         }}
+                         onMount={(ed, mon) => { 
+                           editorRef.current = ed; 
+                           monacoRef.current = mon; 
+                           
+                           if (code) {
+                             ed.setValue(code);
+                           }
 
-                          mon.editor.defineTheme('scholarly-vibrant', {
-                            base: 'vs-dark',
-                            inherit: true,
-                            rules: [
-                              { token: 'keyword.latex', foreground: '569cd6', fontStyle: 'bold' },
-                              { token: 'command.latex', foreground: 'c586c0' },
-                              { token: 'parameter.latex', foreground: '9cdcfe' },
-                              { token: 'string.latex', foreground: 'ce9178' },
-                              { token: 'comment.latex', foreground: '6a9955', fontStyle: 'italic' },
-                              { token: 'math.latex', foreground: 'dcdcaa' },
-                              { token: 'keyword.control.latex', foreground: '4ec9b0' }
-                            ],
-                            colors: {
-                              'editor.background': EDITOR_MOODS[editorMood].bg,
-                              'editor.foreground': '#f0f0f0',
-                              'editorCursor.foreground': '#ffffff',
-                              'editor.lineHighlightBackground': 'rgba(255,255,255,0.03)',
-                              'editorLineNumber.foreground': 'rgba(255,255,255,0.2)',
-                            }
-                          });
-                          mon.editor.setTheme('scholarly-vibrant');
-                        }}
-                        options={{
-                          fontSize: 14,
-                          padding: { top: 20, bottom: 20 },
-                          minimap: { enabled: false },
-                          lineNumbers: 'on',
-                          lineNumbersMinChars: 3,
-                          glyphMargin: false,
-                          lineDecorationsWidth: 0,
-                          cursorBlinking: 'smooth',
-                          smoothScrolling: true,
-                          fontFamily: 'var(--font-mono)',
-                          fontLigatures: true,
-                          renderLineHighlight: 'all',
-                          scrollbar: { vertical: 'visible', horizontal: 'visible', verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
-                          automaticLayout: true,
-                          readOnly: isOutOfCredits
-                        }}
-                      />
+                           // Register LaTeX Language & Monarch Tokenizer for Multicolor Syntax Highlighting
+                           try {
+                             mon.languages.register({ id: 'latex' });
+                           } catch(e) {}
+                           
+                           try {
+                             mon.languages.setMonarchTokensProvider('latex', {
+                               defaultToken: '',
+                               tokenPostfix: '.latex',
+                               tokenizer: {
+                                 root: [
+                                   // Comments
+                                   [/%.*$/, 'comment.latex'],
+                                   // Math Mode
+                                   [/\$\$/, { token: 'math.latex', next: '@mathModeBlock' }],
+                                   [/\$/, { token: 'math.latex', next: '@mathModeInline' }],
+                                   // Keywords / Commands
+                                   [/\\(?:begin|end|documentclass|usepackage|title|author|date|maketitle|section|subsection|subsubsection|paragraph|label|ref|cite|bibliography|bibliographystyle|include|input|newcommand|renewcommand|centering|includegraphics|caption|item|textbf|textit|texttt)\b/, 'keyword.latex'],
+                                   [/\\(?:[a-zA-Z]+)/, 'command.latex'],
+                                   // Delimiters / Braces
+                                   [/[{}()\[\]]/, 'delimiter'],
+                                   [/\d+/, 'number'],
+                                 ],
+                                 mathModeBlock: [
+                                   [/\$\$/, { token: 'math.latex', next: '@pop' }],
+                                   [/./, 'math.latex'],
+                                 ],
+                                 mathModeInline: [
+                                   [/\$/, { token: 'math.latex', next: '@pop' }],
+                                   [/./, 'math.latex'],
+                                 ]
+                               }
+                             });
+                           } catch(e) {}
+
+                           // Register LaTeX Suggestion Provider
+                           mon.languages.registerCompletionItemProvider('latex', {
+                             provideCompletionItems: (model: any, position: any) => {
+                               return { suggestions: getLatexSuggestions(mon, model, position, filesRef.current) };
+                             }
+                           });
+ 
+                           mon.editor.defineTheme('scholarly-vibrant', {
+                             base: 'vs-dark',
+                             inherit: true,
+                             rules: [
+                               { token: 'keyword.latex', foreground: '569cd6', fontStyle: 'bold' },
+                               { token: 'command.latex', foreground: 'c586c0' },
+                               { token: 'parameter.latex', foreground: '9cdcfe' },
+                               { token: 'string.latex', foreground: 'ce9178' },
+                               { token: 'comment.latex', foreground: '6a9955', fontStyle: 'italic' },
+                               { token: 'math.latex', foreground: 'dcdcaa' },
+                               { token: 'keyword.control.latex', foreground: '4ec9b0' }
+                             ],
+                             colors: {
+                               'editor.background': EDITOR_MOODS[editorMood].bg,
+                               'editor.foreground': '#f0f0f0',
+                               'editorCursor.foreground': '#ffffff',
+                               'editor.lineHighlightBackground': 'rgba(255,255,255,0.03)',
+                               'editorLineNumber.foreground': 'rgba(255,255,255,0.2)',
+                             }
+                           });
+                           mon.editor.setTheme('scholarly-vibrant');
+                         }}
+                         options={{
+                           fontSize: 14,
+                           padding: { top: 20, bottom: 20 },
+                           minimap: { enabled: false },
+                           lineNumbers: 'on',
+                           lineNumbersMinChars: 3,
+                           glyphMargin: false,
+                           lineDecorationsWidth: 0,
+                           cursorBlinking: 'smooth',
+                           smoothScrolling: true,
+                           fontFamily: 'var(--font-mono)',
+                           fontLigatures: true,
+                           renderLineHighlight: 'all',
+                           scrollbar: { vertical: 'visible', horizontal: 'visible', verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
+                           automaticLayout: true,
+                           wordWrap: 'on',
+                           readOnly: isOutOfCredits
+                         }}
+                       />
                     )}
                  </div>
                </motion.main>

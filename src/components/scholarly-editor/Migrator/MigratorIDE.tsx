@@ -94,6 +94,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
 
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
+  const isSelfChange = useRef<boolean>(false);
   const filesRef = useRef<StudioFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currentPdfBlob = useRef<Blob | null>(null);
@@ -259,6 +260,21 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
     }
   }, [editorMood]);
 
+  // Safely update editor value without resetting cursor position
+  useEffect(() => {
+    if (editorRef.current) {
+      if (isSelfChange.current) {
+        isSelfChange.current = false;
+        return;
+      }
+      const currentValue = editorRef.current.getValue();
+      const normalizeNewlines = (str: string) => str.replace(/\r\n/g, '\n');
+      if (normalizeNewlines(code) !== normalizeNewlines(currentValue)) {
+        editorRef.current.setValue(code);
+      }
+    }
+  }, [code]);
+
   // Handle Diagnostic Markers (Error Squiggles) & Whole Line Highlights
   useEffect(() => {
     if (monacoRef.current && editorRef.current) {
@@ -285,6 +301,36 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
             endColumn: model.getLineMaxColumn(ln),
           };
         });
+      // --- CUSTOM LINTER: Text after \end{document} ---
+      if (activeFile.endsWith('.tex')) {
+        const lineCount = model.getLineCount();
+        let endDocumentLine = -1;
+        
+        for (let i = 1; i <= lineCount; i++) {
+          const lineContent = model.getLineContent(i);
+          if (lineContent.includes('\\end{document}')) {
+            endDocumentLine = i;
+            break;
+          }
+        }
+        
+        if (endDocumentLine !== -1) {
+          for (let i = endDocumentLine + 1; i <= lineCount; i++) {
+            const lineContent = model.getLineContent(i);
+            if (lineContent.trim().length > 0) {
+              markers.push({
+                severity: monaco.MarkerSeverity.Warning,
+                message: "Text occurring after \\end{document} is ignored by the LaTeX compiler",
+                startLineNumber: i,
+                startColumn: 1,
+                endLineNumber: i,
+                endColumn: model.getLineMaxColumn(i) || 1,
+              });
+            }
+          }
+        }
+      }
+
       monaco.editor.setModelMarkers(model, 'latex', markers);
 
       // 2. Whole-line error decorations
@@ -804,7 +850,50 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
                    />
                 </div>
              </div>
-              <div className="sidebar-scroll-premium" style={{ flex: 1, overflowY: 'auto', padding: '0.5rem', paddingRight: '0.25rem' }}>
+             
+             {/* PROGRESSIVE COMPILING LOADER CARD */}
+             <AnimatePresence>
+               {compiling && (
+                 <motion.div 
+                   initial={{ opacity: 0, height: 0 }}
+                   animate={{ opacity: 1, height: 'auto' }}
+                   exit={{ opacity: 0, height: 0 }}
+                   transition={{ duration: 0.3, ease: 'easeInOut' }}
+                   style={{ 
+                     overflow: 'hidden',
+                     background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.12))',
+                     borderBottom: '1px solid var(--border)',
+                   }}
+                 >
+                   <div style={{ padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                         <RefreshCw className="spinner" size={14} style={{ color: 'var(--accent-primary)' }} />
+                         <span style={{ fontSize: '0.65rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.08em', fontFamily: 'var(--font-headline)' }}>COMPILING FILES</span>
+                       </div>
+                       <span className="pulsing-text" style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--accent-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Processing</span>
+                     </div>
+                     {/* Progressive loading bar */}
+                     <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden', position: 'relative' }}>
+                       <motion.div 
+                         initial={{ left: '-100%' }}
+                         animate={{ left: '100%' }}
+                         transition={{ repeat: Infinity, duration: 1.6, ease: 'easeInOut' }}
+                         style={{ 
+                           position: 'absolute', 
+                           top: 0, 
+                           bottom: 0, 
+                           width: '50%', 
+                           background: 'linear-gradient(90deg, transparent, var(--accent-primary), var(--accent-secondary), transparent)',
+                         }}
+                       />
+                     </div>
+                   </div>
+                 </motion.div>
+               )}
+             </AnimatePresence>
+
+             <div className="sidebar-scroll-premium" style={{ flex: 1, overflowY: 'auto', padding: '0.5rem', paddingRight: '0.25rem' }}>
                  {(() => {
                    const rootFiles = files.filter(f => !f.path.includes('/'));
                    const migrationFiles = files.filter(f => f.path.startsWith('MIGRATION FILES/'));
@@ -996,23 +1085,58 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
                       height="100%" 
                       theme="vs-dark" 
                       language="latex" 
-                      value={code} 
-                      onChange={v => setCode(v || '')} 
+                      defaultValue={code} 
+                      onChange={v => {
+                        isSelfChange.current = true;
+                        setCode(v || '');
+                      }}
                       onMount={(ed, mon) => { 
                         editorRef.current = ed; 
                         monacoRef.current = mon; 
                         
+                        if (code) {
+                          ed.setValue(code);
+                        }
+
+                        // Register LaTeX Language & Monarch Tokenizer for Multicolor Syntax Highlighting
+                        try {
+                          mon.languages.register({ id: 'latex' });
+                        } catch(e) {}
+                        
+                        try {
+                          mon.languages.setMonarchTokensProvider('latex', {
+                            defaultToken: '',
+                            tokenPostfix: '.latex',
+                            tokenizer: {
+                              root: [
+                                // Comments
+                                [/%.*$/, 'comment.latex'],
+                                // Math Mode
+                                [/\$\$/, { token: 'math.latex', next: '@mathModeBlock' }],
+                                [/\$/, { token: 'math.latex', next: '@mathModeInline' }],
+                                // Keywords / Commands
+                                [/\\(?:begin|end|documentclass|usepackage|title|author|date|maketitle|section|subsection|subsubsection|paragraph|label|ref|cite|bibliography|bibliographystyle|include|input|newcommand|renewcommand|centering|includegraphics|caption|item|textbf|textit|texttt)\b/, 'keyword.latex'],
+                                [/\\(?:[a-zA-Z]+)/, 'command.latex'],
+                                // Delimiters / Braces
+                                [/[{}()\[\]]/, 'delimiter'],
+                                [/\d+/, 'number'],
+                              ],
+                              mathModeBlock: [
+                                [/\$\$/, { token: 'math.latex', next: '@pop' }],
+                                [/./, 'math.latex'],
+                              ],
+                              mathModeInline: [
+                                [/\$/, { token: 'math.latex', next: '@pop' }],
+                                [/./, 'math.latex'],
+                              ]
+                            }
+                          });
+                        } catch(e) {}
+
                         // Register LaTeX Suggestion Provider
                         mon.languages.registerCompletionItemProvider('latex', {
                           provideCompletionItems: (model: any, position: any) => {
-                            const word = model.getWordUntilPosition(position);
-                            const range = {
-                              startLineNumber: position.lineNumber,
-                              endLineNumber: position.lineNumber,
-                              startColumn: word.startColumn,
-                              endColumn: word.endColumn
-                            };
-                            return { suggestions: getLatexSuggestions(mon, range, filesRef.current) };
+                            return { suggestions: getLatexSuggestions(mon, model, position, filesRef.current) };
                           }
                         });
 
@@ -1051,14 +1175,10 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
                         fontFamily: 'var(--font-mono)',
                         fontLigatures: true,
                         renderLineHighlight: 'all',
-                        scrollbar: { 
-                          vertical: 'auto', 
-                          horizontal: 'auto',
-                          useShadows: true,
-                          verticalScrollbarSize: 10,
-                          horizontalScrollbarSize: 10
-                        },
-                        automaticLayout: true
+                        scrollbar: { vertical: 'visible', horizontal: 'visible', verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
+                        automaticLayout: true,
+                        wordWrap: 'on',
+                        readOnly: isReadOnly
                       }}
                     />
                   )}

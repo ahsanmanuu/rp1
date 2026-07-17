@@ -9,10 +9,11 @@ import { parseLaTeXStructure, type OutlineNode } from '@/lib/structure-parser';
 import { indexProject, type ProjectIndex } from '@/lib/project-indexer';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Share2, Printer, Cloud, UserPlus, Trash2, Pencil, Sparkles } from 'lucide-react';
+import { Share2, Printer, Cloud, UserPlus, Trash2, Pencil, Sparkles, RefreshCw } from 'lucide-react';
 import { getLatexSuggestions } from '@/lib/latex-suggestions';
 import toast from 'react-hot-toast';
 import LatexifyLogo from '@/components/LatexifyLogo';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // --- Scholarly Seal Component ---
 const ScholarlySeal = ({ size = 24 }: { size?: number }) => (
@@ -92,6 +93,7 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
   const structureTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
+  const isSelfChange = useRef<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const compileRef = useRef<(() => Promise<void>) | null>(null);
@@ -295,6 +297,21 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
     structureTimer.current = setTimeout(() => setOutline(parseLaTeXStructure(val)), 1000);
   };
 
+  // Safely update editor value without resetting cursor position
+  useEffect(() => {
+    if (editorRef.current) {
+      if (isSelfChange.current) {
+        isSelfChange.current = false;
+        return;
+      }
+      const currentValue = editorRef.current.getValue();
+      const normalizeNewlines = (str: string) => str.replace(/\r\n/g, '\n');
+      if (normalizeNewlines(code) !== normalizeNewlines(currentValue)) {
+        editorRef.current.setValue(code);
+      }
+    }
+  }, [code]);
+
   // Handle Diagnostic Markers (Error Squiggles) & Whole Line Highlights
   useEffect(() => {
     if (monacoRef.current && editorRef.current) {
@@ -322,6 +339,36 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
           };
         });
       
+      // --- CUSTOM LINTER: Text after \end{document} ---
+      if (activeFile.endsWith('.tex')) {
+        const lineCount = model.getLineCount();
+        let endDocumentLine = -1;
+        
+        for (let i = 1; i <= lineCount; i++) {
+          const lineContent = model.getLineContent(i);
+          if (lineContent.includes('\\end{document}')) {
+            endDocumentLine = i;
+            break;
+          }
+        }
+        
+        if (endDocumentLine !== -1) {
+          for (let i = endDocumentLine + 1; i <= lineCount; i++) {
+            const lineContent = model.getLineContent(i);
+            if (lineContent.trim().length > 0) {
+              markers.push({
+                severity: monaco.MarkerSeverity.Warning,
+                message: "Text occurring after \\end{document} is ignored by the LaTeX compiler",
+                startLineNumber: i,
+                startColumn: 1,
+                endLineNumber: i,
+                endColumn: model.getLineMaxColumn(i) || 1,
+              });
+            }
+          }
+        }
+      }
+
       monaco.editor.setModelMarkers(model, 'latex', markers);
 
       // 2. Map compile errors to Monaco decorations for LINE HIGHLIGHTING
@@ -813,16 +860,7 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
   const registerLatexCompletionItems = (monaco: any) => {
     return monaco.languages.registerCompletionItemProvider('latex', {
       provideCompletionItems: (model: any, position: any) => {
-        const word = model.getWordUntilPosition(position);
-        const range = {
-          startLineNumber: position.lineNumber,
-          endLineNumber: position.lineNumber,
-          startColumn: word.startColumn,
-          endColumn: word.endColumn,
-        };
-
-        const suggestions = getLatexSuggestions(monaco, range);
-        return { suggestions };
+        return { suggestions: getLatexSuggestions(monaco, model, position, filesRef.current) };
       }
     });
   };
@@ -1039,6 +1077,48 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
             ))}
           </div>
 
+          {/* PROGRESSIVE COMPILING LOADER CARD */}
+          <AnimatePresence>
+            {compiling && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3, ease: 'easeInOut' }}
+                style={{ 
+                  overflow: 'hidden',
+                  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.12))',
+                  borderBottom: '1px solid var(--border)',
+                }}
+              >
+                <div style={{ padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <RefreshCw className="spinner" size={14} style={{ color: 'var(--accent-primary)' }} />
+                      <span style={{ fontSize: '0.65rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.08em', fontFamily: 'var(--font-headline)' }}>COMPILING FILES</span>
+                    </div>
+                    <span className="pulsing-text" style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--accent-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Processing</span>
+                  </div>
+                  {/* Progressive loading bar */}
+                  <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden', position: 'relative' }}>
+                    <motion.div 
+                      initial={{ left: '-100%' }}
+                      animate={{ left: '100%' }}
+                      transition={{ repeat: Infinity, duration: 1.6, ease: 'easeInOut' }}
+                      style={{ 
+                        position: 'absolute', 
+                        top: 0, 
+                        bottom: 0, 
+                        width: '50%', 
+                        background: 'linear-gradient(90deg, transparent, var(--accent-primary), var(--accent-secondary), transparent)',
+                      }}
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 0' }}>
             {activePanel === 'files' && (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -1202,21 +1282,76 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
                    })()}
                 </div>
              ) : (
-               <MonacoEditor
-                 path={activeFile}
-                 height="100%"
-                 theme="scholarly-vibrant"
-                 value={code}
-                 onChange={handleCodeChange}
-                 onMount={(ed, monaco) => { 
-                   editorRef.current = ed; 
-                   monacoRef.current = monaco; 
-                   ed.onDidChangeCursorPosition(syncOnCursorChange);
+                <MonacoEditor
+                  path={activeFile}
+                  height="100%"
+                  theme="scholarly-vibrant"
+                  defaultValue={code}
+                  onChange={v => {
+                    isSelfChange.current = true;
+                    handleCodeChange(v || '');
+                  }}
+                  onMount={(ed, monaco) => { 
+                    editorRef.current = ed; 
+                    monacoRef.current = monaco; 
+                    
+                    if (code) {
+                      ed.setValue(code);
+                    }
+
+                    // Register LaTeX Language & Monarch Tokenizer for Multicolor Syntax Highlighting
+                    try {
+                      monaco.languages.register({ id: 'latex' });
+                    } catch(e) {}
+                    
+                    try {
+                      monaco.languages.setMonarchTokensProvider('latex', {
+                        defaultToken: '',
+                        tokenPostfix: '.latex',
+                        tokenizer: {
+                          root: [
+                            // Comments
+                            [/%.*$/, 'comment.latex'],
+                            // Math Mode
+                            [/\$\$/, { token: 'math.latex', next: '@mathModeBlock' }],
+                            [/\$/, { token: 'math.latex', next: '@mathModeInline' }],
+                            // Keywords / Commands
+                            [/\\(?:begin|end|documentclass|usepackage|title|author|date|maketitle|section|subsection|subsubsection|paragraph|label|ref|cite|bibliography|bibliographystyle|include|input|newcommand|renewcommand|centering|includegraphics|caption|item|textbf|textit|texttt)\b/, 'keyword.latex'],
+                            [/\\(?:[a-zA-Z]+)/, 'command.latex'],
+                            // Delimiters / Braces
+                            [/[{}()\[\]]/, 'delimiter'],
+                            [/\d+/, 'number'],
+                          ],
+                          mathModeBlock: [
+                            [/\$\$/, { token: 'math.latex', next: '@pop' }],
+                            [/./, 'math.latex'],
+                          ],
+                          mathModeInline: [
+                            [/\$/, { token: 'math.latex', next: '@pop' }],
+                            [/./, 'math.latex'],
+                          ]
+                        }
+                      });
+                    } catch(e) {}
+
+                    ed.onDidChangeCursorPosition(syncOnCursorChange);
                     const disposable = registerLatexCompletionItems(monaco);
                     (ed as any)._latexSnippets = disposable;
-                 }}
-                  options={{ fontSize, minimap: { enabled: false }, automaticLayout: true, scrollBeyondLastLine: false, lineNumbersMinChars: 3, glyphMargin: false, lineDecorationsWidth: 0, fontLigatures: true, cursorBlinking: 'smooth', smoothScrolling: true }}
-               />
+                  }}
+                  options={{ 
+                    fontSize, 
+                    minimap: { enabled: false }, 
+                    automaticLayout: true, 
+                    scrollBeyondLastLine: false, 
+                    lineNumbersMinChars: 3, 
+                    glyphMargin: false, 
+                    lineDecorationsWidth: 0, 
+                    fontLigatures: true, 
+                    cursorBlinking: 'smooth', 
+                    smoothScrolling: true,
+                    wordWrap: 'on'
+                  }}
+                />
              )}
           </div>
 
