@@ -1,10 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
-import Image from 'next/image';
-import { usePathname } from 'next/navigation';
 import ProLoader from '@/components/ProLoader';
+import AdminSidebar from '@/components/AdminSidebar';
 
 function timeAgo(dateStr: string): string {
   const now = Date.now();
@@ -41,7 +39,7 @@ export default function AdminGeneralQueriesPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
 
-  const pathname = usePathname();
+
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('latexify-admin-theme') as 'indigo' | 'emerald' | 'rose' | null;
@@ -191,44 +189,7 @@ export default function AdminGeneralQueriesPage() {
       />
 
       <div className="flex h-screen">
-        {/* Sidebar */}
-        <aside className="flex flex-col h-full p-4 gap-2 fixed h-screen w-64 left-0 top-0 z-50 border-r transition-colors duration-500 custom-scrollbar" style={{ backgroundColor: surfaceColor, borderColor }}>
-          <div className="flex flex-col items-center gap-1 px-2 mb-6 mt-2 text-center">
-            <Image src="/logo.png" alt="Logo" width={36} height={36} className="rounded-xl" />
-            <p className="text-[10px] font-bold uppercase tracking-wider opacity-80" style={{ color: onSurfaceColor }}>Admin Console</p>
-          </div>
-          <nav className="flex flex-col gap-1 overflow-y-auto custom-scrollbar">
-            {[
-              { href: '/admin/dashboard', icon: 'dashboard', label: 'Dashboard' },
-              { href: '/admin/billings', icon: 'payments', label: 'Bill & Payments' },
-              { href: '/admin/users', icon: 'group', label: 'Users' },
-              { href: '/admin/profile', icon: 'settings', label: 'Profile & Plan Setting' },
-              { href: '/admin/ai-caps', icon: 'speed', label: 'AI Usage & Caps Rules' },
-              { href: '/admin/ai-analysis', icon: 'psychology', label: 'AI Analysis' },
-              { href: '/admin/anomalies', icon: 'bug_report', label: 'Anomaly Detection' },
-              { href: '/admin/help', icon: 'help', label: 'Help and Support' },
-              { href: '/admin/offers', icon: 'local_offer', label: 'Offers' },
-              { href: '/admin/emails', icon: 'mail', label: 'Email History' },
-              { href: '/admin/general-queries', icon: 'forum', label: 'General Queries' },
-              { href: '/admin/social-media', icon: 'share', label: 'Social Media' },
-              { href: '/admin/tax-calculation', icon: 'calculate', label: 'Tax Calculation' },
-            ].map(item => (
-              <Link key={item.href} href={item.href}
-                className="flex items-center gap-3 px-4 py-3 text-sm rounded-lg transition-all hover:translate-x-1"
-                style={{ color: pathname === item.href ? 'var(--color-admin-on-primary-container)' : surfaceVariant, backgroundColor: pathname === item.href ? 'var(--color-admin-secondary-container)' : 'transparent', fontWeight: pathname === item.href ? 700 : 500 }}>
-                <span className="material-symbols-outlined">{item.icon}</span>
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-          <div className="mt-auto p-4 rounded-xl border text-sm" style={{ backgroundColor: cardBg, borderColor }}>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: '#22c55e' }} />
-              <span style={{ color: onSurfaceColor }} className="font-semibold">System Online</span>
-            </div>
-            <p className="text-xs" style={{ color: surfaceVariant }}>Version 4.2.0-stable</p>
-          </div>
-        </aside>
+        <AdminSidebar isDarkMode={isDarkMode} adminName={adminName} />
 
         {/* Main */}
         <main className="ml-64 min-h-screen pb-16">
