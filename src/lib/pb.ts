@@ -66,7 +66,7 @@ export async function authFromToken(token: string): Promise<PocketBase> {
       configurable: true
     });
     Object.defineProperty(pb.authStore, 'isValid', {
-      get() { return !!this.token; },
+      get() { return !!pb.authStore.token; },
       configurable: true
     });
     pb.authStore.save(token, cached.record);
@@ -102,7 +102,7 @@ export async function authFromToken(token: string): Promise<PocketBase> {
         configurable: true
       });
       Object.defineProperty(pb.authStore, 'isValid', {
-        get() { return !!this.token; },
+        get() { return !!pb.authStore.token; },
         configurable: true
       });
       pb.authStore.save(token, record as any);
@@ -117,11 +117,18 @@ export async function authFromToken(token: string): Promise<PocketBase> {
   if (!promise) {
     // Create a temporary client instance just to fetch the record
     const tempPb = new PocketBase(PB_URL);
+    
+    // Override isValid and isTokenExpired on tempPb so it allows authRefresh even if token is JWT-expired
+    Object.defineProperty(tempPb.authStore, 'isTokenExpired', {
+      get() { return false; },
+      configurable: true
+    });
+    Object.defineProperty(tempPb.authStore, 'isValid', {
+      get() { return !!tempPb.authStore.token; },
+      configurable: true
+    });
+    
     tempPb.authStore.save(token, null);
-    if (!tempPb.authStore.isValid) {
-      pb.authStore.save(token, null);
-      return pb;
-    }
 
     promise = (async () => {
       try {
@@ -151,12 +158,28 @@ export async function authFromToken(token: string): Promise<PocketBase> {
       configurable: true
     });
     Object.defineProperty(pb.authStore, 'isValid', {
-      get() { return !!this.token; },
+      get() { return !!pb.authStore.token; },
       configurable: true
     });
     pb.authStore.save(token, record);
-  } catch (err) {
-    pb.authStore.clear();
+  } catch (err: any) {
+    const status = err?.status;
+    if (status === 400 || status === 401) {
+      // Clear token only if it's explicitly invalid or expired
+      pb.authStore.clear();
+    } else {
+      // Keep token for network/server errors to avoid sudden logouts
+      console.warn('[PB System] authRefresh failed with transient/network error. Keeping token.', err?.message || err);
+      Object.defineProperty(pb.authStore, 'isTokenExpired', {
+        get() { return false; },
+        configurable: true
+      });
+      Object.defineProperty(pb.authStore, 'isValid', {
+        get() { return !!pb.authStore.token; },
+        configurable: true
+      });
+      pb.authStore.save(token, null);
+    }
   }
 
   return pb;

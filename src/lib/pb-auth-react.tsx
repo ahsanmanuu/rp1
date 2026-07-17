@@ -86,17 +86,19 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
           sessionTokenRef.current = null;
           if (typeof window !== "undefined") localStorage.removeItem("auth-token");
         }
-      } else {
+      } else if (res.status === 401) {
+        // Explicit auth rejection — clear session
         setData(null);
         setStatus("unauthenticated");
         sessionTokenRef.current = null;
         if (typeof window !== "undefined") localStorage.removeItem("auth-token");
+      } else {
+        // Transient error (500, 502, 503, 504, etc.) — DO NOT clear session!
+        console.warn(`[PB Session Provider] Received transient status ${res.status}. Keeping current session.`);
       }
-    } catch {
-      setData(null);
-      setStatus("unauthenticated");
-      sessionTokenRef.current = null;
-      if (typeof window !== "undefined") localStorage.removeItem("auth-token");
+    } catch (err: any) {
+      // Network timeout or connection drop — DO NOT clear session!
+      console.warn("[PB Session Provider] Fetch failed with network/timeout error:", err?.message || err);
     } finally {
       isFetching.current = false;
     }

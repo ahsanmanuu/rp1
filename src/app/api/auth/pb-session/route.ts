@@ -21,28 +21,28 @@ export async function GET(req: NextRequest) {
     return response;
   }
 
-  const pb = await getAuthPb();
-  if (!pb.authStore.isValid || !pb.authStore.record) {
-    try { cookieStore.delete('pb_token'); } catch {}
-    const response = NextResponse.json({ user: null }, { status: 401 });
-    Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
-    return response;
-  }
-
-  // Validate session exists in DB
+  // Validate session exists in DB first to handle database availability correctly
   let sessionRecord = null;
   let dbError = false;
   try {
     sessionRecord = await prisma.userSession.findUnique({
-      where: { sessionToken: token }
+      where: { sessionToken: token },
+      include: { user: true }
     });
   } catch (dbErr) {
     console.error("[PB-Session API] Database session validation query failed:", dbErr);
     dbError = true;
   }
 
-  // Only fail auth and delete cookie if the database query succeeded and found no session record
-  if (!dbError && !sessionRecord) {
+  // If database query failed temporarily, return 503 Service Unavailable (keep current client session active)
+  if (dbError) {
+    const response = NextResponse.json({ error: "Authentication service temporarily unavailable" }, { status: 503 });
+    Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
+    return response;
+  }
+
+  // Only fail auth and delete cookie if the database query explicitly succeeded and found no session record
+  if (!sessionRecord) {
     try { cookieStore.delete('pb_token'); } catch {}
     const response = NextResponse.json({ user: null }, { status: 401 });
     Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
@@ -50,14 +50,37 @@ export async function GET(req: NextRequest) {
   }
 
   // If expired, fail auth and delete cookie
-  if (sessionRecord && new Date(sessionRecord.expiresAt).getTime() < Date.now()) {
+  if (new Date(sessionRecord.expiresAt).getTime() < Date.now()) {
     try { cookieStore.delete('pb_token'); } catch {}
     const response = NextResponse.json({ user: null }, { status: 401 });
     Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
     return response;
   }
 
-  const record = pb.authStore.record;
+  const pb = await getAuthPb();
+  let record = pb.authStore.record;
+
+  // Heal/Restore session record from database if PocketBase failed to connect or refresh
+  if (!record && sessionRecord.user) {
+    const dbUser = sessionRecord.user;
+    record = {
+      id: dbUser.id,
+      email: dbUser.email,
+      name: dbUser.name || dbUser.email.split("@")[0] || "",
+      avatar: dbUser.avatar,
+      theme: dbUser.theme || "dark",
+      points: dbUser.points ?? 50,
+      membership: dbUser.membership || "free",
+      role: dbUser.role || "user",
+    } as any;
+  }
+
+  if (!record) {
+    try { cookieStore.delete('pb_token'); } catch {}
+    const response = NextResponse.json({ user: null }, { status: 401 });
+    Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
+    return response;
+  }
   const user = {
     id: record.id,
     email: record.email,
