@@ -528,6 +528,18 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
       mon.editor.setTheme('scholarly-vibrant');
     }
   }, [editorMood]);
+
+  // Safely update editor value without resetting cursor position
+  useEffect(() => {
+    if (editorRef.current) {
+      const currentValue = editorRef.current.getValue();
+      const normalizeNewlines = (str: string) => str.replace(/\r\n/g, '\n');
+      if (normalizeNewlines(code) !== normalizeNewlines(currentValue)) {
+        editorRef.current.setValue(code);
+      }
+    }
+  }, [code]);
+
   // Handle Diagnostic Markers (Error Squiggles) & Whole Line Highlights
   useEffect(() => {
     if (monacoRef.current && editorRef.current) {
@@ -554,6 +566,36 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
             endColumn: model.getLineMaxColumn(ln),
           };
         });
+
+      // --- CUSTOM LINTER: Text after \end{document} ---
+      if (activeFile.endsWith('.tex')) {
+        const lineCount = model.getLineCount();
+        let endDocumentLine = -1;
+        
+        for (let i = 1; i <= lineCount; i++) {
+          const lineContent = model.getLineContent(i);
+          if (lineContent.includes('\\end{document}')) {
+            endDocumentLine = i;
+            break;
+          }
+        }
+        
+        if (endDocumentLine !== -1) {
+          for (let i = endDocumentLine + 1; i <= lineCount; i++) {
+            const lineContent = model.getLineContent(i);
+            if (lineContent.trim().length > 0) {
+              markers.push({
+                severity: monaco.MarkerSeverity.Warning,
+                message: "Text occurring after \\end{document} is ignored by the LaTeX compiler",
+                startLineNumber: i,
+                startColumn: 1,
+                endLineNumber: i,
+                endColumn: model.getLineMaxColumn(i) || 1,
+              });
+            }
+          }
+        }
+      }
       
       monaco.editor.setModelMarkers(model, 'latex', markers);
 
@@ -1087,7 +1129,9 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                disabled={compiling} 
                style={{ 
                   background: compiling ? 'var(--bg-tertiary)' : 'var(--accent-primary)', 
-                 color: '#fff', border: 'none', padding: '0.35rem 0.8rem', borderRadius: '8px', 
+                 color: '#fff', 
+                 border: compiling ? '1px solid var(--border)' : '1px solid var(--accent-primary)', 
+                 padding: '0.35rem 0.8rem', borderRadius: '8px', 
                  fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem',
                  boxShadow: compiling ? 'none' : '0 4px 15px var(--accent-glow)', fontFamily: 'var(--font-headline)', letterSpacing: '0.02em'
                }}
@@ -1341,17 +1385,45 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                               editorRef.current = ed; 
                               monacoRef.current = mon; 
                               
+                              // Register LaTeX Language & Monarch Tokenizer for Multicolor Syntax Highlighting
+                              try {
+                                mon.languages.register({ id: 'latex' });
+                              } catch(e) {}
+                              
+                              try {
+                                mon.languages.setMonarchTokensProvider('latex', {
+                                  defaultToken: '',
+                                  tokenPostfix: '.latex',
+                                  tokenizer: {
+                                    root: [
+                                      // Comments
+                                      [/%.*$/, 'comment.latex'],
+                                      // Math Mode
+                                      [/\$\$/, { token: 'math.latex', next: '@mathModeBlock' }],
+                                      [/\$/, { token: 'math.latex', next: '@mathModeInline' }],
+                                      // Keywords / Commands
+                                      [/\\(?:begin|end|documentclass|usepackage|title|author|date|maketitle|section|subsection|subsubsection|paragraph|label|ref|cite|bibliography|bibliographystyle|include|input|newcommand|renewcommand|centering|includegraphics|caption|item|textbf|textit|texttt)\b/, 'keyword.latex'],
+                                      [/\\(?:[a-zA-Z]+)/, 'command.latex'],
+                                      // Delimiters / Braces
+                                      [/[{}()\[\]]/, 'delimiter'],
+                                      [/\d+/, 'number'],
+                                    ],
+                                    mathModeBlock: [
+                                      [/\$\$/, { token: 'math.latex', next: '@pop' }],
+                                      [/./, 'math.latex'],
+                                    ],
+                                    mathModeInline: [
+                                      [/\$/, { token: 'math.latex', next: '@pop' }],
+                                      [/./, 'math.latex'],
+                                    ]
+                                  }
+                                });
+                              } catch(e) {}
+
                               // Register LaTeX Suggestion Provider
                               mon.languages.registerCompletionItemProvider('latex', {
                                 provideCompletionItems: (model: any, position: any) => {
-                                  const word = model.getWordUntilPosition(position);
-                                  const range = {
-                                    startLineNumber: position.lineNumber,
-                                    endLineNumber: position.lineNumber,
-                                    startColumn: word.startColumn,
-                                    endColumn: word.endColumn
-                                  };
-                                  return { suggestions: getLatexSuggestions(mon, range, filesRef.current) };
+                                  return { suggestions: getLatexSuggestions(mon, model, position, filesRef.current) };
                                 }
                               });
                             }}
@@ -1369,7 +1441,8 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                               fontLigatures: true,
                               renderLineHighlight: 'all',
                               scrollbar: { vertical: 'visible', horizontal: 'visible', verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
-                              automaticLayout: true
+                              automaticLayout: true,
+                              wordWrap: 'on'
                             }}
                           />
                         )}
