@@ -8,6 +8,48 @@ import { StudioFS, type StudioProject } from '@/lib/studio-fs';
 import { TEMPLATE_REGISTRY } from '@/lib/templates/registry';
 import ProjectLimitModal from '@/components/ProjectLimitModal';
 import { useProjectLimit } from '@/hooks/useProjectLimit';
+import { 
+  Plus, Upload, LayoutDashboard, RefreshCw, BookOpen, ShieldCheck, 
+  WifiOff, Cpu, Bot, FileText, CheckCircle, FileDown, FileArchive, 
+  ExternalLink, Trash2, ArrowRight, Folder, Search, FolderOpen, 
+  Edit3, Sparkles 
+} from 'lucide-react';
+import { motion } from 'framer-motion';
+
+function LaTeXStudioLogo() {
+  return (
+    <div className="relative w-20 h-20 flex items-center justify-center mb-4">
+      {/* Outer spinning colorful gradient border */}
+      <motion.div
+        animate={{ rotate: 360 }}
+        transition={{ repeat: Infinity, duration: 8, ease: 'linear' }}
+        className="absolute inset-0 rounded-3xl bg-gradient-to-tr from-primary via-emerald-500 to-indigo-600 p-[3px] opacity-80"
+      >
+        <div className="w-full h-full bg-background rounded-[21px]" />
+      </motion.div>
+
+      {/* Inner pulsing glow */}
+      <motion.div
+        animate={{ scale: [1, 1.08, 1], opacity: [0.3, 0.6, 0.3] }}
+        transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+        className="absolute inset-2 rounded-2xl bg-gradient-to-br from-primary/20 via-emerald-500/20 to-indigo-500/20 blur-md"
+      />
+
+      {/* Center content */}
+      <div className="relative flex items-center justify-center z-10 w-16 h-16 bg-surface/50 backdrop-blur-md rounded-2xl border border-outline shadow-md">
+        <motion.div
+          animate={{ scale: [0.95, 1.05, 0.95] }}
+          transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
+          className="relative flex items-center justify-center"
+        >
+          {/* Main logo icon */}
+          <Edit3 className="w-8 h-8 text-primary" />
+          <Sparkles className="w-4 h-4 text-emerald-500 absolute -top-2 -right-2 animate-pulse" />
+        </motion.div>
+      </div>
+    </div>
+  );
+}
 
 export default function LaTeXStudioLanding() {
   const { data: session, status } = useSession();
@@ -188,16 +230,14 @@ export default function LaTeXStudioLanding() {
       <main className="flex-grow flex flex-col items-center w-full max-w-5xl mx-auto px-4 pt-24 pb-12 md:pb-16 gap-16">
         {/* Header & Actions */}
         <section className="flex flex-col items-center text-center gap-6 w-full max-w-2xl">
-          <div className="w-16 h-16 bg-surface-container-high flex items-center justify-center mb-2">
-            <span className="material-symbols-outlined text-4xl text-primary" data-icon="draw">draw</span>
-          </div>
+          <LaTeXStudioLogo />
           <div>
             <h1 className="text-3xl md:text-4xl font-headline font-semibold text-on-background tracking-tight mb-2">Latexify Studio</h1>
             <p className="text-on-surface-variant text-base md:text-lg">Your Personal Latex Editor</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-4 mt-4 w-full sm:w-auto">
             <button onClick={handleOpenNewModal} className="bg-primary text-on-primary px-6 py-3 font-semibold text-sm hover:bg-primary-fixed-dim transition-colors flex items-center justify-center gap-2 min-w-[160px] min-h-[48px]">
-              <span className="material-symbols-outlined text-xl" data-icon="add">add</span>
+              <Plus size={18} />
               Create New Project
             </button>
             <label className="border border-primary text-primary px-6 py-3 font-semibold text-sm hover:bg-surface-container transition-colors flex items-center justify-center gap-2 min-w-[160px] min-h-[48px] cursor-pointer">
@@ -226,11 +266,11 @@ export default function LaTeXStudioLanding() {
                   }
                 }}
               />
-              <span className="material-symbols-outlined text-xl" data-icon="file_upload">file_upload</span>
+              <Upload size={18} />
               Import ZIP
             </label>
             <Link href="/dashboard" className="border border-secondary text-secondary px-6 py-3 font-semibold text-sm hover:bg-surface-container transition-colors flex items-center justify-center gap-2 min-w-[160px] min-h-[48px]">
-              <span className="material-symbols-outlined text-xl" data-icon="dashboard">dashboard</span>
+              <LayoutDashboard size={18} />
               Return to Dashboard
             </Link>
           </div>
@@ -239,44 +279,44 @@ export default function LaTeXStudioLanding() {
         {/* Features Bento Grid */}
         <section className="w-full">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 auto-rows-[minmax(140px,auto)]">
-            <div className="bg-surface-container p-6 border-b border-secondary-fixed flex flex-col justify-between rounded-xl">
-              <div className="flex items-center gap-3 mb-4 text-primary">
-                <span className="material-symbols-outlined text-2xl" data-icon="sync">sync</span>
+            <div className="bg-surface-container p-6 border-b border-secondary-fixed flex flex-col justify-between rounded-xl hover:shadow-md transition-shadow duration-300">
+              <div className="flex items-center gap-3 mb-4 text-emerald-500">
+                <RefreshCw size={24} className="animate-spin-slow" style={{ animationDuration: '6s' }} />
                 <h3 className="font-semibold text-lg text-on-background">Bi-dir Sync</h3>
               </div>
               <p className="text-sm text-on-surface-variant leading-relaxed">Seamlessly synchronize your LaTeX documents across all devices. Work offline, and let our conflict resolution engine handle the merge when you reconnect.</p>
             </div>
-            <div className="bg-surface-container p-6 border-b border-secondary-fixed flex flex-col justify-between rounded-xl">
-              <div className="flex items-center gap-3 mb-4 text-primary">
-                <span className="material-symbols-outlined text-2xl" data-icon="library_books">library_books</span>
+            <div className="bg-surface-container p-6 border-b border-secondary-fixed flex flex-col justify-between rounded-xl hover:shadow-md transition-shadow duration-300">
+              <div className="flex items-center gap-3 mb-4 text-blue-500">
+                <BookOpen size={24} className="hover:scale-110 transition-transform duration-300" />
                 <h3 className="font-semibold text-lg text-on-background">100+ Templates</h3>
               </div>
               <p className="text-sm text-on-surface-variant leading-relaxed">Jumpstart your research with IEEE, ACM, and Springer compliant templates ready to deploy.</p>
             </div>
-            <div className="bg-surface-container p-6 border-b border-secondary-fixed flex flex-col justify-between rounded-xl">
-              <div className="flex items-center gap-3 mb-4 text-tertiary">
-                <span className="material-symbols-outlined text-2xl" data-icon="lock">lock</span>
+            <div className="bg-surface-container p-6 border-b border-secondary-fixed flex flex-col justify-between rounded-xl hover:shadow-md transition-shadow duration-300">
+              <div className="flex items-center gap-3 mb-4 text-purple-500">
+                <ShieldCheck size={24} className="hover:-rotate-12 transition-transform duration-300" />
                 <h3 className="font-semibold text-lg text-on-background">Encrypted Storage</h3>
               </div>
               <p className="text-sm text-on-surface-variant leading-relaxed">AES-256 encryption at rest ensures your pre-published research remains confidential.</p>
             </div>
-            <div className="bg-surface-container p-6 border-b border-secondary-fixed flex flex-col justify-between rounded-xl">
-              <div className="flex items-center gap-3 mb-4 text-primary">
-                <span className="material-symbols-outlined text-2xl" data-icon="wifi_off">wifi_off</span>
+            <div className="bg-surface-container p-6 border-b border-secondary-fixed flex flex-col justify-between rounded-xl hover:shadow-md transition-shadow duration-300">
+              <div className="flex items-center gap-3 mb-4 text-amber-500">
+                <WifiOff size={24} className="hover:translate-y-[-2px] transition-transform duration-300" />
                 <h3 className="font-semibold text-lg text-on-background">Slow Network Mode</h3>
               </div>
               <p className="text-sm text-on-surface-variant leading-relaxed">Optimized delta-compilation saves bandwidth and accelerates preview generation.</p>
             </div>
-            <div className="bg-surface-container p-6 border-b border-secondary-fixed flex flex-col justify-between rounded-xl">
-              <div className="flex items-center gap-3 mb-4 text-primary">
-                <span className="material-symbols-outlined text-2xl" data-icon="settings_applications">settings_applications</span>
+            <div className="bg-surface-container p-6 border-b border-secondary-fixed flex flex-col justify-between rounded-xl hover:shadow-md transition-shadow duration-300">
+              <div className="flex items-center gap-3 mb-4 text-pink-500">
+                <Cpu size={24} className="hover:rotate-45 transition-transform duration-300" />
                 <h3 className="font-semibold text-lg text-on-background">Multi-engine Support</h3>
               </div>
               <p className="text-sm text-on-surface-variant leading-relaxed">Compile with pdfLaTeX, XeLaTeX, LuaLaTeX, and ConTeXt natively.</p>
             </div>
-            <div className="bg-surface-container p-6 border-b border-secondary-fixed flex flex-col justify-between rounded-xl">
-              <div className="flex items-center gap-3 mb-4 text-primary">
-                <span className="material-symbols-outlined text-2xl" data-icon="smart_toy">smart_toy</span>
+            <div className="bg-surface-container p-6 border-b border-secondary-fixed flex flex-col justify-between rounded-xl hover:shadow-md transition-shadow duration-300">
+              <div className="flex items-center gap-3 mb-4 text-indigo-500">
+                <Bot size={24} className="animate-bounce" style={{ animationDuration: '3s' }} />
                 <h3 className="font-semibold text-lg text-on-background">AI Chat Engine</h3>
               </div>
               <p className="text-sm text-on-surface-variant leading-relaxed">For Fast Code Debugging.</p>
@@ -286,14 +326,17 @@ export default function LaTeXStudioLanding() {
 
         {/* Recent Projects Section */}
         <section className="w-full">
-          <div className="flex justify-between items-end mb-4 border-b border-secondary-fixed pb-2">
+          <div className="flex justify-between items-end mb-4 border-b border-secondary-fixed pb-2 group">
             <h2 className="text-xl font-headline font-semibold text-on-background">Recent Projects</h2>
-            <button onClick={() => setShowAllModal(true)} className="text-sm text-primary hover:underline font-semibold flex items-center gap-1">View All <span className="material-symbols-outlined text-[16px]" data-icon="arrow_forward">arrow_forward</span></button>
+            <button onClick={() => setShowAllModal(true)} className="text-sm text-primary hover:underline font-semibold flex items-center gap-1">
+              View All 
+              <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+            </button>
           </div>
 
           {loading ? (
             <div style={{ color: '#525252', display: 'flex', gap: '0.5rem', alignItems: 'center', padding: '1rem' }}>
-              <div style={{ width: '16px', height: '16px', border: '2px solid #0f62fe', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
+              <RefreshCw size={16} className="text-primary animate-spin" />
               Loading projects from encrypted storage...
             </div>
           ) : projects.length === 0 ? (
@@ -317,27 +360,27 @@ export default function LaTeXStudioLanding() {
                   {projects.map(p => (
                     <tr key={p.id} className="border-b border-secondary-fixed hover:bg-surface-container-low transition-colors group">
                       <td className="p-3 text-on-background font-semibold flex items-center gap-2">
-                        <span className="material-symbols-outlined text-on-surface-variant text-[18px]" data-icon="article">article</span>
+                        <FileText size={18} className="text-slate-500 dark:text-slate-400 group-hover:text-primary transition-colors" />
                         {p.title}.tex
                       </td>
                       <td className="p-3">
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-tertiary-container text-on-tertiary-container text-xs font-semibold uppercase tracking-wider">
-                          <span className="material-symbols-outlined text-[14px]" data-icon="check_circle">check_circle</span>
+                          <CheckCircle size={12} className="text-emerald-500" />
                           Synced
                         </span>
                       </td>
                       <td className="p-3 text-right text-on-surface-variant flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => downloadPdf(p.id, p.title)} className="p-1 hover:text-primary transition-colors" title="Download PDF">
-                          <span className="material-symbols-outlined text-[20px]" data-icon="picture_as_pdf">picture_as_pdf</span>
+                          <FileDown size={18} />
                         </button>
                         <button onClick={() => downloadZip(p.id, p.title)} className="p-1 hover:text-primary transition-colors" title="Download ZIP">
-                          <span className="material-symbols-outlined text-[20px]" data-icon="folder_zip">folder_zip</span>
+                          <FileArchive size={18} />
                         </button>
                         <button onClick={() => router.push(`/latex-studio/${p.id}`)} className="p-1 hover:text-primary transition-colors" title="Open in Editor">
-                          <span className="material-symbols-outlined text-[20px]" data-icon="open_in_new">open_in_new</span>
+                          <ExternalLink size={18} />
                         </button>
                         <button onClick={() => deleteProject(p.id)} className="p-1 hover:text-error transition-colors" title="Delete">
-                          <span className="material-symbols-outlined text-[20px]" data-icon="delete">delete</span>
+                          <Trash2 size={18} className="hover:text-rose-500" />
                         </button>
                       </td>
                     </tr>
@@ -370,7 +413,7 @@ export default function LaTeXStudioLanding() {
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid #e0e0e0', paddingBottom: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span className="material-symbols-outlined text-2xl text-primary" data-icon="folder">folder</span>
+                <Folder size={24} className="text-primary animate-pulse" />
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 600, fontFamily: 'IBM Plex Sans', color: '#161616', letterSpacing: '-0.02em' }}>All LaTeX Projects</h2>
               </div>
               <button onClick={() => setShowAllModal(false)} style={{ background: 'transparent', border: 'none', color: '#161616', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
@@ -379,7 +422,7 @@ export default function LaTeXStudioLanding() {
             {/* Filters & Controls */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', marginBottom: '1.5rem' }}>
               <div style={{ flex: 1, minWidth: '250px', position: 'relative' }}>
-                <span className="material-symbols-outlined" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#525252', fontSize: '18px' }} data-icon="search">search</span>
+                <Search size={18} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#525252' }} />
                 <input
                   type="text"
                   placeholder="Filter projects by name..."
@@ -416,8 +459,8 @@ export default function LaTeXStudioLanding() {
             {/* Projects List */}
             <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', paddingRight: '0.5rem' }}>
               {sortedProjects.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#8d8d8d' }}>
-                  <span className="material-symbols-outlined text-4xl mb-2" data-icon="folder_open">folder_open</span>
+                <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#8d8d8d', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <FolderOpen size={36} className="text-slate-400 mb-2" />
                   <p style={{ fontSize: '0.9rem' }}>No matching projects found.</p>
                 </div>
               ) : (
@@ -435,7 +478,7 @@ export default function LaTeXStudioLanding() {
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0 }}>
                         <div style={{ width: '40px', height: '40px', background: 'rgba(15,98,254,0.1)', color: '#0f62fe', borderRadius: '0px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <span className="material-symbols-outlined" data-icon="article">article</span>
+                          <FileText size={18} className="text-primary" />
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                           <span style={{ fontWeight: 600, fontSize: '0.95rem', color: '#161616', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', fontFamily: 'IBM Plex Sans' }}>{p.title}.tex</span>
@@ -448,39 +491,39 @@ export default function LaTeXStudioLanding() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
                         <button 
                           onClick={() => { setShowAllModal(false); downloadPdf(p.id, p.title); }} 
-                          style={{ padding: '0.5rem', color: '#525252', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: '0px', transition: 'all 0.2s' }}
+                          style={{ padding: '0.5rem', color: '#525252', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: '0px', transition: 'all 0.2s', display: 'flex', alignItems: 'center' }}
                           onMouseOver={e => { e.currentTarget.style.color='#0f62fe'; e.currentTarget.style.background='#e0e0e0'; }}
                           onMouseOut={e => { e.currentTarget.style.color='#525252'; e.currentTarget.style.background='transparent'; }}
                           title="Download PDF"
                         >
-                          <span className="material-symbols-outlined" style={{ fontSize: '20px' }} data-icon="picture_as_pdf">picture_as_pdf</span>
+                          <FileDown size={18} />
                         </button>
                         <button 
                           onClick={() => { setShowAllModal(false); downloadZip(p.id, p.title); }} 
-                          style={{ padding: '0.5rem', color: '#525252', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: '0px', transition: 'all 0.2s' }}
+                          style={{ padding: '0.5rem', color: '#525252', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: '0px', transition: 'all 0.2s', display: 'flex', alignItems: 'center' }}
                           onMouseOver={e => { e.currentTarget.style.color='#0f62fe'; e.currentTarget.style.background='#e0e0e0'; }}
                           onMouseOut={e => { e.currentTarget.style.color='#525252'; e.currentTarget.style.background='transparent'; }}
                           title="Download ZIP"
                         >
-                          <span className="material-symbols-outlined" style={{ fontSize: '20px' }} data-icon="folder_zip">folder_zip</span>
+                          <FileArchive size={18} />
                         </button>
                         <button 
                           onClick={() => { setShowAllModal(false); router.push(`/latex-studio/${p.id}`); }} 
-                          style={{ padding: '0.5rem', color: '#525252', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: '0px', transition: 'all 0.2s' }}
+                          style={{ padding: '0.5rem', color: '#525252', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: '0px', transition: 'all 0.2s', display: 'flex', alignItems: 'center' }}
                           onMouseOver={e => { e.currentTarget.style.color='#0f62fe'; e.currentTarget.style.background='#e0e0e0'; }}
                           onMouseOut={e => { e.currentTarget.style.color='#525252'; e.currentTarget.style.background='transparent'; }}
                           title="Open in Editor"
                         >
-                          <span className="material-symbols-outlined" style={{ fontSize: '20px' }} data-icon="open_in_new">open_in_new</span>
+                          <ExternalLink size={18} />
                         </button>
                         <button 
                           onClick={() => { deleteProject(p.id); }} 
-                          style={{ padding: '0.5rem', color: '#525252', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: '0px', transition: 'all 0.2s' }}
+                          style={{ padding: '0.5rem', color: '#525252', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: '0px', transition: 'all 0.2s', display: 'flex', alignItems: 'center' }}
                           onMouseOver={e => { e.currentTarget.style.color='#da1e28'; e.currentTarget.style.background='rgba(218,30,40,0.1)'; }}
                           onMouseOut={e => { e.currentTarget.style.color='#525252'; e.currentTarget.style.background='transparent'; }}
                           title="Delete Project"
                         >
-                          <span className="material-symbols-outlined" style={{ fontSize: '20px' }} data-icon="delete">delete</span>
+                          <Trash2 size={18} className="hover:text-rose-500" />
                         </button>
                       </div>
                     </div>
