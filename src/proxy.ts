@@ -67,7 +67,7 @@ function applySecurityHeaders(res: NextResponse, requestId: string): void {
 function blockedResponse(
   requestId: string,
   status: number,
-  message: string,Extra?: Record<string, string>,
+  message: string, Extra?: Record<string, string>,
 ): NextResponse {
   const res = new NextResponse(JSON.stringify({ error: message }), {
     status,
