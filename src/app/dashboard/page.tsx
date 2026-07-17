@@ -717,15 +717,11 @@ export default function DashboardPage() {
     }
   }, [status, session, router]);
 
-  if (status === "loading") {
-    return <ProLoader />;
-  }
-  if (!session) {
-    return <ProLoader />;
-  }
+  const isSessionLoading = status === "loading" || !session;
 
   return (
-    <div className="flex h-screen bg-background text-on-background font-body-md overflow-hidden transition-colors duration-500">
+    <>
+      <div className={`flex h-screen bg-background text-on-background font-body-md overflow-hidden transition-colors duration-500 ${isSessionLoading ? 'blur-md pointer-events-none select-none' : ''}`}>
       <Sidebar />
       
       {/* Main Content Area */}
@@ -2078,7 +2074,12 @@ export default function DashboardPage() {
         )}
       </AnimatePresence>
       <ChatWidget />
-    </div>
+      </div>
+
+      {isSessionLoading && (
+        <ProLoader overlay={true} message="Loading Studio Session..." />
+      )}
+    </>
   );
 }
 
