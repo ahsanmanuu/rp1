@@ -122,6 +122,10 @@ export function applyFinalSanitizationSieve(content: string): string {
     ['placeins', '\\usepackage{placeins}'],
     ['float', '\\usepackage{float}'],
     ['caption', '\\usepackage[labelfont=bf,labelsep=period]{caption}'],
+    // xurl MUST be after url (if loaded) — enables URL breaking at any character
+    ['xurl', '\\usepackage{xurl}'],
+    // microtype improves character-level typesetting and reduces overflow
+    ['microtype', '\\usepackage{microtype}'],
   ];
   const docClassMatch = preamble.match(/\\documentclass[^{]*\{([^}]+)\}/);
   const docClass = docClassMatch ? docClassMatch[1].toLowerCase() : '';
@@ -528,8 +532,10 @@ export function autoHealLatex(latex: string): string {
       // and may not be included in the target class. We let them stay and
       // let the compiler handle potential duplications or better yet,
       // the user preamble merging handles its own deduplication.
-      .replace(/\\Urlmuskip\s*=\s*[^%\n]*/g, "")
-      .replace(/\\urlstyle\{[^}]*\}/g, "")
+      // NOTE: \Urlmuskip and \urlstyle are intentionally NOT stripped here.
+      // They appear in document body (after \begin{document}) where they are valid
+      // and required for proper URL line breaking. Stripping them globally caused
+      // URLs and long strings to overflow the page margin.
       .replace(/<[^>]+>/g, ""); // FINAL HTML STRIP: Remove any residual Word artifacts
 
     // NOTE: \nonstopmode must go AFTER \documentclass, never before

@@ -147,20 +147,73 @@ ${_B}fi
      }
   }
 
-  // 2. OVERFLOW GUARD INJECTION — inject immediately after \begin{document}
-  // Prevents text, URLs, and code from overflowing beyond the page margin.
-  // These are standard LaTeX typesetting best-practices and are safe for ALL document classes.
+  // 2. PREAMBLE PACKAGE INJECTION — inject essential packages if not already present
+  // These run BEFORE the sieve so the sieve can deduplicate them safely.
+  if (modified.includes('\\documentclass')) {
+    const hasPackage = (pkg: string) =>
+      new RegExp(`\\\\usepackage\\s*(?:\\[[^\\]]*\\])?\\s*\\{[^}]*\\b${pkg}\\b[^}]*\\}`).test(modified);
+
+    const docClassMatch = modified.match(/\\documentclass\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/);
+    const docClass = docClassMatch ? docClassMatch[1].toLowerCase() : 'article';
+    const isAcademic = !['article','report','book','letter'].includes(docClass);
+
+    // Find the insertion point: just before \begin{document}
+    const beginDocIdx = modified.indexOf('\\begin{document}');
+    if (beginDocIdx !== -1) {
+      const preamblePkgs: string[] = [];
+      // xurl: enables URL breaking at any character (must come after url if loaded)
+      if (!hasPackage('xurl') && !hasPackage('url')) {
+        preamblePkgs.push('\\usepackage{xurl}');
+      } else if (!hasPackage('xurl') && hasPackage('url')) {
+        preamblePkgs.push('\\usepackage{xurl}');
+      }
+      // microtype: character-level typesetting, reduces hbox overflow significantly
+      if (!hasPackage('microtype')) {
+        preamblePkgs.push('\\usepackage{microtype}');
+      }
+      // geometry: proper page margins (1in standard)
+      if (!isAcademic && !hasPackage('geometry')) {
+        preamblePkgs.push('\\usepackage[margin=1in]{geometry}');
+      }
+      // listings: ensure breaklines is available
+      if (!hasPackage('listings')) {
+        preamblePkgs.push('\\usepackage{listings}');
+      }
+
+      if (preamblePkgs.length > 0) {
+        modified =
+          modified.slice(0, beginDocIdx) +
+          preamblePkgs.join('\n') + '\n' +
+          modified.slice(beginDocIdx);
+      }
+    }
+  }
+
+  // 3. PHANTOM ARTIFACT SIEVE (runs BEFORE overflow guards so sieve can't strip them)
+  modified = applyFinalSanitizationSieve(modified);
+
+  // 4. OVERFLOW GUARD INJECTION — inject AFTER the sieve, so guards are never stripped.
+  // Prevents text, URLs, code, and verbatim from overflowing beyond the page margin.
+  // These are injected AFTER \begin{document} so they apply globally to the whole document.
   if (modified.includes('\\begin{document}') && !modified.includes('% StudioOverflowGuards')) {
     const overflowGuards = [
       '% StudioOverflowGuards — injected by Latexify compiler for proper line breaking',
-      '\\sloppy',                                        // Allow looser line-breaking to prevent overflow
-      '\\emergencystretch=3em',                          // Extra stretch budget for very long lines
-      '\\hbadness=10000',                                // Suppress overfull hbox warnings in log
-      '\\tolerance=1000',                                // Standard tolerance (200=strict, 9999=very loose)
-      '\\ifdefined\\urlstyle\\urlstyle{same}\\fi',       // URL style: same font as surrounding text
-      '\\ifdefined\\Urlmuskip\\Urlmuskip=0mu plus 1mu\\fi', // URLs can break at any character
-      // Constrain ALL images to page width automatically (no manual width needed)
+      '\\sloppy',                          // Allow looser line-breaking globally
+      '\\emergencystretch=3em',            // Extra stretch budget for lines that can\'t fit
+      '\\hbadness=10000',                  // Suppress overfull hbox log warnings
+      '\\tolerance=1000',                  // Relaxed from default 200 — reduces forced overflows
+      '\\hyphenpenalty=50',               // Encourage more hyphenation at line breaks
+      '\\exhyphenpenalty=50',             // Encourage breaks after explicit hyphens too
+      // URL breaking (safe ifdefined guards so they don\'t error if package not loaded)
+      '\\ifdefined\\urlstyle\\urlstyle{same}\\fi',
+      '\\ifdefined\\Urlmuskip\\Urlmuskip=0mu plus 1mu\\fi',
+      // Image constraint: all images respect page width automatically
       '\\ifdefined\\setkeys\\setkeys{Gin}{max width=\\linewidth,max height=0.85\\textheight,keepaspectratio}\\fi',
+      // listings: enable line breaking for ALL lstlisting environments (if listings is loaded)
+      '\\ifdefined\\lstset',
+      '  \\lstset{breaklines=true,breakatwhitespace=false,basicstyle=\\small\\ttfamily,',
+      '    columns=flexible,keepspaces=true,breakindent=0pt}',
+      '\\fi',
     ].join('\n');
 
     modified = modified.replace(
@@ -169,11 +222,9 @@ ${_B}fi
     );
   }
 
-  // 3. PHANTOM ARTIFACT SIEVE (Inline application to ensure final output is scrubbed)
-  modified = applyFinalSanitizationSieve(modified);
-
   return modified;
 }
+
 
 export function calculatePayloadSize(files: FilePayload[]): number {
   return (files || []).reduce((acc, f) => {
