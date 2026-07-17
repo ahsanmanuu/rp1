@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { createPb } from "@/lib/pb";
 import { setAuthCookie } from "@/lib/auth-pb";
 import { prisma } from "@/lib/prisma";
@@ -136,8 +137,15 @@ export async function POST(req: NextRequest) {
       role: record.role || "user",
     };
 
-    const response = NextResponse.json({ success: true, user });
-    response.headers.append("Set-Cookie", setAuthCookie(authData.token));
+    const cookieStore = await cookies();
+    cookieStore.set("pb_token", authData.token, {
+      path: "/",
+      httpOnly: true,
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60,
+    });
+
+    const response = NextResponse.json({ success: true, user, token: authData.token });
     return response;
   } catch (err: any) {
     const msg = err?.message || String(err);

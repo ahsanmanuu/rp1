@@ -90,7 +90,14 @@ export async function authFromToken(token: string): Promise<PocketBase> {
       // Save to cache
       recordCache.set(token, { record, expiry: now + 60000 });
 
-      (pb.authStore as any).isTokenExpired = () => false;
+      Object.defineProperty(pb.authStore, 'isTokenExpired', {
+        get() { return false; },
+        configurable: true
+      });
+      Object.defineProperty(pb.authStore, 'isValid', {
+        get() { return !!this.token; },
+        configurable: true
+      });
       pb.authStore.save(token, record as any);
       return pb;
     }
@@ -132,7 +139,14 @@ export async function authFromToken(token: string): Promise<PocketBase> {
 
   try {
     const record = await promise;
-    (pb.authStore as any).isTokenExpired = () => false;
+    Object.defineProperty(pb.authStore, 'isTokenExpired', {
+      get() { return false; },
+      configurable: true
+    });
+    Object.defineProperty(pb.authStore, 'isValid', {
+      get() { return !!this.token; },
+      configurable: true
+    });
     pb.authStore.save(token, record);
   } catch (err) {
     pb.authStore.clear();

@@ -43,7 +43,24 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
   const isFetching = useRef(false);
   const sessionTokenRef = useRef<string | null>(null);
 
-  const update = useCallback(async () => {
+  const update = useCallback(async (newData?: PbServerSession | null) => {
+    if (newData !== undefined) {
+      if (newData) {
+        setData(newData);
+        setStatus("authenticated");
+        sessionTokenRef.current = newData.token || null;
+        if (newData.token && typeof window !== "undefined") {
+          localStorage.setItem("auth-token", newData.token);
+        }
+      } else {
+        setData(null);
+        setStatus("unauthenticated");
+        sessionTokenRef.current = null;
+        if (typeof window !== "undefined") localStorage.removeItem("auth-token");
+      }
+      return;
+    }
+
     isFetching.current = true;
     try {
       const res = await fetch(`/api/auth/pb-session?_=${Date.now()}`, {

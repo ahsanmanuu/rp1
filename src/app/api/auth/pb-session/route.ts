@@ -26,7 +26,6 @@ export async function GET(req: NextRequest) {
     try { cookieStore.delete('pb_token'); } catch {}
     const response = NextResponse.json({ user: null }, { status: 401 });
     Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
-    response.headers.append("Set-Cookie", "pb_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT");
     return response;
   }
 
@@ -47,7 +46,6 @@ export async function GET(req: NextRequest) {
     try { cookieStore.delete('pb_token'); } catch {}
     const response = NextResponse.json({ user: null }, { status: 401 });
     Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
-    response.headers.append("Set-Cookie", "pb_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT");
     return response;
   }
 
@@ -56,7 +54,6 @@ export async function GET(req: NextRequest) {
     try { cookieStore.delete('pb_token'); } catch {}
     const response = NextResponse.json({ user: null }, { status: 401 });
     Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
-    response.headers.append("Set-Cookie", "pb_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT");
     return response;
   }
 
@@ -109,10 +106,16 @@ export async function GET(req: NextRequest) {
     } catch {}
   });
 
+  cookieStore.set("pb_token", token, {
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    maxAge: 7 * 24 * 60 * 60,
+  });
+
   const response = NextResponse.json({ user, token });
   response.headers.set("Cache-Control", "no-store, max-age=0, must-revalidate");
   response.headers.set("Pragma", "no-cache");
   response.headers.set("CDN-Cache-Control", "no-store");
-  response.headers.append("Set-Cookie", setAuthCookie(token));
   return response;
 }

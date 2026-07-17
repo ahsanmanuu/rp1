@@ -61,7 +61,12 @@ export default function LoginPage() {
         throw new Error("Login failed after clearing sessions.");
       }
 
-      await update();
+      const data = await res.json().catch(() => ({}));
+      if (data.user) {
+        await update({ user: data.user, token: data.token });
+      } else {
+        await update();
+      }
       setShowDupModal(false);
       setModalLoading(false);
       router.push("/dashboard");
@@ -103,7 +108,12 @@ export default function LoginPage() {
       setError(data.error || "Invalid credentials. Ensure data accuracy.");
       setLoading(false);
     } else {
-      await update();
+      const data = await res.json().catch(() => ({}));
+      if (data.user) {
+        await update({ user: data.user, token: data.token });
+      } else {
+        await update();
+      }
       router.push("/dashboard");
     }
   };
