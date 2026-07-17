@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 
 function ArchiveContent() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTab, setSelectedTab] = useState<'all' | 'archived' | 'completed'>('all');
@@ -80,6 +80,7 @@ function ArchiveContent() {
     }
   };
 
+  if (status === 'loading') return <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: 40, height: 40, border: '3px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--accent-primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>;
   if (!session) return null;
 
   return (

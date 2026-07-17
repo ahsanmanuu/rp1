@@ -33,7 +33,7 @@ export default function HistoryPage() {
 }
 
 function HistoryContent() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const searchParams = useSearchParams();
   const initialTab = searchParams.get('tab') || 'ALL';
   const [projects, setProjects] = useState<any[]>([]);
@@ -145,6 +145,7 @@ function HistoryContent() {
     } catch { toast.error("Delete failed", { id: tId }); }
   };
 
+  if (status === 'loading') return <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: 40, height: 40, border: '3px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--accent-primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>;
   if (!session) return null;
 
   return (

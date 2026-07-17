@@ -39,7 +39,7 @@ const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false 
 type MigrationStep = 'intake' | 'selection' | 'migrating' | 'editor';
 
 export default function TemplateMigratorPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [step, setStep] = useState<MigrationStep>('intake');
   const [zipFile, setZipFile] = useState<File | null>(null);
   const { showLimitModal, setShowLimitModal } = useProjectLimit();
@@ -432,6 +432,7 @@ export default function TemplateMigratorPage() {
     }
   };
 
+  if (status === 'loading') return <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}><div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: 'var(--accent-primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>;
   if (!session) return null;
 
   return (
