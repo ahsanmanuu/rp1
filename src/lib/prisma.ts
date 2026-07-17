@@ -716,6 +716,8 @@ const MODEL_MAP: Record<string, string> = {
   banner: 'banners',
   Testimonial: 'testimonials',
   testimonial: 'testimonials',
+  Announcement: 'announcements',
+  announcement: 'announcements',
 };
 
 interface PrismaProxy {
