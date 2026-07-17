@@ -448,7 +448,7 @@ export default function DashboardPage() {
       const storedName = localStorage.getItem('user_profile_name');
       const storedImage = localStorage.getItem('user_profile_image');
       if (storedName) setProfileName(storedName);
-      else if (session?.user?.name) setProfileName(session.user.name);
+      else if (session?.user?.name) setProfileName(session?.user?.name);
       if (storedImage) setProfileImage(storedImage);
     }
   }, [session]);
@@ -538,7 +538,7 @@ export default function DashboardPage() {
     if (session?.user?.id) {
       pb.collection('projects').subscribe('*', () => {
         loadAllHistory(false);
-      }, { filter: `userId = "${session.user.id}"` }).then(u => unsubFns.push(u)).catch(() => {});
+      }, { filter: `userId = "${session?.user?.id}"` }).then(u => unsubFns.push(u)).catch(() => {});
     }
 
     // Background refresh for offers, announcements, and projects
@@ -758,7 +758,7 @@ export default function DashboardPage() {
               {profileImage ? (
                 <Image fill src={profileImage} alt="Profile" className="object-cover" sizes="32px" />
               ) : (
-                <span>{profileName?.[0]?.toUpperCase() || session.user?.name?.[0]?.toUpperCase()}</span>
+                <span>{profileName?.[0]?.toUpperCase() || session?.user?.name?.[0]?.toUpperCase()}</span>
               )}
             </div>
           </div>
@@ -771,7 +771,7 @@ export default function DashboardPage() {
             {/* Dynamic Greeting */}
             <section className="flex flex-col md:flex-row md:items-end justify-between gap-4">
               <div>
-                <h1 className="font-h1 text-h1 text-on-surface mb-2">{greeting}, {session.user?.name?.split(' ')[0]}!</h1>
+                <h1 className="font-h1 text-h1 text-on-surface mb-2">{greeting}, {session?.user?.name?.split(' ')[0] || ''}!</h1>
                 <p className="font-body-lg text-body-lg text-secondary font-medium">Ready to research? Your academic ecosystem awaits.</p>
               </div>
             </section>
@@ -1582,7 +1582,7 @@ export default function DashboardPage() {
                   {profileImage ? (
                     <Image fill src={profileImage} alt="Avatar" className="object-cover" sizes="96px" />
                   ) : (
-                    <span>{profileName?.[0]?.toUpperCase() || session.user?.name?.[0]?.toUpperCase()}</span>
+                    <span>{profileName?.[0]?.toUpperCase() || session?.user?.name?.[0]?.toUpperCase()}</span>
                   )}
                 </div>
                 <label className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center shadow-md cursor-pointer hover:bg-primary/90 transition-colors border border-white">
@@ -1637,7 +1637,7 @@ export default function DashboardPage() {
                   <input 
                     type="email"
                     disabled
-                    value={session.user?.email || ""}
+                    value={session?.user?.email || ""}
                     className="w-full px-4 py-2.5 text-sm rounded-xl border border-slate-200 bg-slate-100 text-slate-400 focus:outline-none font-semibold cursor-not-allowed"
                   />
                 </div>
