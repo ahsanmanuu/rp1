@@ -1422,11 +1422,14 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                             height="100%" 
                             theme="vs-dark" 
                             language="latex" 
-                            value={code} 
+                            defaultValue={code}
                             onChange={v => setCode(v || '')} 
                             onMount={(ed, mon) => { 
                               editorRef.current = ed; 
                               monacoRef.current = mon; 
+                              if (code) {
+                                ed.setValue(code);
+                              } 
                               
                               // Register LaTeX Language & Monarch Tokenizer for Multicolor Syntax Highlighting
                               try {
