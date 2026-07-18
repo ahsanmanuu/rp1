@@ -6,6 +6,9 @@ import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { useBillingRealtime } from '@/hooks/useBillingRealtime';
 import AdminSidebar from '@/components/AdminSidebar';
+import { Theme, themes, getAccentColor } from "@/components/AdminThemeStyles";
+
+const ALL_THEMES: Theme[] = ['indigo', 'emerald', 'rose', 'violet', 'amber', 'cyan', 'sky', 'pink', 'orange', 'lime', 'teal', 'fuchsia', 'red', 'yellow', 'stone', 'zinc'];
 
 // ── Currency System ────────────────────────────────────────────────────────
 interface CurrencyDef { code: string; symbol: string; rate: number; label: string; }
@@ -42,7 +45,7 @@ function detectCurrency(): string {
 
 export default function AdminBillingsPage() {
     const [mounted, setMounted] = useState(false);
-    const [currentTheme, setCurrentTheme] = useState<'indigo' | 'emerald' | 'rose'>('indigo');
+    const [currentTheme, setCurrentTheme] = useState<Theme>('indigo');
     const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
     const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
     const [adminName, setAdminName] = useState<string>("Admin Root");
@@ -138,7 +141,7 @@ export default function AdminBillingsPage() {
 
     useEffect(() => {
         setMounted(true);
-        const savedTheme = localStorage.getItem('latexify-admin-theme') as 'indigo' | 'emerald' | 'rose' | null;
+        const savedTheme = localStorage.getItem('latexify-admin-theme') as Theme | null;
         const savedMode = localStorage.getItem('latexify-admin-mode');
         const savedCurrency = localStorage.getItem('latexify-admin-currency');
 
@@ -154,6 +157,7 @@ export default function AdminBillingsPage() {
         localStorage.setItem('latexify-admin-theme', currentTheme);
         localStorage.setItem('latexify-admin-mode', isDarkMode ? 'dark' : 'light');
         localStorage.setItem('latexify-admin-currency', activeCurrency);
+        window.dispatchEvent(new Event('admin-theme-changed'));
     }, [currentTheme, isDarkMode, activeCurrency]);
 
     const generatePathD = (data: { value: number }[]) => {
@@ -393,69 +397,6 @@ export default function AdminBillingsPage() {
     return (
         <div className={`min-h-screen ${isDarkMode ? 'dark' : ''} transition-colors duration-500`} style={{ backgroundColor: 'var(--color-admin-background)', color: 'var(--color-admin-on-background)' }}>
             
-            {/* Theme CSS Variables Injection */}
-            {currentTheme === 'indigo' && (
-                <style jsx global>{`
-                    :root {
-                        --color-admin-primary: #c3c0ff;
-                        --color-admin-primary-container: #4f46e5;
-                        --color-admin-on-primary-container: #dad7ff;
-                        --color-admin-secondary: #c0c1ff;
-                        --color-admin-secondary-container: #3131c0;
-                        --color-admin-on-secondary-container: #b0b2ff;
-                    }
-                `}</style>
-            )}
-            {currentTheme === 'emerald' && (
-                <style jsx global>{`
-                    :root {
-                        --color-admin-primary: #6ee7b7;
-                        --color-admin-primary-container: #059669;
-                        --color-admin-on-primary-container: #d1fae5;
-                        --color-admin-secondary: #a7f3d0;
-                        --color-admin-secondary-container: #047857;
-                        --color-admin-on-secondary-container: #ecfdf5;
-                    }
-                `}</style>
-            )}
-            {currentTheme === 'rose' && (
-                <style jsx global>{`
-                    :root {
-                        --color-admin-primary: #fda4af;
-                        --color-admin-primary-container: #e11d48;
-                        --color-admin-on-primary-container: #ffe4e6;
-                        --color-admin-secondary: #fecdd3;
-                        --color-admin-secondary-container: #be123c;
-                        --color-admin-on-secondary-container: #fff1f2;
-                    }
-                `}</style>
-            )}
-
-            {!isDarkMode && (
-                <style jsx global>{`
-                    :root {
-                        --color-admin-background: #f8fafc !important;
-                        --color-admin-surface: #ffffff !important;
-                        --color-admin-surface-dim: #f1f5f9 !important;
-                        --color-admin-surface-bright: #ffffff !important;
-                        --color-admin-surface-container-lowest: #ffffff !important;
-                        --color-admin-surface-container-low: #f8fafc !important;
-                        --color-admin-surface-container: #f1f5f9 !important;
-                        --color-admin-surface-container-high: #e2e8f0 !important;
-                        --color-admin-surface-container-highest: #cbd5e1 !important;
-                        --color-admin-on-surface: #0f172a !important;
-                        --color-admin-on-surface-variant: #475569 !important;
-                        --color-admin-on-background: #0f172a !important;
-                        --color-admin-outline: #94a3b8 !important;
-                        --color-admin-outline-variant: #cbd5e1 !important;
-                        --color-admin-error: #ba1a1a !important;
-                        --color-admin-on-error: #ffffff !important;
-                        --color-admin-error-container: #ffdad6 !important;
-                        --color-admin-on-error-container: #410002 !important;
-                    }
-                `}</style>
-            )}
-
             <AdminSidebar isDarkMode={isDarkMode} adminName={adminName} />
 
 

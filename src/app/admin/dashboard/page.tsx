@@ -8,54 +8,7 @@ import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { createPb } from "@/lib/pb";
 import AdminSidebar from "@/components/AdminSidebar";
-
-type Theme = "indigo" | "emerald" | "rose" | "violet" | "amber" | "cyan";
-
-interface ThemeColors {
-  primary: string;
-  primaryContainer: string;
-  onPrimaryContainer: string;
-  glow: string;
-}
-
-const themes: Record<Theme, ThemeColors> = {
-  indigo: {
-    primary: "#c3c0ff",
-    primaryContainer: "#4f46e5",
-    onPrimaryContainer: "#dad7ff",
-    glow: "#4f46e5",
-  },
-  emerald: {
-    primary: "#6ee7b7",
-    primaryContainer: "#059669",
-    onPrimaryContainer: "#ecfdf5",
-    glow: "#059669",
-  },
-  rose: {
-    primary: "#fda4af",
-    primaryContainer: "#e11d48",
-    onPrimaryContainer: "#fff1f2",
-    glow: "#e11d48",
-  },
-  violet: {
-    primary: "#d8b4fe",
-    primaryContainer: "#6b21a8",
-    onPrimaryContainer: "#faf5ff",
-    glow: "#6b21a8",
-  },
-  amber: {
-    primary: "#fcd34d",
-    primaryContainer: "#b45309",
-    onPrimaryContainer: "#fffbeb",
-    glow: "#b45309",
-  },
-  cyan: {
-    primary: "#67e8f9",
-    primaryContainer: "#0e7490",
-    onPrimaryContainer: "#f0fdfa",
-    glow: "#0e7490",
-  }
-};
+import { Theme, themes, getAccentColor } from "@/components/AdminThemeStyles";
 
 const CURRENCIES: Record<string, { symbol: string; rate: number }> = {
   INR: { symbol: '₹',   rate: 1       },
@@ -784,6 +737,7 @@ export default function AdminDashboardPage() {
       localStorage.setItem("latexify-admin-theme", currentTheme);
       localStorage.setItem("latexify-admin-mode", isDarkMode ? "dark" : "light");
       localStorage.setItem("latexify-admin-currency", activeCurrency);
+      window.dispatchEvent(new Event("admin-theme-changed"));
 
       updatePanels({
         theme: currentTheme,
@@ -1043,73 +997,6 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="font-sans overflow-x-hidden transition-colors duration-500" style={{ backgroundColor: "var(--color-admin-background)", color: "var(--color-admin-on-background)" }}>
-      <style jsx global>{`
-        :root {
-          ${!isDarkMode ? `
-            --color-admin-primary: ${currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#4f46e5'} !important;
-            --color-admin-primary-container: ${currentTheme === 'rose' ? '#ffe4e6' : currentTheme === 'emerald' ? '#d1fae5' : '#e0e7ff'} !important;
-            --color-admin-on-primary-container: ${currentTheme === 'rose' ? '#4c0519' : currentTheme === 'emerald' ? '#022c22' : '#1e1b4b'} !important;
-            --color-admin-secondary: ${currentTheme === 'rose' ? '#f43f5e' : currentTheme === 'emerald' ? '#10b981' : '#6366f1'} !important;
-            --color-admin-secondary-container: ${currentTheme === 'rose' ? '#ffe4e6' : currentTheme === 'emerald' ? '#d1fae5' : '#e0e7ff'} !important;
-            --color-admin-on-secondary-container: ${currentTheme === 'rose' ? '#4c0519' : currentTheme === 'emerald' ? '#022c22' : '#1e1b4b'} !important;
-            --color-admin-tertiary: ${currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#4f46e5'} !important;
-            --color-admin-outline-variant: #cbd5e1 !important;
-            --color-admin-background: #f8fafc !important;
-            --color-admin-surface: #ffffff !important;
-            --color-admin-surface-dim: #f1f5f9 !important;
-            --color-admin-surface-bright: #ffffff !important;
-            --color-admin-surface-container-lowest: #ffffff !important;
-            --color-admin-surface-container-low: #f1f5f9 !important;
-            --color-admin-surface-container: #e2e8f0 !important;
-            --color-admin-surface-container-high: #cbd5e1 !important;
-            --color-admin-surface-container-highest: #94a3b8 !important;
-            --color-admin-on-surface: #0f172a !important;
-            --color-admin-on-surface-variant: #475569 !important;
-            --color-admin-on-background: #0f172a !important;
-            --color-admin-outline: #64748b !important;
-            --color-admin-error: #ba1a1a !important;
-            --color-admin-on-error: #ffffff !important;
-            --color-admin-error-container: #ffdad6 !important;
-            --color-admin-on-error-container: #410002 !important;
-            --color-admin-inverse-surface: #1e293b !important;
-            --color-admin-inverse-on-surface: #f1f5f9 !important;
-            --color-admin-inverse-primary: ${themes[currentTheme].primary} !important;
-            --color-admin-surface-tint: ${currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#4f46e5'} !important;
-            --color-admin-surface-variant: #e2e8f0 !important;
-          ` : `
-            --color-admin-primary: ${themes[currentTheme].primary} !important;
-            --color-admin-primary-container: ${themes[currentTheme].primaryContainer} !important;
-            --color-admin-on-primary-container: ${themes[currentTheme].onPrimaryContainer} !important;
-            --color-admin-secondary: ${currentTheme === 'rose' ? '#fecdd3' : currentTheme === 'emerald' ? '#a7f3d0' : '#c0c1ff'} !important;
-            --color-admin-secondary-container: ${currentTheme === 'rose' ? '#be123c' : currentTheme === 'emerald' ? '#047857' : '#3131c0'} !important;
-            --color-admin-on-secondary-container: ${currentTheme === 'rose' ? '#fff1f2' : currentTheme === 'emerald' ? '#ecfdf5' : '#b0b2ff'} !important;
-            --color-admin-tertiary: ${themes[currentTheme].primary} !important;
-            --color-admin-outline-variant: #464555 !important;
-            --color-admin-background: #0b1326 !important;
-            --color-admin-surface: #0b1326 !important;
-            --color-admin-surface-dim: #0b1326 !important;
-            --color-admin-surface-bright: #31394d !important;
-            --color-admin-surface-container-lowest: #060e20 !important;
-            --color-admin-surface-container-low: #131b2e !important;
-            --color-admin-surface-container: #171f33 !important;
-            --color-admin-surface-container-high: #222a3d !important;
-            --color-admin-surface-container-highest: #2d3449 !important;
-            --color-admin-on-surface: #dae2fd !important;
-            --color-admin-on-surface-variant: #c7c4d8 !important;
-            --color-admin-on-background: #dae2fd !important;
-            --color-admin-outline: #918fa1 !important;
-            --color-admin-error: #ffb4ab !important;
-            --color-admin-on-error: #690005 !important;
-            --color-admin-error-container: #93000a !important;
-            --color-admin-on-error-container: #ffdad6 !important;
-            --color-admin-inverse-surface: #dae2fd !important;
-            --color-admin-inverse-on-surface: #283044 !important;
-            --color-admin-inverse-primary: ${themes[currentTheme].primary} !important;
-            --color-admin-surface-tint: ${themes[currentTheme].primary} !important;
-            --color-admin-surface-variant: #2d3449 !important;
-          `}
-        }
-      `}</style>
       
       <AdminSidebar isDarkMode={isDarkMode} adminName={adminName} />
 

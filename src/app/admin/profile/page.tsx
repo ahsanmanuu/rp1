@@ -3,61 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
-
-type Theme = "indigo" | "emerald" | "rose" | "violet" | "amber" | "cyan";
-
-interface Themes {
-  primary: string;
-  primaryContainer: string;
-  onPrimaryContainer: string;
-  surfaceContainer: string;
-  outlineVariant: string;
-}
-
-const themes: Record<Theme, Themes> = {
-  indigo: {
-    primary: "#c3c0ff",
-    primaryContainer: "rgba(195, 192, 255, 0.15)",
-    onPrimaryContainer: "#dad7ff",
-    surfaceContainer: "#171f33",
-    outlineVariant: "#464555",
-  },
-  emerald: {
-    primary: "#6ee7b7",
-    primaryContainer: "rgba(110, 231, 183, 0.15)",
-    onPrimaryContainer: "#d1fae5",
-    surfaceContainer: "#0f2c20",
-    outlineVariant: "#2d4a3e",
-  },
-  rose: {
-    primary: "#fda4af",
-    primaryContainer: "rgba(253, 164, 175, 0.15)",
-    onPrimaryContainer: "#ffe4e6",
-    surfaceContainer: "#33181b",
-    outlineVariant: "#553639",
-  },
-  violet: {
-    primary: "#d8b4fe",
-    primaryContainer: "rgba(216, 180, 254, 0.15)",
-    onPrimaryContainer: "#f3e8ff",
-    surfaceContainer: "#2e1065",
-    outlineVariant: "#4c1d95",
-  },
-  amber: {
-    primary: "#fcd34d",
-    primaryContainer: "rgba(252, 211, 77, 0.15)",
-    onPrimaryContainer: "#fef3c7",
-    surfaceContainer: "#451a03",
-    outlineVariant: "#78350f",
-  },
-  cyan: {
-    primary: "#67e8f9",
-    primaryContainer: "rgba(103, 232, 249, 0.15)",
-    onPrimaryContainer: "#ecfeff",
-    surfaceContainer: "#083344",
-    outlineVariant: "#164e63",
-  }
-};
+import { Theme, themes, getAccentColor } from "@/components/AdminThemeStyles";
 
 let globalPlansCache: any[] = [];
 let globalAiPlansCache: any[] = [];
@@ -445,8 +391,6 @@ export default function AdminProfilePage() {
 
   if (!mounted) return null;
 
-  const colors = themes[currentTheme];
-
   return (
     <div
       className="min-h-screen relative flex font-sans transition-colors duration-500"
@@ -455,69 +399,6 @@ export default function AdminProfilePage() {
         color: "var(--color-admin-on-surface)",
       }}
     >
-      {/* Material Design Theme Tokens Injector */}
-      <style jsx global>{`
-        :root {
-          ${isDarkMode
-            ? `
-            --color-admin-primary: ${colors.primary};
-            --color-admin-primary-container: ${colors.primaryContainer};
-            --color-admin-on-primary-container: ${colors.onPrimaryContainer};
-            --color-admin-secondary-container: ${colors.primaryContainer};
-            --color-admin-outline-variant: ${colors.outlineVariant};
-            --color-admin-background: #0b1326 !important;
-            --color-admin-surface: #0b1326 !important;
-            --color-admin-surface-dim: #0b1326 !important;
-            --color-admin-surface-bright: #31394d !important;
-            --color-admin-surface-container-lowest: #060e20 !important;
-            --color-admin-surface-container-low: #131b2e !important;
-            --color-admin-surface-container: #171f33 !important;
-            --color-admin-surface-container-high: #222a3d !important;
-            --color-admin-surface-container-highest: #2d3449 !important;
-            --color-admin-on-surface: #dae2fd !important;
-            --color-admin-on-surface-variant: #c7c4d8 !important;
-            --color-admin-on-background: #dae2fd !important;
-            --color-admin-outline: #918fa1 !important;
-            --color-admin-tertiary: ${colors.primary};
-            --color-admin-tertiary-container: ${colors.primaryContainer};
-            --color-admin-on-tertiary-container: ${colors.onPrimaryContainer};
-            --color-admin-inverse-surface: #dae2fd;
-            --color-admin-inverse-on-surface: #283044;
-            --color-admin-inverse-primary: ${colors.primary};
-            --color-admin-surface-tint: ${colors.primary};
-          `
-            : `
-            --color-admin-primary: ${currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#4f46e5'} !important;
-            --color-admin-primary-container: ${currentTheme === 'rose' ? '#ffe4e6' : currentTheme === 'emerald' ? '#d1fae5' : '#e0e7ff'} !important;
-            --color-admin-on-primary-container: ${currentTheme === 'rose' ? '#4c0519' : currentTheme === 'emerald' ? '#022c22' : '#1e1b4b'} !important;
-            --color-admin-secondary-container: ${currentTheme === 'rose' ? '#ffe4e6' : currentTheme === 'emerald' ? '#d1fae5' : '#e0e7ff'} !important;
-            --color-admin-outline-variant: #cbd5e1 !important;
-            --color-admin-background: #f8fafc !important;
-            --color-admin-surface: #ffffff !important;
-            --color-admin-surface-dim: #f1f5f9 !important;
-            --color-admin-surface-bright: #ffffff !important;
-            --color-admin-surface-container-lowest: #ffffff !important;
-            --color-admin-surface-container-low: #f1f5f9 !important;
-            --color-admin-surface-container: #e2e8f0 !important;
-            --color-admin-surface-container-high: #cbd5e1 !important;
-            --color-admin-surface-container-highest: #94a3b8 !important;
-            --color-admin-on-surface: #0f172a !important;
-            --color-admin-on-surface-variant: #475569 !important;
-            --color-admin-on-background: #0f172a !important;
-            --color-admin-outline: #64748b !important;
-            --color-admin-tertiary: ${currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#4f46e5'} !important;
-            --color-admin-tertiary-container: ${currentTheme === 'rose' ? '#ffe4e6' : currentTheme === 'emerald' ? '#d1fae5' : '#e0e7ff'} !important;
-            --color-admin-on-tertiary-container: ${currentTheme === 'rose' ? '#4c0519' : currentTheme === 'emerald' ? '#022c22' : '#1e1b4b'} !important;
-            --color-admin-on-error-container: #410002 !important;
-            --color-admin-inverse-surface: #1e293b !important;
-            --color-admin-inverse-on-surface: #f1f5f9 !important;
-            --color-admin-inverse-primary: ${colors.primary} !important;
-            --color-admin-surface-tint: ${currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#4f46e5'} !important;
-            --color-admin-surface-variant: #e2e8f0 !important;
-          `}
-        }
-      `}</style>
-
       {/* Side Navigation Shell */}
       {/* Sidebar */}
       <aside className="flex flex-col h-full p-4 gap-2 fixed h-screen w-64 left-0 top-0 border-r z-50 transition-colors duration-500"

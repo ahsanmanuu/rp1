@@ -3,9 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { Theme, themes, getAccentColor } from '@/components/AdminThemeStyles';
+import AdminSidebar from '@/components/AdminSidebar';
+
+const ALL_THEMES: Theme[] = ['indigo', 'emerald', 'rose', 'violet', 'amber', 'cyan', 'sky', 'pink', 'orange', 'lime', 'teal', 'fuchsia', 'red', 'yellow', 'stone', 'zinc'];
 
 export default function AdminOffersPage() {
-    const [currentTheme, setCurrentTheme] = useState<'indigo' | 'emerald' | 'rose'>('indigo');
+    const [currentTheme, setCurrentTheme] = useState<Theme>('indigo');
     const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
     const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
     const [adminName, setAdminName] = useState<string>("Admin Root");
@@ -44,7 +48,7 @@ export default function AdminOffersPage() {
     const chatEndRef = React.useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        const savedTheme = localStorage.getItem('latexify-admin-theme') as 'indigo' | 'emerald' | 'rose' | null;
+        const savedTheme = localStorage.getItem('latexify-admin-theme') as Theme | null;
         const savedMode = localStorage.getItem('latexify-admin-mode');
 
         if (savedTheme) setCurrentTheme(savedTheme);
@@ -56,6 +60,7 @@ export default function AdminOffersPage() {
     useEffect(() => {
         localStorage.setItem('latexify-admin-theme', currentTheme);
         localStorage.setItem('latexify-admin-mode', isDarkMode ? 'dark' : 'light');
+        window.dispatchEvent(new Event('admin-theme-changed'));
     }, [currentTheme, isDarkMode]);
 
     // Live Chat Support Handlers & Polling
@@ -269,7 +274,7 @@ export default function AdminOffersPage() {
         setIsThemeMenuOpen(!isThemeMenuOpen);
     };
 
-    const handleThemeSelect = (theme: 'indigo' | 'emerald' | 'rose') => {
+    const handleThemeSelect = (theme: Theme) => {
         setCurrentTheme(theme);
         setIsThemeMenuOpen(false);
     };
@@ -378,86 +383,7 @@ export default function AdminOffersPage() {
     return (
         <div className={`min-h-screen ${isDarkMode ? 'dark' : ''} transition-colors duration-500 font-body-md overflow-x-hidden`} style={{ backgroundColor: 'var(--color-admin-background)', color: 'var(--color-admin-on-background)' }}>
             
-            {/* Theme CSS Variables Injection */}
-            {currentTheme === 'indigo' && (
-                <style jsx global>{`
-                    :root {
-                        --color-admin-primary: #c3c0ff;
-                        --color-admin-primary-container: #4f46e5;
-                        --color-admin-on-primary-container: #dad7ff;
-                        --color-admin-secondary: #c0c1ff;
-                        --color-admin-secondary-container: #3131c0;
-                        --color-admin-on-secondary-container: #b0b2ff;
-                        --color-admin-tertiary: #ffb695;
-                        --color-admin-tertiary-container: #a44100;
-                        --color-admin-on-tertiary-container: #ffd2be;
-                        --color-admin-error: #ffb4ab;
-                        --color-admin-error-container: #93000a;
-                        --color-admin-on-error-container: #ffdad6;
-                    }
-                `}</style>
-            )}
-            {currentTheme === 'emerald' && (
-                <style jsx global>{`
-                    :root {
-                        --color-admin-primary: #6ee7b7;
-                        --color-admin-primary-container: #059669;
-                        --color-admin-on-primary-container: #d1fae5;
-                        --color-admin-secondary: #a7f3d0;
-                        --color-admin-secondary-container: #047857;
-                        --color-admin-on-secondary-container: #ecfdf5;
-                        --color-admin-tertiary: #fcd34d;
-                        --color-admin-tertiary-container: #b45309;
-                        --color-admin-on-tertiary-container: #fef3c7;
-                        --color-admin-error: #fca5a5;
-                        --color-admin-error-container: #b91c1c;
-                        --color-admin-on-error-container: #fee2e2;
-                    }
-                `}</style>
-            )}
-            {currentTheme === 'rose' && (
-                <style jsx global>{`
-                    :root {
-                        --color-admin-primary: #fda4af;
-                        --color-admin-primary-container: #e11d48;
-                        --color-admin-on-primary-container: #ffe4e6;
-                        --color-admin-secondary: #fecdd3;
-                        --color-admin-secondary-container: #be123c;
-                        --color-admin-on-secondary-container: #fff1f2;
-                        --color-admin-tertiary: #fde047;
-                        --color-admin-tertiary-container: #a16207;
-                        --color-admin-on-tertiary-container: #fef08a;
-                        --color-admin-error: #f87171;
-                        --color-admin-error-container: #991b1b;
-                        --color-admin-on-error-container: #fee2e2;
-                    }
-                `}</style>
-            )}
-
-            {!isDarkMode && (
-                <style jsx global>{`
-                    :root {
-                        --color-admin-background: #f8fafc !important;
-                        --color-admin-surface: #ffffff !important;
-                        --color-admin-surface-dim: #f1f5f9 !important;
-                        --color-admin-surface-bright: #ffffff !important;
-                        --color-admin-surface-container-lowest: #ffffff !important;
-                        --color-admin-surface-container-low: #f8fafc !important;
-                        --color-admin-surface-container: #f1f5f9 !important;
-                        --color-admin-surface-container-high: #e2e8f0 !important;
-                        --color-admin-surface-container-highest: #cbd5e1 !important;
-                        --color-admin-on-surface: #0f172a !important;
-                        --color-admin-on-surface-variant: #475569 !important;
-                        --color-admin-on-background: #0f172a !important;
-                        --color-admin-outline: #94a3b8 !important;
-                        --color-admin-outline-variant: #cbd5e1 !important;
-                        --color-admin-error: #ba1a1a !important;
-                        --color-admin-on-error: #ffffff !important;
-                        --color-admin-error-container: #ffdad6 !important;
-                        --color-admin-on-error-container: #410002 !important;
-                    }
-                `}</style>
-            )}
+            <AdminSidebar isDarkMode={isDarkMode} adminName={adminName} />
 
             {/* Sidebar */}
             <aside className="flex flex-col h-full p-4 gap-2 fixed h-screen w-64 left-0 top-0 border-r z-50 transition-colors duration-500"
@@ -547,9 +473,9 @@ export default function AdminOffersPage() {
                                 <div className="absolute right-0 mt-2 w-48 rounded-xl border shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 z-50 p-2" style={{ backgroundColor: "var(--color-admin-surface-container-high)", borderColor: "var(--color-admin-outline-variant)" }}>
                                     <p className="text-[10px] font-bold uppercase mb-2 px-2" style={{ color: "var(--color-admin-on-surface-variant)" }}>Theme Accent</p>
                                     <div className="grid grid-cols-4 gap-2 px-1 pb-1">
-                                        <div onClick={() => handleThemeSelect('indigo')} className={`w-6 h-6 rounded-full cursor-pointer hover:scale-110 transition-transform ${currentTheme === 'indigo' ? 'border-2 border-white' : 'border border-white/20'}`} style={{ backgroundColor: "#c3c0ff" }} title="Indigo"></div>
-                                        <div onClick={() => handleThemeSelect('emerald')} className={`w-6 h-6 rounded-full cursor-pointer hover:scale-110 transition-transform ${currentTheme === 'emerald' ? 'border-2 border-white' : 'border border-white/10'}`} style={{ backgroundColor: "#6ee7b7" }} title="Emerald"></div>
-                                        <div onClick={() => handleThemeSelect('rose')} className={`w-6 h-6 rounded-full cursor-pointer hover:scale-110 transition-transform ${currentTheme === 'rose' ? 'border-2 border-white' : 'border border-white/10'}`} style={{ backgroundColor: "#fda4af" }} title="Rose"></div>
+                                        {ALL_THEMES.map(t => (
+                                            <div key={t} onClick={() => handleThemeSelect(t)} className={`w-6 h-6 rounded-full cursor-pointer hover:scale-110 transition-transform capitalize ${currentTheme === t ? 'border-2 border-white' : 'border border-white/20'}`} style={{ backgroundColor: getAccentColor(t, true) }} title={t}></div>
+                                        ))}
                                     </div>
                                     <div className="h-px w-full my-2" style={{ backgroundColor: "var(--color-admin-outline-variant)" }}></div>
                                     <p className="text-[10px] font-bold uppercase mb-2 px-2" style={{ color: "var(--color-admin-on-surface-variant)" }}>Mode</p>

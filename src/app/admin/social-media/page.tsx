@@ -7,6 +7,7 @@ import { usePathname } from 'next/navigation';
 import { createPb } from '@/lib/pb';
 import { useSiteLogo } from '@/lib/useSiteLogo';
 import ProLoader from '@/components/ProLoader';
+import { Theme, themes, getAccentColor } from '@/components/AdminThemeStyles';
 
 const TOOL_TITLES = [
   'Latexify Dashboard', 'Doc2LaTeX Studio', 'Diagram Studio',
@@ -67,17 +68,6 @@ function ModalField({ label, children }: { label: string; children: React.ReactN
   );
 }
 
-type Theme = 'indigo' | 'emerald' | 'rose' | 'violet' | 'amber' | 'cyan';
-
-const themes: Record<Theme, { primary: string; primaryContainer: string; onPrimaryContainer: string }> = {
-  indigo: { primary: '#c3c0ff', primaryContainer: '#4f46e5', onPrimaryContainer: '#dad7ff' },
-  emerald: { primary: '#6ee7b7', primaryContainer: '#059669', onPrimaryContainer: '#ecfdf5' },
-  rose: { primary: '#fda4af', primaryContainer: '#e11d48', onPrimaryContainer: '#fff1f2' },
-  violet: { primary: '#d8b4fe', primaryContainer: '#6b21a8', onPrimaryContainer: '#faf5ff' },
-  amber: { primary: '#fcd34d', primaryContainer: '#b45309', onPrimaryContainer: '#fffbeb' },
-  cyan: { primary: '#67e8f9', primaryContainer: '#0e7490', onPrimaryContainer: '#f0fdfa' },
-};
-
 export default function AdminSocialMediaPage() {
   const [currentTheme, setCurrentTheme] = useState<Theme>('indigo');
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -136,6 +126,7 @@ export default function AdminSocialMediaPage() {
   useEffect(() => {
     localStorage.setItem('latexify-admin-theme', currentTheme);
     localStorage.setItem('latexify-admin-mode', isDarkMode ? 'dark' : 'light');
+    window.dispatchEvent(new Event('admin-theme-changed'));
   }, [currentTheme, isDarkMode]);
 
   useEffect(() => {
@@ -506,7 +497,7 @@ export default function AdminSocialMediaPage() {
     } catch {}
   };
 
-  const accentColor = currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#4f46e5';
+  const accentColor = getAccentColor(currentTheme, isDarkMode);
   const bgColor = isDarkMode ? '#0b1326' : '#f8fafc';
   const surfaceColor = isDarkMode ? '#0b1326' : '#ffffff';
   const onSurfaceColor = isDarkMode ? '#dae2fd' : '#0f172a';

@@ -5,6 +5,9 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { createPb } from '@/lib/pb';
 import AdminSidebar from '@/components/AdminSidebar';
+import { Theme, themes, getAccentColor } from "@/components/AdminThemeStyles";
+
+const ALL_THEMES: Theme[] = ['indigo', 'emerald', 'rose', 'violet', 'amber', 'cyan', 'sky', 'pink', 'orange', 'lime', 'teal', 'fuchsia', 'red', 'yellow', 'stone', 'zinc'];
 
 interface CustomerDetails {
   customerId: string;
@@ -63,7 +66,7 @@ interface Documentation {
 }
 
 export default function AdminHelpPage() {
-    const [currentTheme, setCurrentTheme] = useState<'indigo' | 'emerald' | 'rose'>('indigo');
+    const [currentTheme, setCurrentTheme] = useState<Theme>('indigo');
     const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
     const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
     const [adminName, setAdminName] = useState<string>("Admin Root");
@@ -294,7 +297,7 @@ export default function AdminHelpPage() {
     };
 
     useEffect(() => {
-        const savedTheme = localStorage.getItem('latexify-admin-theme') as 'indigo' | 'emerald' | 'rose' | null;
+        const savedTheme = localStorage.getItem('latexify-admin-theme') as Theme | null;
         const savedMode = localStorage.getItem('latexify-admin-mode');
 
         if (savedTheme) setCurrentTheme(savedTheme);
@@ -340,6 +343,7 @@ export default function AdminHelpPage() {
     useEffect(() => {
         localStorage.setItem('latexify-admin-theme', currentTheme);
         localStorage.setItem('latexify-admin-mode', isDarkMode ? 'dark' : 'light');
+        window.dispatchEvent(new Event('admin-theme-changed'));
     }, [currentTheme, isDarkMode]);
 
     const showToast = (type: 'success' | 'error', text: string) => {
@@ -351,7 +355,7 @@ export default function AdminHelpPage() {
         setIsThemeMenuOpen(!isThemeMenuOpen);
     };
 
-    const handleThemeSelect = (theme: 'indigo' | 'emerald' | 'rose') => {
+    const handleThemeSelect = (theme: Theme) => {
         setCurrentTheme(theme);
         setIsThemeMenuOpen(false);
     };
@@ -567,87 +571,6 @@ export default function AdminHelpPage() {
     return (
         <div className={`min-h-screen ${isDarkMode ? 'dark' : ''} transition-colors duration-500 font-body-md overflow-x-hidden`} style={{ backgroundColor: 'var(--color-admin-background)', color: 'var(--color-admin-on-background)' }}>
             
-            {/* Theme CSS Variables Injection */}
-            {currentTheme === 'indigo' && (
-                <style jsx global>{`
-                    :root {
-                        --color-admin-primary: #c3c0ff;
-                        --color-admin-primary-container: #4f46e5;
-                        --color-admin-on-primary-container: #dad7ff;
-                        --color-admin-secondary: #c0c1ff;
-                        --color-admin-secondary-container: #3131c0;
-                        --color-admin-on-secondary-container: #b0b2ff;
-                        --color-admin-tertiary: #ffb695;
-                        --color-admin-tertiary-container: #a44100;
-                        --color-admin-on-tertiary-container: #ffd2be;
-                        --color-admin-error: #ffb4ab;
-                        --color-admin-error-container: #93000a;
-                        --color-admin-on-error-container: #ffdad6;
-                    }
-                `}</style>
-            )}
-            {currentTheme === 'emerald' && (
-                <style jsx global>{`
-                    :root {
-                        --color-admin-primary: #6ee7b7;
-                        --color-admin-primary-container: #059669;
-                        --color-admin-on-primary-container: #d1fae5;
-                        --color-admin-secondary: #a7f3d0;
-                        --color-admin-secondary-container: #047857;
-                        --color-admin-on-secondary-container: #ecfdf5;
-                        --color-admin-tertiary: #fcd34d;
-                        --color-admin-tertiary-container: #b45309;
-                        --color-admin-on-tertiary-container: #fef3c7;
-                        --color-admin-error: #fca5a5;
-                        --color-admin-error-container: #b91c1c;
-                        --color-admin-on-error-container: #fee2e2;
-                    }
-                `}</style>
-            )}
-            {currentTheme === 'rose' && (
-                <style jsx global>{`
-                    :root {
-                        --color-admin-primary: #fda4af;
-                        --color-admin-primary-container: #e11d48;
-                        --color-admin-on-primary-container: #ffe4e6;
-                        --color-admin-secondary: #fecdd3;
-                        --color-admin-secondary-container: #be123c;
-                        --color-admin-on-secondary-container: #fff1f2;
-                        --color-admin-tertiary: #fde047;
-                        --color-admin-tertiary-container: #a16207;
-                        --color-admin-on-tertiary-container: #fef08a;
-                        --color-admin-error: #f87171;
-                        --color-admin-error-container: #991b1b;
-                        --color-admin-on-error-container: #fee2e2;
-                    }
-                `}</style>
-            )}
-
-            {!isDarkMode && (
-                <style jsx global>{`
-                    :root {
-                        --color-admin-background: #f8fafc !important;
-                        --color-admin-surface: #ffffff !important;
-                        --color-admin-surface-dim: #f1f5f9 !important;
-                        --color-admin-surface-bright: #ffffff !important;
-                        --color-admin-surface-container-lowest: #ffffff !important;
-                        --color-admin-surface-container-low: #f8fafc !important;
-                        --color-admin-surface-container: #f1f5f9 !important;
-                        --color-admin-surface-container-high: #e2e8f0 !important;
-                        --color-admin-surface-container-highest: #cbd5e1 !important;
-                        --color-admin-on-surface: #0f172a !important;
-                        --color-admin-on-surface-variant: #475569 !important;
-                        --color-admin-on-background: #0f172a !important;
-                        --color-admin-outline: #94a3b8 !important;
-                        --color-admin-outline-variant: #cbd5e1 !important;
-                        --color-admin-error: #ba1a1a !important;
-                        --color-admin-on-error: #ffffff !important;
-                        --color-admin-error-container: #ffdad6 !important;
-                        --color-admin-on-error-container: #410002 !important;
-                    }
-                `}</style>
-            )}
-
             {/* Toast Notification */}
             {toastMessage && (
               <div className="fixed top-20 right-6 z-[10000] px-6 py-3 rounded-xl shadow-2xl flex items-center gap-2 border font-bold text-sm transition-all"
@@ -687,18 +610,12 @@ export default function AdminHelpPage() {
                                 <div className="absolute right-0 mt-2 w-48 rounded-xl border shadow-xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2" style={{ backgroundColor: "var(--color-admin-surface-container-high)", borderColor: "var(--color-admin-outline-variant)" }}>
                                     <div className="p-2 flex flex-col gap-1">
                                         <div className="px-3 py-2 text-xs font-semibold tracking-wider uppercase opacity-70" style={{ color: "var(--color-admin-on-surface-variant)" }}>Accent Color</div>
-                                        <button onClick={() => handleThemeSelect('indigo')} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors w-full text-left" style={{ color: "var(--color-admin-on-surface)" }}>
-                                            <div className="w-4 h-4 rounded-full bg-indigo-500"></div> Indigo
-                                            {currentTheme === 'indigo' && <span className="material-symbols-outlined ml-auto text-[18px]">check</span>}
+                                        {ALL_THEMES.map((t) => (
+                                        <button key={t} onClick={() => handleThemeSelect(t)} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors w-full text-left" style={{ color: "var(--color-admin-on-surface)" }}>
+                                            <div className="w-4 h-4 rounded-full" style={{ backgroundColor: getAccentColor(t, isDarkMode) }}></div> {t.charAt(0).toUpperCase() + t.slice(1)}
+                                            {currentTheme === t && <span className="material-symbols-outlined ml-auto text-[18px]">check</span>}
                                         </button>
-                                        <button onClick={() => handleThemeSelect('emerald')} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors w-full text-left" style={{ color: "var(--color-admin-on-surface)" }}>
-                                            <div className="w-4 h-4 rounded-full bg-emerald-500"></div> Emerald
-                                            {currentTheme === 'emerald' && <span className="material-symbols-outlined ml-auto text-[18px]">check</span>}
-                                        </button>
-                                        <button onClick={() => handleThemeSelect('rose')} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors w-full text-left" style={{ color: "var(--color-admin-on-surface)" }}>
-                                            <div className="w-4 h-4 rounded-full bg-rose-500"></div> Rose
-                                            {currentTheme === 'rose' && <span className="material-symbols-outlined ml-auto text-[18px]">check</span>}
-                                        </button>
+                                        ))}
                                         
                                         <div className="h-px w-full my-1" style={{ backgroundColor: "var(--color-admin-outline-variant)" }}></div>
                                         

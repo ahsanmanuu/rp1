@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { createPb } from '@/lib/pb';
+import { Theme, themes, getAccentColor } from '@/components/AdminThemeStyles';
 
 interface EmailLog {
   id: string;
@@ -42,7 +43,7 @@ const EMAIL_TYPE_ICONS: Record<string, string> = {
 };
 
 export default function AdminEmailsPage() {
-  const [currentTheme, setCurrentTheme] = useState<'indigo' | 'emerald' | 'rose'>('indigo');
+  const [currentTheme, setCurrentTheme] = useState<Theme>('indigo');
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [adminName, setAdminName] = useState<string>('Admin Root');
@@ -103,7 +104,7 @@ export default function AdminEmailsPage() {
   useEffect(() => { setHydrated(true); }, []);
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem('latexify-admin-theme') as 'indigo' | 'emerald' | 'rose' | null;
+    const savedTheme = localStorage.getItem('latexify-admin-theme') as Theme | null;
     const savedMode = localStorage.getItem('latexify-admin-mode');
     if (savedTheme) setCurrentTheme(savedTheme);
     if (savedMode) setIsDarkMode(savedMode === 'dark');
@@ -133,6 +134,7 @@ export default function AdminEmailsPage() {
   useEffect(() => {
     localStorage.setItem('latexify-admin-theme', currentTheme);
     localStorage.setItem('latexify-admin-mode', isDarkMode ? 'dark' : 'light');
+    window.dispatchEvent(new Event('admin-theme-changed'));
   }, [currentTheme, isDarkMode]);
 
   useEffect(() => {
@@ -153,67 +155,13 @@ export default function AdminEmailsPage() {
   const totalFailed = Object.values(typeStats).reduce((sum, s) => sum + s.failed, 0);
 
   const toggleTheme = () => setIsThemeMenuOpen(!isThemeMenuOpen);
-  const handleThemeSelect = (theme: 'indigo' | 'emerald' | 'rose') => {
+  const handleThemeSelect = (theme: Theme) => {
     setCurrentTheme(theme);
     setIsThemeMenuOpen(false);
   };
 
   return (
     <div className="min-h-screen transition-colors duration-500" style={{ backgroundColor: 'var(--color-admin-background)', color: 'var(--color-admin-on-surface)' }}>
-      <style dangerouslySetInnerHTML={{ __html: `
-        :root {
-          ${isDarkMode ? `
-            --color-admin-primary: ${currentTheme === 'rose' ? '#fda4af' : currentTheme === 'emerald' ? '#6ee7b7' : '#c3c0ff'};
-            --color-admin-primary-container: ${currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#4f46e5'};
-            --color-admin-on-primary-container: ${currentTheme === 'rose' ? '#ffe4e6' : currentTheme === 'emerald' ? '#d1fae5' : '#dad7ff'};
-            --color-admin-secondary: ${currentTheme === 'rose' ? '#fecdd3' : currentTheme === 'emerald' ? '#a7f3d0' : '#c0c1ff'};
-            --color-admin-secondary-container: ${currentTheme === 'rose' ? '#be123c' : currentTheme === 'emerald' ? '#047857' : '#3131c0'};
-            --color-admin-on-secondary-container: ${currentTheme === 'rose' ? '#fff1f2' : currentTheme === 'emerald' ? '#ecfdf5' : '#b0b2ff'};
-            --color-admin-background: #0b1326;
-            --color-admin-surface: #0b1326;
-            --color-admin-surface-container: #171f33;
-            --color-admin-surface-container-low: #131b2e;
-            --color-admin-surface-container-high: #222a3d;
-            --color-admin-surface-container-highest: #2d3449;
-            --color-admin-on-surface: #dae2fd;
-            --color-admin-on-surface-variant: #c7c4d8;
-            --color-admin-outline: #918fa1;
-            --color-admin-outline-variant: #2d3449;
-            --color-admin-error: #ffb4ab;
-            --color-admin-on-error: #690005;
-            --color-admin-error-container: #93000a;
-            --color-admin-on-error-container: #ffdad6;
-            --color-admin-tertiary: #ffb695;
-            --color-admin-tertiary-container: #a44100;
-            --color-admin-on-tertiary-container: #ffd2be;
-          ` : `
-            --color-admin-primary: ${currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#4f46e5'};
-            --color-admin-primary-container: ${currentTheme === 'rose' ? '#ffe4e6' : currentTheme === 'emerald' ? '#d1fae5' : '#dad7ff'};
-            --color-admin-on-primary-container: ${currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#4f46e5'};
-            --color-admin-secondary: ${currentTheme === 'rose' ? '#fecdd3' : currentTheme === 'emerald' ? '#a7f3d0' : '#c0c1ff'};
-            --color-admin-secondary-container: ${currentTheme === 'rose' ? '#ffe4e6' : currentTheme === 'emerald' ? '#d1fae5' : '#e0e7ff'};
-            --color-admin-on-secondary-container: ${currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#3730a3'};
-            --color-admin-background: #f8fafc;
-            --color-admin-surface: #ffffff;
-            --color-admin-surface-container: #f1f5f9;
-            --color-admin-surface-container-low: #f8fafc;
-            --color-admin-surface-container-high: #e2e8f0;
-            --color-admin-surface-container-highest: #cbd5e1;
-            --color-admin-on-surface: #0f172a;
-            --color-admin-on-surface-variant: #475569;
-            --color-admin-outline: #94a3b8;
-            --color-admin-outline-variant: #e2e8f0;
-            --color-admin-error: #ba1a1a;
-            --color-admin-on-error: #ffffff;
-            --color-admin-error-container: #ffdad6;
-            --color-admin-on-error-container: #410002;
-            --color-admin-tertiary: #f59e0b;
-            --color-admin-tertiary-container: #fffbeb;
-            --color-admin-on-tertiary-container: #92400e;
-          `}
-        }
-      `}} />
-
       {toastMessage && (
         <div className="fixed top-20 right-6 z-[10000] px-6 py-3 rounded-xl shadow-2xl flex items-center gap-2 border font-bold text-sm transition-all"
           style={{
@@ -323,16 +271,12 @@ export default function AdminEmailsPage() {
               </button>
               {isThemeMenuOpen && (
                 <div className="absolute right-0 mt-2 w-48 rounded-xl border shadow-xl overflow-hidden z-50" style={{ backgroundColor: 'var(--color-admin-surface-container-high)', borderColor: 'var(--color-admin-outline-variant)' }}>
-                  <div className="p-2 flex flex-col gap-1">
-                    <button onClick={() => handleThemeSelect('indigo')} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors w-full text-left" style={{ color: 'var(--color-admin-on-surface)' }}>
-                      <span className="w-4 h-4 rounded-full bg-indigo-500"></span><span className="text-sm">Indigo</span>
-                    </button>
-                    <button onClick={() => handleThemeSelect('emerald')} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors w-full text-left" style={{ color: 'var(--color-admin-on-surface)' }}>
-                      <span className="w-4 h-4 rounded-full bg-emerald-500"></span><span className="text-sm">Emerald</span>
-                    </button>
-                    <button onClick={() => handleThemeSelect('rose')} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors w-full text-left" style={{ color: 'var(--color-admin-on-surface)' }}>
-                      <span className="w-4 h-4 rounded-full bg-rose-500"></span><span className="text-sm">Rose</span>
-                    </button>
+                  <div className="p-2 flex flex-col gap-1 max-h-80 overflow-y-auto">
+                    {(Object.keys(themes) as Theme[]).map((t) => (
+                      <button key={t} onClick={() => handleThemeSelect(t)} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors w-full text-left" style={{ color: 'var(--color-admin-on-surface)' }}>
+                        <span className="w-4 h-4 rounded-full" style={{ backgroundColor: themes[t].primary }}></span><span className="text-sm capitalize">{t}{t === 'indigo' ? ' (Default)' : ''}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}

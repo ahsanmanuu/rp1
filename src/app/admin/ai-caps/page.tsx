@@ -19,6 +19,9 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line
 } from 'recharts';
+import { Theme, themes, getAccentColor } from "@/components/AdminThemeStyles";
+
+const ALL_THEMES: Theme[] = ['indigo', 'emerald', 'rose', 'violet', 'amber', 'cyan', 'sky', 'pink', 'orange', 'lime', 'teal', 'fuchsia', 'red', 'yellow', 'stone', 'zinc'];
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface CapPlan {
@@ -173,7 +176,7 @@ function getCardColor(color: string, isDark: boolean): string {
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function AdminAiCapsPage() {
   // ── Theme State ──
-  const [currentTheme, setCurrentTheme] = useState<'indigo' | 'emerald' | 'rose'>('indigo');
+  const [currentTheme, setCurrentTheme] = useState<Theme>('indigo');
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [adminName, setAdminName] = useState<string>('Admin Root');
@@ -243,7 +246,7 @@ export default function AdminAiCapsPage() {
 
   // ── Theme Effect ──
   useEffect(() => {
-    const savedTheme = localStorage.getItem('latexify-admin-theme') as 'indigo' | 'emerald' | 'rose' | null;
+    const savedTheme = localStorage.getItem('latexify-admin-theme') as Theme | null;
     const savedMode = localStorage.getItem('latexify-admin-mode');
     if (savedTheme) setCurrentTheme(savedTheme);
     if (savedMode) setIsDarkMode(savedMode === 'dark');
@@ -254,6 +257,7 @@ export default function AdminAiCapsPage() {
   useEffect(() => {
     localStorage.setItem('latexify-admin-theme', currentTheme);
     localStorage.setItem('latexify-admin-mode', isDarkMode ? 'dark' : 'light');
+    window.dispatchEvent(new Event('admin-theme-changed'));
   }, [currentTheme, isDarkMode]);
 
   // ── Toast ──
@@ -899,73 +903,7 @@ export default function AdminAiCapsPage() {
       className="min-h-screen transition-colors duration-500"
       style={{ backgroundColor: 'var(--color-admin-background)', color: 'var(--color-admin-on-background)' }}
     >
-      {/* ── Theme CSS Variables ── */}
-      {currentTheme === 'indigo' && (
-        <style jsx global>{`
-          :root {
-            --color-admin-primary: #c3c0ff;
-            --color-admin-primary-container: #4f46e5;
-            --color-admin-on-primary-container: #dad7ff;
-            --color-admin-secondary: #c0c1ff;
-            --color-admin-secondary-container: #3131c0;
-            --color-admin-on-secondary-container: #b0b2ff;
-          }
-        `}</style>
-      )}
-      {currentTheme === 'emerald' && (
-        <style jsx global>{`
-          :root {
-            --color-admin-primary: #6ee7b7;
-            --color-admin-primary-container: #059669;
-            --color-admin-on-primary-container: #d1fae5;
-            --color-admin-secondary: #a7f3d0;
-            --color-admin-secondary-container: #047857;
-            --color-admin-on-secondary-container: #ecfdf5;
-          }
-        `}</style>
-      )}
-      {currentTheme === 'rose' && (
-        <style jsx global>{`
-          :root {
-            --color-admin-primary: #fda4af;
-            --color-admin-primary-container: #e11d48;
-            --color-admin-on-primary-container: #ffe4e6;
-            --color-admin-secondary: #fecdd3;
-            --color-admin-secondary-container: #be123c;
-            --color-admin-on-secondary-container: #fff1f2;
-          }
-        `}</style>
-      )}
-      {!isDarkMode && (
-        <style jsx global>{`
-          :root {
-            --color-admin-background: #f8fafc !important;
-            --color-admin-surface: #ffffff !important;
-            --color-admin-surface-dim: #f1f5f9 !important;
-            --color-admin-surface-bright: #ffffff !important;
-            --color-admin-surface-container-lowest: #ffffff !important;
-            --color-admin-surface-container-low: #f8fafc !important;
-            --color-admin-surface-container: #f1f5f9 !important;
-            --color-admin-surface-container-high: #e2e8f0 !important;
-            --color-admin-surface-container-highest: #cbd5e1 !important;
-            --color-admin-on-surface: #0f172a !important;
-            --color-admin-on-surface-variant: #334155 !important;
-            --color-admin-on-background: #0f172a !important;
-            --color-admin-outline: #94a3b8 !important;
-            --color-admin-outline-variant: #cbd5e1 !important;
-            --color-admin-error: #ba1a1a !important;
-            --color-admin-on-error: #ffffff !important;
-
-            /* Theme overrides for Light Mode */
-            --color-admin-primary: ${currentTheme === 'indigo' ? '#4f46e5' : currentTheme === 'emerald' ? '#059669' : '#e11d48'} !important;
-            --color-admin-primary-container: ${currentTheme === 'indigo' ? '#e0e7ff' : currentTheme === 'emerald' ? '#d1fae5' : '#ffe4e6'} !important;
-            --color-admin-on-primary-container: ${currentTheme === 'indigo' ? '#1e1b4b' : currentTheme === 'emerald' ? '#064e3b' : '#4c0519'} !important;
-            --color-admin-secondary: ${currentTheme === 'indigo' ? '#6366f1' : currentTheme === 'emerald' ? '#10b981' : '#f43f5e'} !important;
-            --color-admin-secondary-container: ${currentTheme === 'indigo' ? '#e0e7ff' : currentTheme === 'emerald' ? '#ecfdf5' : '#fff1f2'} !important;
-            --color-admin-on-secondary-container: ${currentTheme === 'indigo' ? '#312e81' : currentTheme === 'emerald' ? '#065f46' : '#9f1239'} !important;
-          }
-        `}</style>
-      )}
+      {/* ── Theme CSS Variables (handled by AdminThemeStyles) ── */}
 
       {/* ── Toast ── */}
       <AnimatePresence>
@@ -1093,11 +1031,12 @@ export default function AdminAiCapsPage() {
                   <div className="p-2 flex flex-col gap-1">
                     <div className="px-3 py-2 text-xs font-semibold tracking-wider uppercase opacity-70"
                       style={{ color: 'var(--color-admin-on-surface-variant)' }}>Accent Color</div>
-                    {(['indigo', 'emerald', 'rose'] as const).map(t => (
+                    <div className="flex flex-col gap-1 max-h-64 overflow-y-auto custom-scrollbar">
+                    {(Object.keys(themes) as Theme[]).map(t => (
                       <button key={t} onClick={() => { setCurrentTheme(t); setIsThemeMenuOpen(false); }}
                         className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-black/10 w-full text-left"
                         style={{ color: 'var(--color-admin-on-surface)' }}>
-                        <div className={`w-4 h-4 rounded-full bg-${t}-500`}></div>
+                        <div className="w-4 h-4 rounded-full" style={{ backgroundColor: getAccentColor(t, isDarkMode) }}></div>
                         {t.charAt(0).toUpperCase() + t.slice(1)}
                         {currentTheme === t && <span className="material-symbols-outlined ml-auto text-[18px]">check</span>}
                       </button>
@@ -1109,6 +1048,7 @@ export default function AdminAiCapsPage() {
                       <span className="material-symbols-outlined text-[18px]">{isDarkMode ? 'light_mode' : 'dark_mode'}</span>
                       {isDarkMode ? 'Light Mode' : 'Dark Mode'}
                     </button>
+                    </div>
                   </div>
                 </div>
               )}

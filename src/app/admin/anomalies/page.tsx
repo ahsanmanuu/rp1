@@ -3,6 +3,9 @@ import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { createPb } from "@/lib/pb";
+import { Theme, themes, getAccentColor } from "@/components/AdminThemeStyles";
+
+const ALL_THEMES: Theme[] = ['indigo', 'emerald', 'rose', 'violet', 'amber', 'cyan', 'sky', 'pink', 'orange', 'lime', 'teal', 'fuchsia', 'red', 'yellow', 'stone', 'zinc'];
 
 const SEVERITY_COLORS: Record<string, string> = {
   critical: "#ef4444",
@@ -49,7 +52,7 @@ const TYPE_ICONS: Record<string, string> = {
 };
 
 export default function AdminAnomaliesPage() {
-  const [currentTheme, setCurrentTheme] = useState<"indigo" | "emerald" | "rose">("indigo");
+  const [currentTheme, setCurrentTheme] = useState<Theme>("indigo");
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [adminName, setAdminName] = useState("Admin Root");
@@ -132,7 +135,7 @@ export default function AdminAnomaliesPage() {
   };
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem("latexify-admin-theme") as "indigo" | "emerald" | "rose" | null;
+    const savedTheme = localStorage.getItem("latexify-admin-theme") as Theme | null;
     const savedMode = localStorage.getItem("latexify-admin-mode");
     if (savedTheme) setCurrentTheme(savedTheme);
     if (savedMode) setIsDarkMode(savedMode === "dark");
@@ -144,6 +147,7 @@ export default function AdminAnomaliesPage() {
   useEffect(() => {
     localStorage.setItem("latexify-admin-theme", currentTheme);
     localStorage.setItem("latexify-admin-mode", isDarkMode ? "dark" : "light");
+    window.dispatchEvent(new Event('admin-theme-changed'));
   }, [currentTheme, isDarkMode]);
 
   useEffect(() => {
@@ -172,53 +176,11 @@ export default function AdminAnomaliesPage() {
 
   const chartTextColor = isDarkMode ? "#94a3b8" : "#475569";
   const chartGridColor = isDarkMode ? "#1e293b" : "#e2e8f0";
+  const accentColor = getAccentColor(currentTheme, isDarkMode);
 
   return (
     <div className="transition-colors duration-500" style={{ backgroundColor: "var(--color-admin-background)", color: "var(--color-admin-on-background)" }}>
       <style jsx global>{`
-        :root {
-          ${isDarkMode ? `
-            --color-admin-primary: ${currentTheme === "rose" ? "#fda4af" : currentTheme === "emerald" ? "#6ee7b7" : "#c3c0ff"};
-            --color-admin-primary-container: ${currentTheme === "rose" ? "#e11d48" : currentTheme === "emerald" ? "#059669" : "#4f46e5"};
-            --color-admin-on-primary-container: ${currentTheme === "rose" ? "#ffe4e6" : currentTheme === "emerald" ? "#d1fae5" : "#dad7ff"};
-            --color-admin-secondary: ${currentTheme === "rose" ? "#fecdd3" : currentTheme === "emerald" ? "#a7f3d0" : "#c0c1ff"};
-            --color-admin-secondary-container: ${currentTheme === "rose" ? "#be123c" : currentTheme === "emerald" ? "#047857" : "#3131c0"};
-            --color-admin-on-secondary-container: ${currentTheme === "rose" ? "#fff1f2" : currentTheme === "emerald" ? "#ecfdf5" : "#b0b2ff"};
-            --color-admin-background: #0b1326;
-            --color-admin-surface: #0b1326;
-            --color-admin-surface-container: #171f33;
-            --color-admin-surface-container-low: #131b2e;
-            --color-admin-surface-container-high: #222a3d;
-            --color-admin-surface-container-highest: #2d3449;
-            --color-admin-on-surface: #dae2fd;
-            --color-admin-on-surface-variant: #c7c4d8;
-            --color-admin-outline: #918fa1;
-            --color-admin-outline-variant: #464555;
-            --color-admin-error: #ffb4ab;
-            --color-admin-error-container: #93000a;
-            --color-admin-on-error: #690005;
-          ` : `
-            --color-admin-primary: ${currentTheme === "rose" ? "#e11d48" : currentTheme === "emerald" ? "#059669" : "#4f46e5"};
-            --color-admin-primary-container: ${currentTheme === "rose" ? "#ffe4e6" : currentTheme === "emerald" ? "#d1fae5" : "#e0e7ff"};
-            --color-admin-on-primary-container: ${currentTheme === "rose" ? "#4c0519" : currentTheme === "emerald" ? "#022c22" : "#1e1b4b"};
-            --color-admin-secondary: ${currentTheme === "rose" ? "#f43f5e" : currentTheme === "emerald" ? "#10b981" : "#6366f1"};
-            --color-admin-secondary-container: ${currentTheme === "rose" ? "#ffe4e6" : currentTheme === "emerald" ? "#d1fae5" : "#e0e7ff"};
-            --color-admin-on-secondary-container: ${currentTheme === "rose" ? "#4c0519" : currentTheme === "emerald" ? "#022c22" : "#1e1b4b"};
-            --color-admin-background: #f8fafc;
-            --color-admin-surface: #ffffff;
-            --color-admin-surface-container: #f1f5f9;
-            --color-admin-surface-container-low: #f8fafc;
-            --color-admin-surface-container-high: #e2e8f0;
-            --color-admin-surface-container-highest: #cbd5e1;
-            --color-admin-on-surface: #0f172a;
-            --color-admin-on-surface-variant: #475569;
-            --color-admin-outline: #94a3b8;
-            --color-admin-outline-variant: #cbd5e1;
-            --color-admin-error: #ba1a1a;
-            --color-admin-error-container: #ffdad6;
-            --color-admin-on-error: #ffffff;
-          `}
-        }
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--color-admin-outline-variant); border-radius: 4px; }
@@ -296,9 +258,9 @@ export default function AdminAnomaliesPage() {
                 <div className="absolute right-0 mt-2 w-48 rounded-xl border shadow-xl overflow-hidden z-50" style={{ backgroundColor: "var(--color-admin-surface-container-high)", borderColor: "var(--color-admin-outline-variant)" }}>
                   <div className="p-2 flex flex-col gap-1">
                     <div className="px-3 py-2 text-xs font-semibold tracking-wider uppercase opacity-70" style={{ color: "var(--color-admin-on-surface-variant)" }}>Accent Color</div>
-                    {(["indigo", "emerald", "rose"] as const).map((t) => (
+                    {ALL_THEMES.map((t) => (
                       <button key={t} onClick={() => { setCurrentTheme(t); setIsThemeMenuOpen(false); }} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors w-full text-left" style={{ color: "var(--color-admin-on-surface)" }}>
-                        <div className={`w-4 h-4 rounded-full ${t === "indigo" ? "bg-indigo-500" : t === "emerald" ? "bg-emerald-500" : "bg-rose-500"}`}></div>
+                        <div className="w-4 h-4 rounded-full" style={{ backgroundColor: getAccentColor(t, isDarkMode) }}></div>
                         {t.charAt(0).toUpperCase() + t.slice(1)}
                         {currentTheme === t && <span className="material-symbols-outlined ml-auto text-[18px]">check</span>}
                       </button>
