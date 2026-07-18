@@ -43,11 +43,22 @@ export function prepareStructuredPayload(files: FilePayload[], mainFile: string)
   };
 }
 
+const STANDARD_CLASSES = new Set([
+  'article', 'report', 'book', 'letter', 'proc', 'minimal', 'memoir',
+  'scrartcl', 'scrreprt', 'scrbook', 'amsart', 'smplart', 'beamer',
+]);
+
 export function robustPreambleInjector(content: string): string {
   if (!content) return content;
   let modified = breakLongWords(content);
   if (!/\\documentclass\b/.test(modified)) return modified;
-  
+
+  // Detect custom/template document classes — skip harmonization & package injection
+  // for classes like nature, IEEEtran, acmart, elsarticle, etc. that ship their own preambles.
+  const _dcMatch = modified.match(/\\documentclass\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/);
+  const _isCustomClass = _dcMatch ? !STANDARD_CLASSES.has(_dcMatch[1].toLowerCase()) : false;
+
+  if (!_isCustomClass) {
   // 1. NUCLEAR 30.0 GLOBAL HARMONIZATION (\zimg Support)
   if (!modified.includes('NuclearTrackerV30')) {
      const _B = "\u005c"; // Literal backslash
@@ -194,6 +205,7 @@ ${_B}fi
       }
     }
   }
+  } // end !_isCustomClass guard
 
   // 3. PHANTOM ARTIFACT SIEVE (runs BEFORE overflow guards so sieve can't strip them)
   modified = applyFinalSanitizationSieve(modified);

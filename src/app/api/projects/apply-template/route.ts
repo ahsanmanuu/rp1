@@ -111,6 +111,7 @@ export async function POST(req: Request) {
     console.time(`[LATEX_SYNC] ${projectId}`);
     let fullLatex = "";
     let extractedComponents: Record<string, string> = {};
+    let usedOriginalTemplate = false;
     
     // The "Structured Content" in DB is our "Local Memory" / Source of Truth.
     // We assemble from this MODEL to ensure no components are lost due to re-parsing noise.
@@ -187,6 +188,7 @@ export async function POST(req: Request) {
         fullLatex = templateMainTex || "";
         extractedComponents = {};
         structured = {};
+        usedOriginalTemplate = true;
     }
     
     // Safety check: if main.tex is still empty but we have a main.tex in assets, use it
@@ -195,6 +197,7 @@ export async function POST(req: Request) {
         if (fs.existsSync(mainPath)) {
             console.log(`[LATEX_SYNC] Main file still empty. Falling back to template main.tex...`);
             fullLatex = fs.readFileSync(mainPath, 'utf-8');
+            usedOriginalTemplate = true;
         }
     }
 
@@ -307,7 +310,7 @@ export async function POST(req: Request) {
     }
 
     const finalLatex = fullLatex || "";
-    const healedLatex = finalLatex ? autoHealLatex(finalLatex) : "";
+    const healedLatex = (finalLatex && !usedOriginalTemplate) ? autoHealLatex(finalLatex) : finalLatex;
 
     // Update project with the template and refreshed statistics
     // PB JSON fields expect raw objects, not strings. status must be a valid PB select value.
