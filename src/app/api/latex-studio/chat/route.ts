@@ -4,7 +4,12 @@ import { getClientGeoInfo } from '@/lib/clientGeo';
 
 import { getServerSession } from "@/lib/auth-pb";
 export async function POST(req: NextRequest) {
-  const session = await getServerSession();
+  let session: any = null;
+  try {
+    session = await getServerSession();
+  } catch (authErr) {
+    console.error('[AUTH_ERROR] chat:', authErr);
+  }
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
