@@ -15,18 +15,19 @@
 
 import PocketBase from 'pocketbase';
 
-if (typeof window === 'undefined') {
-  try {
-    const { setGlobalDispatcher, Agent } = require('undici');
-    setGlobalDispatcher(new Agent({
-      connections: 50,
-      pipelining: 5,
-    }));
-    console.log('[PB System] undici global connection pool size configured to 50');
-  } catch (err: any) {
-    console.warn('[PB System] Failed to configure undici global dispatcher:', err?.message || err);
-  }
-}
+// if (typeof window === 'undefined') {
+//   try {
+//     const { setGlobalDispatcher, Agent } = require('undici');
+//     setGlobalDispatcher(new Agent({
+//       connections: 50,
+//       pipelining: 5,
+//     }));
+//     console.log('[PB System] undici global connection pool size configured to 50');
+//   } catch (err: any) {
+//     console.warn('[PB System] Failed to configure undici global dispatcher:', err?.message || err);
+//   }
+// }
+
 
 const PB_URL = process.env.POCKETBASE_URL || (typeof window !== 'undefined' ? '/pb' : 'http://127.0.0.1:8090');
 

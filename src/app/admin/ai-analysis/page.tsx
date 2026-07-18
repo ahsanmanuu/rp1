@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import AdminSidebar from "@/components/AdminSidebar";
+
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -160,66 +162,8 @@ export default function AdminAiAnalysisPage() {
         .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--color-admin-outline-variant); border-radius: 4px; }
       `}</style>
 
-      {/* Sidebar */}
-      <aside className="flex flex-col p-4 gap-2 fixed h-screen w-64 left-0 top-0 border-r z-50" style={{ backgroundColor: 'var(--color-admin-surface-container)', borderColor: 'var(--color-admin-outline-variant)' }}>
-        <div className="flex flex-col items-center gap-1 px-2 mb-6 mt-2 text-center">
-          <Image src="/logo.png" alt="Latexify Logo" width={0} height={0} sizes="100%" className="w-48 h-12 object-contain" style={{ filter: isDarkMode ? 'brightness(0) invert(1)' : 'none' }} />
-          <p className="text-[10px] font-bold uppercase tracking-wider opacity-85 mt-1" style={{ color: 'var(--color-admin-primary)' }}>Admin Console</p>
-        </div>
-        <nav className="flex flex-col gap-1 overflow-y-auto custom-scrollbar">
-          <Link href="/admin/dashboard" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-all rounded-lg" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
-            <span className="material-symbols-outlined">dashboard</span>Dashboard
-          </Link>
-          <Link href="/admin/billings" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-all" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
-            <span className="material-symbols-outlined">payments</span>Bill and Payments
-          </Link>
-          <Link href="/admin/users" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-all" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
-            <span className="material-symbols-outlined">group</span>Users
-          </Link>
-          <Link href="/admin/profile" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-all" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
-            <span className="material-symbols-outlined">settings</span>Profile and Plan Setting
-          </Link>
-          <Link href="/admin/ai-caps" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-all" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
-            <span className="material-symbols-outlined">speed</span>AI Usage & Caps Rules
-          </Link>
-          <a className="flex items-center gap-3 px-4 py-3 text-sm rounded-lg transition-all translate-x-1 duration-200 shadow-sm" style={{ backgroundColor: 'var(--color-admin-secondary-container)', color: 'var(--color-admin-on-secondary-container)' }} href="#">
-            <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>psychology</span>AI Analysis
-          </a>
-          <Link href="/admin/anomalies" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-all" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
-            <span className="material-symbols-outlined">warning</span>Anomaly Center
-          </Link>
-          <Link href="/admin/help" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-all" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
-            <span className="material-symbols-outlined">help</span>Help and Support
-          </Link>
-          <Link href="/admin/offers" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-all" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
-            <span className="material-symbols-outlined">local_offer</span>Offers
-          </Link>
-          <Link href="/admin/general-queries" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-all" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
-            <span className="material-symbols-outlined">forum</span>General Queries
-          </Link>
-          <Link href="/admin/emails" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-all" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
-            <span className="material-symbols-outlined">mail</span>Email History
-          </Link>
-          <Link href="/admin/social-media" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-all" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
-            <span className="material-symbols-outlined">share</span>Social Media
-          </Link>
-          <Link href="/admin/tax-calculation" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-all" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
-            <span className="material-symbols-outlined">calculate</span>Tax Calculation
-          </Link>
-          <div className="border-t my-2" style={{ borderColor: 'var(--color-admin-outline-variant)' }}></div>
-          <a href="/pb/_/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-all rounded-lg"
-            style={{ color: 'var(--color-admin-primary)' }}>
-            <span className="material-symbols-outlined">database</span>PB Dashboard
-          </a>
-        </nav>
-        <div className="mt-auto p-4 rounded-xl border text-sm" style={{ backgroundColor: 'var(--color-admin-surface-container-low)', borderColor: 'var(--color-admin-outline-variant)' }}>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: 'var(--color-admin-primary)' }}></div>
-            <span style={{ color: 'var(--color-admin-primary)' }}>System Online</span>
-          </div>
-          <p className="text-xs" style={{ color: 'var(--color-admin-on-surface-variant)' }}>Version 4.2.0-stable</p>
-        </div>
-      </aside>
+      <AdminSidebar isDarkMode={isDarkMode} adminName={adminName} />
+
 
       {/* Main */}
       <main className="ml-0 lg:ml-64 flex flex-col min-h-screen">

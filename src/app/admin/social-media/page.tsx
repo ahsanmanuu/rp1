@@ -7,7 +7,9 @@ import { usePathname } from 'next/navigation';
 import { createPb } from '@/lib/pb';
 import { useSiteLogo } from '@/lib/useSiteLogo';
 import ProLoader from '@/components/ProLoader';
+import AdminSidebar from '@/components/AdminSidebar';
 import { Theme, themes, getAccentColor } from '@/components/AdminThemeStyles';
+
 
 const TOOL_TITLES = [
   'Latexify Dashboard', 'Doc2LaTeX Studio', 'Diagram Studio',
@@ -1342,38 +1344,8 @@ export default function AdminSocialMediaPage() {
       />
 
       <div className="flex h-screen">
-        <aside className="flex flex-col h-full p-4 gap-2 fixed h-screen w-64 left-0 top-0 border-r z-50 transition-colors duration-500"
-          style={{ backgroundColor: 'var(--color-admin-surface-container)', borderColor: 'var(--color-admin-outline-variant)' }}>
-          <div className="flex flex-col items-center gap-1 px-2 mb-6 mt-2 text-center">
-            <Image src="/logo.png" alt="Latexify Logo" width={0} height={0} sizes="100%" className="w-48 h-12 object-contain"
-              style={{ filter: isDarkMode ? 'brightness(0) invert(1)' : 'none' }} />
-            <p className="text-[10px] font-bold uppercase tracking-wider opacity-85 mt-1"
-              style={{ color: 'var(--color-admin-primary)' }}>Admin Console</p>
-          </div>
-          <nav className="flex flex-col gap-1 overflow-y-auto custom-scrollbar">
-            {SIDEBAR_LINKS.map(item => (
-              <Link key={item.href} href={item.href}
-                className="flex items-center gap-3 px-4 py-3 text-sm rounded-lg transition-all"
-                style={{ color: pathname === item.href ? 'var(--color-admin-on-secondary-container)' : 'var(--color-admin-on-surface-variant)', backgroundColor: pathname === item.href ? 'var(--color-admin-secondary-container)' : 'transparent' }}>
-                <span className="material-symbols-outlined" style={pathname === item.href ? { fontVariationSettings: "'FILL' 1" } : {}}>{item.icon}</span>
-                {item.label}
-              </Link>
-            ))}
-            <div className="border-t my-2" style={{ borderColor: 'var(--color-admin-outline-variant)' }}></div>
-            <a href="/pb/_/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-all rounded-lg"
-              style={{ color: 'var(--color-admin-primary)' }}>
-              <span className="material-symbols-outlined">database</span>PB Dashboard
-            </a>
-          </nav>
-          <div className="mt-auto p-4 rounded-xl border text-sm"
-            style={{ backgroundColor: 'var(--color-admin-surface-container-low)', borderColor: 'var(--color-admin-outline-variant)' }}>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: 'var(--color-admin-primary)' }}></div>
-              <span style={{ color: 'var(--color-admin-primary)' }}>System Online</span>
-            </div>
-            <p className="text-xs" style={{ color: 'var(--color-admin-on-surface-variant)' }}>Version 4.2.0-stable</p>
-          </div>
-        </aside>
+        <AdminSidebar isDarkMode={isDarkMode} adminName={adminName} />
+
 
         <main className="ml-0 lg:ml-64 min-h-screen pt-24 pb-12">
           <header className="flex justify-between items-center fixed top-0 left-64 right-0 px-6 py-4 border-b z-40 transition-colors duration-500" style={{ backgroundColor: 'var(--color-admin-surface)', borderColor: 'var(--color-admin-outline-variant)' }}>
