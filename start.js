@@ -198,8 +198,8 @@ async function startPocketBase() {
       pbProcess.on('exit', (code) => {
         log(`PocketBase exited with code ${code}`);
         pbProcess = null;
-        if (code !== 0 && !pbResolved) {
-          log('PocketBase crashed before ready — will retry in 5s...');
+        if (!pbResolved) {
+          log(`PocketBase exited before ready (code ${code}) — will retry in 5s...`);
           setTimeout(spawnPocketBase, 5000);
         }
       });
