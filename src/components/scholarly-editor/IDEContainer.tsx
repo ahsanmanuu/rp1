@@ -487,7 +487,18 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
       formData.append("file", file);
       
       const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
-      const uploadData = await uploadRes.json();
+      
+      let uploadData: any = {};
+      const resText = await uploadRes.text();
+      try {
+        if (resText.trim().startsWith('{')) {
+          uploadData = JSON.parse(resText);
+        } else {
+          throw new Error(`Server Error (${uploadRes.status}): Invalid response format.`);
+        }
+      } catch (e: any) {
+        throw new Error(e.message || `Server Error (${uploadRes.status}): Invalid response format.`);
+      }
       
       if (!uploadRes.ok) throw new Error(uploadData.error || "Conversion failed");
 
