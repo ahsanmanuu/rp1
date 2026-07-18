@@ -1045,7 +1045,7 @@ export default function AdminUsersPage() {
               {isThemeMenuOpen && (
                 <div className="absolute right-0 mt-2 w-48 rounded-xl border shadow-xl overflow-hidden"
                   style={{ backgroundColor: 'var(--color-admin-surface-container-high)', borderColor: 'var(--color-admin-outline-variant)' }}>
-                  <div className="p-2 flex flex-col gap-1">
+                  <div className="p-2 flex flex-col gap-1 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
                     <div className="px-3 py-2 text-xs font-semibold tracking-wider uppercase opacity-70"
                       style={{ color: 'var(--color-admin-on-surface-variant)' }}>Accent Color</div>
                     {(['indigo', 'emerald', 'rose', 'violet', 'amber', 'cyan', 'sky', 'pink', 'orange', 'lime', 'teal', 'fuchsia', 'red', 'yellow', 'stone', 'zinc'] as const).map(t => (

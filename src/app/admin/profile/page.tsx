@@ -507,7 +507,7 @@ export default function AdminProfilePage() {
                   Accent Color
                 </p>
               </div>
-              <div className="p-1">
+              <div className="p-1 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
                 {(Object.keys(themes) as Theme[]).map((t) => (
                   <button
                     key={t}

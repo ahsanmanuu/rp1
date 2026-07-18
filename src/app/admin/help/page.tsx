@@ -608,7 +608,7 @@ export default function AdminHelpPage() {
                             {/* Theme Menu Dropdown */}
                             {isThemeMenuOpen && (
                                 <div className="absolute right-0 mt-2 w-48 rounded-xl border shadow-xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2" style={{ backgroundColor: "var(--color-admin-surface-container-high)", borderColor: "var(--color-admin-outline-variant)" }}>
-                                    <div className="p-2 flex flex-col gap-1">
+                                    <div className="p-2 flex flex-col gap-1 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
                                         <div className="px-3 py-2 text-xs font-semibold tracking-wider uppercase opacity-70" style={{ color: "var(--color-admin-on-surface-variant)" }}>Accent Color</div>
                                         {ALL_THEMES.map((t) => (
                                         <button key={t} onClick={() => handleThemeSelect(t)} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors w-full text-left" style={{ color: "var(--color-admin-on-surface)" }}>

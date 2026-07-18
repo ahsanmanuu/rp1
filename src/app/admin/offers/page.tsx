@@ -470,7 +470,7 @@ export default function AdminOffersPage() {
                             </button>
                             {/* Theme Menu Dropdown */}
                             {isThemeMenuOpen && (
-                                <div className="absolute right-0 mt-2 w-48 rounded-xl border shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 z-50 p-2" style={{ backgroundColor: "var(--color-admin-surface-container-high)", borderColor: "var(--color-admin-outline-variant)" }}>
+                                <div className="absolute right-0 mt-2 w-48 max-h-[calc(100vh-200px)] overflow-y-auto rounded-xl border shadow-xl z-50 animate-in fade-in slide-in-from-top-2 custom-scrollbar" style={{ backgroundColor: "var(--color-admin-surface-container-high)", borderColor: "var(--color-admin-outline-variant)" }}>
                                     <p className="text-[10px] font-bold uppercase mb-2 px-2" style={{ color: "var(--color-admin-on-surface-variant)" }}>Theme Accent</p>
                                     <div className="grid grid-cols-4 gap-2 px-1 pb-1">
                                         {ALL_THEMES.map(t => (
