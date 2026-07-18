@@ -136,10 +136,11 @@ function mergeWithFallback(fetched: HomeData): HomeData {
 
 async function fetchAllCollections(): Promise<HomeData> {
   try {
-    const res = await fetch('/api/content/homepage', { 
+    const res = await fetch('/api/content/homepage', {
       cache: 'no-store',
-      signal: AbortSignal.timeout(10_000), // 10s timeout
+      signal: AbortSignal.timeout(10_000),
     });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
     if (json.success && json.data) {
       return mergeWithFallback(json.data);
