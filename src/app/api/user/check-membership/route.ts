@@ -24,7 +24,7 @@ async function ensureStatusFieldsInPb() {
             type: 'text',
             required: false,
             presentable: false,
-          });
+          } as any);
           await pb.collections.update(coll.id, coll);
           console.log(`[INIT] Programmatically added status field to PocketBase collection: ${cName}`);
         }

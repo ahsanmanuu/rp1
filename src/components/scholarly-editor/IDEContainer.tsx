@@ -542,6 +542,43 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
     }
   };
 
+  const handleDeleteFile = async (path: string) => {
+    if (!window.confirm(`Are you sure you want to delete ${path}?`)) return;
+    try {
+      if (fs && projectId) {
+        await fs.deleteFile(projectId, path);
+        const newList = await fs.listFiles(projectId);
+        setFiles(newList);
+        if (activeFile === path) {
+          setActiveFile('main.tex');
+          const main = newList.find(f => f.path === 'main.tex');
+          if (main) setCode(main.content);
+        }
+        toast.success("File deleted");
+      }
+    } catch (e: any) {
+      toast.error("Delete failed: " + e.message);
+    }
+  };
+
+  const handleRenameFile = async (oldPath: string) => {
+    const newName = window.prompt("Rename file path:", oldPath);
+    if (!newName || newName.trim() === "" || newName === oldPath) return;
+    try {
+      if (fs && projectId) {
+        await fs.renameFile(projectId, oldPath, newName.trim());
+        toast.success("File renamed");
+        const newList = await fs.listFiles(projectId);
+        setFiles(newList);
+        if (activeFile === oldPath) {
+          setActiveFile(newName.trim());
+        }
+      }
+    } catch (e: any) {
+      toast.error("Rename failed: " + e.message);
+    }
+  };
+
   const compile = useCallback(async () => {
     if (!fs || !projectId || compiling) return;
     setCompiling(true);
@@ -1188,9 +1225,21 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
                               padding: '0.4rem 0.75rem', cursor: 'pointer', fontSize: '0.85rem',
                               background: activeFile === f.path ? 'var(--bg-tertiary)' : 'transparent',
                               color: activeFile === f.path ? 'var(--accent-primary)' : 'var(--text-primary)',
-                              display: 'flex', gap: '0.5rem', alignItems: 'center'
+                              display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'space-between'
                             }}>
-                              {getFileIcon(f.name)} {f.name}
+                              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', overflow: 'hidden' }}>
+                                {getFileIcon(f.name)} <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={f.path}>{f.name}</span>
+                              </div>
+                              {f.path !== 'main.tex' && (
+                                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+                                  <button onClick={() => handleRenameFile(f.path)} style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.5, cursor: 'pointer', padding: '2px' }} title="Rename File">
+                                    <Pencil size={12} />
+                                  </button>
+                                  <button onClick={() => handleDeleteFile(f.path)} style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.5, cursor: 'pointer', padding: '2px' }} title="Delete File">
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -1243,6 +1292,20 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
                        return (
                           <Image src={code} alt="Preview" width={800} height={600} style={{ maxWidth: '90%', maxHeight: '90%', objectFit: 'contain' }} />
                        );
+                     } else if (ext === 'pdf') {
+                        let pdfSrc = code;
+                        if (pdfSrc.startsWith('data:application/octet-stream;')) {
+                          pdfSrc = pdfSrc.replace('data:application/octet-stream;', 'data:application/pdf;');
+                        } else if (!pdfSrc.startsWith('data:') && !pdfSrc.startsWith('http') && !pdfSrc.startsWith('/')) {
+                          pdfSrc = `data:application/pdf;base64,${pdfSrc}`;
+                        }
+                        return (
+                          <iframe 
+                            src={pdfSrc} 
+                            style={{ width: '100%', height: '80vh', minWidth: '600px', border: 'none', background: '#fff', borderRadius: '8px' }} 
+                            title="PDF Preview"
+                          />
+                        );
                      } else {
                        return (
                          <div style={{

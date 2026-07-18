@@ -1,18 +1,17 @@
-"use client";
-
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Pencil } from 'lucide-react';
 
 interface FileItemProps {
   f: any;
   activeFile: string;
   onClick: (path: string) => void;
   onDelete: (path: string) => void;
+  onRename?: (path: string) => void;
   isReadOnly?: boolean;
 }
 
-export const FileItem: React.FC<FileItemProps> = ({ f, activeFile, onClick, onDelete, isReadOnly = false }) => {
+export const FileItem: React.FC<FileItemProps> = ({ f, activeFile, onClick, onDelete, onRename, isReadOnly = false }) => {
   return (
     <motion.div 
       whileHover={{ x: 2, background: 'rgba(255,255,255,0.02)' }}
@@ -29,7 +28,18 @@ export const FileItem: React.FC<FileItemProps> = ({ f, activeFile, onClick, onDe
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.path}</span>
       </div>
       {activeFile === f.path && f.path !== 'main.tex' && !isReadOnly && (
-        <Trash2 size={10} onClick={(e) => { e.stopPropagation(); onDelete(f.path); }} style={{ opacity: 0.4 }} />
+        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+          {onRename && (
+            <button 
+              onClick={(e) => { e.stopPropagation(); onRename(f.path); }} 
+              style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.5, cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+              title="Rename File"
+            >
+              <Pencil size={10} />
+            </button>
+          )}
+          <Trash2 size={10} onClick={(e) => { e.stopPropagation(); onDelete(f.path); }} style={{ opacity: 0.4, cursor: 'pointer' }} />
+        </div>
       )}
     </motion.div>
   );

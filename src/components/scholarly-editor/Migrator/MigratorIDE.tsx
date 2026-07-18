@@ -36,6 +36,7 @@ const MonacoEditor = dynamic(() => import('@monaco-editor/react').then(m => m.de
 const ScholarlyViewer = dynamic(() => import('../ScholarlyPDFViewer').then(m => m.default), { ssr: false, loading: () => <div style={{ height: '100%', background: '#050505' }} /> });
 
 function FileItem({ f, activeFile, onClick }: { f: any, activeFile: string, onClick: (path: string) => void }) {
+    const isSkeleton = f.path === 'main.tex' || f.path === 'Migrated_Manuscript.tex';
     return (
         <motion.div 
             whileHover={{ x: 2, background: 'rgba(255,255,255,0.02)' }}
@@ -49,14 +50,24 @@ function FileItem({ f, activeFile, onClick }: { f: any, activeFile: string, onCl
         >
             <div style={{ width: 4, height: 4, borderRadius: '50%', background: activeFile === f.path ? 'var(--accent-primary)' : 'var(--border)' }} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{f.path}</span>
-            {f.path !== 'main.tex' && (
-                <button 
-                    onClick={(e) => { e.stopPropagation(); (window as any)._migrator_delete?.(f.path); }}
-                    style={{ background: 'transparent', border: 'none', color: 'var(--error)', opacity: 0.3, transition: 'opacity 0.2s', cursor: 'pointer', padding: '2px', display: 'flex' }}
-                    className="delete-hover-trigger"
-                >
-                    <Trash2 size={12} />
-                </button>
+            {!isSkeleton && (
+                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); (window as any)._migrator_rename?.(f.path); }}
+                        style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.3, transition: 'opacity 0.2s', cursor: 'pointer', padding: '2px', display: 'flex' }}
+                        title="Rename File"
+                    >
+                        <Pencil size={12} />
+                    </button>
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); (window as any)._migrator_delete?.(f.path); }}
+                        style={{ background: 'transparent', border: 'none', color: 'var(--error)', opacity: 0.3, transition: 'opacity 0.2s', cursor: 'pointer', padding: '2px', display: 'flex' }}
+                        className="delete-hover-trigger"
+                        title="Delete File"
+                    >
+                        <Trash2 size={12} />
+                    </button>
+                </div>
             )}
         </motion.div>
     );
@@ -634,12 +645,40 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
     }
   };
 
+  const handleRenameFile = async (oldPath: string) => {
+    const mainFile = project?.mainFile || 'Migrated_Manuscript.tex';
+    if (oldPath === mainFile) return toast.error("Cannot rename project skeleton");
+    const newName = window.prompt("Rename file path:", oldPath);
+    if (!newName || newName.trim() === "" || newName === oldPath) return;
+    try {
+      if (fs && projectId) {
+        await fs.renameFile(projectId, oldPath, newName.trim());
+        toast.success("File renamed");
+        const newList = await fs.listFiles(projectId);
+        setFiles(newList);
+        if (activeFile === oldPath) {
+          setActiveFile(newName.trim());
+        }
+        setOpenTabs(tabs => tabs.map(t => t === oldPath ? newName.trim() : t));
+      }
+    } catch (err: any) {
+      toast.error("Rename failed: " + err.message);
+    }
+  };
+
   const handleDeleteFileRef = useRef(handleDeleteFile);
   handleDeleteFileRef.current = handleDeleteFile;
 
+  const handleRenameFileRef = useRef(handleRenameFile);
+  handleRenameFileRef.current = handleRenameFile;
+
   useEffect(() => {
     (window as any)._migrator_delete = handleDeleteFileRef.current;
-    return () => { delete (window as any)._migrator_delete; };
+    (window as any)._migrator_rename = handleRenameFileRef.current;
+    return () => { 
+      delete (window as any)._migrator_delete; 
+      delete (window as any)._migrator_rename; 
+    };
   }, []);
 
   const handleFormat = () => {
@@ -1036,6 +1075,20 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
                                   sizes="100vw"
                                   style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', display: 'block', width: 'auto', height: 'auto' }}
                                   unoptimized
+                                />
+                              );
+                            } else if (ext === 'pdf') {
+                              let pdfSrc = code;
+                              if (pdfSrc.startsWith('data:application/octet-stream;')) {
+                                pdfSrc = pdfSrc.replace('data:application/octet-stream;', 'data:application/pdf;');
+                              } else if (!pdfSrc.startsWith('data:') && !pdfSrc.startsWith('http') && !pdfSrc.startsWith('/')) {
+                                pdfSrc = `data:application/pdf;base64,${pdfSrc}`;
+                              }
+                              return (
+                                <iframe 
+                                  src={pdfSrc} 
+                                  style={{ width: '100%', height: '80vh', minWidth: '600px', border: 'none', background: '#fff', borderRadius: '8px' }} 
+                                  title="PDF Preview"
                                 />
                               );
                             } else {

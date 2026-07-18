@@ -576,6 +576,30 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     if (activeFile === path) switchTab(openTabs[0] || 'main.tex');
   };
 
+  const renameFile = async (oldPath: string) => {
+    if (isOutOfCredits) {
+      toast.error("Read-Only Mode: Daily credit limit reached. Please upgrade to Premium to rename files.");
+      return;
+    }
+    if (oldPath === 'main.tex') return toast.error("Cannot rename main.tex");
+    const newName = window.prompt("Rename file path:", oldPath);
+    if (!newName || newName.trim() === "" || newName === oldPath) return;
+    try {
+      if (fs && projectId) {
+        await fs.renameFile(projectId, oldPath, newName.trim());
+        toast.success("File renamed");
+        const newList = await fs.listFiles(projectId);
+        setFiles(newList);
+        if (activeFile === oldPath) {
+          setActiveFile(newName.trim());
+        }
+        setOpenTabs(tabs => tabs.map(t => t === oldPath ? newName.trim() : t));
+      }
+    } catch (err: any) {
+      toast.error("Rename failed: " + err.message);
+    }
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (isOutOfCredits) {
       toast.error("Read-Only Mode: Daily credit limit reached. Please upgrade to Premium to upload files.");
@@ -918,6 +942,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
               activeFile={activeFile}
               switchTab={switchTab}
               deleteFile={deleteFile}
+              renameFile={renameFile}
               handleFileUpload={handleFileUpload}
               exportProjectZip={exportProjectZip}
               isReadOnly={isOutOfCredits}
@@ -1066,6 +1091,20 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                                     height={600}
                                     unoptimized
                                     style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', display: 'block' }} 
+                                  />
+                                );
+                              } else if (ext === 'pdf') {
+                                let pdfSrc = code;
+                                if (pdfSrc.startsWith('data:application/octet-stream;')) {
+                                  pdfSrc = pdfSrc.replace('data:application/octet-stream;', 'data:application/pdf;');
+                                } else if (!pdfSrc.startsWith('data:') && !pdfSrc.startsWith('http') && !pdfSrc.startsWith('/')) {
+                                  pdfSrc = `data:application/pdf;base64,${pdfSrc}`;
+                                }
+                                return (
+                                  <iframe 
+                                    src={pdfSrc} 
+                                    style={{ width: '100%', height: '80vh', minWidth: '600px', border: 'none', background: '#fff', borderRadius: '8px' }} 
+                                    title="PDF Preview"
                                   />
                                 );
                               } else {

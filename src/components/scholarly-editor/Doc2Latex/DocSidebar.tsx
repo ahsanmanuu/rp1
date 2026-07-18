@@ -11,6 +11,7 @@ interface DocSidebarProps {
   activeFile: string;
   switchTab: (path: string) => void;
   deleteFile: (path: string) => void;
+  renameFile: (path: string) => void;
   handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   exportProjectZip: () => void;
   isReadOnly?: boolean;
@@ -23,6 +24,7 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
   activeFile,
   switchTab,
   deleteFile,
+  renameFile,
   handleFileUpload,
   exportProjectZip,
   isReadOnly = false,
@@ -148,7 +150,7 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
                 const bNum = parseInt(b.path.match(/\d+/)?.[0] || '0');
                 return aNum - bNum || a.path.localeCompare(b.path);
               }).map(f => (
-                <FileItem key={f.path} f={f} activeFile={activeFile} onClick={switchTab} onDelete={deleteFile} isReadOnly={isReadOnly} />
+                <FileItem key={f.path} f={f} activeFile={activeFile} onClick={switchTab} onDelete={deleteFile} onRename={renameFile} isReadOnly={isReadOnly} />
               ))}
             </div>
           ))}

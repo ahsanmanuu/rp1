@@ -851,6 +851,27 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
     }
   };
 
+  const handleRenameFile = async (oldPath: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (oldPath === 'main.tex') return toast.error("Cannot rename main.tex");
+    const newName = window.prompt("Rename file path:", oldPath);
+    if (!newName || newName.trim() === "" || newName === oldPath) return;
+    try {
+      if (fs && projectId) {
+        await fs.renameFile(projectId, oldPath, newName.trim());
+        toast.success("File renamed");
+        const newList = await fs.listFiles(projectId);
+        setFiles(newList);
+        if (activeFile === oldPath) {
+          setActiveFile(newName.trim());
+        }
+        setOpenTabs(tabs => tabs.map(t => t === oldPath ? newName.trim() : t));
+      }
+    } catch (err: any) {
+      toast.error("Rename failed: " + err.message);
+    }
+  };
+
   const createNewFile = async () => {
     const name = prompt("Enter file name (e.g., section1.tex):");
     if (!name || !fs || !projectId) return;
@@ -1264,14 +1285,22 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                            <span style={{ color: 'inherit' }}>{f.path}</span>
                         </div>
                         {f.path !== 'main.tex' && (
-                          <button 
-                            onClick={(e) => handleDeleteFile(f.path, e)}
-                            style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.5, transition: 'opacity 0.2s', cursor: 'pointer' }}
-                            onMouseOver={(e) => e.currentTarget.style.opacity = '1'}
-                            onMouseOut={(e) => e.currentTarget.style.opacity = '0.5'}
-                          >
-                             <Trash2 size={12} />
-                          </button>
+                          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                            <button 
+                              onClick={(e) => handleRenameFile(f.path, e)}
+                              style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.5, transition: 'opacity 0.2s', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                              title="Rename File"
+                            >
+                               <Pencil size={12} />
+                            </button>
+                            <button 
+                              onClick={(e) => handleDeleteFile(f.path, e)}
+                              style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.5, transition: 'opacity 0.2s', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                              title="Delete File"
+                            >
+                               <Trash2 size={12} />
+                            </button>
+                          </div>
                         )}
                      </motion.div>
                   ))}
@@ -1372,6 +1401,20 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                                          height={600}
                                          unoptimized
                                          style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', display: 'block' }} 
+                                       />
+                                     );
+                                   } else if (ext === 'pdf') {
+                                     let pdfSrc = code;
+                                     if (pdfSrc.startsWith('data:application/octet-stream;')) {
+                                       pdfSrc = pdfSrc.replace('data:application/octet-stream;', 'data:application/pdf;');
+                                     } else if (!pdfSrc.startsWith('data:') && !pdfSrc.startsWith('http') && !pdfSrc.startsWith('/')) {
+                                       pdfSrc = `data:application/pdf;base64,${pdfSrc}`;
+                                     }
+                                     return (
+                                       <iframe 
+                                         src={pdfSrc} 
+                                         style={{ width: '100%', height: '80vh', minWidth: '600px', border: 'none', background: '#fff', borderRadius: '8px' }} 
+                                         title="PDF Preview"
                                        />
                                      );
                                    } else {
