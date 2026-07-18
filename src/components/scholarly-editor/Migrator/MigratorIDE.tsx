@@ -1291,9 +1291,11 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
                            fontLigatures: true,
                            renderLineHighlight: 'all',
                            scrollbar: { vertical: 'visible', horizontal: 'visible', verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
-                           automaticLayout: true,
-                           wordWrap: 'on',
-                           readOnly: false
+                            automaticLayout: true,
+                            wordWrap: 'on',
+                            readOnly: false,
+                            autoClosingBrackets: 'languageDefined',
+                            quickSuggestions: { other: true, comments: false, strings: false },
                          }}
                        />
                      </div>

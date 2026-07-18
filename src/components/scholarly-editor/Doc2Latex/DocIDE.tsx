@@ -1226,9 +1226,11 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                              fontLigatures: true,
                              renderLineHighlight: 'all',
                              scrollbar: { vertical: 'visible', horizontal: 'visible', verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
-                             automaticLayout: true,
-                             wordWrap: 'on',
-                             readOnly: isOutOfCredits
+                              automaticLayout: true,
+                              wordWrap: 'on',
+                              readOnly: isOutOfCredits,
+                              autoClosingBrackets: 'languageDefined',
+                              quickSuggestions: { other: true, comments: false, strings: false },
                            }}
                          />
                       </div>

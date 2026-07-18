@@ -1456,7 +1456,9 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
                       fontLigatures: true, 
                       cursorBlinking: 'smooth', 
                       smoothScrolling: true,
-                      wordWrap: 'on'
+                      wordWrap: 'on',
+                      autoClosingBrackets: 'languageDefined',
+                      quickSuggestions: { other: true, comments: false, strings: false },
                     }}
                   />
                 </div>

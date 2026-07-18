@@ -51,6 +51,8 @@ export default function CodeEditor({ code, onChange, onCompile, readOnly = false
           cursorBlinking: "smooth",
           formatOnPaste: true,
           automaticLayout: true,
+          autoClosingBrackets: 'languageDefined',
+          quickSuggestions: { other: true, comments: false, strings: false },
         }}
         loading={<div style={{ padding: '2rem', color: 'var(--text-secondary)' }}>Loading LaTeX Editor...</div>}
       />

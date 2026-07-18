@@ -1618,7 +1618,9 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                                 renderLineHighlight: 'all',
                                 scrollbar: { vertical: 'visible', horizontal: 'visible', verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
                                 automaticLayout: true,
-                                wordWrap: 'on'
+                                wordWrap: 'on',
+                                autoClosingBrackets: 'languageDefined',
+                                quickSuggestions: { other: true, comments: false, strings: false },
                               }}
                             />
                           </div>
