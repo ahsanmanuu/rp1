@@ -205,15 +205,15 @@ ${_B}fi
       '\\tolerance=1000',                  // Relaxed from default 200 — reduces forced overflows
       '\\hyphenpenalty=50',               // Encourage more hyphenation at line breaks
       '\\exhyphenpenalty=50',             // Encourage breaks after explicit hyphens too
-      // URL breaking (safe ifdefined guards so they don\'t error if package not loaded)
-      '\\ifdefined\\urlstyle\\urlstyle{same}\\fi',
-      '\\ifdefined\\Urlmuskip\\Urlmuskip=0mu plus 1mu\\fi',
+      // URL breaking (safe ifx/undefined guards so they don\'t error if package not loaded)
+      '\\ifx\\urlstyle\\undefined\\else\\urlstyle{same}\\fi',
+      '\\ifx\\Urlmuskip\\undefined\\else\\Urlmuskip=0mu plus 1mu\\fi',
       // Image constraint: all images respect page width automatically
-      '\\ifdefined\\setkeys\\setkeys{Gin}{max width=\\linewidth,max height=0.85\\textheight,keepaspectratio}\\fi',
+      '\\ifx\\setkeys\\undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.85\\textheight,keepaspectratio}\\fi',
       // listings: enable line breaking for ALL lstlisting environments (if listings is loaded)
-      '\\ifdefined\\lstset',
+      '\\ifx\\lstset\\undefined\\else',
       '  \\lstset{breaklines=true,breakatwhitespace=false,basicstyle=\\small\\ttfamily,',
-      '    columns=flexible,keepspaces=true,breakindent=0pt}',
+      '    columns=flexible,keepspaces=true,breakindent=0pt}%',
       '\\fi',
     ].join('\n');
 

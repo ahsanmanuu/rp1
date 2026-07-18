@@ -556,7 +556,7 @@ export function autoHealLatex(latex: string): string {
         "\\PassOptionsToPackage{unicode}{hyperref}",
         !isAcademic ? "\\PassOptionsToPackage{margin=1in}{geometry}" : "",
         "\\PassOptionsToPackage{final}{microtype}",
-        "\\ifdefined\\hypersetup\\AtBeginDocument{\\hypersetup{colorlinks=true,allcolors=blue,bookmarksnumbered=true}}\\fi",
+        "\\ifx\\hypersetup\\undefined\\else\\AtBeginDocument{\\hypersetup{colorlinks=true,allcolors=blue,bookmarksnumbered=true}}\\fi",
         ""
       ].filter(Boolean).join("\n");
       // Insert guards AFTER \documentclass line, not before it
@@ -664,11 +664,11 @@ export function autoHealLatex(latex: string): string {
     // cleveref MUST be loaded last
     if (!hasPackage(patchedPreamble, "cleveref")) usepackageGuards.push("\\usepackage{cleveref}");
 
-    if (isACM) usepackageGuards.push("\\ifdefined\\hypersetup\\hypersetup{colorlinks=true,allcolors=blue}\\fi");
+    if (isACM) usepackageGuards.push("\\ifx\\hypersetup\\undefined\\else\\hypersetup{colorlinks=true,allcolors=blue}\\fi");
     if (!patchedPreamble.includes("graphicspath")) usepackageGuards.push("\\graphicspath{{./}}");
-    if (!patchedPreamble.includes("DeclareUnicodeCharacter{200B}")) usepackageGuards.push("\\ifdefined\\DeclareUnicodeCharacter\\DeclareUnicodeCharacter{200B}{}\\fi");
-    if (!patchedPreamble.includes("DeclareUnicodeCharacter{202F}")) usepackageGuards.push("\\ifdefined\\DeclareUnicodeCharacter\\DeclareUnicodeCharacter{202F}{ }\\fi");
-    if (!patchedPreamble.includes("DeclareUnicodeCharacter{00A0}")) usepackageGuards.push("\\ifdefined\\DeclareUnicodeCharacter\\DeclareUnicodeCharacter{00A0}{ }\\fi");
+    if (!patchedPreamble.includes("DeclareUnicodeCharacter{200B}")) usepackageGuards.push("\\ifx\\DeclareUnicodeCharacter\\undefined\\else\\DeclareUnicodeCharacter{200B}{}\\fi");
+    if (!patchedPreamble.includes("DeclareUnicodeCharacter{202F}")) usepackageGuards.push("\\ifx\\DeclareUnicodeCharacter\\undefined\\else\\DeclareUnicodeCharacter{202F}{ }\\fi");
+    if (!patchedPreamble.includes("DeclareUnicodeCharacter{00A0}")) usepackageGuards.push("\\ifx\\DeclareUnicodeCharacter\\undefined\\else\\DeclareUnicodeCharacter{00A0}{ }\\fi");
     usepackageGuards.push("\\providecommand{\\keywords}[1]{\\par\\vspace{0.5em}\\noindent\\textbf{Keywords---} #1}");
     usepackageGuards.push("\\let\\Bbbk\\relax");
 
@@ -679,7 +679,7 @@ export function autoHealLatex(latex: string): string {
       // Phase 1: @-internal macros that need \catcode`\@=11
       const catcodeBlock = [
         "\\catcode`\\@=11",
-        "\\ifdefined\\DeclareUnicodeCharacter",
+        "\\ifx\\DeclareUnicodeCharacter\\undefined\\else",
         "  \\DeclareUnicodeCharacter{207B}{\\ensuremath{^{-}}}",
         "  \\DeclareUnicodeCharacter{025B}{\\ensuremath{\\epsilon}}",
         "  \\DeclareUnicodeCharacter{2126}{\\ensuremath{\\Omega}}",
@@ -687,7 +687,7 @@ export function autoHealLatex(latex: string): string {
         "  \\DeclareUnicodeCharacter{2014}{---}",
         "  \\DeclareUnicodeCharacter{2212}{-}",
         "\\fi",
-        "\\ifdefined\\DeclareUnicodeCharacter\\else\\long\\def\\DeclareUnicodeCharacter#1#2{}\\fi",
+        "\\ifx\\DeclareUnicodeCharacter\\undefined\\long\\def\\DeclareUnicodeCharacter#1#2{}\\else\\fi",
         "\\providecommand{\\botrule}{\\midrule}",
         "\\providecommand{\\toprule}{\\hline}",
         "\\providecommand{\\equalcont}[1]{}",
@@ -707,25 +707,23 @@ export function autoHealLatex(latex: string): string {
         "\\providecommand{\\institute}[1]{\\thanks{#1}}",
         "\\providecommand{\\inst}[1]{$^{#1}$}",
         "\\catcode`\\@=12"
-
       ].join("\n");
 
       // Phase 2: Theorem styles, \usepackage calls, zimg — all OUTSIDE catcode block
       const postCatcodeBlock = [
-        "\\ifdefined\\newtheoremstyle",
-        "  \\ifdefined\\thmstyleone \\else \\newtheoremstyle{thmstyleone}{}{}{\\itshape}{}{\\bfseries}{.}{.5em}{} \\fi",
-        "  \\ifdefined\\thmstyletwo \\else \\newtheoremstyle{thmstyletwo}{}{}{}{}{\\bfseries}{.}{.5em}{} \\fi",
-        "  \\ifdefined\\thmstylethree \\else \\newtheoremstyle{thmstylethree}{}{}{}{}{\\itshape}{.}{.5em}{} \\fi",
+        "\\ifx\\newtheoremstyle\\undefined\\else",
+        "  \\ifx\\thmstyleone\\undefined \\newtheoremstyle{thmstyleone}{}{}{\\itshape}{}{\\bfseries}{.}{.5em}{} \\fi",
+        "  \\ifx\\thmstyletwo\\undefined \\newtheoremstyle{thmstyletwo}{}{}{}{}{\\bfseries}{.}{.5em}{} \\fi",
+        "  \\ifx\\thmstylethree\\undefined \\newtheoremstyle{thmstylethree}{}{}{}{}{\\itshape}{.}{.5em}{} \\fi",
         "\\fi",
-        "\\ifdefined\\theorem \\else \\newtheorem{theorem}{Theorem} \\fi",
-        "\\ifdefined\\proposition \\else \\newtheorem{proposition}{Proposition} \\fi",
-        "\\ifdefined\\definition \\else \\newtheorem{definition}{Definition} \\fi",
-        "\\ifdefined\\remark \\else \\newtheorem{remark}{Remark} \\fi",
+        "\\ifx\\theorem\\undefined \\newtheorem{theorem}{Theorem} \\fi",
+        "\\ifx\\proposition\\undefined \\newtheorem{proposition}{Proposition} \\fi",
+        "\\ifx\\definition\\undefined \\newtheorem{definition}{Definition} \\fi",
+        "\\ifx\\remark\\undefined \\newtheorem{remark}{Remark} \\fi",
         ...usepackageGuards,
-        "\\ifdefined\\setlist\\setlist{nosep}\\fi",
-
+        "\\ifx\\setlist\\undefined\\else\\setlist{nosep}\\fi",
         "% --- NUCLEAR TRACKER (zimg Support) ---",
-        `\\ifdefined\\zimg\\else`,
+        `\\ifx\\zimg\\undefined`,
         `  \\newcommand{\\zimg}[4]{%`,
         `    \\leavevmode`,
         `    \\IfFileExists{\\detokenize{#1}}{%`,
@@ -758,9 +756,9 @@ export function autoHealLatex(latex: string): string {
     if (!healed.includes("\\emergencystretch")) bodyGuardLines.push("\\emergencystretch=3em");
     if (!healed.includes("\\hbadness")) bodyGuardLines.push("\\hbadness=10000");
     if (!healed.includes("\\tolerance")) bodyGuardLines.push("\\tolerance=1000");
-    if (!healed.includes("\\urlstyle")) bodyGuardLines.push("\\ifdefined\\urlstyle\\urlstyle{same}\\fi");
-    if (!healed.includes("\\Urlmuskip")) bodyGuardLines.push("\\ifdefined\\Urlmuskip\\Urlmuskip=0mu plus 1mu\\fi");
-    if (!healed.includes("setkeys{Gin}")) bodyGuardLines.push("\\ifdefined\\setkeys\\setkeys{Gin}{max width=\\linewidth,max height=0.75\\textheight,keepaspectratio}\\fi");
+    if (!healed.includes("\\urlstyle")) bodyGuardLines.push("\\ifx\\urlstyle\\undefined\\else\\urlstyle{same}\\fi");
+    if (!healed.includes("\\Urlmuskip")) bodyGuardLines.push("\\ifx\\Urlmuskip\\undefined\\else\\Urlmuskip=0mu plus 1mu\\fi");
+    if (!healed.includes("setkeys{Gin}")) bodyGuardLines.push("\\ifx\\setkeys\\undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.75\\textheight,keepaspectratio}\\fi");
     const bodyGuards = bodyGuardLines.join("\n");
 
     let patchedPre = patchedPreamble;
@@ -897,9 +895,9 @@ export function autoHealLatex(latex: string): string {
       isA ? "\\documentclass[nonacm,sigconf]{acmart}" : dcl,
       "\\PassOptionsToPackage{unicode}{hyperref}",
       "\\nonstopmode",
-      "\\ifdefined\\abstract\\let\\abstract\\relax\\fi",
-      "\\ifdefined\\endabstract\\let\\endabstract\\relax\\fi",
-      "\\ifdefined\\DeclareUnicodeCharacter\\else\\long\\def\\DeclareUnicodeCharacter#1#2{}\\fi",
+      "\\ifx\\abstract\\undefined\\else\\let\\abstract\\relax\\fi",
+      "\\ifx\\endabstract\\undefined\\else\\let\\endabstract\\relax\\fi",
+      "\\ifx\\DeclareUnicodeCharacter\\undefined\\long\\def\\DeclareUnicodeCharacter#1#2{}\\else\\fi",
       "\\let\\Bbbk\\relax",
       "\\usepackage[utf8]{inputenc}",
       "\\DeclareUnicodeCharacter{200B}{}",
@@ -925,9 +923,9 @@ export function autoHealLatex(latex: string): string {
     const bodyGuards = [
       "\\sloppy",
       "\\emergencystretch=5em",
-      "\\ifdefined\\urlstyle\\urlstyle{same}\\fi",
-      "\\ifdefined\\Urlmuskip\\Urlmuskip=0mu plus 1mu\\fi",
-      "\\ifdefined\\setkeys\\setkeys{Gin}{max width=\\linewidth,max height=0.85\\textheight,keepaspectratio}\\fi"
+      "\\ifx\\urlstyle\\undefined\\else\\urlstyle{same}\\fi",
+      "\\ifx\\Urlmuskip\\undefined\\else\\Urlmuskip=0mu plus 1mu\\fi",
+      "\\ifx\\setkeys\\undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.85\\textheight,keepaspectratio}\\fi"
     ].join("\n");
 
     const finalPre = preParts.join("\n").trim();
