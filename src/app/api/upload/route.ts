@@ -287,16 +287,20 @@ export async function POST(req: Request) {
     });
 
     if (user?.membership === 'free' || !user?.membership) {
-      const projectsCount = await prisma.project.count({
-        where: { userId: (session.user as any).id }
-      });
-      if (projectsCount >= 5) {
+      const [projectsCount, citationCount, reviewCount] = await Promise.all([
+        prisma.project.count({ where: { userId: (session.user as any).id } }),
+        prisma.citationProject.count({ where: { userId: (session.user as any).id } }),
+        prisma.paperReview.count({ where: { userId: (session.user as any).id } }),
+      ]);
+      const totalCount = projectsCount + citationCount + reviewCount;
+      if (totalCount >= 7) {
         return NextResponse.json({ 
           error: 'LIMIT_REACHED', 
-          message: 'Free membership is restricted to a total of 5 projects. Please upgrade to Premium.' 
+          message: 'Free membership is restricted to a total of 7 projects. Please upgrade to Premium.' 
         }, { status: 403 });
       }
     }
+
 
     const formData = await req.formData();
     const file = formData.get('file') as File;

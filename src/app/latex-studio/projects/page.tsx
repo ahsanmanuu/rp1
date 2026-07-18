@@ -70,6 +70,8 @@ export default function LaTeXStudioLanding() {
   const [isParsingZip, setIsParsingZip] = useState(false);
   const [dbProjectsCount, setDbProjectsCount] = useState(0);
   const [membership, setMembership] = useState("free");
+  const [limitStatus, setLimitStatus] = useState<{ count: number; max: number | null; limitReached: boolean } | null>(null);
+  const [statsRefreshing, setStatsRefreshing] = useState(false);
   const { showLimitModal, setShowLimitModal } = useProjectLimit();
 
   const sortedProjects = [...projects]
@@ -104,21 +106,33 @@ export default function LaTeXStudioLanding() {
     return matchesSearch && matchesCategory;
   });
 
+  // Fetch server-authoritative limit status (single source of truth)
+  const refreshLimitStatus = async () => {
+    setStatsRefreshing(true);
+    try {
+      const res = await fetch('/api/projects/limit-status', { cache: 'no-store' });
+      const data = await res.json();
+      setLimitStatus({ count: data.count ?? 0, max: data.max ?? null, limitReached: !!data.limitReached });
+      setMembership(data.membership || 'free');
+      setDbProjectsCount(data.count ?? 0);
+    } catch { /* non-fatal */ }
+    finally { setStatsRefreshing(false); }
+  };
+
   useEffect(() => {
     fetch('/api/templates', { cache: 'no-store' })
       .then(res => res.json())
       .then(data => setCustomTemplates(data.templates || []))
       .catch(console.error);
 
+    // Fetch membership for expiry reminder (non-blocking, doesn't affect limit logic)
     fetch('/api/user/check-membership')
       .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          setDbProjectsCount(data.projectsCount || 0);
-          setMembership(data.membership || "free");
-        }
-      })
-      .catch(console.error);
+      .then(data => { if (data.success) setMembership(data.membership || 'free'); })
+      .catch(() => {});
+
+    // Fetch authoritative limit status
+    refreshLimitStatus();
 
     if (!session?.user?.email) return;
     const studioFs = new StudioFS(session.user.email);
@@ -129,9 +143,10 @@ export default function LaTeXStudioLanding() {
     });
   }, [session]);
 
-  const handleOpenNewModal = () => {
-    const totalProjects = projects.length + dbProjectsCount;
-    if (membership === "free" && totalProjects >= 7) {
+  const handleOpenNewModal = async () => {
+    // Use server-authoritative limit status
+    await refreshLimitStatus();
+    if (limitStatus?.limitReached) {
       setShowLimitModal(true);
       return;
     }
@@ -249,15 +264,22 @@ export default function LaTeXStudioLanding() {
                   const file = e.target.files?.[0];
                   if (!file || !fs) return;
 
-                  const totalProjects = projects.length + dbProjectsCount;
-                  if (membership === "free" && totalProjects >= 7) {
-                    setShowLimitModal(true);
-                    return;
-                  }
+                  // Server-authoritative limit check — avoids local+DB double-counting bug
+                  try {
+                    const res = await fetch('/api/projects/limit-status', { cache: 'no-store' });
+                    const limitData = await res.json();
+                    setLimitStatus({ count: limitData.count ?? 0, max: limitData.max ?? null, limitReached: !!limitData.limitReached });
+                    if (limitData.limitReached) {
+                      setShowLimitModal(true);
+                      return;
+                    }
+                  } catch { /* non-fatal — proceed if check fails */ }
 
                   setIsParsingZip(true);
                   try {
                     const id = await fs.importZip(file);
+                    // Refresh stats after successful import
+                    refreshLimitStatus();
                     router.push(`/latex-studio/${id}`);
                   } catch (err) {
                     console.error(err);
@@ -275,6 +297,64 @@ export default function LaTeXStudioLanding() {
             </Link>
           </div>
         </section>
+
+        {/* ── Real-time Stats Bar ─────────────────────────────────────────────── */}
+        {limitStatus && (
+          <section className="w-full">
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center',
+              padding: '0.875rem 1.25rem',
+              background: 'var(--color-surface-container)',
+              border: '1px solid var(--color-outline-variant, rgba(0,0,0,0.1))',
+              borderRadius: '12px',
+            }}>
+              {/* Project usage pill */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: '200px' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-on-surface-variant)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Projects Used</span>
+                <div style={{ flex: 1, height: '6px', background: 'rgba(0,0,0,0.08)', borderRadius: '99px', overflow: 'hidden', minWidth: '80px' }}>
+                  <div style={{
+                    height: '100%', borderRadius: '99px',
+                    width: limitStatus.max ? `${Math.min(100, (limitStatus.count / limitStatus.max) * 100)}%` : '0%',
+                    background: limitStatus.limitReached ? '#ef4444' : limitStatus.max && limitStatus.count / limitStatus.max >= 0.75 ? '#f59e0b' : 'var(--color-primary)',
+                    transition: 'width 0.5s ease',
+                  }} />
+                </div>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: limitStatus.limitReached ? '#ef4444' : 'var(--color-on-surface)' }}>
+                  {limitStatus.count}{limitStatus.max ? `/${limitStatus.max}` : ''}
+                </span>
+              </div>
+              {/* Membership badge */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{
+                  padding: '0.25rem 0.65rem', borderRadius: '99px', fontSize: '0.72rem', fontWeight: 700,
+                  textTransform: 'uppercase', letterSpacing: '0.06em',
+                  background: membership === 'free' ? 'rgba(100,116,139,0.12)' : 'rgba(16,185,129,0.12)',
+                  color: membership === 'free' ? '#64748b' : '#10b981',
+                  border: `1px solid ${membership === 'free' ? 'rgba(100,116,139,0.2)' : 'rgba(16,185,129,0.25)'}`,
+                }}>
+                  {membership === 'free' ? 'Free' : membership.replace(/_/g, ' ')}
+                </span>
+                <button
+                  onClick={refreshLimitStatus}
+                  disabled={statsRefreshing}
+                  title="Refresh stats"
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '0.2rem', color: 'var(--color-on-surface-variant)', opacity: statsRefreshing ? 0.5 : 1 }}
+                >
+                  <RefreshCw size={13} className={statsRefreshing ? 'animate-spin' : ''} />
+                </button>
+              </div>
+              {/* Upgrade nudge for free near-limit users */}
+              {membership === 'free' && limitStatus.max && limitStatus.count >= limitStatus.max - 1 && (
+                <button
+                  onClick={() => setShowLimitModal(true)}
+                  style={{ marginLeft: 'auto', fontSize: '0.75rem', fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', padding: '0.3rem 0.75rem', cursor: 'pointer' }}
+                >
+                  Upgrade Plan
+                </button>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Features Bento Grid */}
         <section className="w-full">
@@ -850,7 +930,12 @@ export default function LaTeXStudioLanding() {
           </div>
         </div>
       </footer>
-      <ProjectLimitModal isOpen={showLimitModal} onClose={() => setShowLimitModal(false)} />
+      <ProjectLimitModal
+        isOpen={showLimitModal}
+        onClose={() => setShowLimitModal(false)}
+        currentCount={limitStatus?.count}
+        max={limitStatus?.max ?? undefined}
+      />
     </div>
   );
 }

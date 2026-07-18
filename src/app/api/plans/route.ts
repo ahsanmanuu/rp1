@@ -1,14 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Public endpoint â€” no auth required.
- * Returns all membership plans sorted by duration for use in user-facing UI
- * (dashboard points auto-exchange widget, upgrade cards, etc.)
+ * GET /api/plans
+ * Public endpoint — returns all active membership plans created by admin.
+ * Used by ProjectLimitModal to render real plan cards instead of hardcoded ones.
+ * No auth required; only safe/public fields are exposed.
  */
-export async function GET(_req: NextRequest) {
+export async function GET() {
   try {
     const plans = await prisma.membershipPlan.findMany({
       orderBy: { durationMonths: "asc" },
@@ -19,10 +20,11 @@ export async function GET(_req: NextRequest) {
         priceINR: true,
         durationMonths: true,
         pointsExchange: true,
-      }
+      },
     });
     return NextResponse.json({ success: true, plans });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    console.error("[PUBLIC_PLANS_ERROR]", error);
+    return NextResponse.json({ success: false, plans: [] });
   }
 }
