@@ -5,7 +5,12 @@ import type { AgentId } from '@/lib/agent-gateway/types';
 
 import { getServerSession } from "@/lib/auth-pb";
 export async function GET(req: NextRequest) {
-  const session = await getServerSession();
+  let session: any = null;
+  try {
+    session = await getServerSession();
+  } catch (authErr) {
+    console.error('[AUTH_ERROR] agent-gateway GET:', authErr);
+  }
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
@@ -33,7 +38,12 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession();
+  let session: any = null;
+  try {
+    session = await getServerSession();
+  } catch (authErr) {
+    console.error('[AUTH_ERROR] agent-gateway POST:', authErr);
+  }
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {

@@ -6,8 +6,22 @@ export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession();
+  let session: any = null;
+  let runMigratorCompiler: any;
+  try {
+    session = await getServerSession();
+  } catch (authErr) {
+    console.error('[AUTH_ERROR] migrator compile:', authErr);
+  }
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  try {
+    const engineMod = await import('@/lib/studio-core/compiler-engine.server');
+    runMigratorCompiler = engineMod.runMigratorCompiler;
+  } catch (importErr: any) {
+    console.error('[IMPORT_ERROR] migrator:', importErr);
+    return NextResponse.json({ error: 'Compiler unavailable', message: importErr.message }, { status: 503 });
+  }
 
   try {
     const { engine = 'pdflatex', files, mainFile = 'main.tex', projectId = null } = await req.json();
