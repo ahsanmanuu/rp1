@@ -29,6 +29,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ThemeSwitcher from '../ThemeSwitcher';
 import ConsolePanel from '../ConsolePanel';
 import StudioErrorBoundary from '../StudioErrorBoundary';
+import EditorLoadingOverlay from '../EditorLoadingOverlay';
 import { type DiagnosticError } from '@/lib/studio-core/compiler-utils';
 
 // UI Components
@@ -117,6 +118,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
   const [jumpTo, setJumpTo] = useState<{ percentage: number; timestamp: number } | null>(null);
   const [syncJumpLine, setSyncJumpLine] = useState<{ line: number; timestamp: number } | null>(null);
   const [syncTexStr, setSyncTexStr] = useState<string | null>(null);
+  const [loadingCode, setLoadingCode] = useState(false);
 
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
@@ -710,10 +712,16 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
   const switchTab = async (path: string) => {
     if (path === activeFile) return;
     if (fs && !isImage(activeFile)) await fs.writeFile(projectId, activeFile, code);
+    setLoadingCode(true);
     setActiveFile(path);
     if (!openTabs.includes(path)) setOpenTabs(t => [...t, path]);
     const file = files.find(f => f.path === path);
-    if (file) setCode(file.content);
+    if (file) {
+      setCode(file.content);
+      setLoadingCode(false);
+    } else {
+      setLoadingCode(false);
+    }
   };
 
   if (!mounted) return null;
@@ -1166,9 +1174,14 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
                           </div>
                        </div>
                     </div>
-                  ) : (
-                     <div style={{ flex: 1, position: 'relative', height: '100%', width: '100%', minWidth: 0 }}>
-                       <MonacoEditor 
+) : (
+                      <div style={{ flex: 1, position: 'relative', height: '100%', width: '100%', minWidth: 0 }}>
+                        <EditorLoadingOverlay
+                          visible={loadingCode}
+                          label="LOADING LATEX SOURCE"
+                          sublabel="Populating editor with manuscript content..."
+                        />
+                        <MonacoEditor
                          height="100%" 
                          theme="vs-dark" 
                          language="latex" 

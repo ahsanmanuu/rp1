@@ -40,6 +40,7 @@ import { saveAs } from 'file-saver';
 import { type DiagnosticError, parseLog } from '@/lib/studio-core/compiler-utils';
 import { formatLatexCode, type EditorMood, EDITOR_MOODS } from '@/lib/studio-core/formatting-utils';
 import ConsolePanel from './ConsolePanel';
+import EditorLoadingOverlay from './EditorLoadingOverlay';
 
 interface IDEContainerProps {
   projectId?: string;
@@ -76,6 +77,7 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
   const [projectType, setProjectType] = useState<string | null>(null);
+  const [loadingCode, setLoadingCode] = useState(false);
   
   // Collaboration States
   const [showShareModal, setShowShareModal] = useState(false);
@@ -181,6 +183,7 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
     setFs(studioFs);
 
     const init = async () => {
+      setLoadingCode(true);
       let targetId = initialProjectId;
       
       // 1. Resolve Target Project ID
@@ -281,6 +284,7 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
       } catch {
         console.warn('Sync ignored: Working in offline/local mode.');
       }
+      setLoadingCode(false);
     };
 
     init();
@@ -408,10 +412,16 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
 
   const switchTab = async (path: string) => {
     if (fs && projectId) await fs.writeFile(projectId, activeFile, code);
+    setLoadingCode(true);
     setActiveFile(path);
     if (!openTabs.includes(path)) setOpenTabs(t => [...t, path]);
     const file = files.find(f => f.path === path);
-    if (file) setCode(file.content);
+    if (file) {
+      setCode(file.content);
+      setLoadingCode(false);
+    } else {
+      setLoadingCode(false);
+    }
   };
 
   const printPdf = useCallback(() => {
@@ -1362,6 +1372,11 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
                 </div>
              ) : (
                 <div style={{ flex: 1, position: 'relative', height: '100%', width: '100%', minWidth: 0 }}>
+                  <EditorLoadingOverlay
+                    visible={loadingCode}
+                    label="LOADING LATEX SOURCE"
+                    sublabel="Populating editor with manuscript content..."
+                  />
                   <MonacoEditor
                     path={activeFile}
                     height="100%"

@@ -31,6 +31,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ThemeSwitcher from '../ThemeSwitcher';
 import ConsolePanel from '../ConsolePanel';
 import StudioErrorBoundary from '../StudioErrorBoundary';
+import EditorLoadingOverlay from '../EditorLoadingOverlay';
 import { type DiagnosticError, parseLog } from '@/lib/studio-core/compiler-utils';
 
 // UI Components
@@ -71,6 +72,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
   const [showAiChat, setShowAiChat] = useState(false);
   const [hidePdf, setHidePdf] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [loadingCode, setLoadingCode] = useState(false);
 
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant', content: string }[]>([]);
   const [chatInput, setChatInput] = useState('');
@@ -244,6 +246,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
 
     const syncFromCloud = async (studioFs: StudioFS) => {
       setIsSyncing(true);
+      setLoadingCode(true);
       try {
         const res = await fetch(`/api/projects/${projectId}`);
         const data = await res.json();
@@ -332,10 +335,12 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
         toast.error("Failed to sync workspace");
       } finally {
         setIsSyncing(false);
+        setLoadingCode(false);
       }
     };
 
     const init = async () => {
+      setLoadingCode(true);
       const savedS = settings.panels?.[`latexify_sidebar_${projectId}`] || localStorage.getItem(`latexify_sidebar_${projectId}`);
       const savedP = settings.panels?.[`latexify_pdf_${projectId}`] || localStorage.getItem(`latexify_pdf_${projectId}`);
       const savedMood = settings.panels?.[`latexify_mood_${projectId}`] || (localStorage.getItem(`latexify_mood_${projectId}`) as EditorMood);
@@ -385,6 +390,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
       } else {
         await syncFromCloud(studioFs);
       }
+      setLoadingCode(false);
     };
     init().catch((err) => console.debug("Init error (non-blocking):", err));
   }, [session, status, projectId, openTabs]);
@@ -926,10 +932,16 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
   const switchTab = async (path: string) => {
     if (path === activeFile) return;
     if (fs && !isImage(activeFile)) await fs.writeFile(projectId, activeFile, code);
+    setLoadingCode(true);
     setActiveFile(path);
     if (!openTabs.includes(path)) setOpenTabs(t => [...t, path]);
     const file = files.find(f => f.path === path);
-    if (file) setCode(file.content);
+    if (file) {
+      setCode(file.content);
+      setLoadingCode(false);
+    } else {
+      setLoadingCode(false);
+    }
   };
 
   if (!mounted) return null;
@@ -1506,6 +1518,11 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                            </div>
                         ) : (
                           <div style={{ flex: 1, position: 'relative', height: '100%', width: '100%', minWidth: 0 }}>
+                            <EditorLoadingOverlay
+                              visible={loadingCode}
+                              label="LOADING LATEX SOURCE"
+                              sublabel="Populating editor with manuscript content..."
+                            />
                             <MonacoEditor 
                               height="100%" 
                               theme="vs-dark" 
