@@ -616,7 +616,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: newTitle })
-      });
+      }).then(r => { if (!r.ok) console.error("Cloud rename failed:", r.status); });
       
       toast.success("Manuscript title updated");
     } catch (e) {

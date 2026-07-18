@@ -482,7 +482,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newName })
-      });
+      }).then(r => { if (!r.ok) console.error("Cloud rename failed:", r.status); });
       
       toast.success("Manuscript title updated");
     } catch (e) {
@@ -749,7 +749,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
             latexContent: mainContent,
             files: textFiles
           })
-        });
+        }).then(r => { if (!r.ok) console.error("Auto-sync PUT failed:", r.status); });
       } catch (syncErr) {
         console.error("Auto-sync to cloud failed before compilation:", syncErr);
       } finally {

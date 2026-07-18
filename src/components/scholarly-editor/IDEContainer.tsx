@@ -223,6 +223,7 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
       // 3. BACKGROUND SOURCE OF TRUTH SYNC (Cloud Consistency)
       try {
         const dbRes = await fetch(`/api/projects/${targetId}`);
+        if (!dbRes.ok) throw new Error(`Cloud sync failed (${dbRes.status})`);
         const dbData = await dbRes.json();
         const databaseProject = dbData.project;
 
@@ -1590,8 +1591,15 @@ function AIAssistPanel({ code, errors, onInsert, onClose }: { code: string; erro
     try {
       const body = mode === 'fix' ? { mode: 'fix', code, errors } : mode === 'generate' ? { mode: 'generate', prompt, context: code.substring(0, 2000) } : { mode: 'explain', error: prompt || errors[0]?.message || '' };
       const res = await fetch('/api/latex-studio/ai-fix', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      const data = await res.json();
-      setResponse(data.result || data.error || 'No response');
+      if (!res.ok) {
+        const errText = await res.text().catch(() => 'AI service unavailable');
+        setResponse(`Error (${res.status}): ${errText}`);
+      } else {
+        let data: any = {};
+        const text = await res.text();
+        try { data = JSON.parse(text); } catch { data = { error: text || 'Invalid response' }; }
+        setResponse(data.result || data.error || 'No response');
+      }
     } catch (err: any) {
       setResponse(err.message || 'Request failed. Check your connection.');
     } finally { setLoading(false); }
