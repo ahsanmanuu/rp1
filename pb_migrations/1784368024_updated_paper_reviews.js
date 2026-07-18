@@ -1,6 +1,11 @@
 /// <reference path="../pb_data/types.d.ts" />
 migrate((app) => {
-  const collection = app.findCollectionByNameOrId("pbc_2162197663")
+  let collection;
+  try {
+    collection = app.findCollectionByNameOrId("pbc_2162197663")
+  } catch (_) {
+    return; // collection doesn't exist yet — skip
+  }
   if (!collection) return;
 
   // add field
@@ -21,7 +26,12 @@ migrate((app) => {
 
   return app.save(collection)
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("pbc_2162197663")
+  let collection;
+  try {
+    collection = app.findCollectionByNameOrId("pbc_2162197663")
+  } catch (_) {
+    return; // collection doesn't exist — skip rollback
+  }
   if (!collection) return;
 
   // remove field
