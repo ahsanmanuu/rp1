@@ -474,7 +474,13 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
         body: formData
       });
 
-      const result = await response.json();
+      let result;
+      const text = await response.text();
+      try {
+        result = JSON.parse(text);
+      } catch {
+        result = { success: false, error: text || 'Compilation server error' };
+      }
 
       // Priority: pdfBase64 (already in memory, no HTTP race) > pdfUrl (HTTP)
       const renderPdf = async () => {

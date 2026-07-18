@@ -149,6 +149,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       setIsSyncing(true);
       try {
         const res = await fetch(`/api/projects/${projectId}`);
+        if (!res.ok) throw new Error("Failed to sync from cloud");
         const data = await res.json();
         
         if (data.project) {
@@ -450,6 +451,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/projects/${projectId}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (data.project && data.project.status !== 'processing') {
           setProject(data.project);
@@ -776,7 +778,13 @@ export default function DocIDE({ projectId }: { projectId: string }) {
         body: formData
       });
 
-      const result = await response.json();
+      let result;
+      const text = await response.text();
+      try {
+        result = JSON.parse(text);
+      } catch {
+        result = { success: false, error: text || 'Compilation server error' };
+      }
       
       // Helper: render a PDF from the response
       // Priority: pdfBase64 (already in memory, no HTTP race) > pdfUrl (HTTP)

@@ -150,7 +150,13 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
       });
 
       clearTimeout(timeoutId);
-      const data = await res.json();
+      let data;
+      const text = await res.text();
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { error: text || 'AI Agent encountered a runtime anomaly.' };
+      }
       
       if (!res.ok) throw new Error(data.error || 'AI Agent encountered a runtime anomaly.');
 
@@ -249,6 +255,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
       setLoadingCode(true);
       try {
         const res = await fetch(`/api/projects/${projectId}`);
+        if (!res.ok) throw new Error("Failed to sync from cloud");
         const data = await res.json();
         
         if (data.project) {
@@ -681,7 +688,13 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
         body: formData
       });
 
-      const result = await response.json();
+      let result;
+      const text = await response.text();
+      try {
+        result = JSON.parse(text);
+      } catch {
+        result = { success: false, error: text || 'Compilation server error' };
+      }
 
       // Helper: render a PDF from the response
       // Priority: pdfBase64 (already in memory, no HTTP race) > pdfUrl (HTTP)
@@ -1942,6 +1955,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                               projectId: projectId
                             })
                           });
+                          if (!res.ok) throw new Error(`HTTP ${res.status}`);
                           const data = await res.json();
                           
                           if (data.pdfBase64 || data.pdfUrl) {

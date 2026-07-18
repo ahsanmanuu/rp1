@@ -440,6 +440,7 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
     if (!projectId) return;
     try {
       const res = await fetch(`/api/projects/${projectId}/collaborators`);
+      if (!res.ok) return;
       const data = await res.json();
       if (data.collaborators) setCollaborators(data.collaborators);
     } catch (e) {
@@ -514,6 +515,7 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
 
       // 1. Get the newly converted LaTeX content
       const projRes = await fetch(`/api/projects/${uploadData.projectId}`);
+      if (!projRes.ok) throw new Error("Failed to fetch converted project");
       const projData = await projRes.json();
 
       if (projData.project?.latexContent) {
