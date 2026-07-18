@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * GET /api/plans
- * Public endpoint — returns all active membership plans created by admin.
+ * Public endpoint - returns all active membership plans created by admin.
  * Used by ProjectLimitModal to render real plan cards instead of hardcoded ones.
  * No auth required; only safe/public fields are exposed.
  */
