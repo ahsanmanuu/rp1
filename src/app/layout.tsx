@@ -1,4 +1,5 @@
 import { Inter, Newsreader, Outfit, JetBrains_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { NextAuthProvider } from "@/components/Auth/NextAuthProvider";
 import { ConditionalNavbar } from "@/components/ConditionalNavbar";
@@ -58,7 +59,7 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${outfit.variable} ${jetbrains.variable} ${newsreader.variable}`} suppressHydrationWarning>
       <head>
         <link rel="preload" href="/fonts/material-symbols-outlined.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
-        <script dangerouslySetInnerHTML={{ __html: `
+        <Script id="chunk-retry" strategy="beforeInteractive">{`
           (function(){
             var MAX_RETRIES = 3;
             function isChunkError(e){
@@ -143,7 +144,7 @@ export default function RootLayout({
               }
             });
           })();
-        `}} />
+        `}</Script>
       </head>
       <body className="antialiased font-body" suppressHydrationWarning>
         <NextAuthProvider>

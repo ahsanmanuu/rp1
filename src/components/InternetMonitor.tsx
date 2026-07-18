@@ -17,9 +17,13 @@ export default function InternetMonitor() {
   const [isVisible, setIsVisible] = useState(false);
   const router = useRouter();
   const prevStatusRef = useRef<string>("online");
+  const isMountedRef = useRef(true);
+  const restoredTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Handle connection events and Telemetry Speed
   useEffect(() => {
+    isMountedRef.current = true;
+
     const updateStatus = () => {
       if (!navigator.onLine) {
         setStatus("offline");
@@ -44,11 +48,12 @@ export default function InternetMonitor() {
             // Background pull server components data
             router.refresh();
 
-            const timer = setTimeout(() => {
+            if (restoredTimerRef.current) clearTimeout(restoredTimerRef.current);
+            restoredTimerRef.current = setTimeout(() => {
+              if (!isMountedRef.current) return;
               setStatus("online");
               setIsVisible(false);
             }, 4000);
-            return () => clearTimeout(timer);
           } else {
             setStatus("online");
             setIsVisible(false);
@@ -68,6 +73,8 @@ export default function InternetMonitor() {
     updateStatus();
 
     return () => {
+      isMountedRef.current = false;
+      if (restoredTimerRef.current) clearTimeout(restoredTimerRef.current);
       window.removeEventListener("online", updateStatus);
       window.removeEventListener("offline", updateStatus);
       if (connection) {
@@ -240,7 +247,7 @@ export default function InternetMonitor() {
       } catch (error: any) {
         // Don't force offline for server errors, CORS, timeouts — those aren't "no internet"
         if (error instanceof TypeError && (error.message.includes("Failed to fetch") || error.message.includes("NetworkError"))) {
-          if (isEffectivelyOffline()) {
+          if (isEffectivelyOffline() && isMountedRef.current) {
             console.warn("[OfflineSync] Confirmed offline:", error.message);
             setStatus("offline");
             setIsVisible(true);
