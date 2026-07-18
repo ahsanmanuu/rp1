@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, Cpu, Sparkles, Code2, BookOpen, Layers, Zap, Database } from 'lucide-react';
 
@@ -20,26 +20,45 @@ const ICON_STEPS = [
   { Icon: Sparkles,  color: '#8b5cf6', label: 'Almost ready' },
 ];
 
+const HIDE_DEBOUNCE_MS = 400;
+
 export default function EditorLoadingOverlay({ visible, label = 'LOADING LATEX SOURCE', sublabel = 'Parsing files and populating editor...' }: EditorLoadingOverlayProps) {
   const [step, setStep] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [show, setShow] = useState(false);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!visible) { setStep(0); setProgress(0); return; }
+    if (visible) {
+      if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); hideTimerRef.current = null; }
+      setShow(true);
+    } else {
+      hideTimerRef.current = setTimeout(() => {
+        hideTimerRef.current = null;
+        setShow(false);
+        setStep(0);
+        setProgress(0);
+      }, HIDE_DEBOUNCE_MS);
+    }
+    return () => { if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); hideTimerRef.current = null; } };
+  }, [visible]);
+
+  useEffect(() => {
+    if (!show) return;
     const total = ICON_STEPS.length;
     const interval = setInterval(() => {
       setStep(s => (s + 1) % total);
       setProgress(p => Math.min(p + 100 / total + Math.random() * 4, 97));
     }, 380);
     return () => clearInterval(interval);
-  }, [visible]);
+  }, [show]);
 
   const current = ICON_STEPS[step];
   const CurrentIcon = current.Icon;
 
   return (
     <AnimatePresence>
-      {visible && (
+      {show && (
         <motion.div
           key="editor-loading-overlay"
           initial={{ opacity: 0 }}
