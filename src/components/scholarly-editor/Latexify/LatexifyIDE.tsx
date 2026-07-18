@@ -1259,12 +1259,26 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                 </AnimatePresence>
 
                 <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
-                  {files.map(f => (
+                  {files.map(f => {
+                    const isMain = f.path === 'main.tex';
+                    return (
                     <motion.div 
-                      whileHover={{ x: 2, background: 'rgba(255,255,255,0.02)' }}
+                      whileHover={{ x: 2 }}
                       key={f.path} 
                       onClick={() => switchTab(f.path)} 
                       className={`file-sidebar-item ${activeFile === f.path ? 'active' : ''}`}
+                      onMouseEnter={e => {
+                        if (!isMain) {
+                          const btns = e.currentTarget.querySelector('.file-action-btns') as HTMLElement;
+                          if (btns) btns.style.opacity = '1';
+                        }
+                      }}
+                      onMouseLeave={e => {
+                        if (!isMain) {
+                          const btns = e.currentTarget.querySelector('.file-action-btns') as HTMLElement;
+                          if (btns) btns.style.opacity = activeFile === f.path ? '1' : '0';
+                        }
+                      }}
                       style={{ 
                         display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.55rem 0.75rem', borderRadius: '8px', cursor: 'pointer',
                         background: activeFile === f.path ? 'var(--bg-tertiary)' : 'transparent',
@@ -1272,38 +1286,51 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                         justifyContent: 'space-between'
                       }}
                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, overflow: 'hidden' }}>
                            <div 
                              className={`file-sidebar-dot ${activeFile === f.path ? 'active' : ''}`}
                              style={{ 
                                width: 6, 
                                height: 6, 
                                borderRadius: '50%', 
-                               opacity: activeFile === f.path ? 1 : 0.6
+                               opacity: activeFile === f.path ? 1 : 0.6,
+                               flexShrink: 0
                              }} 
                            />
-                           <span style={{ color: 'inherit' }}>{f.path}</span>
+                           <span style={{ color: 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.path}</span>
                         </div>
-                        {f.path !== 'main.tex' && (
-                          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                        {!isMain && (
+                          <div 
+                            className="file-action-btns"
+                            style={{ 
+                              display: 'flex', gap: '0.4rem', alignItems: 'center', flexShrink: 0, marginLeft: '0.5rem',
+                              opacity: activeFile === f.path ? 1 : 0,
+                              transition: 'opacity 0.15s'
+                            }}
+                          >
                             <button 
                               onClick={(e) => handleRenameFile(f.path, e)}
-                              style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.5, transition: 'opacity 0.2s', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                              style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.6, transition: 'all 0.15s', cursor: 'pointer', padding: '2px 3px', display: 'flex', alignItems: 'center', borderRadius: '4px' }}
+                              onMouseOver={e => { e.currentTarget.style.opacity = '1'; }}
+                              onMouseOut={e => { e.currentTarget.style.opacity = '0.6'; }}
                               title="Rename File"
                             >
-                               <Pencil size={12} />
+                               <Pencil size={11} />
                             </button>
                             <button 
                               onClick={(e) => handleDeleteFile(f.path, e)}
-                              style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.5, transition: 'opacity 0.2s', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                              style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.6, transition: 'all 0.15s', cursor: 'pointer', padding: '2px 3px', display: 'flex', alignItems: 'center', borderRadius: '4px' }}
+                              onMouseOver={e => { e.currentTarget.style.opacity = '1'; (e.currentTarget as HTMLElement).style.color = '#ef4444'; }}
+                              onMouseOut={e => { e.currentTarget.style.opacity = '0.6'; (e.currentTarget as HTMLElement).style.color = 'inherit'; }}
                               title="Delete File"
                             >
-                               <Trash2 size={12} />
+                               <Trash2 size={11} />
                             </button>
                           </div>
                         )}
                      </motion.div>
-                  ))}
+                    );
+                  })}
                </div>
             </div>
 

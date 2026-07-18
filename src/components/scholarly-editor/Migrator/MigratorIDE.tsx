@@ -35,38 +35,53 @@ import { type DiagnosticError } from '@/lib/studio-core/compiler-utils';
 const MonacoEditor = dynamic(() => import('@monaco-editor/react').then(m => m.default), { ssr: false, loading: () => <div style={{ flex: 1, background: '#0a0a0a' }} /> });
 const ScholarlyViewer = dynamic(() => import('../ScholarlyPDFViewer').then(m => m.default), { ssr: false, loading: () => <div style={{ height: '100%', background: '#050505' }} /> });
 
-function FileItem({ f, activeFile, onClick }: { f: any, activeFile: string, onClick: (path: string) => void }) {
+function FileItem({ f, activeFile, onClick, onDelete, onRename }: { f: any, activeFile: string, onClick: (path: string) => void, onDelete?: (path: string) => void, onRename?: (path: string) => void }) {
+    const [hovered, setHovered] = useState(false);
+    const isActive = activeFile === f.path;
     const isSkeleton = f.path === 'main.tex' || f.path === 'Migrated_Manuscript.tex';
+    const showActions = !isSkeleton && (hovered || isActive);
+
     return (
         <motion.div 
-            whileHover={{ x: 2, background: 'rgba(255,255,255,0.02)' }}
+            whileHover={{ x: 2 }}
+            onHoverStart={() => setHovered(true)}
+            onHoverEnd={() => setHovered(false)}
             onClick={() => onClick(f.path)} 
             style={{ 
-                display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.45rem 0.75rem', borderRadius: '8px', cursor: 'pointer',
-                background: activeFile === f.path ? 'var(--accent-glow)' : 'transparent',
-                color: activeFile === f.path ? 'var(--accent-primary)' : 'var(--text-secondary)',
-                marginBottom: '1px', fontSize: '0.85rem', fontWeight: activeFile === f.path ? 700 : 500, transition: 'all 0.15s', fontFamily: 'var(--font-headline)'
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', padding: '0.45rem 0.75rem', borderRadius: '8px', cursor: 'pointer',
+                background: isActive ? 'var(--accent-glow)' : hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
+                color: isActive ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                marginBottom: '1px', fontSize: '0.85rem', fontWeight: isActive ? 700 : 500, transition: 'all 0.15s', fontFamily: 'var(--font-headline)'
             }}
         >
-            <div style={{ width: 4, height: 4, borderRadius: '50%', background: activeFile === f.path ? 'var(--accent-primary)' : 'var(--border)' }} />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{f.path}</span>
-            {!isSkeleton && (
-                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); (window as any)._migrator_rename?.(f.path); }}
-                        style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.3, transition: 'opacity 0.2s', cursor: 'pointer', padding: '2px', display: 'flex' }}
-                        title="Rename File"
-                    >
-                        <Pencil size={12} />
-                    </button>
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); (window as any)._migrator_delete?.(f.path); }}
-                        style={{ background: 'transparent', border: 'none', color: 'var(--error)', opacity: 0.3, transition: 'opacity 0.2s', cursor: 'pointer', padding: '2px', display: 'flex' }}
-                        className="delete-hover-trigger"
-                        title="Delete File"
-                    >
-                        <Trash2 size={12} />
-                    </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, overflow: 'hidden' }}>
+                <div style={{ width: 4, height: 4, borderRadius: '50%', flexShrink: 0, background: isActive ? 'var(--accent-primary)' : 'var(--border)' }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.path}</span>
+            </div>
+            {showActions && (
+                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexShrink: 0 }}>
+                    {onRename && (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); onRename(f.path); }}
+                            style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.6, transition: 'all 0.15s', cursor: 'pointer', padding: '2px 3px', display: 'flex', alignItems: 'center', borderRadius: '4px' }}
+                            onMouseOver={e => { e.currentTarget.style.opacity = '1'; }}
+                            onMouseOut={e => { e.currentTarget.style.opacity = '0.6'; }}
+                            title="Rename File"
+                        >
+                            <Pencil size={11} />
+                        </button>
+                    )}
+                    {onDelete && (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); onDelete(f.path); }}
+                            style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.6, transition: 'all 0.15s', cursor: 'pointer', padding: '2px 3px', display: 'flex', alignItems: 'center', borderRadius: '4px' }}
+                            onMouseOver={e => { e.currentTarget.style.opacity = '1'; (e.currentTarget as HTMLElement).style.color = '#ef4444'; }}
+                            onMouseOut={e => { e.currentTarget.style.opacity = '0.6'; (e.currentTarget as HTMLElement).style.color = 'inherit'; }}
+                            title="Delete File"
+                        >
+                            <Trash2 size={11} />
+                        </button>
+                    )}
                 </div>
             )}
         </motion.div>
@@ -965,9 +980,9 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
                        {/* TARGET MANUSCRIPT SECTION */}
                        <div style={{ marginBottom: '1.25rem' }}>
                           <div style={{ fontSize: '0.65rem', fontWeight: 900, opacity: 0.3, letterSpacing: '0.1em', padding: '0 0.75rem 0.25rem' }}>TARGET MANUSCRIPT</div>
-                          {targetMain && <FileItem f={targetMain} activeFile={activeFile} onClick={switchTab} />}
-                          {targetStyles.map(f => <FileItem key={f.path} f={f} activeFile={activeFile} onClick={switchTab} />)}
-                          {targetOther.map(f => <FileItem key={f.path} f={f} activeFile={activeFile} onClick={switchTab} />)}
+                          {targetMain && <FileItem f={targetMain} activeFile={activeFile} onClick={switchTab} onDelete={handleDeleteFile} onRename={handleRenameFile} />}
+                          {targetStyles.map(f => <FileItem key={f.path} f={f} activeFile={activeFile} onClick={switchTab} onDelete={handleDeleteFile} onRename={handleRenameFile} />)}
+                          {targetOther.map(f => <FileItem key={f.path} f={f} activeFile={activeFile} onClick={switchTab} onDelete={handleDeleteFile} onRename={handleRenameFile} />)}
                        </div>
 
                        {/* SOURCE REFERENCE SECTION */}
@@ -975,7 +990,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
                          <div style={{ marginBottom: '1rem' }}>
                             <div style={{ fontSize: '0.65rem', fontWeight: 900, opacity: 0.3, letterSpacing: '0.1em', padding: '0 0.75rem 0.25rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.75rem', marginTop: '0.5rem' }}>SOURCE REFERENCE</div>
                             {migrationFiles.map(f => (
-                              <FileItem key={f.path} f={f} activeFile={activeFile} onClick={switchTab} />
+                              <FileItem key={f.path} f={f} activeFile={activeFile} onClick={switchTab} onDelete={handleDeleteFile} onRename={handleRenameFile} />
                             ))}
                          </div>
                        )}
