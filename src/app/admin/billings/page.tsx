@@ -460,7 +460,7 @@ export default function AdminBillingsPage() {
 
 
             {/* Main Content Area */}
-            <main className="ml-64 flex flex-col min-h-screen">
+            <main className="ml-0 lg:ml-64 flex flex-col min-h-screen">
                 {/* Header */}
                 <header className="flex justify-between items-center w-full px-8 py-4 border-b z-40 relative transition-colors duration-500" style={{ backgroundColor: "var(--color-admin-surface)", borderColor: "var(--color-admin-outline-variant)" }}>
                     <div className="flex items-center gap-4 flex-1">

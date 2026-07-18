@@ -1058,7 +1058,7 @@ export default function AdminAiCapsPage() {
       </aside>
 
       {/* ── Main Content ── */}
-      <main className="ml-64 flex flex-col min-h-screen">
+      <main className="ml-0 lg:ml-64 flex flex-col min-h-screen">
         {/* Header */}
         <header className="flex justify-between items-center w-full px-8 py-4 border-b z-40 relative"
           style={{ backgroundColor: 'var(--color-admin-surface)', borderColor: 'var(--color-admin-outline-variant)' }}>

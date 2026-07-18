@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { createPb } from '@/lib/pb';
 import ProLoader from '@/components/ProLoader';
 import AdminSidebar from '@/components/AdminSidebar';
+import { Theme, getAccentColor, themes } from '@/components/AdminThemeStyles';
 
 const GST_SLABS = [
   { min: 0, max: 500000, rate: 0, name: 'Nil', type: 'Exempt' },
@@ -17,13 +18,14 @@ function getGstSlab(amount: number) {
   return GST_SLABS.find(s => amount >= s.min && amount <= s.max) || GST_SLABS[3];
 }
 
+const ALL_THEMES: Theme[] = ['indigo', 'emerald', 'rose', 'violet', 'amber', 'cyan', 'sky', 'pink', 'orange', 'lime', 'teal', 'fuchsia', 'red', 'yellow', 'stone', 'zinc'];
+
 export default function AdminTaxCalculationPage() {
-  const [currentTheme, setCurrentTheme] = useState<'indigo' | 'emerald' | 'rose'>('indigo');
+  const [currentTheme, setCurrentTheme] = useState<Theme>('indigo');
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [adminName, setAdminName] = useState("Admin Root");
 
-  // Data states
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<any>(null);
   const [regionData, setRegionData] = useState<any[]>([]);
@@ -31,21 +33,17 @@ export default function AdminTaxCalculationPage() {
   const [filings, setFilings] = useState<any[]>([]);
   const [calculatorResult, setCalculatorResult] = useState<any>(null);
 
-  // Rule form
   const [showRuleForm, setShowRuleForm] = useState(false);
   const [editingRule, setEditingRule] = useState<any>(null);
   const [ruleForm, setRuleForm] = useState({ region: '', jurisdiction: '', taxType: 'GST', rate: 18, threshold: '', status: 'Active', isActive: true });
 
-  // Calculator
   const [calcPeriod, setCalcPeriod] = useState('30');
   const [calcExemptions, setCalcExemptions] = useState<string[]>([]);
 
-  // GST popup
   const [showGstPopup, setShowGstPopup] = useState(false);
   const [gstManualAmount, setGstManualAmount] = useState<number>(0);
   const [gstSlab, setGstSlab] = useState(GST_SLABS[3]);
 
-  // Indian tax slab calc based on successful transactions
   const [showTaxSlabCalc, setShowTaxSlabCalc] = useState(false);
   const [taxSlabTurnover, setTaxSlabTurnover] = useState<number>(1240000);
   const [taxSlabResult, setTaxSlabResult] = useState<any>(null);
@@ -53,11 +51,10 @@ export default function AdminTaxCalculationPage() {
   const [editField, setEditField] = useState('');
   const [editValue, setEditValue] = useState('');
 
-
   useEffect(() => {
-    const savedTheme = localStorage.getItem('latexify-admin-theme') as 'indigo' | 'emerald' | 'rose' | null;
+    const savedTheme = localStorage.getItem('latexify-admin-theme') as Theme | null;
     const savedMode = localStorage.getItem('latexify-admin-mode');
-    if (savedTheme) setCurrentTheme(savedTheme);
+    if (savedTheme && themes[savedTheme]) setCurrentTheme(savedTheme);
     if (savedMode) setIsDarkMode(savedMode === 'dark');
     const storedName = localStorage.getItem('latexify-admin-name');
     if (storedName) setAdminName(storedName);
@@ -66,6 +63,7 @@ export default function AdminTaxCalculationPage() {
   useEffect(() => {
     localStorage.setItem('latexify-admin-theme', currentTheme);
     localStorage.setItem('latexify-admin-mode', isDarkMode ? 'dark' : 'light');
+    window.dispatchEvent(new Event('admin-theme-changed'));
   }, [currentTheme, isDarkMode]);
 
   const fetchData = useCallback(async () => {
@@ -85,7 +83,6 @@ export default function AdminTaxCalculationPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // PB Realtime subscriptions
   useEffect(() => {
     const pb = createPb();
     const unsubFns: (() => void)[] = [];
@@ -147,9 +144,9 @@ export default function AdminTaxCalculationPage() {
   };
 
   const toggleTheme = () => setIsThemeMenuOpen(!isThemeMenuOpen);
-  const handleThemeSelect = (t: 'indigo' | 'emerald' | 'rose') => { setCurrentTheme(t); setIsThemeMenuOpen(false); };
+  const handleThemeSelect = (t: Theme) => { setCurrentTheme(t); setIsThemeMenuOpen(false); };
 
-  const accentColor = currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#4f46e5';
+  const accentColor = getAccentColor(currentTheme, isDarkMode);
   const bgColor = isDarkMode ? '#0b1326' : '#f8fafc';
   const surfaceColor = isDarkMode ? '#0b1326' : '#ffffff';
   const onSurfaceColor = isDarkMode ? '#dae2fd' : '#0f172a';
@@ -159,87 +156,29 @@ export default function AdminTaxCalculationPage() {
 
   return (
     <div className="min-h-screen transition-colors duration-500" style={{ backgroundColor: bgColor, color: onSurfaceColor }}>
-      <style dangerouslySetInnerHTML={{ __html: `
-        :root { ${isDarkMode ? `
-          --color-admin-primary: ${currentTheme === 'rose' ? '#fda4af' : currentTheme === 'emerald' ? '#6ee7b7' : '#c3c0ff'};
-          --color-admin-primary-container: ${currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#4f46e5'};
-          --color-admin-on-primary-container: ${currentTheme === 'rose' ? '#ffe4e6' : currentTheme === 'emerald' ? '#d1fae5' : '#dad7ff'};
-          --color-admin-secondary: ${currentTheme === 'rose' ? '#fecdd3' : currentTheme === 'emerald' ? '#a7f3d0' : '#c0c1ff'};
-          --color-admin-secondary-container: ${currentTheme === 'rose' ? '#be123c' : currentTheme === 'emerald' ? '#047857' : '#3131c0'};
-          --color-admin-on-secondary-container: ${currentTheme === 'rose' ? '#fff1f2' : currentTheme === 'emerald' ? '#ecfdf5' : '#b0b2ff'};
-          --color-admin-background: ${bgColor};
-          --color-admin-surface: ${surfaceColor};
-          --color-admin-surface-container: ${isDarkMode ? '#171f33' : '#f1f5f9'};
-          --color-admin-surface-container-low: ${isDarkMode ? '#131b2e' : '#f8fafc'};
-          --color-admin-surface-container-high: ${isDarkMode ? '#222a3d' : '#e2e8f0'};
-          --color-admin-surface-container-highest: ${isDarkMode ? '#2d3449' : '#cbd5e1'};
-          --color-admin-on-surface: ${onSurfaceColor};
-          --color-admin-on-surface-variant: ${surfaceVariant};
-          --color-admin-outline: ${isDarkMode ? '#918fa1' : '#94a3b8'};
-          --color-admin-outline-variant: ${borderColor};
-          --color-admin-error: ${isDarkMode ? '#ffb4ab' : '#ba1a1a'};
-          --color-admin-on-error: ${isDarkMode ? '#690005' : '#ffffff'};
-          --color-admin-error-container: ${isDarkMode ? '#93000a' : '#ffdad6'};
-          --color-admin-on-error-container: ${isDarkMode ? '#ffdad6' : '#410002'};
-          --color-admin-tertiary: ${isDarkMode ? '#ffb695' : '#f59e0b'};
-          --color-admin-tertiary-container: ${isDarkMode ? '#a44100' : '#fffbeb'};
-          --color-admin-on-tertiary-container: ${isDarkMode ? '#ffd2be' : '#92400e'};
-        ` : `
-          --color-admin-primary: ${accentColor};
-          --color-admin-primary-container: ${currentTheme === 'rose' ? '#ffe4e6' : currentTheme === 'emerald' ? '#d1fae5' : '#dad7ff'};
-          --color-admin-on-primary-container: ${currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#4f46e5'};
-          --color-admin-secondary: ${currentTheme === 'rose' ? '#fecdd3' : currentTheme === 'emerald' ? '#a7f3d0' : '#c0c1ff'};
-          --color-admin-secondary-container: ${currentTheme === 'rose' ? '#ffe4e6' : currentTheme === 'emerald' ? '#d1fae5' : '#e0e7ff'};
-          --color-admin-on-secondary-container: ${currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#3730a3'};
-          --color-admin-background: ${bgColor};
-          --color-admin-surface: ${surfaceColor};
-          --color-admin-surface-container: ${isDarkMode ? '#171f33' : '#f1f5f9'};
-          --color-admin-surface-container-low: ${isDarkMode ? '#131b2e' : '#f8fafc'};
-          --color-admin-surface-container-high: ${isDarkMode ? '#222a3d' : '#e2e8f0'};
-          --color-admin-surface-container-highest: ${isDarkMode ? '#2d3449' : '#cbd5e1'};
-          --color-admin-on-surface: ${onSurfaceColor};
-          --color-admin-on-surface-variant: ${surfaceVariant};
-          --color-admin-outline: ${isDarkMode ? '#918fa1' : '#94a3b8'};
-          --color-admin-outline-variant: ${borderColor};
-          --color-admin-error: ${isDarkMode ? '#ffb4ab' : '#ba1a1a'};
-          --color-admin-on-error: ${isDarkMode ? '#690005' : '#ffffff'};
-          --color-admin-error-container: ${isDarkMode ? '#93000a' : '#ffdad6'};
-          --color-admin-on-error-container: ${isDarkMode ? '#ffdad6' : '#410002'};
-          --color-admin-tertiary: ${isDarkMode ? '#ffb695' : '#f59e0b'};
-          --color-admin-tertiary-container: ${isDarkMode ? '#a44100' : '#fffbeb'};
-          --color-admin-on-tertiary-container: ${isDarkMode ? '#ffd2be' : '#92400e'};
-        `}
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: ${borderColor}; border-radius: 4px; }
-        @keyframes pulse-slow { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
-        .animate-pulse-slow { animation: pulse-slow 3s infinite; } `}}
-      />
-
-      <div className="flex h-screen">
+      <div className="flex min-h-screen">
         <AdminSidebar isDarkMode={isDarkMode} adminName={adminName} />
 
-        {/* Main */}
-        <main className="ml-64 min-h-screen pb-16">
-          {/* Header */}
-          <header className="flex justify-between items-center w-full px-8 py-4 border-b backdrop-blur-md sticky top-0 z-40" style={{ backgroundColor: surfaceColor + 'cc', borderColor }}>
-            <div className="flex items-center gap-4 flex-1">
-              <h1 className="text-lg font-bold" style={{ color: onSurfaceColor }}>Financial Compliance</h1>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: accentColor + '20', color: accentColor }}>Tax Reporting Dashboard</span>
+        <main className="flex-1 ml-0 lg:ml-64 min-h-screen pb-16">
+          <header className="flex justify-between items-center w-full px-4 sm:px-8 py-4 border-b backdrop-blur-md sticky top-0 z-40" style={{ backgroundColor: surfaceColor + 'cc', borderColor }}>
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              <h1 className="text-lg font-bold truncate" style={{ color: onSurfaceColor }}>Financial Compliance</h1>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0" style={{ backgroundColor: accentColor + '20', color: accentColor }}>Tax Reporting Dashboard</span>
             </div>
-            <div className="flex items-center gap-6 ml-4">
+            <div className="flex items-center gap-3 sm:gap-6 ml-4 shrink-0">
               <div className="relative">
                 <button onClick={toggleTheme} className="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium transition-colors" style={{ borderColor, color: surfaceVariant }}>
                   <span className="w-3 h-3 rounded-full" style={{ backgroundColor: accentColor }} />
-                  <span>Theme</span>
+                  <span className="hidden sm:inline">Theme</span>
                   <span className="material-symbols-outlined text-[18px]">expand_more</span>
                 </button>
                 {isThemeMenuOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-36 rounded-xl border shadow-lg z-50" style={{ backgroundColor: surfaceColor, borderColor }}>
-                    {(['indigo', 'emerald', 'rose'] as const).map(t => (
+                  <div className="absolute right-0 top-full mt-2 w-48 max-h-80 overflow-y-auto rounded-xl border shadow-lg z-50 custom-scrollbar" style={{ backgroundColor: surfaceColor, borderColor }}>
+                    {ALL_THEMES.map(t => (
                       <button key={t} onClick={() => handleThemeSelect(t)} className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-bold hover:brightness-90 transition-all border-b last:border-b-0" style={{ borderColor, color: onSurfaceColor, backgroundColor: currentTheme === t ? accentColor + '20' : 'transparent', textTransform: 'capitalize' }}>
-                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: t === 'rose' ? '#e11d48' : t === 'emerald' ? '#059669' : '#4f46e5' }} />
+                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: getAccentColor(t, true) }} />
                         {t}
+                        {currentTheme === t && <span className="material-symbols-outlined ml-auto text-[14px]">check</span>}
                       </button>
                     ))}
                   </div>
@@ -250,7 +189,7 @@ export default function AdminTaxCalculationPage() {
               </button>
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold" style={{ backgroundColor: accentColor + '30', color: accentColor }}>A</div>
-                <div>
+                <div className="hidden sm:block">
                   <p className="text-sm font-semibold" style={{ color: onSurfaceColor }}>{adminName}</p>
                   <p className="text-[10px]" style={{ color: surfaceVariant }}>Administrator</p>
                 </div>
@@ -258,12 +197,11 @@ export default function AdminTaxCalculationPage() {
             </div>
           </header>
 
-          <div className="px-8 py-6 space-y-6">
+          <div className="px-4 sm:px-8 py-6 space-y-6">
             {loading ? (
               <ProLoader variant="admin" fullScreen={false} />
             ) : (
               <>
-                {/* Period & Export Row */}
                 <div className="flex items-center justify-between flex-wrap gap-4">
                   <div className="flex items-center gap-3">
                     <span className="material-symbols-outlined" style={{ color: surfaceVariant }}>calendar_today</span>
@@ -281,8 +219,7 @@ export default function AdminTaxCalculationPage() {
                   </div>
                 </div>
 
-                {/* Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="p-5 rounded-xl border transition-colors" style={{ backgroundColor: cardBg, borderColor }}>
                     <div className="flex items-center gap-3 mb-2">
                       <span className="material-symbols-outlined text-[20px]" style={{ color: accentColor }}>account_balance_wallet</span>
@@ -317,9 +254,7 @@ export default function AdminTaxCalculationPage() {
                   </div>
                 </div>
 
-                {/* Main Grid: Chart + Calculator */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Regional Tax Collection */}
                   <div className="lg:col-span-2 p-6 rounded-xl border" style={{ backgroundColor: cardBg, borderColor }}>
                     <h3 className="text-sm font-bold mb-4" style={{ color: onSurfaceColor }}>Regional Tax Collection</h3>
                     {regionData.length === 0 ? (
@@ -330,7 +265,7 @@ export default function AdminTaxCalculationPage() {
                           const maxAmount = Math.max(...regionData.map(x => x.taxAmount), 1);
                           const pct = (r.taxAmount / maxAmount) * 100;
                           const regionNames: Record<string, string> = { 'IN': 'India (GST)', 'US-CA': 'California, USA', 'DE': 'Germany, EU', 'GB': 'UK', 'SG': 'Singapore', 'AU': 'Australia' };
-                          const regionIcons: Record<string, string> = { 'IN': 'IN', 'US-CA': '🇺🇸', 'DE': '🇩🇪', 'GB': '🇬🇧', 'SG': '🇸🇬', 'AU': '🇦🇺' };
+                          const regionIcons: Record<string, string> = { 'IN': 'IN', 'US-CA': 'US', 'DE': 'DE', 'GB': 'GB', 'SG': 'SG', 'AU': 'AU' };
                           const colors = ['#4f46e5', '#059669', '#d97706', '#dc2626', '#7c3aed', '#0891b2'];
                           return (
                             <div key={r.region} className="flex items-center gap-4">
@@ -351,7 +286,6 @@ export default function AdminTaxCalculationPage() {
                     )}
                   </div>
 
-                  {/* Automated Calculator */}
                   <div className="p-6 rounded-xl border" style={{ backgroundColor: cardBg, borderColor }}>
                     <div className="flex items-center gap-2 mb-4">
                       <span className="material-symbols-outlined" style={{ color: accentColor }}>calculate</span>
@@ -397,8 +331,7 @@ export default function AdminTaxCalculationPage() {
                   </div>
                 </div>
 
-                {/* Tax Configurations */}
-                <div className="p-6 rounded-xl border" style={{ backgroundColor: cardBg, borderColor }}>
+                <div className="p-6 rounded-xl border overflow-x-auto" style={{ backgroundColor: cardBg, borderColor }}>
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h3 className="text-sm font-bold" style={{ color: onSurfaceColor }}>Active Tax Configurations</h3>
@@ -427,7 +360,7 @@ export default function AdminTaxCalculationPage() {
                         {rules.map((r: any) => (
                           <tr key={r.id} className="border-b hover:brightness-95" style={{ borderColor }}>
                             <td className="p-3 font-semibold" style={{ color: onSurfaceColor }}>
-                              <span className="mr-2">{r.region === 'IN' ? '🇮🇳' : r.region === 'US-CA' ? '🇺🇸' : r.region === 'DE' ? '🇩🇪' : r.region === 'GB' ? '🇬🇧' : '🌐'}</span>
+                              <span className="mr-2">{r.region === 'IN' ? 'IN' : r.region === 'US-CA' ? 'US' : r.region === 'DE' ? 'DE' : r.region === 'GB' ? 'GB' : 'GL'}</span>
                               {r.jurisdiction}
                             </td>
                             <td className="p-3" style={{ color: surfaceVariant }}>{r.taxType}</td>
@@ -456,7 +389,6 @@ export default function AdminTaxCalculationPage() {
                   </div>
                 </div>
 
-                {/* Filing Deadlines */}
                 <div className="p-6 rounded-xl border" style={{ backgroundColor: cardBg, borderColor }}>
                   <div className="flex items-center gap-2 mb-4">
                     <span className="material-symbols-outlined" style={{ color: '#f59e0b' }}>task</span>
@@ -469,7 +401,7 @@ export default function AdminTaxCalculationPage() {
                       {filings.map((f: any) => {
                         const isUrgent = new Date(f.dueDate).getTime() - Date.now() < 15 * 86400000;
                         return (
-                          <div key={f.id} className="p-4 rounded-xl border flex items-start justify-between gap-4" style={{ backgroundColor: isUrgent ? '#fef2f2' : isDarkMode ? '#131b2e' : '#f8fafc', borderColor: isUrgent ? '#fecaca' : borderColor }}>
+                          <div key={f.id} className="p-4 rounded-xl border flex flex-col sm:flex-row items-start justify-between gap-4" style={{ backgroundColor: isUrgent ? '#fef2f2' : isDarkMode ? '#131b2e' : '#f8fafc', borderColor: isUrgent ? '#fecaca' : borderColor }}>
                             <div>
                               <p className="text-sm font-bold" style={{ color: onSurfaceColor }}>{f.jurisdiction} — {f.taxType}</p>
                               <p className="text-xs mt-1" style={{ color: isUrgent ? '#dc2626' : surfaceVariant }}>
@@ -498,7 +430,6 @@ export default function AdminTaxCalculationPage() {
         </main>
       </div>
 
-      {/* Rule Form Modal */}
       {showRuleForm && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
           <div className="w-full max-w-lg p-6 rounded-2xl border shadow-2xl" style={{ backgroundColor: surfaceColor, borderColor }}>
@@ -533,13 +464,11 @@ export default function AdminTaxCalculationPage() {
         </div>
       )}
 
-      {/* GST Popup Calculator */}
       {showGstPopup && (
         <div className="fixed inset-0 z-[9999] flex items-start justify-center bg-black/50 backdrop-blur-sm px-4 py-8 overflow-y-auto">
           <div className="w-full max-w-2xl p-6 rounded-2xl border shadow-2xl my-auto" style={{ backgroundColor: surfaceColor, borderColor, maxHeight: '85vh', overflowY: 'auto' }}>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <span className="text-2xl">🇮🇳</span>
                 <h3 className="text-lg font-bold" style={{ color: onSurfaceColor }}>Indian GST Calculator</h3>
               </div>
               <button onClick={() => setShowGstPopup(false)} className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/5"><span className="material-symbols-outlined">close</span></button>
@@ -600,7 +529,6 @@ export default function AdminTaxCalculationPage() {
         </div>
       )}
 
-      {/* Tax Slab Calculator */}
       {showTaxSlabCalc && taxSlabResult && (
         <div className="fixed inset-0 z-[9999] flex items-start justify-center bg-black/50 backdrop-blur-sm px-4 py-8 overflow-y-auto">
           <div className="w-full max-w-lg p-6 rounded-2xl border shadow-2xl my-auto" style={{ backgroundColor: surfaceColor, borderColor, maxHeight: '85vh', overflowY: 'auto' }}>
@@ -655,7 +583,6 @@ export default function AdminTaxCalculationPage() {
         </div>
       )}
 
-      {/* Edit Popup */}
       {showEditPopup && (
         <div className="fixed inset-0 z-[99999] flex items-start justify-center bg-black/50 backdrop-blur-sm px-4 py-8 overflow-y-auto">
           <div className="w-full max-w-sm p-6 rounded-2xl border shadow-2xl my-auto" style={{ backgroundColor: surfaceColor, borderColor, maxHeight: '85vh', overflowY: 'auto' }}>

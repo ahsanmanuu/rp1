@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import ProLoader from '@/components/ProLoader';
 import AdminSidebar from '@/components/AdminSidebar';
+import { Theme, getAccentColor, themes } from '@/components/AdminThemeStyles';
 
 function timeAgo(dateStr: string): string {
   const now = Date.now();
@@ -26,8 +27,10 @@ function truncate(str: string, len: number): string {
   return str.slice(0, len) + '...';
 }
 
+const ALL_THEMES: Theme[] = ['indigo', 'emerald', 'rose', 'violet', 'amber', 'cyan', 'sky', 'pink', 'orange', 'lime', 'teal', 'fuchsia', 'red', 'yellow', 'stone', 'zinc'];
+
 export default function AdminGeneralQueriesPage() {
-  const [currentTheme, setCurrentTheme] = useState<'indigo' | 'emerald' | 'rose'>('indigo');
+  const [currentTheme, setCurrentTheme] = useState<Theme>('indigo');
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [adminName, setAdminName] = useState('Admin Root');
@@ -39,12 +42,10 @@ export default function AdminGeneralQueriesPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
 
-
-
   useEffect(() => {
-    const savedTheme = localStorage.getItem('latexify-admin-theme') as 'indigo' | 'emerald' | 'rose' | null;
+    const savedTheme = localStorage.getItem('latexify-admin-theme') as Theme | null;
     const savedMode = localStorage.getItem('latexify-admin-mode');
-    if (savedTheme) setCurrentTheme(savedTheme);
+    if (savedTheme && themes[savedTheme]) setCurrentTheme(savedTheme);
     if (savedMode) setIsDarkMode(savedMode === 'dark');
     const storedName = localStorage.getItem('latexify-admin-name');
     if (storedName) setAdminName(storedName);
@@ -53,6 +54,7 @@ export default function AdminGeneralQueriesPage() {
   useEffect(() => {
     localStorage.setItem('latexify-admin-theme', currentTheme);
     localStorage.setItem('latexify-admin-mode', isDarkMode ? 'dark' : 'light');
+    window.dispatchEvent(new Event('admin-theme-changed'));
   }, [currentTheme, isDarkMode]);
 
   const fetchQueries = useCallback(async () => {
@@ -118,7 +120,7 @@ export default function AdminGeneralQueriesPage() {
     }
   };
 
-  const accentColor = currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#4f46e5';
+  const accentColor = getAccentColor(currentTheme, isDarkMode);
   const bgColor = isDarkMode ? '#0b1326' : '#f8fafc';
   const surfaceColor = isDarkMode ? '#0b1326' : '#ffffff';
   const onSurfaceColor = isDarkMode ? '#dae2fd' : '#0f172a';
@@ -127,95 +129,37 @@ export default function AdminGeneralQueriesPage() {
   const cardBg = isDarkMode ? '#171f33' : '#ffffff';
 
   const toggleTheme = () => setIsThemeMenuOpen(!isThemeMenuOpen);
-  const handleThemeSelect = (t: 'indigo' | 'emerald' | 'rose') => { setCurrentTheme(t); setIsThemeMenuOpen(false); };
+  const handleThemeSelect = (t: Theme) => { setCurrentTheme(t); setIsThemeMenuOpen(false); };
 
   return (
     <div className="min-h-screen transition-colors duration-500" style={{ backgroundColor: bgColor, color: onSurfaceColor }}>
-      <style dangerouslySetInnerHTML={{ __html: `
-        :root { ${isDarkMode ? `
-          --color-admin-primary: ${currentTheme === 'rose' ? '#fda4af' : currentTheme === 'emerald' ? '#6ee7b7' : '#c3c0ff'};
-          --color-admin-primary-container: ${currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#4f46e5'};
-          --color-admin-on-primary-container: ${currentTheme === 'rose' ? '#ffe4e6' : currentTheme === 'emerald' ? '#d1fae5' : '#dad7ff'};
-          --color-admin-secondary: ${currentTheme === 'rose' ? '#fecdd3' : currentTheme === 'emerald' ? '#a7f3d0' : '#c0c1ff'};
-          --color-admin-secondary-container: ${currentTheme === 'rose' ? '#be123c' : currentTheme === 'emerald' ? '#047857' : '#3131c0'};
-          --color-admin-on-secondary-container: ${currentTheme === 'rose' ? '#fff1f2' : currentTheme === 'emerald' ? '#ecfdf5' : '#b0b2ff'};
-          --color-admin-background: ${bgColor};
-          --color-admin-surface: ${surfaceColor};
-          --color-admin-surface-container: ${isDarkMode ? '#171f33' : '#f1f5f9'};
-          --color-admin-surface-container-low: ${isDarkMode ? '#131b2e' : '#f8fafc'};
-          --color-admin-surface-container-high: ${isDarkMode ? '#222a3d' : '#e2e8f0'};
-          --color-admin-surface-container-highest: ${isDarkMode ? '#2d3449' : '#cbd5e1'};
-          --color-admin-on-surface: ${onSurfaceColor};
-          --color-admin-on-surface-variant: ${surfaceVariant};
-          --color-admin-outline: ${isDarkMode ? '#918fa1' : '#94a3b8'};
-          --color-admin-outline-variant: ${borderColor};
-          --color-admin-error: ${isDarkMode ? '#ffb4ab' : '#ba1a1a'};
-          --color-admin-on-error: ${isDarkMode ? '#690005' : '#ffffff'};
-          --color-admin-error-container: ${isDarkMode ? '#93000a' : '#ffdad6'};
-          --color-admin-on-error-container: ${isDarkMode ? '#ffdad6' : '#410002'};
-          --color-admin-tertiary: ${isDarkMode ? '#ffb695' : '#f59e0b'};
-          --color-admin-tertiary-container: ${isDarkMode ? '#a44100' : '#fffbeb'};
-          --color-admin-on-tertiary-container: ${isDarkMode ? '#ffd2be' : '#92400e'};
-        ` : `
-          --color-admin-primary: ${accentColor};
-          --color-admin-primary-container: ${currentTheme === 'rose' ? '#ffe4e6' : currentTheme === 'emerald' ? '#d1fae5' : '#dad7ff'};
-          --color-admin-on-primary-container: ${currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#4f46e5'};
-          --color-admin-secondary: ${currentTheme === 'rose' ? '#fecdd3' : currentTheme === 'emerald' ? '#a7f3d0' : '#c0c1ff'};
-          --color-admin-secondary-container: ${currentTheme === 'rose' ? '#ffe4e6' : currentTheme === 'emerald' ? '#d1fae5' : '#e0e7ff'};
-          --color-admin-on-secondary-container: ${currentTheme === 'rose' ? '#e11d48' : currentTheme === 'emerald' ? '#059669' : '#3730a3'};
-          --color-admin-background: ${bgColor};
-          --color-admin-surface: ${surfaceColor};
-          --color-admin-surface-container: ${isDarkMode ? '#171f33' : '#f1f5f9'};
-          --color-admin-surface-container-low: ${isDarkMode ? '#131b2e' : '#f8fafc'};
-          --color-admin-surface-container-high: ${isDarkMode ? '#222a3d' : '#e2e8f0'};
-          --color-admin-surface-container-highest: ${isDarkMode ? '#2d3449' : '#cbd5e1'};
-          --color-admin-on-surface: ${onSurfaceColor};
-          --color-admin-on-surface-variant: ${surfaceVariant};
-          --color-admin-outline: ${isDarkMode ? '#918fa1' : '#94a3b8'};
-          --color-admin-outline-variant: ${borderColor};
-          --color-admin-error: ${isDarkMode ? '#ffb4ab' : '#ba1a1a'};
-          --color-admin-on-error: ${isDarkMode ? '#690005' : '#ffffff'};
-          --color-admin-error-container: ${isDarkMode ? '#93000a' : '#ffdad6'};
-          --color-admin-on-error-container: ${isDarkMode ? '#ffdad6' : '#410002'};
-          --color-admin-tertiary: ${isDarkMode ? '#ffb695' : '#f59e0b'};
-          --color-admin-tertiary-container: ${isDarkMode ? '#a44100' : '#fffbeb'};
-          --color-admin-on-tertiary-container: ${isDarkMode ? '#ffd2be' : '#92400e'};
-        `}
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: ${borderColor}; border-radius: 4px; }
-        @keyframes pulse-slow { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
-        .animate-pulse-slow { animation: pulse-slow 3s infinite; } `}}
-      />
-
-      <div className="flex h-screen">
+      <div className="flex min-h-screen">
         <AdminSidebar isDarkMode={isDarkMode} adminName={adminName} />
 
-        {/* Main */}
-        <main className="ml-64 min-h-screen pb-16">
-          {/* Header */}
-          <header className="flex justify-between items-center w-full px-8 py-4 border-b backdrop-blur-md sticky top-0 z-40" style={{ backgroundColor: surfaceColor + 'cc', borderColor }}>
-            <div className="flex items-center gap-4 flex-1">
-              <h1 className="text-lg font-bold" style={{ color: onSurfaceColor }}>General Queries</h1>
+        <main className="flex-1 ml-0 lg:ml-64 min-h-screen pb-16">
+          <header className="flex justify-between items-center w-full px-4 sm:px-8 py-4 border-b backdrop-blur-md sticky top-0 z-40" style={{ backgroundColor: surfaceColor + 'cc', borderColor }}>
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              <h1 className="text-lg font-bold truncate" style={{ color: onSurfaceColor }}>General Queries</h1>
               {stats.unread > 0 && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#f59e0b' + '20', color: '#f59e0b' }}>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0" style={{ backgroundColor: '#f59e0b' + '20', color: '#f59e0b' }}>
                   {stats.unread} unread
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-6 ml-4">
+            <div className="flex items-center gap-3 sm:gap-6 ml-4 shrink-0">
               <div className="relative">
                 <button onClick={toggleTheme} className="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium transition-colors" style={{ borderColor, color: surfaceVariant }}>
                   <span className="w-3 h-3 rounded-full" style={{ backgroundColor: accentColor }} />
-                  <span>Theme</span>
+                  <span className="hidden sm:inline">Theme</span>
                   <span className="material-symbols-outlined text-[18px]">expand_more</span>
                 </button>
                 {isThemeMenuOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-36 rounded-xl border shadow-lg z-50" style={{ backgroundColor: surfaceColor, borderColor }}>
-                    {(['indigo', 'emerald', 'rose'] as const).map(t => (
+                  <div className="absolute right-0 top-full mt-2 w-48 max-h-80 overflow-y-auto rounded-xl border shadow-lg z-50 custom-scrollbar" style={{ backgroundColor: surfaceColor, borderColor }}>
+                    {ALL_THEMES.map(t => (
                       <button key={t} onClick={() => handleThemeSelect(t)} className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-bold hover:brightness-90 transition-all border-b last:border-b-0" style={{ borderColor, color: onSurfaceColor, backgroundColor: currentTheme === t ? accentColor + '20' : 'transparent', textTransform: 'capitalize' }}>
-                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: t === 'rose' ? '#e11d48' : t === 'emerald' ? '#059669' : '#4f46e5' }} />
+                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: getAccentColor(t, true) }} />
                         {t}
+                        {currentTheme === t && <span className="material-symbols-outlined ml-auto text-[14px]">check</span>}
                       </button>
                     ))}
                   </div>
@@ -226,7 +170,7 @@ export default function AdminGeneralQueriesPage() {
               </button>
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold" style={{ backgroundColor: accentColor + '30', color: accentColor }}>A</div>
-                <div>
+                <div className="hidden sm:block">
                   <p className="text-sm font-semibold" style={{ color: onSurfaceColor }}>{adminName}</p>
                   <p className="text-[10px]" style={{ color: surfaceVariant }}>Administrator</p>
                 </div>
@@ -234,8 +178,7 @@ export default function AdminGeneralQueriesPage() {
             </div>
           </header>
 
-          <div className="px-8 py-6 space-y-6">
-            {/* Stats Cards */}
+          <div className="px-4 sm:px-8 py-6 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="p-5 rounded-xl border transition-colors" style={{ backgroundColor: cardBg, borderColor }}>
                 <div className="flex items-center gap-3 mb-2">
@@ -253,7 +196,6 @@ export default function AdminGeneralQueriesPage() {
               </div>
             </div>
 
-            {/* Tab Switcher */}
             <div className="flex items-center gap-2 border-b pb-2" style={{ borderColor }}>
               <button onClick={() => setActiveTab('recent')}
                 className="px-4 py-2 text-sm font-bold rounded-t-lg transition-all"
@@ -267,7 +209,6 @@ export default function AdminGeneralQueriesPage() {
               </button>
             </div>
 
-            {/* Query List */}
             {loading ? (
               <ProLoader variant="admin" fullScreen={false} />
             ) : queries.length === 0 ? (
@@ -279,7 +220,6 @@ export default function AdminGeneralQueriesPage() {
               <div className="space-y-3">
                 {queries.map(q => (
                   <div key={q.id} className="rounded-xl border transition-all hover:brightness-95" style={{ backgroundColor: cardBg, borderColor }}>
-                    {/* Card Header */}
                     <div className="p-5 cursor-pointer" onClick={() => setExpandedId(expandedId === q.id ? null : q.id)}>
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1 min-w-0">
@@ -301,7 +241,6 @@ export default function AdminGeneralQueriesPage() {
                         </div>
                       </div>
 
-                      {/* Message Preview */}
                       <div className="mt-3">
                         {expandedId === q.id ? (
                           <p className="text-sm whitespace-pre-wrap" style={{ color: onSurfaceColor }}>{q.message}</p>
@@ -315,7 +254,6 @@ export default function AdminGeneralQueriesPage() {
                         )}
                       </div>
 
-                      {/* Action Buttons */}
                       <div className="flex items-center gap-2 mt-3 pt-3 border-t" style={{ borderColor }}>
                         <button onClick={(e) => { e.stopPropagation(); toggleRead(q.id, q.isRead); }}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all hover:brightness-95 border"
@@ -339,7 +277,6 @@ export default function AdminGeneralQueriesPage() {
         </main>
       </div>
 
-      {/* Delete Confirmation Modal */}
       {deleteTarget && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
           <div className="w-full max-w-sm p-6 rounded-2xl border shadow-2xl" style={{ backgroundColor: surfaceColor, borderColor }}>

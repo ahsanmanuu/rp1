@@ -280,7 +280,7 @@ export default function AdminAnomaliesPage() {
         </div>
       </aside>
 
-      <main className="ml-64 flex flex-col min-h-screen">
+      <main className="ml-0 lg:ml-64 flex flex-col min-h-screen">
         <header className="flex justify-between items-center w-full px-8 py-4 border-b z-40 sticky top-0" style={{ backgroundColor: "var(--color-admin-surface)", borderColor: "var(--color-admin-outline-variant)" }}>
           <div className="flex items-center gap-4 flex-1">
             <h2 className="text-xl font-bold" style={{ color: "var(--color-admin-primary)" }}>Anomaly Detection Center</h2>

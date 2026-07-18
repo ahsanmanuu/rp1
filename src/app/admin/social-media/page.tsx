@@ -1383,7 +1383,7 @@ export default function AdminSocialMediaPage() {
           </div>
         </aside>
 
-        <main className="ml-64 min-h-screen pt-24 pb-12">
+        <main className="ml-0 lg:ml-64 min-h-screen pt-24 pb-12">
           <header className="flex justify-between items-center fixed top-0 left-64 right-0 px-6 py-4 border-b z-40 transition-colors duration-500" style={{ backgroundColor: 'var(--color-admin-surface)', borderColor: 'var(--color-admin-outline-variant)' }}>
             <div className="flex items-center gap-4 flex-1">
               <div className="relative w-full max-w-3xl">

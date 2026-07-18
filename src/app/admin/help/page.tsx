@@ -664,7 +664,7 @@ export default function AdminHelpPage() {
             <AdminSidebar isDarkMode={isDarkMode} adminName={adminName} />
 
             {/* Main Content Area */}
-            <main className="ml-64 min-h-screen pb-16">
+            <main className="ml-0 lg:ml-64 min-h-screen pb-16">
                 {/* Header */}
                 <header className="flex justify-between items-center w-full px-8 py-4 border-b z-40 sticky top-0 transition-colors duration-500" style={{ backgroundColor: "var(--color-admin-surface)", borderColor: "var(--color-admin-outline-variant)" }}>
                     <div className="flex items-center gap-4 flex-1">

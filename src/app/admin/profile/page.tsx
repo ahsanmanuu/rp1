@@ -774,7 +774,7 @@ export default function AdminProfilePage() {
       </header>
 
       {/* Main Canvas */}
-      <main className="ml-64 pt-24 pb-12 px-8 min-h-screen transition-colors duration-500 w-[calc(100%-16rem)]">
+      <main className="ml-0 lg:ml-64 pt-24 pb-12 px-4 sm:px-8 min-h-screen transition-colors duration-500 lg:w-[calc(100%-16rem)]">
         <div className="max-w-4xl mx-auto">
           {/* Status Message */}
           {message && (

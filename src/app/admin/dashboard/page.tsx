@@ -1345,7 +1345,7 @@ export default function AdminDashboardPage() {
       </header>
 
       {/* Main Canvas */}
-      <main className="ml-64 2xl:mr-80 pt-24 pb-12 px-8 min-h-screen transition-colors duration-500">
+      <main className="ml-0 lg:ml-64 2xl:mr-80 pt-24 pb-12 px-4 sm:px-8 min-h-screen transition-colors duration-500">
         {error && (
           <div className="mb-6 p-4 rounded-xl border text-sm font-medium flex items-center gap-3 bg-red-500/10 text-red-500" style={{ borderColor: "rgba(255, 180, 171, 0.2)" }}>
             <span className="material-symbols-outlined">error</span>

@@ -570,7 +570,7 @@ export default function AdminOffersPage() {
             </header>
 
             {/* Main Content Canvas */}
-            <main className="ml-64 mt-20 p-8">
+            <main className="ml-0 lg:ml-64 mt-20 p-4 sm:p-8">
                 <div className="grid grid-cols-12 gap-6">
                     {/* Left Column: Offers & Campaigns */}
                     <div className="col-span-12 lg:col-span-7 flex flex-col gap-6">
