@@ -873,7 +873,6 @@ export function autoHealLatex(latex: string): string {
 
     // 6. LATE BODY GUARDS (Settings only) — only add if not already present
     const bodyGuardLines: string[] = [];
-    if (!healed.includes("\\raggedbottom")) bodyGuardLines.push("\\raggedbottom");
     if (!healed.includes("\\emergencystretch")) bodyGuardLines.push("\\emergencystretch=8em");
     if (!healed.includes("\\hbadness")) bodyGuardLines.push("\\hbadness=10000");
     if (!healed.includes("\\tolerance")) bodyGuardLines.push("\\tolerance=2000");
