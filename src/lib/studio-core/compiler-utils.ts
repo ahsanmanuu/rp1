@@ -162,6 +162,10 @@ ${_B}fi
     if (beginDocMatch && beginDocMatch.index !== undefined) {
       const beginDocIdx = beginDocMatch.index;
       const preamblePkgs: string[] = [];
+      // T1 fontenc: improves font encoding and enables correct hyphenation for modern Western languages
+      if (!hasPackage('fontenc')) {
+        preamblePkgs.push('\\ifPDFTeX\\usepackage[T1]{fontenc}\\fi');
+      }
       // xurl: enables URL breaking at any character (must come after url if loaded)
       if (!hasPackage('xurl') && !hasPackage('url')) {
         preamblePkgs.push('\\usepackage{xurl}');
@@ -201,15 +205,21 @@ ${_B}fi
     const overflowGuards = [
       '% StudioOverflowGuards — injected by Latexify compiler for proper line breaking',
       '\\sloppy',                          // Allow looser line-breaking globally
-      '\\emergencystretch=3em',            // Extra stretch budget for lines that can\'t fit
+      '\\emergencystretch=8em',            // Extra stretch budget for lines that can\'t fit
       '\\hbadness=10000',                  // Suppress overfull hbox log warnings
-      '\\tolerance=1000',                  // Relaxed from default 200 — reduces forced overflows
-      '\\hyphenpenalty=50',               // Encourage more hyphenation at line breaks
-      '\\exhyphenpenalty=50',             // Encourage breaks after explicit hyphens too
+      '\\tolerance=9999',                  // Relaxed from default 200 — reduces forced overflows
+      '\\hyphenpenalty=10',                // Encourage more hyphenation at line breaks
+      '\\exhyphenpenalty=10',              // Encourage breaks after explicit hyphens too
+      '\\binoppenalty=100',                // Encourage breaks in inline math at binary operators
+      '\\relpenalty=100',                  // Encourage breaks in inline math at relation operators
       '\\makeatletter',
       // URL breaking (safe \@undefined guards so they don\'t error if package not loaded)
       '\\ifx\\urlstyle\\@undefined\\else\\urlstyle{same}\\fi',
       '\\ifx\\Urlmuskip\\@undefined\\else\\Urlmuskip=0mu plus 1mu\\fi',
+      // Fallback: force url package to break URLs at any letter or digit if xurl is not active
+      '\\ifx\\UrlBreaks\\@undefined\\else',
+      '  \\g@addto@macro{\\UrlBreaks}{\\do\\/\\do\\-\\do\\.\\do\\a\\do\\b\\do\\c\\do\\d\\do\\e\\do\\f\\do\\g\\do\\h\\do\\i\\do\\j\\do\\k\\do\\l\\do\\m\\do\\n\\do\\o\\do\\p\\do\\q\\do\\r\\do\\s\\do\\t\\do\\u\\do\\v\\do\\w\\do\\x\\do\\y\\do\\z\\do\\A\\do\\B\\do\\C\\do\\D\\do\\E\\do\\F\\do\\G\\do\\H\\do\\I\\do\\J\\do\\K\\do\\L\\do\\M\\do\\N\\do\\O\\do\\P\\do\\Q\\do\\R\\do\\S\\do\\T\\do\\U\\do\\V\\do\\W\\do\\X\\do\\Y\\do\\Z\\do\\0\\do\\1\\do\\2\\do\\3\\do\\4\\do\\5\\do\\6\\do\\7\\do\\8\\do\\9}',
+      '\\fi',
       // Image constraint: all images respect page width automatically
       '\\ifx\\setkeys\\@undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.85\\textheight,keepaspectratio}\\fi',
       // listings: enable line breaking for ALL lstlisting environments (if listings is loaded)

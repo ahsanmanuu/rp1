@@ -753,11 +753,22 @@ export function autoHealLatex(latex: string): string {
     const bodyGuardLines: string[] = [];
     if (!healed.includes("\\sloppy")) bodyGuardLines.push("\\sloppy");
     if (!healed.includes("\\raggedbottom")) bodyGuardLines.push("\\raggedbottom");
-    if (!healed.includes("\\emergencystretch")) bodyGuardLines.push("\\emergencystretch=3em");
+    if (!healed.includes("\\emergencystretch")) bodyGuardLines.push("\\emergencystretch=8em");
     if (!healed.includes("\\hbadness")) bodyGuardLines.push("\\hbadness=10000");
-    if (!healed.includes("\\tolerance")) bodyGuardLines.push("\\tolerance=1000");
+    if (!healed.includes("\\tolerance")) bodyGuardLines.push("\\tolerance=9999");
+    if (!healed.includes("\\hyphenpenalty")) bodyGuardLines.push("\\hyphenpenalty=10");
+    if (!healed.includes("\\exhyphenpenalty")) bodyGuardLines.push("\\exhyphenpenalty=10");
+    if (!healed.includes("\\binoppenalty")) bodyGuardLines.push("\\binoppenalty=100");
+    if (!healed.includes("\\relpenalty")) bodyGuardLines.push("\\relpenalty=100");
     if (!healed.includes("\\urlstyle")) bodyGuardLines.push("\\makeatletter\\ifx\\urlstyle\\@undefined\\else\\urlstyle{same}\\fi\\makeatother");
     if (!healed.includes("\\Urlmuskip")) bodyGuardLines.push("\\makeatletter\\ifx\\Urlmuskip\\@undefined\\else\\Urlmuskip=0mu plus 1mu\\fi\\makeatother");
+    if (!healed.includes("UrlBreaks")) {
+      bodyGuardLines.push(
+        "\\makeatletter\\ifx\\UrlBreaks\\@undefined\\else" +
+        "\\g@addto@macro{\\UrlBreaks}{\\do\\/\\do\\-\\do\\.\\do\\a\\do\\b\\do\\c\\do\\d\\do\\e\\do\\f\\do\\g\\do\\h\\do\\i\\do\\j\\do\\k\\do\\l\\do\\m\\do\\n\\do\\o\\do\\p\\do\\q\\do\\r\\do\\s\\do\\t\\do\\u\\do\\v\\do\\w\\do\\x\\do\\y\\do\\z\\do\\A\\do\\B\\do\\C\\do\\D\\do\\E\\do\\F\\do\\G\\do\\H\\do\\I\\do\\J\\do\\K\\do\\L\\do\\M\\do\\N\\do\\O\\do\\P\\do\\Q\\do\\R\\do\\S\\do\\T\\do\\U\\do\\V\\do\\W\\do\\X\\do\\Y\\do\\Z\\do\\0\\do\\1\\do\\2\\do\\3\\do\\4\\do\\5\\do\\6\\do\\7\\do\\8\\do\\9}" +
+        "\\fi\\makeatother"
+      );
+    }
     if (!healed.includes("setkeys{Gin}")) bodyGuardLines.push("\\makeatletter\\ifx\\setkeys\\@undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.75\\textheight,keepaspectratio}\\fi\\makeatother");
     const bodyGuards = bodyGuardLines.join("\n");
 
@@ -922,10 +933,19 @@ export function autoHealLatex(latex: string): string {
 
     const bodyGuards = [
       "\\sloppy",
-      "\\emergencystretch=5em",
+      "\\emergencystretch=8em",
+      "\\hbadness=10000",
+      "\\tolerance=9999",
+      "\\hyphenpenalty=10",
+      "\\exhyphenpenalty=10",
+      "\\binoppenalty=100",
+      "\\relpenalty=100",
       "\\makeatletter",
       "\\ifx\\urlstyle\\@undefined\\else\\urlstyle{same}\\fi",
       "\\ifx\\Urlmuskip\\@undefined\\else\\Urlmuskip=0mu plus 1mu\\fi",
+      "\\ifx\\UrlBreaks\\@undefined\\else",
+      "  \\g@addto@macro{\\UrlBreaks}{\\do\\/\\do\\-\\do\\.\\do\\a\\do\\b\\do\\c\\do\\d\\do\\e\\do\\f\\do\\g\\do\\h\\do\\i\\do\\j\\do\\k\\do\\l\\do\\m\\do\\n\\do\\o\\do\\p\\do\\q\\do\\r\\do\\s\\do\\t\\do\\u\\do\\v\\do\\w\\do\\x\\do\\y\\do\\z\\do\\A\\do\\B\\do\\C\\do\\D\\do\\E\\do\\F\\do\\G\\do\\H\\do\\I\\do\\J\\do\\K\\do\\L\\do\\M\\do\\N\\do\\O\\do\\P\\do\\Q\\do\\R\\do\\S\\do\\T\\do\\U\\do\\V\\do\\W\\do\\X\\do\\Y\\do\\Z\\do\\0\\do\\1\\do\\2\\do\\3\\do\\4\\do\\5\\do\\6\\do\\7\\do\\8\\do\\9}",
+      "\\fi",
       "\\ifx\\setkeys\\@undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.85\\textheight,keepaspectratio}\\fi",
       "\\makeatother"
     ].join("\n");
