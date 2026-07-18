@@ -739,13 +739,16 @@ export default function AdminDashboardPage() {
       localStorage.setItem("latexify-admin-currency", activeCurrency);
       window.dispatchEvent(new Event("admin-theme-changed"));
 
-      updatePanels({
-        theme: currentTheme,
-        mode: isDarkMode ? "dark" : "light",
-        currency: activeCurrency,
-      });
+      const nextMode = isDarkMode ? "dark" : "light";
+      if (settings.panels?.theme !== currentTheme || settings.panels?.mode !== nextMode || settings.panels?.currency !== activeCurrency) {
+        updatePanels({
+          theme: currentTheme,
+          mode: nextMode,
+          currency: activeCurrency,
+        });
+      }
     }
-  }, [currentTheme, isDarkMode, activeCurrency, mounted, updatePanels]);
+  }, [currentTheme, isDarkMode, activeCurrency, mounted, updatePanels, settings.panels?.theme, settings.panels?.mode, settings.panels?.currency]);
 
   // Handle click outside for profile, theme, and notifications dropdowns
   useEffect(() => {
