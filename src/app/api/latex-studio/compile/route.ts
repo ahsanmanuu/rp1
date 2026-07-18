@@ -18,7 +18,24 @@ export const dynamic = 'force-dynamic';
  * no \zimg rewriting. Figures appear as authored.
  */
 export async function POST(req: NextRequest) {
-  const session = await getServerSession();
+  let session: any = null;
+  try {
+    session = await getServerSession();
+  } catch (authErr) {
+    console.error('[AUTH_ERROR]', authErr);
+  }
+
+  // Dynamic import for server-only modules that may fail in serverless
+  let runLatexifyCompiler: any, runDoc2LatexCompiler: any, runMigratorCompiler: any;
+  try {
+    const engine = await import('@/lib/studio-core/compiler-engine.server');
+    runLatexifyCompiler = engine.runLatexifyCompiler;
+    runDoc2LatexCompiler = engine.runDoc2LatexCompiler;
+    runMigratorCompiler = engine.runMigratorCompiler;
+  } catch (importErr: any) {
+    console.error('[IMPORT_ERROR] Failed to load compiler engine:', importErr);
+    return NextResponse.json({ error: 'Compiler unavailable', message: importErr.message }, { status: 503 });
+  }
 
   try {
     let engine = 'pdflatex';
