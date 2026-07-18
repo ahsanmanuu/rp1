@@ -1361,85 +1361,87 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
                    })()}
                 </div>
              ) : (
-                <MonacoEditor
-                  path={activeFile}
-                  height="100%"
-                  theme="scholarly-vibrant"
-                  defaultValue={code}
-                  onChange={v => {
-                    isSelfChange.current = true;
-                    handleCodeChange(v || '');
-                  }}
-                  onMount={(ed, monaco) => { 
-                    editorRef.current = ed; 
-                    monacoRef.current = monaco; 
-                    
-                    if (code) {
-                      ed.setValue(code);
-                    }
+                <div style={{ flex: 1, position: 'relative', height: '100%', width: '100%', minWidth: 0 }}>
+                  <MonacoEditor
+                    path={activeFile}
+                    height="100%"
+                    theme="scholarly-vibrant"
+                    defaultValue={code}
+                    onChange={v => {
+                      isSelfChange.current = true;
+                      handleCodeChange(v || '');
+                    }}
+                    onMount={(ed, monaco) => { 
+                      editorRef.current = ed; 
+                      monacoRef.current = monaco; 
+                      
+                      if (code) {
+                        ed.setValue(code);
+                      }
 
-                    // Register LaTeX Language & Monarch Tokenizer for Multicolor Syntax Highlighting
-                    try {
-                      monaco.languages.register({ id: 'latex' });
-                    } catch(e) {}
-                    
-                    try {
-                      monaco.languages.setMonarchTokensProvider('latex', {
-                        defaultToken: '',
-                        tokenPostfix: '.latex',
-                        tokenizer: {
-                          root: [
-                            // Comments
-                            [/%.*$/, 'comment.latex'],
-                            // Math Mode
-                            [/\$\$/, { token: 'math.latex', next: '@mathModeBlock' }],
-                            [/\$/, { token: 'math.latex', next: '@mathModeInline' }],
-                            // Keywords / Commands
-                            [/\\(?:begin|end|documentclass|usepackage|title|author|date|maketitle|section|subsection|subsubsection|paragraph|label|ref|cite|bibliography|bibliographystyle|include|input|newcommand|renewcommand|centering|includegraphics|caption|item|textbf|textit|texttt)\b/, 'keyword.latex'],
-                            [/\\(?:[a-zA-Z]+)/, 'command.latex'],
-                            // Delimiters / Braces
-                            [/[{}()\[\]]/, 'delimiter'],
-                            [/\d+/, 'number'],
-                          ],
-                          mathModeBlock: [
-                            [/\$\$/, { token: 'math.latex', next: '@pop' }],
-                            [/./, 'math.latex'],
-                          ],
-                          mathModeInline: [
-                            [/\$/, { token: 'math.latex', next: '@pop' }],
-                            [/./, 'math.latex'],
-                          ]
-                        }
-                      });
-                    } catch(e) {}
+                      // Register LaTeX Language & Monarch Tokenizer for Multicolor Syntax Highlighting
+                      try {
+                        monaco.languages.register({ id: 'latex' });
+                      } catch(e) {}
+                      
+                      try {
+                        monaco.languages.setMonarchTokensProvider('latex', {
+                          defaultToken: '',
+                          tokenPostfix: '.latex',
+                          tokenizer: {
+                            root: [
+                              // Comments
+                              [/%.*$/, 'comment.latex'],
+                              // Math Mode
+                              [/\$\$/, { token: 'math.latex', next: '@mathModeBlock' }],
+                              [/\$/, { token: 'math.latex', next: '@mathModeInline' }],
+                              // Keywords / Commands
+                              [/\\(?:begin|end|documentclass|usepackage|title|author|date|maketitle|section|subsection|subsubsection|paragraph|label|ref|cite|bibliography|bibliographystyle|include|input|newcommand|renewcommand|centering|includegraphics|caption|item|textbf|textit|texttt)\b/, 'keyword.latex'],
+                              [/\\(?:[a-zA-Z]+)/, 'command.latex'],
+                              // Delimiters / Braces
+                              [/[{}()\[\]]/, 'delimiter'],
+                              [/\d+/, 'number'],
+                            ],
+                            mathModeBlock: [
+                              [/\$\$/, { token: 'math.latex', next: '@pop' }],
+                              [/./, 'math.latex'],
+                            ],
+                            mathModeInline: [
+                              [/\$/, { token: 'math.latex', next: '@pop' }],
+                              [/./, 'math.latex'],
+                            ]
+                          }
+                        });
+                      } catch(e) {}
 
-                    ed.onDidChangeCursorPosition(syncOnCursorChange);
-                    const disposable = registerLatexCompletionItems(monaco);
-                    (ed as any)._latexSnippets = disposable;
+                      ed.onDidChangeCursorPosition(syncOnCursorChange);
+                      const disposable = registerLatexCompletionItems(monaco);
+                      (ed as any)._latexSnippets = disposable;
 
-                    // Register Ctrl+Enter command to compile
-                    try {
-                      ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
-                        compileRef.current?.();
-                      });
-                    } catch (e) {
-                      console.warn("Failed to bind Ctrl+Enter command:", e);
-                    }
-                  }}
-                  options={{ 
-                    fontSize, 
-                    minimap: { enabled: false }, 
-                    automaticLayout: true, 
-                    scrollBeyondLastLine: false, 
-                    lineNumbersMinChars: 3, 
-                    glyphMargin: false, 
-                    lineDecorationsWidth: 0, 
-                    fontLigatures: true, 
-                    cursorBlinking: 'smooth', 
-                    smoothScrolling: true,
-                    wordWrap: 'on'
-                  }}
-                />
+                      // Register Ctrl+Enter command to compile
+                      try {
+                        ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+                          compileRef.current?.();
+                        });
+                      } catch (e) {
+                        console.warn("Failed to bind Ctrl+Enter command:", e);
+                      }
+                    }}
+                    options={{ 
+                      fontSize, 
+                      minimap: { enabled: false }, 
+                      automaticLayout: true, 
+                      scrollBeyondLastLine: false, 
+                      lineNumbersMinChars: 3, 
+                      glyphMargin: false, 
+                      lineDecorationsWidth: 0, 
+                      fontLigatures: true, 
+                      cursorBlinking: 'smooth', 
+                      smoothScrolling: true,
+                      wordWrap: 'on'
+                    }}
+                  />
+                </div>
              )}
           </div>
 

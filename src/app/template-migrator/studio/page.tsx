@@ -743,7 +743,7 @@ export default function TemplateMigratorPage() {
                                   ed.setValue(fileText);
                                 }
                               }}
-                              options={{ fontSize: 13, minimap: { enabled: false }, wordWrap: 'on' }}
+                              options={{ fontSize: 13, minimap: { enabled: false }, wordWrap: 'on', automaticLayout: true }}
                             />
                           ) : (
                             <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>

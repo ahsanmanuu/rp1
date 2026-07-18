@@ -27,7 +27,7 @@ export default function CodeEditor({ code, onChange, onCompile, readOnly = false
   }, [isDark]);
 
   return (
-    <div style={{ height: '100%', width: '100%', borderRight: '1px solid var(--border)' }}>
+    <div style={{ height: '100%', width: '100%', borderRight: '1px solid var(--border)', position: 'relative' }}>
       <Editor
         height="100%"
         defaultLanguage="latex"
@@ -50,6 +50,7 @@ export default function CodeEditor({ code, onChange, onCompile, readOnly = false
           smoothScrolling: true,
           cursorBlinking: "smooth",
           formatOnPaste: true,
+          automaticLayout: true,
         }}
         loading={<div style={{ padding: '2rem', color: 'var(--text-secondary)' }}>Loading LaTeX Editor...</div>}
       />

@@ -1478,91 +1478,93 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                               </div>
                            </div>
                         ) : (
-                          <MonacoEditor 
-                            height="100%" 
-                            theme="vs-dark" 
-                            language="latex" 
-                            defaultValue={code}
-                            onChange={v => {
-                              isSelfChange.current = true;
-                              setCode(v || '');
-                            }}
-                            onMount={(ed, mon) => { 
-                              editorRef.current = ed; 
-                              monacoRef.current = mon; 
-                              if (code) {
-                                ed.setValue(code);
-                              } 
-                              
-                              // Register LaTeX Language & Monarch Tokenizer for Multicolor Syntax Highlighting
-                              try {
-                                mon.languages.register({ id: 'latex' });
-                              } catch(e) {}
-                              
-                              try {
-                                mon.languages.setMonarchTokensProvider('latex', {
-                                  defaultToken: '',
-                                  tokenPostfix: '.latex',
-                                  tokenizer: {
-                                    root: [
-                                      // Comments
-                                      [/%.*$/, 'comment.latex'],
-                                      // Math Mode
-                                      [/\$\$/, { token: 'math.latex', next: '@mathModeBlock' }],
-                                      [/\$/, { token: 'math.latex', next: '@mathModeInline' }],
-                                      // Keywords / Commands
-                                      [/\\(?:begin|end|documentclass|usepackage|title|author|date|maketitle|section|subsection|subsubsection|paragraph|label|ref|cite|bibliography|bibliographystyle|include|input|newcommand|renewcommand|centering|includegraphics|caption|item|textbf|textit|texttt)\b/, 'keyword.latex'],
-                                      [/\\(?:[a-zA-Z]+)/, 'command.latex'],
-                                      // Delimiters / Braces
-                                      [/[{}()\[\]]/, 'delimiter'],
-                                      [/\d+/, 'number'],
-                                    ],
-                                    mathModeBlock: [
-                                      [/\$\$/, { token: 'math.latex', next: '@pop' }],
-                                      [/./, 'math.latex'],
-                                    ],
-                                    mathModeInline: [
-                                      [/\$/, { token: 'math.latex', next: '@pop' }],
-                                      [/./, 'math.latex'],
-                                    ]
+                          <div style={{ flex: 1, position: 'relative', height: '100%', width: '100%', minWidth: 0 }}>
+                            <MonacoEditor 
+                              height="100%" 
+                              theme="vs-dark" 
+                              language="latex" 
+                              defaultValue={code}
+                              onChange={v => {
+                                isSelfChange.current = true;
+                                setCode(v || '');
+                              }}
+                              onMount={(ed, mon) => { 
+                                editorRef.current = ed; 
+                                monacoRef.current = mon; 
+                                if (code) {
+                                  ed.setValue(code);
+                                } 
+                                
+                                // Register LaTeX Language & Monarch Tokenizer for Multicolor Syntax Highlighting
+                                try {
+                                  mon.languages.register({ id: 'latex' });
+                                } catch(e) {}
+                                
+                                try {
+                                  mon.languages.setMonarchTokensProvider('latex', {
+                                    defaultToken: '',
+                                    tokenPostfix: '.latex',
+                                    tokenizer: {
+                                      root: [
+                                        // Comments
+                                        [/%.*$/, 'comment.latex'],
+                                        // Math Mode
+                                        [/\$\$/, { token: 'math.latex', next: '@mathModeBlock' }],
+                                        [/\$/, { token: 'math.latex', next: '@mathModeInline' }],
+                                        // Keywords / Commands
+                                        [/\\(?:begin|end|documentclass|usepackage|title|author|date|maketitle|section|subsection|subsubsection|paragraph|label|ref|cite|bibliography|bibliographystyle|include|input|newcommand|renewcommand|centering|includegraphics|caption|item|textbf|textit|texttt)\b/, 'keyword.latex'],
+                                        [/\\(?:[a-zA-Z]+)/, 'command.latex'],
+                                        // Delimiters / Braces
+                                        [/[{}()\[\]]/, 'delimiter'],
+                                        [/\d+/, 'number'],
+                                      ],
+                                      mathModeBlock: [
+                                        [/\$\$/, { token: 'math.latex', next: '@pop' }],
+                                        [/./, 'math.latex'],
+                                      ],
+                                      mathModeInline: [
+                                        [/\$/, { token: 'math.latex', next: '@pop' }],
+                                        [/./, 'math.latex'],
+                                      ]
+                                    }
+                                  });
+                                } catch(e) {}
+
+                                // Register LaTeX Suggestion Provider
+                                mon.languages.registerCompletionItemProvider('latex', {
+                                  provideCompletionItems: (model: any, position: any) => {
+                                    return { suggestions: getLatexSuggestions(mon, model, position, filesRef.current) };
                                   }
                                 });
-                              } catch(e) {}
 
-                              // Register LaTeX Suggestion Provider
-                              mon.languages.registerCompletionItemProvider('latex', {
-                                provideCompletionItems: (model: any, position: any) => {
-                                  return { suggestions: getLatexSuggestions(mon, model, position, filesRef.current) };
+                                // Register Ctrl+Enter command to compile
+                                try {
+                                  ed.addCommand(mon.KeyMod.CtrlCmd | mon.KeyCode.Enter, () => {
+                                    compileRef.current?.();
+                                  });
+                                } catch (e) {
+                                  console.warn("Failed to bind Ctrl+Enter command:", e);
                                 }
-                              });
-
-                              // Register Ctrl+Enter command to compile
-                              try {
-                                ed.addCommand(mon.KeyMod.CtrlCmd | mon.KeyCode.Enter, () => {
-                                  compileRef.current?.();
-                                });
-                              } catch (e) {
-                                console.warn("Failed to bind Ctrl+Enter command:", e);
-                              }
-                            }}
-                            options={{
-                              fontSize: 14,
-                              padding: { top: 20, bottom: 20 },
-                              minimap: { enabled: false },
-                              lineNumbers: 'on',
-                              lineNumbersMinChars: 3,
-                              glyphMargin: false,
-                              lineDecorationsWidth: 0,
-                              cursorBlinking: 'smooth',
-                              smoothScrolling: true,
-                              fontFamily: 'var(--font-mono)',
-                              fontLigatures: true,
-                              renderLineHighlight: 'all',
-                              scrollbar: { vertical: 'visible', horizontal: 'visible', verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
-                              automaticLayout: true,
-                              wordWrap: 'on'
-                            }}
-                          />
+                              }}
+                              options={{
+                                fontSize: 14,
+                                padding: { top: 20, bottom: 20 },
+                                minimap: { enabled: false },
+                                lineNumbers: 'on',
+                                lineNumbersMinChars: 3,
+                                glyphMargin: false,
+                                lineDecorationsWidth: 0,
+                                cursorBlinking: 'smooth',
+                                smoothScrolling: true,
+                                fontFamily: 'var(--font-mono)',
+                                fontLigatures: true,
+                                renderLineHighlight: 'all',
+                                scrollbar: { vertical: 'visible', horizontal: 'visible', verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
+                                automaticLayout: true,
+                                wordWrap: 'on'
+                              }}
+                            />
+                          </div>
                         )}
                      </div>
 
