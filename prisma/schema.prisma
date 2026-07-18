@@ -856,14 +856,15 @@ model GeneralQuery {
   name       String
   email      String
   phone      String?
-  subject    String
+  subject    String?
   message    String
+  status     String   @default("pending") // pending, replied
   isRead     Boolean  @default(false)
   createdAt  DateTime @default(now()) @db.Timestamptz
   updatedAt  DateTime @updatedAt @db.Timestamptz
 
+  @@index([status, createdAt])
   @@index([isRead])
-  @@index([createdAt])
   @@map("general_queries")
 }
 
@@ -1051,4 +1052,4 @@ model ContentPlatformStat {
   updatedAt DateTime @updatedAt @db.Timestamptz
 
   @@map("content_platform_stats")
-}
+}

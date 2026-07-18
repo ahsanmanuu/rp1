@@ -3,7 +3,7 @@ services:
     name: latexify
     runtime: node
     plan: starter # Free (512MB) is insufficient — Next.js + PocketBase together need ~1GB
-    buildCommand: npm install && npm run build && (curl -L -o pocketbase.zip https://github.com/pocketbase/pocketbase/releases/download/v0.27.0/pocketbase_0.27.0_linux_amd64.zip && unzip -o pocketbase.zip && chmod +x pocketbase && rm pocketbase.zip)
+    buildCommand: npm install && npm run build && npx prisma db push --accept-data-loss && (curl -L -o pocketbase.zip https://github.com/pocketbase/pocketbase/releases/download/v0.27.0/pocketbase_0.27.0_linux_amd64.zip && unzip -o pocketbase.zip && chmod +x pocketbase && rm pocketbase.zip)
     startCommand: node start.js
     healthCheckPath: /api/health
     envVars:
