@@ -80,9 +80,38 @@ export async function runHardenedPipeline(
       return f;
     });
 
-    const cleanMain = normalized.find(f => f.path.toLowerCase() === mainFile.toLowerCase())?.path || mainFile;
-    const totalBytes = calculatePayloadSize(normalized);
-    const imageCount = normalized.filter(f => f.content.startsWith('data:image')).length;
+    // Auto-link/copy support files (.cls, .sty, .bst, .bib, .clo, .def, .cfg, .ldf, .fd, .bbx, .cbx)
+    // from subdirectories to the root directory to make them discoverable by the LaTeX engine.
+    const autoLinkedFiles: FilePayload[] = [];
+    const rootFilenames = new Set(
+      normalized
+        .filter(f => !f.path.includes('/') && !f.path.includes('\\'))
+        .map(f => f.path.toLowerCase())
+    );
+
+    for (const f of normalized) {
+      const hasSubdir = f.path.includes('/') || f.path.includes('\\');
+      if (hasSubdir) {
+        const basename = path.basename(f.path);
+        const ext = basename.split('.').pop()?.toLowerCase() || '';
+        const isSupportFile = /^(cls|sty|bst|bib|clo|def|cfg|ldf|fd|bbx|cbx)$/i.test(ext);
+        
+        if (isSupportFile && !rootFilenames.has(basename.toLowerCase())) {
+          autoLinkedFiles.push({
+            path: basename,
+            content: f.content
+          });
+          rootFilenames.add(basename.toLowerCase());
+          console.log(`[PIPELINE] Auto-linked support file to root: ${f.path} -> ${basename}`);
+        }
+      }
+    }
+    
+    const finalNormalized = [...normalized, ...autoLinkedFiles];
+
+    const cleanMain = finalNormalized.find(f => f.path.toLowerCase() === mainFile.toLowerCase())?.path || mainFile;
+    const totalBytes = calculatePayloadSize(finalNormalized);
+    const imageCount = finalNormalized.filter(f => f.content.startsWith('data:image')).length;
 
     const renames: Record<string, string> = {};
     // Strategy Selection — declared here so the optimizeAssets closure below can reference it.
@@ -222,7 +251,7 @@ export async function runHardenedPipeline(
         }
     });
 
-    let activeFiles = await optimizeAssets(normalized);
+    let activeFiles = await optimizeAssets(finalNormalized);
     
     // PATH SYNCHRONIZATION: Update LaTeX references if images were renamed (e.g. .png -> .jpg)
     if (Object.keys(renames).length > 0) {
