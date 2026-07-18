@@ -22,14 +22,136 @@ const GREEK_MAP: Record<string, string> = {
   '\u2215': '/', '\u2010': '-'
 };
 
-/**
- * PHASE 23.0 MASTER SIEVE
- * Aggressively scrubs engine-specific phantom artifacts that trigger
- * during remote LaTeX compilation (e.g. "color color", "Scale=MatchLowercase").
- */
+export function breakLongWords(tex: string): string {
+  if (!tex) return '';
+  let result = '';
+  let i = 0;
+  const len = tex.length;
+  const protectedCmds = new Set([
+    'label', 'ref', 'cite', 'includegraphics', 'begin', 'end', 
+    'usepackage', 'documentclass', 'url', 'href', 'geometry', 
+    'bibliographystyle', 'bibliography', 'addbibresource', 
+    'newcommand', 'renewcommand', 'providecommand', 'def', 
+    'hypersetup', 'lstset', 'lstlisting'
+  ]);
+  
+  let inComment = false;
+  let inMath = false;
+  let bracesDepth = 0;
+  let currentCmd = '';
+  let commandStack: { cmd: string; depth: number }[] = [];
+  
+  let wordBuffer = '';
+  
+  const flushWordBuffer = () => {
+    if (wordBuffer.length > 25) {
+      const activeProtected = commandStack.some(s => protectedCmds.has(s.cmd));
+      if (!activeProtected && !inComment && !inMath) {
+        let broken = '';
+        for (let j = 0; j < wordBuffer.length; j += 10) {
+          if (j > 0) broken += '\\-';
+          broken += wordBuffer.slice(j, j + 10);
+        }
+        wordBuffer = broken;
+      }
+    }
+    result += wordBuffer;
+    wordBuffer = '';
+  };
+  
+  while (i < len) {
+    const char = tex[i];
+    
+    if (char === '%' && !inMath) {
+      flushWordBuffer();
+      inComment = true;
+      result += char;
+      i++;
+      continue;
+    }
+    if (inComment && (char === '\n' || char === '\r')) {
+      inComment = false;
+      result += char;
+      i++;
+      continue;
+    }
+    if (inComment) {
+      result += char;
+      i++;
+      continue;
+    }
+    
+    if (char === '$') {
+      flushWordBuffer();
+      if (tex[i + 1] === '$') {
+        inMath = !inMath;
+        result += '$$';
+        i += 2;
+      } else {
+        inMath = !inMath;
+        result += '$';
+        i++;
+      }
+      continue;
+    }
+    if (inMath) {
+      result += char;
+      i++;
+      continue;
+    }
+    
+    if (char === '\\') {
+      flushWordBuffer();
+      result += char;
+      i++;
+      let cmdName = '';
+      while (i < len && /[a-zA-Z]/.test(tex[i])) {
+        cmdName += tex[i];
+        i++;
+      }
+      result += cmdName;
+      currentCmd = cmdName;
+      continue;
+    }
+    
+    if (char === '{') {
+      flushWordBuffer();
+      bracesDepth++;
+      if (currentCmd) {
+        commandStack.push({ cmd: currentCmd, depth: bracesDepth });
+        currentCmd = '';
+      }
+      result += char;
+      i++;
+      continue;
+    }
+    
+    if (char === '}') {
+      flushWordBuffer();
+      commandStack = commandStack.filter(s => s.depth < bracesDepth);
+      bracesDepth = Math.max(0, bracesDepth - 1);
+      result += char;
+      i++;
+      continue;
+    }
+    
+    if (/[a-zA-Z0-9._\-]/.test(char)) {
+      wordBuffer += char;
+      i++;
+    } else {
+      flushWordBuffer();
+      result += char;
+      i++;
+    }
+  }
+  
+  flushWordBuffer();
+  return result;
+}
+
 export function applyFinalSanitizationSieve(content: string): string {
   if (!content) return "";
-  let sanitized = content;
+  let sanitized = breakLongWords(content);
 
   // 0. Universal Unicode & Delimiter Sieve
   for (const [char, tex] of Object.entries(GREEK_MAP)) {

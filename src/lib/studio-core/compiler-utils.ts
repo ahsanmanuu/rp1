@@ -2,7 +2,7 @@
 // COMPILER UTILITIES (Standardized Alignment)
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { applyFinalSanitizationSieve } from '@/lib/latex';
+import { applyFinalSanitizationSieve, breakLongWords } from '@/lib/latex';
 
 export interface FilePayload { 
   path: string; 
@@ -44,8 +44,9 @@ export function prepareStructuredPayload(files: FilePayload[], mainFile: string)
 }
 
 export function robustPreambleInjector(content: string): string {
-  if (!content || !/\\documentclass\b/.test(content)) return content;
-  let modified = content;
+  if (!content) return content;
+  let modified = breakLongWords(content);
+  if (!/\\documentclass\b/.test(modified)) return modified;
   
   // 1. NUCLEAR 30.0 GLOBAL HARMONIZATION (\zimg Support)
   if (!modified.includes('NuclearTrackerV30')) {
