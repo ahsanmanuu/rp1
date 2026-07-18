@@ -1020,7 +1020,7 @@ export default function AdminDashboardPage() {
               <div className="p-3 border-b" style={{ borderColor: "var(--color-admin-outline-variant)" }}>
                 <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--color-admin-on-surface)" }}>Accent Color</p>
               </div>
-              <div className="p-1 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
+              <div className="p-1 max-h-[50vh] overflow-y-auto custom-scrollbar">
                 {(Object.keys(themes) as Theme[]).map((t) => (
                   <button 
                     key={t}
