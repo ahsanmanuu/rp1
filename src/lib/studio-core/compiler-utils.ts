@@ -204,10 +204,9 @@ ${_B}fi
   if (beginDocMatch && !modified.includes('% StudioOverflowGuards')) {
     const overflowGuards = [
       '% StudioOverflowGuards — injected by Latexify compiler for proper line breaking',
-      '\\sloppy',                          // Allow looser line-breaking globally
       '\\emergencystretch=8em',            // Extra stretch budget for lines that can\'t fit
       '\\hbadness=10000',                  // Suppress overfull hbox log warnings
-      '\\tolerance=9999',                  // Relaxed from default 200 — reduces forced overflows
+      '\\tolerance=2000',                  // Moderate tolerance — prevents ugly wide word gaps
       '\\hyphenpenalty=10',                // Encourage more hyphenation at line breaks
       '\\exhyphenpenalty=10',              // Encourage breaks after explicit hyphens too
       '\\binoppenalty=100',                // Encourage breaks in inline math at binary operators

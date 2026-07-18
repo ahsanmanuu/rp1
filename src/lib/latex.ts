@@ -751,11 +751,10 @@ export function autoHealLatex(latex: string): string {
 
     // 6. LATE BODY GUARDS (Settings only) — only add if not already present
     const bodyGuardLines: string[] = [];
-    if (!healed.includes("\\sloppy")) bodyGuardLines.push("\\sloppy");
     if (!healed.includes("\\raggedbottom")) bodyGuardLines.push("\\raggedbottom");
     if (!healed.includes("\\emergencystretch")) bodyGuardLines.push("\\emergencystretch=8em");
     if (!healed.includes("\\hbadness")) bodyGuardLines.push("\\hbadness=10000");
-    if (!healed.includes("\\tolerance")) bodyGuardLines.push("\\tolerance=9999");
+    if (!healed.includes("\\tolerance")) bodyGuardLines.push("\\tolerance=2000");
     if (!healed.includes("\\hyphenpenalty")) bodyGuardLines.push("\\hyphenpenalty=10");
     if (!healed.includes("\\exhyphenpenalty")) bodyGuardLines.push("\\exhyphenpenalty=10");
     if (!healed.includes("\\binoppenalty")) bodyGuardLines.push("\\binoppenalty=100");
@@ -932,10 +931,9 @@ export function autoHealLatex(latex: string): string {
     if (!dcl.includes("elsarticle")) ["title", "author", "affil", "affiliation", "email", "date", "keywords"].forEach(k => preParts.push(...(ext[k] || [])));
 
     const bodyGuards = [
-      "\\sloppy",
       "\\emergencystretch=8em",
       "\\hbadness=10000",
-      "\\tolerance=9999",
+      "\\tolerance=2000",
       "\\hyphenpenalty=10",
       "\\exhyphenpenalty=10",
       "\\binoppenalty=100",
