@@ -859,6 +859,18 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     }
   }, [fs, project, code, compiling, isSyncing, projectId, compile]);
 
+  // Global Ctrl+Enter / Cmd+Enter key listener for compilation
+  useEffect(() => {
+    const handleKeydown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        compile();
+      }
+    };
+    window.addEventListener('keydown', handleKeydown);
+    return () => window.removeEventListener('keydown', handleKeydown);
+  }, [compile]);
+
   if (!mounted) return null;
 
   return (
@@ -1175,6 +1187,15 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                                return { suggestions: getLatexSuggestions(mon, model, position, filesRef.current) };
                              }
                            });
+
+                           // Register Ctrl+Enter command to compile
+                           try {
+                             ed.addCommand(mon.KeyMod.CtrlCmd | mon.KeyCode.Enter, () => {
+                               compileRef.current?.();
+                             });
+                           } catch (e) {
+                             console.warn("Failed to bind Ctrl+Enter command:", e);
+                           }
  
                            mon.editor.defineTheme('scholarly-vibrant', {
                              base: 'vs-dark',

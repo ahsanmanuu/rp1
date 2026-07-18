@@ -80,7 +80,8 @@ export function applyFinalSanitizationSieve(content: string): string {
 
 
   // 5. Deduplicate \usepackage lines in preamble (keep first occurrence)
-  const docStart = sanitized.indexOf('\\begin{document}');
+  const docStartMatch = sanitized.match(/\\begin\s*\{\s*document\s*\}/);
+  const docStart = docStartMatch ? docStartMatch.index! : -1;
   if (docStart !== -1) {
     let preamble = sanitized.substring(0, docStart);
     const body = sanitized.substring(docStart);
@@ -101,15 +102,8 @@ export function applyFinalSanitizationSieve(content: string): string {
       return adCount === 1 ? m : '';
     });
     // 7. Remove body-mode settings that snuck into preamble area (before \begin{document})
-    // These ONLY work inside the document body, not the preamble
-    preamble = preamble.replace(/^\\sloppy\s*$/mg, '');
-    preamble = preamble.replace(/^\\raggedbottom\s*$/mg, '');
-    preamble = preamble.replace(/^\\emergencystretch\s*=\s*\d+\w+\s*$/mg, '');
-    preamble = preamble.replace(/^\\hbadness\s*=\s*\d+\s*$/mg, '');
-    preamble = preamble.replace(/^\\vbadness\s*=\s*\d+\s*$/mg, '');
-    preamble = preamble.replace(/^\\hfuzz\s*=\s*[\d.]+\w+\s*$/mg, '');
-    preamble = preamble.replace(/^\\vfuzz\s*=\s*[\d.]+\w+\s*$/mg, '');
-    preamble = preamble.replace(/^\\maxdeadcycles\s*=\s*\d+\s*$/mg, '');
+    // (Preamble settings like \sloppy, \emergencystretch, \hbadness, etc. are left intact because they are valid global settings)
+    
     // 8. Fix "There's no line here to end" errors
     // Remove \\ immediately before environments or at end of lines where they are illegal
     let cleanBody = body.replace(/\\\\\s*(\\end\{|\\section|\\subsection|\\item|\\begin\{list|\\begin\{description|\\begin\{enumerate|\\begin\{itemize})/g, "$1");

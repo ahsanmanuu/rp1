@@ -101,6 +101,11 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
   const currentPdfBlob = useRef<Blob | null>(null);
   const previousPdfUrl = useRef<string | null>(null);
 
+  const filesRef = useRef<StudioFile[]>([]);
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
+
   // Load persisted layout
   const { settings, updatePanels } = useLayoutSync(false);
 
@@ -1337,6 +1342,15 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
                     ed.onDidChangeCursorPosition(syncOnCursorChange);
                     const disposable = registerLatexCompletionItems(monaco);
                     (ed as any)._latexSnippets = disposable;
+
+                    // Register Ctrl+Enter command to compile
+                    try {
+                      ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+                        compileRef.current?.();
+                      });
+                    } catch (e) {
+                      console.warn("Failed to bind Ctrl+Enter command:", e);
+                    }
                   }}
                   options={{ 
                     fontSize, 

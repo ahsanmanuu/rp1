@@ -44,7 +44,7 @@ export function prepareStructuredPayload(files: FilePayload[], mainFile: string)
 }
 
 export function robustPreambleInjector(content: string): string {
-  if (!content || !content.includes('\\documentclass')) return content;
+  if (!content || !/\\documentclass\b/.test(content)) return content;
   let modified = content;
   
   // 1. NUCLEAR 30.0 GLOBAL HARMONIZATION (\zimg Support)
@@ -195,7 +195,8 @@ ${_B}fi
   // 4. OVERFLOW GUARD INJECTION — inject AFTER the sieve, so guards are never stripped.
   // Prevents text, URLs, code, and verbatim from overflowing beyond the page margin.
   // These are injected AFTER \begin{document} so they apply globally to the whole document.
-  if (modified.includes('\\begin{document}') && !modified.includes('% StudioOverflowGuards')) {
+  const beginDocMatch = modified.match(/\\begin\s*\{\s*document\s*\}/);
+  if (beginDocMatch && !modified.includes('% StudioOverflowGuards')) {
     const overflowGuards = [
       '% StudioOverflowGuards — injected by Latexify compiler for proper line breaking',
       '\\sloppy',                          // Allow looser line-breaking globally
@@ -217,8 +218,8 @@ ${_B}fi
     ].join('\n');
 
     modified = modified.replace(
-      /\\begin\{document\}/,
-      `\\begin{document}\n${overflowGuards}`
+      /\\begin\s*\{\s*document\s*\}/,
+      `${beginDocMatch[0]}\n${overflowGuards}`
     );
   }
 

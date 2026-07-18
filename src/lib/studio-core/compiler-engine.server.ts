@@ -1256,10 +1256,14 @@ export async function hardenedDiscovery(projectId: string | null, files: FilePay
   try {
     const normCleanMain = normalizePath(cleanMain);
     const mainInSession = normalized.find(f => normalizePath(f.path) === normCleanMain);
+    const isCorruptNonstopmode = mainInSession && mainInSession.content && 
+      (mainInSession.content.trim() === '\\nonstopmode' || 
+       mainInSession.content.trim() === '\\nonstopmode\n' || 
+       mainInSession.content.trim() === '\\nonstopmode\r\n');
     const mainIsMissingOrEmpty = !mainInSession || 
       !mainInSession.content || 
-      mainInSession.content.trim().length < 50 || 
-      !mainInSession.content.includes('\\documentclass');
+      mainInSession.content.trim().length === 0 ||
+      isCorruptNonstopmode;
     
     if (mainIsMissingOrEmpty && projectId) {
       console.log(`[PIPELINE] main.tex missing or too short (${mainInSession?.content?.length ?? 0} bytes) — attempting DB restore.`);

@@ -789,6 +789,18 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
     }
   }, [fs, project, code, compiling, isSyncing, projectId, compile]);
 
+  // Global Ctrl+Enter / Cmd+Enter key listener for compilation
+  useEffect(() => {
+    const handleKeydown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        compile();
+      }
+    };
+    window.addEventListener('keydown', handleKeydown);
+    return () => window.removeEventListener('keydown', handleKeydown);
+  }, [compile]);
+
   const exportProjectZip = async () => {
     if (!fs) return;
     const blob = await fs.exportZip(projectId);
@@ -1480,6 +1492,15 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                                   return { suggestions: getLatexSuggestions(mon, model, position, filesRef.current) };
                                 }
                               });
+
+                              // Register Ctrl+Enter command to compile
+                              try {
+                                ed.addCommand(mon.KeyMod.CtrlCmd | mon.KeyCode.Enter, () => {
+                                  compileRef.current?.();
+                                });
+                              } catch (e) {
+                                console.warn("Failed to bind Ctrl+Enter command:", e);
+                              }
                             }}
                             options={{
                               fontSize: 14,

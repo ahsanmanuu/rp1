@@ -25,7 +25,7 @@ import { detectBestEngine, parseLog } from '@/lib/studio-core/compiler-utils';
 import { formatLatexCode, type EditorMood, EDITOR_MOODS } from '@/lib/studio-core/formatting-utils';
 import toast from 'react-hot-toast';
 import { saveAs } from 'file-saver';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import ThemeSwitcher from '../ThemeSwitcher';
 import ConsolePanel from '../ConsolePanel';
 import StudioErrorBoundary from '../StudioErrorBoundary';
@@ -95,6 +95,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const isSelfChange = useRef<boolean>(false);
+  const compileRef = useRef<(() => Promise<void>) | null>(null);
   const filesRef = useRef<StudioFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currentPdfBlob = useRef<Blob | null>(null);
@@ -542,6 +543,23 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
       setCompiling(false);
     }
   }, [fs, compiling, projectId, activeFile, engine, code, project]);
+
+  // Keep compileRef current so async callbacks always call the latest version
+  useEffect(() => {
+    compileRef.current = compile;
+  }, [compile]);
+
+  // Global Ctrl+Enter / Cmd+Enter key listener for compilation
+  useEffect(() => {
+    const handleKeydown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        compile();
+      }
+    };
+    window.addEventListener('keydown', handleKeydown);
+    return () => window.removeEventListener('keydown', handleKeydown);
+  }, [compile]);
 
   const exportProjectZip = async () => {
     if (!fs) return;
@@ -1140,6 +1158,15 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
                           }
                         });
 
+                        // Register Ctrl+Enter command to compile
+                        try {
+                          ed.addCommand(mon.KeyMod.CtrlCmd | mon.KeyCode.Enter, () => {
+                            compileRef.current?.();
+                          });
+                        } catch (e) {
+                          console.warn("Failed to bind Ctrl+Enter command:", e);
+                        }
+
                         mon.editor.defineTheme('scholarly-vibrant', {
                           base: 'vs-dark',
                           inherit: true,
@@ -1178,7 +1205,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
                         scrollbar: { vertical: 'visible', horizontal: 'visible', verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
                         automaticLayout: true,
                         wordWrap: 'on',
-                        readOnly: isReadOnly
+                        readOnly: false
                       }}
                     />
                   )}
