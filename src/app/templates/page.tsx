@@ -391,9 +391,8 @@ function TemplatesContent() {
               <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-primary-joy/[0.08] text-primary-joy text-[11px] font-bold uppercase tracking-[0.25em] rounded-full border border-primary-joy/15">
                  <Sparkles size={14} /> Template Gallery
               </div>
-              <h1 className="text-5xl lg:text-6xl xl:text-7xl font-black tracking-tight text-slate-900 leading-[1.1]">
-                 Scholarly<br />
-                 <span className="bg-gradient-to-r from-primary-joy via-purple-500 to-pink-500 bg-clip-text text-transparent">Archive</span>
+              <h1 className="text-5xl lg:text-6xl xl:text-7xl font-black tracking-tight text-slate-900 leading-[1.1] whitespace-nowrap">
+                 Scholarly <span className="bg-gradient-to-r from-primary-joy via-purple-500 to-pink-500 bg-clip-text text-transparent">Archive</span>
               </h1>
               <p className="text-slate-500 font-medium text-base lg:text-lg max-w-4xl mx-auto text-justify leading-relaxed" style={{ textAlignLast: 'justify' }}>
                  Over 100+ professional LaTeX formats for high-impact publishing.
@@ -402,6 +401,7 @@ function TemplatesContent() {
         </div>
 
         {/* --- CATEGORY TABS --- */}
+        {session && (
         <div className="max-w-6xl mx-auto mb-8 space-y-4">
            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2">
               {categories.map((cat) => (
@@ -418,6 +418,13 @@ function TemplatesContent() {
                    {cat.name}
                  </button>
               ))}
+              <button
+                 onClick={() => setShowUploadModal(true)}
+                 className="h-11 px-6 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all flex items-center gap-3 whitespace-nowrap border-2 bg-white text-slate-500 border-slate-200 hover:border-primary-joy/30 hover:text-primary-joy"
+              >
+                 <Upload size={14} />
+                 Upload
+              </button>
            </div>
 
            {subCategories.length > 1 && (
@@ -438,6 +445,7 @@ function TemplatesContent() {
               </div>
            )}
         </div>
+        )}
 
         {/* --- TEMPLATE GRID --- */}
         <div className="max-w-6xl mx-auto">

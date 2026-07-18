@@ -273,8 +273,9 @@ export async function runHardenedPipeline(
     // PACKAGE RESOLUTION: Strip path prefixes from \usepackage or \RequirePackage
     activeFiles.forEach(f => {
         const ext = f.path.split('.').pop()?.toLowerCase() || '';
-        if (/^(tex|cls|sty|bib)$/i.test(ext)) {
-            // Apply Master Sieve for phantom artifacts
+        if (/^(tex)$/i.test(ext)) {
+            // Apply Master Sieve for phantom artifacts — ONLY on .tex files
+            // .cls, .sty, .bib files are template-specific and must not be sanitized
             f.content = applyFinalSanitizationSieve(f.content);
 
             f.content = f.content.replace(/\\(usepackage|RequirePackage)\s*(?:\[([^\]]*)\])?\s*\{([^}]+)\}/g, (match, cmd, opts, pkgList) => {

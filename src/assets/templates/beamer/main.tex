@@ -1,4 +1,6 @@
-﻿\documentclass{article}
+﻿\documentclass{beamer}
+\usetheme{Madrid}
+\usecolortheme{default}
 
 % --- Essential Packages ---
 \usepackage[utf8]{inputenc}
@@ -6,55 +8,72 @@
 \usepackage{graphicx}
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{booktabs,multirow,array,tabularx}
-\usepackage{float,url,cite}
 
-
-\title{Complete Scholarly Template for beamer}
+\title{Complete Scholarly Template for Beamer}
 \author{Author Name \\ \small Department of Research, University of Scholarly AI}
 \date{\today}
+\institute{Scholarly AI}
 
 \begin{document}
 
-\maketitle
+\begin{frame}
+  \titlepage
+\end{frame}
 
-\begin{abstract}
-This is a comprehensive and complete LaTeX source document for the beamer template. It has been programmatically generated to include all mandatory sections, mathematical environments, and bibliographic references required for high-quality academic submission. This document is fully compatible with the provided article.cls and associated style files.
-\end{abstract}
+\begin{frame}{Outline}
+  \tableofcontents
+\end{frame}
 
 \section{Introduction}
-The introduction provides the background and context for the research. This template ensures that all margins, fonts, and structural elements adhere strictly to the beamer publication standards.
+\begin{frame}{Introduction}
+  The introduction provides the background and context for the research. This template ensures that all margins, fonts, and structural elements adhere strictly to the beamer presentation standards.
+\end{frame}
 
 \section{Related Work}
-Academic research is built upon the contributions of others. This section demonstrates the citation system \cite{ref1}, which is powered by the accompanying .bib and .bst files.
+\begin{frame}{Related Work}
+  Academic research is built upon the contributions of others. This section demonstrates the citation system, which is powered by the accompanying .bib and .bst files.
+
+  \begin{itemize}
+    \item First key contribution from prior work
+    \item Second relevant study
+    \item Third important reference
+  \end{itemize}
+\end{frame}
 
 \section{Methodology}
-The methodology section describes the technical approach. We can represent complex logical steps using equations:
-\begin{equation}
-    \nabla \times \mathbf{E} = -\frac{\partial \mathbf{B}}{\partial t}
-\end{equation}
+\begin{frame}{Methodology}
+  The methodology section describes the technical approach. We can represent complex logical steps using equations:
+
+  \begin{equation}
+      \nabla \times \mathbf{E} = -\frac{\partial \mathbf{B}}{\partial t}
+  \end{equation}
+\end{frame}
 
 \section{Experimental Results}
-Data representation is critical. This template supports high-fidelity tables and figures.
-\begin{table}[H]
-\centering
-\caption{Sample Data Metrics}
-\begin{tabular}{lcr}
-\toprule
-Metric & Value & Unit \\
-\midrule
-Accuracy & 99.2 & \% \\
-Latency & 15.4 & ms \\
-\bottomrule
-\end{tabular}
-\end{table}
+\begin{frame}{Experimental Results}
+  Data representation is critical. This template supports high-fidelity tables and figures.
+
+  \begin{table}
+  \centering
+  \caption{Sample Data Metrics}
+  \begin{tabular}{lcr}
+  \toprule
+  Metric & Value & Unit \\
+  \midrule
+  Accuracy & 99.2 & \% \\
+  Latency & 15.4 & ms \\
+  \bottomrule
+  \end{tabular}
+  \end{table}
+\end{frame}
 
 \section{Conclusion}
-In conclusion, this template provides a 100% complete and validated environment for scholarly writing. No additional configuration is required to begin your manuscript.
+\begin{frame}{Conclusion}
+  In conclusion, this template provides a 100\% complete and validated environment for scholarly presentations. No additional configuration is required to begin your slides.
+\end{frame}
 
-\section*{Acknowledgements}
-The authors would like to thank the Scholarly Template Ecosystem for providing this high-fidelity workspace.
-
-\\bibliographystyle{plain}
-\bibliography{sample}
+\begin{frame}{Acknowledgements}
+  The authors would like to thank the Scholarly Template Ecosystem for providing this high-fidelity workspace.
+\end{frame}
 
 \end{document}

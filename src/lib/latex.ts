@@ -695,21 +695,13 @@ export function autoHealLatex(latex: string): string {
       patchedPreamble = patchedPreamble.replace(/\\usepackage\{breakurl\}/g, "");
     }
 
-    // ─── DEDUPLICATION: Strip from user preamble what we inject ─────────────────
-    // We only strip packages we actually re-inject to avoid breaking other imports (like natbib, biblatex, svg, etc.)
-    const SYSTEM_PKGS = ["microtype","placeins","enumitem","geometry","parskip","hyperref","url","float","caption","adjustbox","algorithm","amsmath","amsfonts","amssymb","graphicx","booktabs","cleveref","xurl","rotating","pdflscape","algpseudocode","textcomp","gensymb","bm","listings","pifont","appendix"];
-    SYSTEM_PKGS.forEach(pkg => {
-        const pkgRegex = new RegExp(`\\\\usepackage\\s*(?:\\[[^\\]]*\\])?\\s*\\{[^}]*\\b${pkg}\\b[^}]*\\}\\s*\n?`, 'g');
-        patchedPreamble = patchedPreamble.replace(pkgRegex, '');
-    });
-    // Also strip standalone conflicting commands already injected
+    // ─── TEMPLATE-SAFE: Do NOT strip packages from the preamble ────────────────
+    // Template-specific .cls/.sty files rely on their own package loading order and options.
+    // Stripping SYSTEM_PKGS and re-adding with generic options destroys template-specific
+    // configurations (e.g. Nature's caption settings, IEEE's hyperref setup, ACM's options).
+    // Instead, we only ADD truly missing packages via the guard list below.
+    // Also strip standalone conflicting commands that are always re-injected
     patchedPreamble = patchedPreamble.replace(/\\allowdisplaybreaks\s*\n?/g, '');
-    patchedPreamble = patchedPreamble.replace(/\\setlist\{nosep\}\s*\n?/g, '');
-    patchedPreamble = patchedPreamble.replace(/\\raggedbottom\s*\n?/g, '');
-    patchedPreamble = patchedPreamble.replace(/\\hypersetup\{[^}]*\}\s*\n?/g, '');
-    patchedPreamble = patchedPreamble.replace(/\\AtBeginDocument\{[^}]*\}\s*\n?/g, '');
-    patchedPreamble = patchedPreamble.replace(/\\graphicspath\s*\{[^{}]*\{[^{}]*\}[^{}]*\}\s*\n?/g, '');
-    patchedPreamble = patchedPreamble.replace(/\\graphicspath\s*\{[^{}]*\}\s*\n?/g, '');
 
     // ─── USEPACKAGE GUARD LIST ──────────────────────────────────────────────────
     // CRITICAL: \usepackage MUST NOT appear inside a \catcode block.
