@@ -26,9 +26,9 @@ export async function GET() {
     }
 
     const [projectCount, citationCount, reviewCount] = await Promise.all([
-      prisma.project.count({ where: { userId: session.user.id } }),
-      prisma.citationProject.count({ where: { userId: session.user.id } }),
-      prisma.paperReview.count({ where: { userId: session.user.id } }),
+      prisma.project.count({ where: { userId: session.user.id, status: "completed" } }),
+      prisma.citationProject.count({ where: { userId: session.user.id, status: "completed" } }),
+      prisma.paperReview.count({ where: { userId: session.user.id, status: "completed" } }),
     ]);
 
     const totalCount = projectCount + citationCount + reviewCount;

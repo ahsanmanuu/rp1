@@ -101,6 +101,13 @@ export async function POST(req: NextRequest) {
       res = await runLatexifyCompiler(engine, files, mainFile, projectId);
     }
 
+    if (projectId && (res.pdfBase64 || (res as any).pdfUrl)) {
+      await prisma.project.update({
+        where: { id: projectId },
+        data: { status: 'completed', firstPdfDownloaded: true }
+      }).catch((e: any) => console.error("Failed to mark project completed on compile:", e.message));
+    }
+
     // ── RESILIENT BACKUP PLAN ─────────────────────────────────────────────────
     // Always forward pdfUrl / pdfBase64 even when success:false.
     // The frontend checks for a PDF independently of the success flag and

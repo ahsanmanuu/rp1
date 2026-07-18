@@ -122,6 +122,35 @@ export default function CitationGeneratorPage() {
   });
 
   const accentGreen = "#00a86b";
+  const [serverProjectId, setServerProjectId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    
+    // Fetch user's citation projects from server
+    fetch('/api/citations/projects')
+      .then(r => r.json())
+      .then(data => {
+        if (data.projects && data.projects.length > 0) {
+          setServerProjectId(data.projects[0].id);
+        } else {
+          // Auto-create a default citation project
+          fetch('/api/citations/projects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: 'My Bibliography', style: 'apa-7' })
+          })
+            .then(r => r.json())
+            .then(data => {
+              if (data.project?.id) {
+                setServerProjectId(data.project.id);
+              }
+            })
+            .catch(console.error);
+        }
+      })
+      .catch(console.error);
+  }, [session]);
 
   useEffect(() => {
     const savedFolders = localStorage.getItem("ss_folders");
@@ -219,6 +248,14 @@ export default function CitationGeneratorPage() {
     const blob = await Packer.toBlob(doc);
     saveAs(blob, "Bibliography.docx");
     toast.success("Bibliography exported");
+
+    if (serverProjectId) {
+      fetch('/api/projects/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: serverProjectId, type: 'citation' })
+      }).catch(console.error);
+    }
   };
 
   const handleManualSubmit = (e: React.FormEvent) => {

@@ -65,6 +65,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         safeTitle = project.title.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_\-\ \(\)]/g, '').trim();
     }
 
+    // Mark project as completed when zip is downloaded
+    await prisma.project.update({
+      where: { id },
+      data: { status: 'completed', firstPdfDownloaded: true }
+    }).catch((e: any) => console.error("Failed to mark project completed on zip download:", e.message));
+
     return new NextResponse(new Uint8Array(content), {
       status: 200,
       headers: {

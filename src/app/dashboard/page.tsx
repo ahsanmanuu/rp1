@@ -677,9 +677,30 @@ export default function DashboardPage() {
     window.prompt("Please copy the link below:", url);
   };
 
-  const handleDownloadPDF = (p: any) => {
+  const handleDownloadPDF = async (p: any) => {
     const url = p.pdfUrl || (p.type === 'DOC2LATEX' ? `/upload?id=${p.id}&action=download` : `/latex-studio/${p.id}`);
     window.open(url, '_blank');
+
+    const typeMap: Record<string, string> = {
+      LATEX_STUDIO: 'project',
+      DOC2LATEX: 'project',
+      DIAGRAM: 'project',
+      MIGRATOR: 'project',
+      REVIEWER: 'review',
+      CITATIONS: 'citation',
+    };
+    const mappedType = typeMap[p.type || p.projectType] || 'project';
+    
+    try {
+      await fetch('/api/projects/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: p.id, type: mappedType })
+      });
+      refetchMembership();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleDeleteProject = async (id: string, isLocal?: boolean) => {

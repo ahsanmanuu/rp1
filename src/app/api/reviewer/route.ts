@@ -180,6 +180,7 @@ export async function POST(req: NextRequest) {
             overallScore: body.review.overallScore || 0,
             reviewJson: JSON.stringify(body.review),
             journalsJson: JSON.stringify(body.journals || []),
+            status: 'completed',
           },
         });
         return NextResponse.json({
@@ -273,6 +274,7 @@ export async function POST(req: NextRequest) {
           overallScore: (reviewData.overallScore as number) || 0,
           reviewJson: JSON.stringify(reviewData),
           journalsJson: JSON.stringify(journals),
+          status: 'completed',
         },
       });
 

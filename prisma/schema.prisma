@@ -184,6 +184,7 @@ model CitationProject {
   userId      String
   name        String     @default("My Bibliography")
   style       String     @default("apa-7")
+  status      String     @default("draft")
   createdAt   DateTime @db.Timestamptz   @default(now())
   updatedAt   DateTime @db.Timestamptz   @updatedAt
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -216,6 +217,7 @@ model PaperReview {
   overallScore    Int
   reviewJson      String
   journalsJson    String
+  status          String   @default("draft")
   createdAt       DateTime @db.Timestamptz @default(now())
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

@@ -6,6 +6,38 @@ import { syncUserMembershipChain } from "@/lib/membershipExchange";
 import { getServerSession } from "@/lib/auth-pb";
 export const dynamic = 'force-dynamic';
 
+let pbCollectionsInitialized = false;
+
+async function ensureStatusFieldsInPb() {
+  if (pbCollectionsInitialized) return;
+  try {
+    const { pbAdmin } = await import('@/lib/pb');
+    const pb = await pbAdmin();
+    const collectionsToUpdate = ['citation_projects', 'paper_reviews'];
+    for (const cName of collectionsToUpdate) {
+      try {
+        const coll = await pb.collections.getOne(cName);
+        const hasStatus = coll.fields.some((f: any) => f.name === 'status');
+        if (!hasStatus) {
+          coll.fields.push({
+            name: 'status',
+            type: 'text',
+            required: false,
+            presentable: false,
+          });
+          await pb.collections.update(coll.id, coll);
+          console.log(`[INIT] Programmatically added status field to PocketBase collection: ${cName}`);
+        }
+      } catch (err: any) {
+        console.warn(`[INIT] Failed to ensure status field for ${cName}:`, err.message);
+      }
+    }
+    pbCollectionsInitialized = true;
+  } catch (err: any) {
+    console.warn('[INIT] Failed to initialize PocketBase collections:', err.message);
+  }
+}
+
 const LIFECYCLE_CACHE = new Map<string, { plan: string; ts: number }>();
 
 async function writeLifecycleLog(
@@ -56,6 +88,7 @@ export async function GET(_req: NextRequest) {
   const userId = (session.user as any).id;
 
   try {
+    await ensureStatusFieldsInPb();
     await syncUserMembershipChain(userId);
 
     const user = await prisma.user.findUnique({
@@ -91,12 +124,12 @@ export async function GET(_req: NextRequest) {
 
     const [subscriptionCount, projectCount, citationCount, reviewCount, doc2latexCount, latexCount, diagramCount] = await Promise.all([
       prisma.membershipTransaction.count({ where: { userId, paymentStatus: "paid" } }),
-      prisma.project.count({ where: { userId } }),
-      prisma.citationProject.count({ where: { userId } }),
-      prisma.paperReview.count({ where: { userId } }),
-      prisma.project.count({ where: { userId, projectType: "DOC2LATEX" } }),
-      prisma.project.count({ where: { userId, projectType: "LATEX_STUDIO" } }),
-      prisma.project.count({ where: { userId, projectType: "DIAGRAM" } })
+      prisma.project.count({ where: { userId, status: "completed" } }),
+      prisma.citationProject.count({ where: { userId, status: "completed" } }),
+      prisma.paperReview.count({ where: { userId, status: "completed" } }),
+      prisma.project.count({ where: { userId, projectType: "DOC2LATEX", status: "completed" } }),
+      prisma.project.count({ where: { userId, projectType: "LATEX_STUDIO", status: "completed" } }),
+      prisma.project.count({ where: { userId, projectType: "DIAGRAM", status: "completed" } })
     ]);
 
     const projectsCount = projectCount + citationCount + reviewCount;

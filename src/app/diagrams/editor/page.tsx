@@ -708,6 +708,13 @@ function DiagramStudio() {
         }),
       });
       setSaveStatus('saved');
+
+      // Mark project completed
+      await fetch('/api/projects/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: projectId, type: 'project' })
+      }).catch(console.error);
     } catch (err) {
       console.error('[DiagramSave]', err);
       setSaveStatus('unsaved');
