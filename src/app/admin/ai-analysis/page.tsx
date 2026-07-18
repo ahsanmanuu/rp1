@@ -194,6 +194,9 @@ export default function AdminAiAnalysisPage() {
           <Link href="/admin/offers" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-all" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
             <span className="material-symbols-outlined">local_offer</span>Offers
           </Link>
+          <Link href="/admin/general-queries" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-all" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
+            <span className="material-symbols-outlined">forum</span>General Queries
+          </Link>
           <Link href="/admin/emails" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-all" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
             <span className="material-symbols-outlined">mail</span>Email History
           </Link>

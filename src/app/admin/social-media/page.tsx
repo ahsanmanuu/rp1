@@ -24,6 +24,7 @@ const SIDEBAR_LINKS = [
   { href: '/admin/anomalies', icon: 'warning', label: 'Anomaly Center' },
   { href: '/admin/help', icon: 'help', label: 'Help and Support' },
   { href: '/admin/offers', icon: 'local_offer', label: 'Offers' },
+  { href: '/admin/general-queries', icon: 'forum', label: 'General Queries' },
   { href: '/admin/emails', icon: 'mail', label: 'Email History' },
   { href: '/admin/social-media', icon: 'share', label: 'Social Media' },
   { href: '/admin/tax-calculation', icon: 'calculate', label: 'Tax Calculation' },

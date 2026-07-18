@@ -216,6 +216,10 @@ export default function AdminEmailsPage() {
             style={{ color: 'var(--color-admin-on-surface-variant)' }}>
             <span className="material-symbols-outlined">local_offer</span>Offers
           </Link>
+          <Link href="/admin/general-queries" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-all rounded-lg"
+            style={{ color: 'var(--color-admin-on-surface-variant)' }}>
+            <span className="material-symbols-outlined">forum</span>General Queries
+          </Link>
           <a className="flex items-center gap-3 px-4 py-3 text-sm rounded-lg transition-all translate-x-1 duration-200 shadow-sm"
             style={{ backgroundColor: 'var(--color-admin-secondary-container)', color: 'var(--color-admin-on-secondary-container)' }} href="#">
             <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>mail</span>Email History
