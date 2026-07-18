@@ -149,17 +149,18 @@ ${_B}fi
 
   // 2. PREAMBLE PACKAGE INJECTION — inject essential packages if not already present
   // These run BEFORE the sieve so the sieve can deduplicate them safely.
-  if (modified.includes('\\documentclass')) {
+  const docClassMatch = modified.match(/\\documentclass\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/);
+  if (docClassMatch) {
     const hasPackage = (pkg: string) =>
       new RegExp(`\\\\usepackage\\s*(?:\\[[^\\]]*\\])?\\s*\\{[^}]*\\b${pkg}\\b[^}]*\\}`).test(modified);
 
-    const docClassMatch = modified.match(/\\documentclass\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/);
-    const docClass = docClassMatch ? docClassMatch[1].toLowerCase() : 'article';
+    const docClass = docClassMatch[1].toLowerCase();
     const isAcademic = !['article','report','book','letter'].includes(docClass);
 
     // Find the insertion point: just before \begin{document}
-    const beginDocIdx = modified.indexOf('\\begin{document}');
-    if (beginDocIdx !== -1) {
+    const beginDocMatch = modified.match(/\\begin\s*\{\s*document\s*\}/);
+    if (beginDocMatch && beginDocMatch.index !== undefined) {
+      const beginDocIdx = beginDocMatch.index;
       const preamblePkgs: string[] = [];
       // xurl: enables URL breaking at any character (must come after url if loaded)
       if (!hasPackage('xurl') && !hasPackage('url')) {
@@ -205,16 +206,18 @@ ${_B}fi
       '\\tolerance=1000',                  // Relaxed from default 200 — reduces forced overflows
       '\\hyphenpenalty=50',               // Encourage more hyphenation at line breaks
       '\\exhyphenpenalty=50',             // Encourage breaks after explicit hyphens too
-      // URL breaking (safe ifx/undefined guards so they don\'t error if package not loaded)
-      '\\ifx\\urlstyle\\undefined\\else\\urlstyle{same}\\fi',
-      '\\ifx\\Urlmuskip\\undefined\\else\\Urlmuskip=0mu plus 1mu\\fi',
+      '\\makeatletter',
+      // URL breaking (safe \@undefined guards so they don\'t error if package not loaded)
+      '\\ifx\\urlstyle\\@undefined\\else\\urlstyle{same}\\fi',
+      '\\ifx\\Urlmuskip\\@undefined\\else\\Urlmuskip=0mu plus 1mu\\fi',
       // Image constraint: all images respect page width automatically
-      '\\ifx\\setkeys\\undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.85\\textheight,keepaspectratio}\\fi',
+      '\\ifx\\setkeys\\@undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.85\\textheight,keepaspectratio}\\fi',
       // listings: enable line breaking for ALL lstlisting environments (if listings is loaded)
-      '\\ifx\\lstset\\undefined\\else',
+      '\\ifx\\lstset\\@undefined\\else',
       '  \\lstset{breaklines=true,breakatwhitespace=false,basicstyle=\\small\\ttfamily,',
       '    columns=flexible,keepspaces=true,breakindent=0pt}%',
       '\\fi',
+      '\\makeatother',
     ].join('\n');
 
     modified = modified.replace(

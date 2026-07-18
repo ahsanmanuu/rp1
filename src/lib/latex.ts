@@ -756,9 +756,9 @@ export function autoHealLatex(latex: string): string {
     if (!healed.includes("\\emergencystretch")) bodyGuardLines.push("\\emergencystretch=3em");
     if (!healed.includes("\\hbadness")) bodyGuardLines.push("\\hbadness=10000");
     if (!healed.includes("\\tolerance")) bodyGuardLines.push("\\tolerance=1000");
-    if (!healed.includes("\\urlstyle")) bodyGuardLines.push("\\ifx\\urlstyle\\undefined\\else\\urlstyle{same}\\fi");
-    if (!healed.includes("\\Urlmuskip")) bodyGuardLines.push("\\ifx\\Urlmuskip\\undefined\\else\\Urlmuskip=0mu plus 1mu\\fi");
-    if (!healed.includes("setkeys{Gin}")) bodyGuardLines.push("\\ifx\\setkeys\\undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.75\\textheight,keepaspectratio}\\fi");
+    if (!healed.includes("\\urlstyle")) bodyGuardLines.push("\\makeatletter\\ifx\\urlstyle\\@undefined\\else\\urlstyle{same}\\fi\\makeatother");
+    if (!healed.includes("\\Urlmuskip")) bodyGuardLines.push("\\makeatletter\\ifx\\Urlmuskip\\@undefined\\else\\Urlmuskip=0mu plus 1mu\\fi\\makeatother");
+    if (!healed.includes("setkeys{Gin}")) bodyGuardLines.push("\\makeatletter\\ifx\\setkeys\\@undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.75\\textheight,keepaspectratio}\\fi\\makeatother");
     const bodyGuards = bodyGuardLines.join("\n");
 
     let patchedPre = patchedPreamble;
@@ -923,9 +923,11 @@ export function autoHealLatex(latex: string): string {
     const bodyGuards = [
       "\\sloppy",
       "\\emergencystretch=5em",
-      "\\ifx\\urlstyle\\undefined\\else\\urlstyle{same}\\fi",
-      "\\ifx\\Urlmuskip\\undefined\\else\\Urlmuskip=0mu plus 1mu\\fi",
-      "\\ifx\\setkeys\\undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.85\\textheight,keepaspectratio}\\fi"
+      "\\makeatletter",
+      "\\ifx\\urlstyle\\@undefined\\else\\urlstyle{same}\\fi",
+      "\\ifx\\Urlmuskip\\@undefined\\else\\Urlmuskip=0mu plus 1mu\\fi",
+      "\\ifx\\setkeys\\@undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.85\\textheight,keepaspectratio}\\fi",
+      "\\makeatother"
     ].join("\n");
 
     const finalPre = preParts.join("\n").trim();
