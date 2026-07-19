@@ -243,7 +243,27 @@ export async function routeToAgent(req: GatewayRequest): Promise<GatewayResponse
     };
   }
 
-  const systemContent = agentConfig.buildSystemPrompt(req.context || {});
+  let systemContent = agentConfig.buildSystemPrompt(req.context || {});
+  try {
+    const dbOverride = await prisma.aiContextConfig.findUnique({
+      where: { agentId: req.agent }
+    });
+    if (dbOverride && dbOverride.isActive) {
+      if (dbOverride.systemPrompt) {
+        systemContent = dbOverride.systemPrompt;
+      }
+      if (dbOverride.contextRules) {
+        try {
+          const rules = JSON.parse(dbOverride.contextRules);
+          if (rules.extraInstructions) {
+            systemContent += `\n\n### ADDITIONAL SYSTEM GUIDELINES:\n${rules.extraInstructions}`;
+          }
+        } catch {}
+      }
+    }
+  } catch (dbErr) {
+    console.warn(`[AiContextConfig] Failed to fetch prompt overrides for agent ${req.agent}:`, dbErr);
+  }
   const needsJson = req.agent === 'reviewer' || req.agent === 'extract' || req.agent === 'diagram';
   const messages = req.messages && req.messages.length > 0
     ? [{ role: 'system' as const, content: systemContent }, ...req.messages]

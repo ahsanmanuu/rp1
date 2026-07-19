@@ -78,7 +78,54 @@ export async function POST(req: NextRequest) {
 
   // Build the system prompt separately — do NOT inject it into messages[]
   // to avoid the SDK security warning and model confusion.
-  const systemPrompt = agentConfig.buildSystemPrompt(context);
+  let systemPrompt = agentConfig.buildSystemPrompt(context);
+  try {
+    const dbOverride = await prisma.aiContextConfig.findUnique({
+      where: { agentId: 'diagram' }
+    });
+    if (dbOverride && dbOverride.isActive) {
+      if (dbOverride.systemPrompt) {
+        systemPrompt = dbOverride.systemPrompt;
+      }
+      if (dbOverride.contextRules) {
+        try {
+          const rules = JSON.parse(dbOverride.contextRules);
+          if (rules.extraInstructions) {
+            systemPrompt += `\n\n### ADDITIONAL SYSTEM GUIDELINES:\n${rules.extraInstructions}`;
+          }
+        } catch {}
+      }
+    }
+  } catch (dbErr) {
+    console.warn(`[AiContextConfig] Failed to fetch prompt overrides for diagram agent:`, dbErr);
+  }
+
+  // Load user's latest active project's file context for enhanced prompt context
+  try {
+    const latestProj = await prisma.project.findFirst({
+      where: { userId },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true, title: true }
+    });
+    if (latestProj) {
+      const files = await prisma.projectFile.findMany({
+        where: { projectId: latestProj.id },
+        select: { path: true, content: true },
+        take: 5
+      });
+      if (files.length > 0) {
+        let docContext = `\n\n### ACTIVE USER RESEARCH PROJECT CONTEXT:\nProject Name: "${latestProj.title}"\n`;
+        files.forEach(f => {
+          if (f.path.endsWith('.tex') || f.path.endsWith('.bib') || f.path.endsWith('.md')) {
+            docContext += `File: "${f.path}" (${f.content.length} chars):\n\`\`\`latex\n${f.content.substring(0, 1500)}\n\`\`\`\n`;
+          }
+        });
+        systemPrompt += docContext;
+      }
+    }
+  } catch (ctxErr) {
+    console.warn("[DiagramStream] Failed to load LaTeX project context:", ctxErr);
+  }
 
   // Only include user/assistant turns in messages[]
   const userMessages: any[] = messages.map((m: any) => {

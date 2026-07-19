@@ -120,6 +120,12 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
   }, []);
 
   useEffect(() => {
+    if (projectId) {
+      localStorage.setItem('last_active_project_id', projectId);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
     if (settings.panels?.sidebarWidth) {
       setSidebarWidth(settings.panels.sidebarWidth);
     }
@@ -931,6 +937,92 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
     });
   };
 
+  const applyWorkspaceEdits = async (edits: any[]) => {
+    let currentCode = code;
+    let codeChanged = false;
+
+    for (const edit of edits) {
+      const filePath = edit.path;
+      if (filePath === activeFile) {
+        let newContent = currentCode;
+        if (edit.type === 'write') {
+          newContent = edit.content || '';
+        } else if (edit.type === 'replace') {
+          if (edit.target) {
+            newContent = currentCode.replace(edit.target, edit.content || '');
+          } else {
+            newContent = edit.content || '';
+          }
+        } else if (edit.type === 'delete') {
+          if (edit.target) {
+            newContent = currentCode.replace(edit.target, '');
+          }
+        } else if (edit.type === 'insert') {
+          if (edit.target) {
+            const idx = currentCode.indexOf(edit.target);
+            if (idx !== -1) {
+              newContent = currentCode.substring(0, idx) + (edit.content || '') + currentCode.substring(idx);
+            } else {
+              newContent = currentCode + '\n' + (edit.content || '');
+            }
+          } else {
+            newContent = currentCode + '\n' + (edit.content || '');
+          }
+        }
+        if (newContent !== currentCode) {
+          currentCode = newContent;
+          codeChanged = true;
+        }
+      } else {
+        if (fs && projectId) {
+          const fileObj = files.find(f => f.path === filePath) || await fs.readFile(projectId, filePath);
+          let otherContent = fileObj?.content || '';
+          let newContent = otherContent;
+          if (edit.type === 'write') {
+            newContent = edit.content || '';
+          } else if (edit.type === 'replace') {
+            if (edit.target) {
+              newContent = otherContent.replace(edit.target, edit.content || '');
+            } else {
+              newContent = edit.content || '';
+            }
+          } else if (edit.type === 'delete') {
+            if (edit.target) {
+              newContent = otherContent.replace(edit.target, '');
+            }
+          } else if (edit.type === 'insert') {
+            if (edit.target) {
+              const idx = otherContent.indexOf(edit.target);
+              if (idx !== -1) {
+                newContent = otherContent.substring(0, idx) + (edit.content || '') + otherContent.substring(idx);
+              } else {
+                newContent = otherContent + '\n' + (edit.content || '');
+              }
+            } else {
+              newContent = otherContent + '\n' + (edit.content || '');
+            }
+          }
+          await fs.writeFile(projectId, filePath, newContent);
+        }
+      }
+    }
+
+    if (codeChanged) {
+      setCode(currentCode);
+      if (fs && projectId) {
+        await fs.writeFile(projectId, activeFile, currentCode);
+      }
+    }
+
+    if (fs && projectId) {
+      const list = await fs.listFiles(projectId);
+      setFiles(list);
+    }
+
+    toast.success("AI Agent edits applied to workspace!", { icon: '🤖' });
+    setTimeout(() => compileRef.current?.(), 100);
+  };
+
   if (!mounted) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-primary)', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
@@ -1498,19 +1590,20 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
              <AIAssistPanel 
                code={code} 
                errors={errors} 
-                onInsert={(newCode) => {
-                  const isFullDoc = newCode.includes('\\documentclass');
-                  const updatedCode = isFullDoc ? newCode : `${code}\n${newCode}`;
-                  setCode(updatedCode);
-                  if (fs && projectId) {
-                    fs.writeFile(projectId, activeFile, updatedCode);
-                  }
-                  setTimeout(() => compileRef.current?.(), 100);
-                }} 
-               onClose={() => setAiPanel(false)} 
+               onApplyEdits={applyWorkspaceEdits}
+               onInsert={(newCode) => {
+                 const isFullDoc = newCode.includes('\\documentclass');
+                 const updatedCode = isFullDoc ? newCode : `${code}\n${newCode}`;
+                 setCode(updatedCode);
+                 if (fs && projectId) {
+                   fs.writeFile(projectId, activeFile, updatedCode);
+                 }
+                 setTimeout(() => compileRef.current?.(), 100);
+               }} 
+               onClose={() => setAiPanel(false)}
              />
-          </div>
-        )}
+           </div>
+         )}
       </div>
 
       {/* Team Sharing Modal */}
@@ -1580,7 +1673,7 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
 }
 
 // ─── AI ASSIST PANEL ─────────────────────────────────────────────────────────
-function AIAssistPanel({ code, errors, onInsert, onClose }: { code: string; errors: DiagnosticError[]; onInsert: (code: string) => void; onClose: () => void; }) {
+function AIAssistPanel({ code, errors, onInsert, onApplyEdits, onClose }: { code: string; errors: DiagnosticError[]; onInsert: (code: string) => void; onApplyEdits?: (edits: any[]) => Promise<void> | void; onClose: () => void; }) {
   const [prompt, setPrompt] = useState('');
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1607,6 +1700,19 @@ function AIAssistPanel({ code, errors, onInsert, onClose }: { code: string; erro
     } finally { setLoading(false); }
   };
 
+  const parsedJson = (() => {
+    try {
+      const trimmed = response.trim();
+      if (trimmed.startsWith('{')) {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && (parsed.edits || parsed.explanation)) {
+          return parsed;
+        }
+      }
+    } catch {}
+    return null;
+  })();
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ padding: '0.75rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1629,12 +1735,35 @@ function AIAssistPanel({ code, errors, onInsert, onClose }: { code: string; erro
         )}
         <button type="button" onClick={run} disabled={loading} className="btn btn-primary" style={{ fontSize: '0.8rem' }}>{loading ? 'Thinking...' : '⚡ Run AI'}</button>
         {response && (
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', flexShrink: 0 }}>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>RESPONSE</span>
-              <button type="button" onClick={() => onInsert(response)} style={{ fontSize: '0.7rem', color: 'var(--accent-primary)', background: 'none', border: 'none', cursor: 'pointer' }}>Insert ↳</button>
+              {parsedJson && parsedJson.edits ? (
+                <button type="button" onClick={() => onApplyEdits?.(parsedJson.edits)} style={{ fontSize: '0.7rem', color: 'var(--accent-primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>Apply Edits ↳</button>
+              ) : (
+                <button type="button" onClick={() => onInsert(response)} style={{ fontSize: '0.7rem', color: 'var(--accent-primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>Insert ↳</button>
+              )}
             </div>
-            <pre style={{ fontSize: '0.7rem', whiteSpace: 'pre-wrap', background: '#000', padding: '0.5rem', borderRadius: '4px', overflowY: 'auto', maxHeight: '300px' }}>{response}</pre>
+            {parsedJson ? (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem', minHeight: 0, overflowY: 'auto' }}>
+                <pre style={{ fontSize: '0.7rem', whiteSpace: 'pre-wrap', background: '#000', padding: '0.5rem', borderRadius: '4px', margin: 0 }}>{parsedJson.explanation}</pre>
+                {parsedJson.edits && parsedJson.edits.length > 0 && (
+                  <div style={{ background: 'var(--bg-tertiary)', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '0.65rem' }}>
+                    <span style={{ fontWeight: 700, color: 'var(--accent-primary)', display: 'block', marginBottom: '0.2rem' }}>Workspace Edits ({parsedJson.edits.length}):</span>
+                    <ul style={{ margin: 0, paddingLeft: '1rem', listStyleType: 'disc' }}>
+                      {parsedJson.edits.map((e: any, idx: number) => (
+                        <li key={idx} style={{ marginBottom: '2px' }}>
+                          <span style={{ fontWeight: 600, textTransform: 'uppercase' }}>{e.type}</span>: <code>{e.path}</code>
+                          {e.target && <span style={{ opacity: 0.7 }}> (&quot;{e.target.substring(0, 10)}...&quot;)</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <pre style={{ fontSize: '0.7rem', whiteSpace: 'pre-wrap', background: '#000', padding: '0.5rem', borderRadius: '4px', overflowY: 'auto', flex: 1, margin: 0 }}>{response}</pre>
+            )}
           </div>
         )}
       </div>

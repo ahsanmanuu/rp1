@@ -1052,4 +1052,16 @@ model ContentPlatformStat {
   updatedAt DateTime @updatedAt @db.Timestamptz
 
   @@map("content_platform_stats")
+}
+
+model AiContextConfig {
+  id              String   @id @default(cuid())
+  agentId         String   @unique
+  systemPrompt    String   @db.Text
+  contextRules    String   @db.Text // JSON string representing context injection rules
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now()) @db.Timestamptz
+  updatedAt       DateTime @updatedAt @db.Timestamptz
+
+  @@map("ai_context_configs")
 }

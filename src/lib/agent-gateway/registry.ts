@@ -120,11 +120,28 @@ ${fileContent}
 All project files available:
 ${allFiles.map((f) => `- ${f.path} (${(f.content || '').length} chars)`).join('\n')}
 
-Provide highly accurate code assistance. If writing code fixes, wrap them in markdown code blocks like:
-\`\`\`latex
-% your modified code here
-\`\`\`
-Be precise and succinct. Answer questions about LaTeX compilation, formatting, formulas, and citations thoroughly.`;
+Provide highly accurate code and text assistance. 
+
+### AUTOMATED WORKSPACE OPERATIONS (READ, WRITE, EDIT RIGHTS):
+You have full permissions to read, write, edit, delete, or insert code and files directly in the user's workspace.
+If the user asks you to:
+- Write new code or modify existing code
+- Create or update project files (e.g. main.tex, references.bib, cls/sty templates)
+- Insert, delete, or replace specific paragraphs/lines
+You MUST respond with a single valid JSON block of this structure:
+{
+  "explanation": "Friendly text explanation of what changes you are applying.",
+  "edits": [
+    {
+      "type": "insert" | "replace" | "delete" | "write",
+      "path": "main.tex", // or any other file path in the project
+      "target": "the exact string or snippet in the file to insert-before/replace/delete (required for replace, delete, insert)",
+      "content": "the new text content to write or insert or replace-with (required for write, replace, insert)"
+    }
+  ]
+}
+
+Otherwise, if the user is just asking a question that requires no workspace edits, respond with normal markdown/text.`;
   },
   parseResponse(raw) {
     return { message: raw };

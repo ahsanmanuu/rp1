@@ -218,6 +218,105 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
     filesRef.current = files;
   }, [files]);
 
+  const parseMessageJson = (content: string) => {
+    try {
+      const trimmed = content.trim();
+      if (trimmed.startsWith('{')) {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && (parsed.edits || parsed.explanation)) {
+          return parsed;
+        }
+      }
+    } catch {}
+    return null;
+  };
+
+  const applyWorkspaceEdits = async (edits: any[]) => {
+    let currentCode = code;
+    let codeChanged = false;
+
+    for (const edit of edits) {
+      const filePath = edit.path;
+      if (filePath === activeFile) {
+        let newContent = currentCode;
+        if (edit.type === 'write') {
+          newContent = edit.content || '';
+        } else if (edit.type === 'replace') {
+          if (edit.target) {
+            newContent = currentCode.replace(edit.target, edit.content || '');
+          } else {
+            newContent = edit.content || '';
+          }
+        } else if (edit.type === 'delete') {
+          if (edit.target) {
+            newContent = currentCode.replace(edit.target, '');
+          }
+        } else if (edit.type === 'insert') {
+          if (edit.target) {
+            const idx = currentCode.indexOf(edit.target);
+            if (idx !== -1) {
+              newContent = currentCode.substring(0, idx) + (edit.content || '') + currentCode.substring(idx);
+            } else {
+              newContent = currentCode + '\n' + (edit.content || '');
+            }
+          } else {
+            newContent = currentCode + '\n' + (edit.content || '');
+          }
+        }
+        if (newContent !== currentCode) {
+          currentCode = newContent;
+          codeChanged = true;
+        }
+      } else {
+        if (fs && projectId) {
+          const fileObj = filesRef.current.find(f => f.path === filePath) || await fs.readFile(projectId, filePath);
+          let otherContent = fileObj?.content || '';
+          let newContent = otherContent;
+          if (edit.type === 'write') {
+            newContent = edit.content || '';
+          } else if (edit.type === 'replace') {
+            if (edit.target) {
+              newContent = otherContent.replace(edit.target, edit.content || '');
+            } else {
+              newContent = edit.content || '';
+            }
+          } else if (edit.type === 'delete') {
+            if (edit.target) {
+              newContent = otherContent.replace(edit.target, '');
+            }
+          } else if (edit.type === 'insert') {
+            if (edit.target) {
+              const idx = otherContent.indexOf(edit.target);
+              if (idx !== -1) {
+                newContent = otherContent.substring(0, idx) + (edit.content || '') + otherContent.substring(idx);
+              } else {
+                newContent = otherContent + '\n' + (edit.content || '');
+              }
+            } else {
+              newContent = otherContent + '\n' + (edit.content || '');
+            }
+          }
+          await fs.writeFile(projectId, filePath, newContent);
+        }
+      }
+    }
+
+    if (codeChanged) {
+      setCode(currentCode);
+      if (fs && projectId) {
+        await fs.writeFile(projectId, activeFile, currentCode);
+      }
+    }
+
+    if (fs && projectId) {
+      const list = await fs.listFiles(projectId);
+      setFiles(list);
+    }
+
+    toast.success("AI Agent edits applied to workspace!", { icon: '🤖' });
+    setTimeout(() => compileRef.current?.(), 100);
+  };
+
   useEffect(() => {
     setMounted(true);
     document.body.classList.add('theme-indigo');
@@ -1688,11 +1787,34 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
 
                                       {!(m.role === 'assistant' && collapsedMessages[i]) && (
                                         <>
-                                          {m.content.split('\n').map((line, idx) => {
-                                             if (line.startsWith('```') && line.length > 3) return null;
-                                             if (line === '```') return null;
-                                             return <p key={idx} style={{ margin: '0 0 0.6rem 0', lineHeight: 1.4, wordBreak: 'break-word' }}>{line}</p>
-                                          })}
+                                          {(() => {
+                                            const parsedJson = parseMessageJson(m.content);
+                                            if (parsedJson) {
+                                              return (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                                  <p style={{ margin: '0 0 0.6rem 0', lineHeight: 1.4, wordBreak: 'break-word' }}>{parsedJson.explanation}</p>
+                                                  {parsedJson.edits && parsedJson.edits.length > 0 && (
+                                                    <div style={{ background: 'var(--bg-secondary)', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '0.7rem' }}>
+                                                      <span style={{ fontWeight: 700, color: 'var(--accent-primary)', display: 'block', marginBottom: '0.2rem' }}>AI Workspace Action ({parsedJson.edits.length} edits):</span>
+                                                      <ul style={{ margin: 0, paddingLeft: '1rem', listStyleType: 'disc' }}>
+                                                        {parsedJson.edits.map((e: any, idx: number) => (
+                                                          <li key={idx} style={{ marginBottom: '2px' }}>
+                                                            <span style={{ fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>{e.type}</span>: <code style={{ color: 'var(--accent-primary)' }}>{e.path}</code>
+                                                            {e.target && <span style={{ opacity: 0.7 }}> (Target: &quot;{e.target.substring(0, 15)}...&quot;)</span>}
+                                                          </li>
+                                                        ))}
+                                                      </ul>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              );
+                                            }
+                                            return m.content.split('\n').map((line, idx) => {
+                                               if (line.startsWith('```') && line.length > 3) return null;
+                                               if (line === '```') return null;
+                                               return <p key={idx} style={{ margin: '0 0 0.6rem 0', lineHeight: 1.4, wordBreak: 'break-word' }}>{line}</p>;
+                                            });
+                                          })()}
                                         </>
                                       )}
                                       
@@ -1700,6 +1822,12 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                                         <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem' }}>
                                             <button 
                                               onClick={() => {
+                                                const parsedJson = parseMessageJson(m.content);
+                                                if (parsedJson && parsedJson.edits) {
+                                                  applyWorkspaceEdits(parsedJson.edits);
+                                                  setMessageStates(prev => ({ ...prev, [i]: 'applied' }));
+                                                  return;
+                                                }
                                                 const match = m.content.match(/```(?:latex|tex|bib|bst|cls|sty)?\n([\s\S]*?)```/);
                                                 if (match && match[1]) {
                                                   const extracted = match[1];
@@ -1718,7 +1846,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                                                color: '#fff', border: 'none', padding: '0.35rem 0.6rem', borderRadius: '6px', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer', flex: 1 
                                              }}
                                            >
-                                             {messageStates[i] === 'applied' ? 'Code Inserted' : 'Apply'}
+                                             {messageStates[i] === 'applied' ? 'Updates Applied' : 'Apply AI Updates'}
                                            </button>
                                            
                                            <button 

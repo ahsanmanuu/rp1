@@ -25,6 +25,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { extractCodeBlock, parseDiagram, guessIconFromContext, organizeDiagramLayout, adaptConnectionsToContext, rescueCorruptedJson } from "../lib/diagramParsers";
 import type { DiagramNode, DiagramConnection, NodeColor, NodeType, ConnType, Arrowhead } from '@/lib/diagramTypes';
+import toast from 'react-hot-toast';
 
 export type AgentStatus =
   | 'idle'
@@ -475,6 +476,55 @@ export function useDiagramAgent({
                 setStatus('done');
               } else {
                 setStatus('done');
+              }
+
+              // Apply LaTeX workspace edits if returned
+              if (finalParsed.edits && Array.isArray(finalParsed.edits)) {
+                const activeProjId = localStorage.getItem('last_active_project_id');
+                if (activeProjId) {
+                  import('@/lib/studio-fs').then(({ StudioFS }) => {
+                    const email = localStorage.getItem('pb_auth_user_email') || 'guest';
+                    const fs = new StudioFS(email);
+                    
+                    (async () => {
+                      for (const edit of finalParsed.edits) {
+                        const filePath = edit.path;
+                        const fileObj = await fs.readFile(activeProjId, filePath);
+                        let otherContent = fileObj?.content || '';
+                        let newContent = otherContent;
+                        if (edit.type === 'write') {
+                          newContent = edit.content || '';
+                        } else if (edit.type === 'replace') {
+                          if (edit.target) {
+                            newContent = otherContent.replace(edit.target, edit.content || '');
+                          } else {
+                            newContent = edit.content || '';
+                          }
+                        } else if (edit.type === 'delete') {
+                          if (edit.target) {
+                            newContent = otherContent.replace(edit.target, '');
+                          }
+                        } else if (edit.type === 'insert') {
+                          if (edit.target) {
+                            const idx = otherContent.indexOf(edit.target);
+                            if (idx !== -1) {
+                              newContent = otherContent.substring(0, idx) + (edit.content || '') + otherContent.substring(idx);
+                            } else {
+                              newContent = otherContent + '\n' + (edit.content || '');
+                            }
+                          } else {
+                            newContent = otherContent + '\n' + (edit.content || '');
+                          }
+                        }
+                        await fs.writeFile(activeProjId, filePath, newContent);
+                      }
+                      
+                      toast.success("Applied AI modifications to LaTeX project workspace!", { icon: '🤖' });
+                    })().catch(err => {
+                      console.warn("Failed to apply edits from diagram agent to LaTeX studio:", err);
+                    });
+                  });
+                }
               }
 
               onExplanation(explanation || 'Diagram updated successfully.');
