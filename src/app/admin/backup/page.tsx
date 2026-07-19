@@ -1191,7 +1191,7 @@ export default function AdminBackupPage() {
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.8, opacity: 0 }}
-              className="rounded-2xl border p-8 max-w-lg w-full text-center"
+              className="rounded-2xl border p-8 max-w-2xl w-full text-center"
               style={{ backgroundColor: "var(--color-admin-surface-container)", borderColor: "var(--color-admin-outline-variant)" }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -1270,7 +1270,7 @@ export default function AdminBackupPage() {
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.8, opacity: 0 }}
-              className="rounded-2xl border p-8 max-w-lg w-full text-center"
+              className="rounded-2xl border p-8 max-w-2xl w-full text-center"
               style={{ backgroundColor: "var(--color-admin-surface-container)", borderColor: "var(--color-admin-outline-variant)" }}
               onClick={(e) => e.stopPropagation()}
             >
