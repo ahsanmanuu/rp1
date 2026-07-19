@@ -1180,7 +1180,10 @@ html.has-broadcast-banner main.pt-24 {
 /* Premium scrollbar styling for scrollable containers */
 .custom-scroll {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--accent-primary) 35%, transparent) transparent;
+  scrollbar-color: rgba(100, 100, 120, 0.3) transparent;
+}
+.dark .custom-scroll {
+  scrollbar-color: color-mix(in srgb, var(--accent-primary) 40%, transparent) transparent;
 }
 .custom-scroll::-webkit-scrollbar {
   width: 6px;
@@ -1190,16 +1193,22 @@ html.has-broadcast-banner main.pt-24 {
   background: transparent;
 }
 .custom-scroll::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--accent-primary) 35%, transparent);
+  background: rgba(100, 100, 120, 0.3);
   border-radius: 9999px;
   border: 1px solid transparent;
   background-clip: padding-box;
 }
+.dark .custom-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--accent-primary) 40%, transparent);
+}
 .custom-scroll::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--accent-primary) 55%, transparent);
+  background: rgba(80, 80, 100, 0.5);
   border-radius: 9999px;
   border: 1px solid transparent;
   background-clip: padding-box;
+}
+.dark .custom-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--accent-primary) 60%, transparent);
 }
 
 /* Monaco Editor Container Resizing Fix */

@@ -649,7 +649,7 @@ export default function LaTeXStudioLanding() {
             {/* Modal Content */}
             <div className="flex flex-1 overflow-hidden">
               {/* Left Sidebar: Settings & Categories */}
-              <div className="w-80 border-r border-gray-100 dark:border-gray-800 p-8 flex flex-col gap-8 bg-gray-50/30 dark:bg-gray-950/20 overflow-y-auto">
+              <div className="w-80 border-r border-gray-100 dark:border-gray-800 p-8 flex flex-col gap-8 bg-gray-50/30 dark:bg-gray-950/20 overflow-y-auto custom-scroll">
                 {/* Project Name Input */}
                 <div className="space-y-3">
                   <label className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
