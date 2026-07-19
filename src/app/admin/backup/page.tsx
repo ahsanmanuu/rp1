@@ -301,14 +301,29 @@ export default function AdminBackupPage() {
     backupAbortRef.current?.abort();
   };
 
-  const handleDownloadBackup = () => {
-    if (!backupBlobUrl) return;
-    const a = document.createElement("a");
-    a.href = backupBlobUrl;
-    a.download = backupResult?.filename || "latexify-backup.zip";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  const handleDownloadBackup = async () => {
+    if (backupBlobUrl) {
+      const a = document.createElement("a");
+      a.href = backupBlobUrl;
+      a.download = backupResult?.filename || "latexify-backup.zip";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    }
+    try {
+      const res = await fetch("/api/admin/backup?includeFiles=true");
+      if (!res.ok) throw new Error("Backup download failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      setBackupBlobUrl(url);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `latexify-backup-${Date.now()}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch {}
   };
 
   const handleRestore = async () => {

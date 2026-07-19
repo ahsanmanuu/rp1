@@ -27,19 +27,6 @@ interface BackupProgress {
 export async function GET(req: NextRequest) {
   try {
     const pb = await pbAdmin();
-
-    // Pre-flight: verify admin token actually works before doing heavy work
-    try {
-      const testResult = await pb.collection('users').getList(1, 1, { requestKey: null });
-      console.log(`[Backup] Pre-flight OK — users collection has ${testResult.totalItems} records`);
-    } catch (preflightErr: any) {
-      console.error(`[Backup] Pre-flight FAILED: ${preflightErr.message}`);
-      return NextResponse.json(
-        { success: false, error: `PocketBase admin auth failed: ${preflightErr.message}` },
-        { status: 500 }
-      );
-    }
-
     const { searchParams } = new URL(req.url);
     const includeFiles = searchParams.get('includeFiles') !== 'false';
     const requestedCollections = searchParams.get('collections')?.split(',').filter(Boolean);
@@ -61,6 +48,7 @@ export async function GET(req: NextRequest) {
     const BATCH_SIZE = 200;
 
     // ── Phase 1: Export all collections ──
+    let consecutiveErrors = 0;
     for (let i = 0; i < collections.length; i++) {
       const col = collections[i];
       try {
@@ -78,6 +66,8 @@ export async function GET(req: NextRequest) {
           page++;
         }
 
+        consecutiveErrors = 0;
+
         // Strip PocketBase internal fields for cleaner restore
         const cleanRecords = allRecords.map(r => {
           const clean: Record<string, any> = { id: r.id };
@@ -93,9 +83,17 @@ export async function GET(req: NextRequest) {
         metadata.collections[col.name] = { recordCount: cleanRecords.length };
         metadata.totalRecords += cleanRecords.length;
       } catch (err: any) {
-        // Collection might not exist yet — skip silently
+        consecutiveErrors++;
         console.warn(`[Backup] Skipping collection ${col.name}: ${err.message}`);
         metadata.collections[col.name] = { recordCount: 0, error: err.message };
+
+        if (consecutiveErrors >= 3 && metadata.totalRecords === 0) {
+          console.error(`[Backup] ${consecutiveErrors} consecutive collection failures with 0 total records — aborting`);
+          return NextResponse.json(
+            { success: false, error: `PocketBase query failed after ${consecutiveErrors} collections: ${err.message}. Admin auth may be invalid.` },
+            { status: 500 }
+          );
+        }
       }
     }
 
