@@ -51,6 +51,7 @@ export async function GET(req: NextRequest) {
     const PARALLEL_BATCH = 10;
 
     // ── Phase 1: Export all collections (parallel batches) ──
+    let consecutiveErrors = 0; // tracked across all batches
     for (let batchStart = 0; batchStart < collections.length; batchStart += PARALLEL_BATCH) {
       if (Date.now() - startTime > 120000) {
         console.warn(`[Backup] Stopping at batch ${batchStart} — exceeded 120s`);
@@ -68,7 +69,8 @@ export async function GET(req: NextRequest) {
           while (hasMore) {
             const result = await pb.collection(col.name).getList(page, BATCH_SIZE, {
               requestKey: null,
-              sort: '-created',
+              // NOTE: No `sort` here — some collections don't have a `created` field
+              // and sorting by it would cause a DB error for those collections.
             });
             allRecords = allRecords.concat(result.items);
             hasMore = result.items.length === BATCH_SIZE;
@@ -89,7 +91,6 @@ export async function GET(req: NextRequest) {
         })
       );
 
-      let consecutiveErrors = 0;
       for (let j = 0; j < results.length; j++) {
         const result = results[j];
         const col = batch[j];
@@ -101,13 +102,25 @@ export async function GET(req: NextRequest) {
           metadata.collections[name] = { recordCount: records.length };
           metadata.totalRecords += records.length;
         } else {
-          consecutiveErrors++;
           const errMsg = result.reason?.message || 'Unknown error';
-          console.warn(`[Backup] Skipping ${col.name}: ${errMsg}`);
+          const errStatus = result.reason?.status ?? result.reason?.statusCode ?? 0;
+          // Schema/404 errors = optional collection doesn't exist → skip non-fatally
+          const isSchemaError = errStatus === 404 ||
+            errMsg.includes('Missing collection context') ||
+            errMsg.includes('no such table') ||
+            errMsg.includes('The requested resource wasn\'t found') ||
+            errMsg.toLowerCase().includes('not found');
+
+          if (!isSchemaError) {
+            // Only count real connectivity/auth errors toward the abort threshold
+            consecutiveErrors++;
+          }
+          console.warn(`[Backup] Skipping ${col.name} (${isSchemaError ? 'schema/404' : 'error'}): ${errMsg}`);
           metadata.collections[col.name] = { recordCount: 0, error: errMsg };
 
+          // Abort only on genuine auth/connectivity failures (not schema/404 errors)
           if (consecutiveErrors >= 5 && metadata.totalRecords === 0) {
-            console.error(`[Backup] ${consecutiveErrors} consecutive failures with 0 records — aborting`);
+            console.error(`[Backup] ${consecutiveErrors} consecutive auth/connectivity failures with 0 records — aborting`);
             return NextResponse.json(
               { success: false, error: `PB auth or connectivity failed: ${errMsg}` },
               { status: 500 }

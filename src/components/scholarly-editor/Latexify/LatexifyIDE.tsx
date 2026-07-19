@@ -232,14 +232,42 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
 
   const parseMessageJson = (content: string) => {
     try {
-      const trimmed = content.trim();
-      if (trimmed.startsWith('{')) {
-        const parsed = JSON.parse(trimmed);
+      let cleaned = content.trim();
+      // Remove markdown wrapping if present
+      cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+      
+      // Attempt standard JSON parse
+      try {
+        const parsed = JSON.parse(cleaned);
         if (parsed && (parsed.edits || parsed.explanation)) {
           return parsed;
         }
+      } catch (_) {}
+
+      // Attempt to extract the JSON block between the first '{' and last '}'
+      const start = cleaned.indexOf('{');
+      const end = cleaned.lastIndexOf('}');
+      if (start !== -1 && end > start) {
+        const jsonBlock = cleaned.substring(start, end + 1);
+        try {
+          const parsed = JSON.parse(jsonBlock);
+          if (parsed && (parsed.edits || parsed.explanation)) {
+            return parsed;
+          }
+        } catch (_) {
+          // Attempt to clean trailing commas and parse
+          try {
+            const cleanedJsonBlock = jsonBlock.replace(/,(\s*[}\]])/g, '$1');
+            const parsed = JSON.parse(cleanedJsonBlock);
+            if (parsed && (parsed.edits || parsed.explanation)) {
+              return parsed;
+            }
+          } catch (_) {}
+        }
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[parseMessageJson] Failed to parse:', e);
+    }
     return null;
   };
 

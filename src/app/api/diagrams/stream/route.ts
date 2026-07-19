@@ -111,14 +111,14 @@ export async function POST(req: NextRequest) {
     if (latestProj) {
       const files = await prisma.projectFile.findMany({
         where: { projectId: latestProj.id },
-        select: { path: true, content: true },
+        select: { filename: true, content: true },
         take: 5
       });
       if (files.length > 0) {
         let docContext = `\n\n### ACTIVE USER RESEARCH PROJECT CONTEXT:\nProject Name: "${latestProj.title}"\n`;
-        files.forEach((f: { path: string; content: string }) => {
-          if (f.path.endsWith('.tex') || f.path.endsWith('.bib') || f.path.endsWith('.md')) {
-            docContext += `File: "${f.path}" (${f.content.length} chars):\n\`\`\`latex\n${f.content.substring(0, 1500)}\n\`\`\`\n`;
+        files.forEach((f: { filename: string; content: string | null }) => {
+          if (f.filename.endsWith('.tex') || f.filename.endsWith('.bib') || f.filename.endsWith('.md')) {
+            docContext += `File: "${f.filename}" (${(f.content || '').length} chars):\n\`\`\`latex\n${(f.content || '').substring(0, 1500)}\n\`\`\`\n`;
           }
         });
         systemPrompt += docContext;
@@ -127,6 +127,7 @@ export async function POST(req: NextRequest) {
   } catch (ctxErr) {
     console.warn("[DiagramStream] Failed to load LaTeX project context:", ctxErr);
   }
+
 
   // Only include user/assistant turns in messages[]
   const userMessages: any[] = messages.map((m: any) => {

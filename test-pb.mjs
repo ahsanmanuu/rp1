@@ -1,34 +1,26 @@
 import PocketBase from 'pocketbase';
 const pb = new PocketBase('http://127.0.0.1:8090');
-const authData = await pb.admins.authWithPassword('admin@latexify.io', 'admin123456');
+await pb.admins.authWithPassword('admin@latexify.io', 'Sczone@123');
 console.log('Auth OK');
 
-async function test(collection, filter, label) {
+const failedCols = ['term_acceptances', 'general_queries', 'banners', 'testimonials'];
+
+for (const name of failedCols) {
   try {
-    const result = await pb.collection(collection).getList(1, 1, {
-      filter: filter,
-      requestKey: 'test_' + collection
-    });
-    console.log(label + ' total:', result.totalItems);
+    const colInfo = await pb.collections.getOne(name);
+    console.log(`Collection ${name}: type=${colInfo.type}, fields=${colInfo.fields.map(f => f.name).join(', ')}`);
   } catch (e) {
-    console.error(label + ' error:', e.message, JSON.stringify(e?.response?.data));
+    console.log(`Collection ${name} metadata fetch failed:`, e.message);
+  }
+
+  try {
+    const res = await pb.collection(name).getList(1, 5, { requestKey: null });
+    console.log(`Collection ${name} list OK: count=${res.totalItems}`);
+  } catch (e) {
+    console.log(`Collection ${name} list failed:`, e.message);
   }
 }
 
-// Test queries
-await test('admin_users', '', 'admin_users');
-await test('announcements', '', 'announcements');
-await test('platform_stats', '', 'platform_stats');
-await test('feature_flags', '', 'feature_flags');
-await test('user_sessions', '', 'user_sessions');
 
-// Test with date filter (the format the adapter uses)
-try {
-  const result = await pb.collection('user_sessions').getList(1, 1, {
-    filter: 'expiresAt >= "2026-01-01 00:00:00.000Z"',
-    requestKey: 'test_sessions_dt'
-  });
-  console.log('user_sessions (ISO date) total:', result.totalItems);
-} catch (e) {
-  console.error('user_sessions (ISO date) error:', e.message, JSON.stringify(e?.response?.data));
-}
+
+
