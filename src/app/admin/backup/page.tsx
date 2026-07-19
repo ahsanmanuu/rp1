@@ -6,6 +6,7 @@ import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import AdminSidebar from "@/components/AdminSidebar";
 import { Theme, themes, getAccentColor } from "@/components/AdminThemeStyles";
+import { useAdminTheme } from '@/contexts/AdminThemeContext';
 
 interface BackupResult {
   collectionsExported: number;
@@ -77,8 +78,7 @@ function formatDate(dateStr: string): string {
 
 export default function AdminBackupPage() {
   const [mounted, setMounted] = useState(false);
-  const [currentTheme, setCurrentTheme] = useState<Theme>("indigo");
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const { currentTheme, isDarkMode, setTheme: setCurrentTheme, setDarkMode: setIsDarkMode } = useAdminTheme();
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [adminEmail, setAdminEmail] = useState("admin@latexify.io");
@@ -90,10 +90,6 @@ export default function AdminBackupPage() {
 
   useEffect(() => {
     setMounted(true);
-    const savedTheme = localStorage.getItem("latexify-admin-theme") as Theme | null;
-    const savedMode = localStorage.getItem("latexify-admin-mode");
-    if (savedTheme) setCurrentTheme(savedTheme);
-    if (savedMode) setIsDarkMode(savedMode === "dark");
     fetch("/api/admin/session")
       .then((r) => r.json())
       .then((data) => {
@@ -105,13 +101,6 @@ export default function AdminBackupPage() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (mounted) {
-      localStorage.setItem("latexify-admin-theme", currentTheme);
-      localStorage.setItem("latexify-admin-mode", isDarkMode ? "dark" : "light");
-      window.dispatchEvent(new Event("admin-theme-changed"));
-    }
-  }, [currentTheme, isDarkMode, mounted]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

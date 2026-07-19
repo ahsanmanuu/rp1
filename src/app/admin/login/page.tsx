@@ -18,36 +18,25 @@ import {
   Moon
 } from "lucide-react";
 import Image from "next/image";
+import { useAdminTheme } from '@/contexts/AdminThemeContext';
+import { themes as adminThemes, type Theme } from '@/components/AdminThemeStyles';
 
-type Theme = "indigo" | "emerald" | "rose";
-
-interface ThemeColors {
+interface LoginColors {
   primary: string;
   primaryContainer: string;
   onPrimaryContainer: string;
   glow: string;
 }
 
-const themes: Record<Theme, ThemeColors> = {
-  indigo: {
-    primary: "#c3c0ff",
-    primaryContainer: "#4f46e5",
-    onPrimaryContainer: "#dad7ff",
-    glow: "#4f46e5",
-  },
-  emerald: {
-    primary: "#6ee7b7",
-    primaryContainer: "#059669",
-    onPrimaryContainer: "#ecfdf5",
-    glow: "#059669",
-  },
-  rose: {
-    primary: "#fda4af",
-    primaryContainer: "#e11d48",
-    onPrimaryContainer: "#fff1f2",
-    glow: "#e11d48",
-  },
-};
+function getLoginColors(theme: Theme, isDark: boolean): LoginColors {
+  const t = adminThemes[theme];
+  return {
+    primary: isDark ? t.primary : t.lightPrimary,
+    primaryContainer: t.lightPrimary,
+    onPrimaryContainer: isDark ? t.onPrimaryContainer : t.lightOnPrimaryContainer,
+    glow: t.lightPrimary,
+  };
+}
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState("");
@@ -57,25 +46,15 @@ export default function AdminLoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [currentTheme, setCurrentTheme] = useState<Theme>("indigo");
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const { currentTheme, isDarkMode, setTheme: setCurrentTheme, setDarkMode: setIsDarkMode } = useAdminTheme();
   const router = useRouter();
 
-  const colors = themes[currentTheme];
+  const colors = getLoginColors(currentTheme, isDarkMode);
 
   useEffect(() => {
     setMounted(true);
-    const savedTheme = localStorage.getItem('latexify-admin-theme') as Theme | null;
-    const savedMode = localStorage.getItem('latexify-admin-mode');
-
-    if (savedTheme) setCurrentTheme(savedTheme);
-    if (savedMode) setIsDarkMode(savedMode === 'dark');
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem('latexify-admin-theme', currentTheme);
-    localStorage.setItem('latexify-admin-mode', isDarkMode ? 'dark' : 'light');
-  }, [currentTheme, isDarkMode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -217,21 +196,24 @@ export default function AdminLoginPage() {
           </button>
           
           <div className="flex gap-1.5 p-1 rounded-full border transition-all duration-500" style={{ backgroundColor: bgInput, borderColor: borderPrimary }}>
-            {(Object.keys(themes) as Theme[]).map((t) => (
+            {(Object.keys(adminThemes) as Theme[]).map((t) => {
+              const tc = getLoginColors(t, isDarkMode);
+              return (
               <button 
                 key={t}
                 type="button"
                 onClick={() => setCurrentTheme(t)}
                 className={`w-3.5 h-3.5 rounded-full transition-all duration-300 ${currentTheme === t ? 'scale-125 ring-2 ring-offset-2' : 'opacity-60 hover:opacity-100 hover:scale-110'}`}
                 style={{ 
-                  backgroundColor: themes[t].primary,
-                  boxShadow: currentTheme === t ? `0 0 10px ${themes[t].glow}` : 'none',
+                  backgroundColor: tc.primary,
+                  boxShadow: currentTheme === t ? `0 0 10px ${tc.glow}` : 'none',
                   borderColor: currentTheme === t ? (isDarkMode ? 'white' : '#1e293b') : 'transparent',
                   '--tw-ring-offset-color': bgInput
                 } as any}
                 title={t.charAt(0).toUpperCase() + t.slice(1)}
               />
-            ))}
+              );
+            })}
           </div>
         </div>
 

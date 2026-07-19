@@ -21,6 +21,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line
 } from 'recharts';
 import { Theme, themes, getAccentColor } from "@/components/AdminThemeStyles";
+import { useAdminTheme } from '@/contexts/AdminThemeContext';
 
 const ALL_THEMES: Theme[] = ['indigo', 'emerald', 'rose', 'violet', 'amber', 'cyan', 'sky', 'pink', 'orange', 'lime', 'teal', 'fuchsia', 'red', 'yellow', 'stone', 'zinc'];
 
@@ -177,8 +178,7 @@ function getCardColor(color: string, isDark: boolean): string {
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function AdminAiCapsPage() {
   // ── Theme State ──
-  const [currentTheme, setCurrentTheme] = useState<Theme>('indigo');
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+  const { currentTheme, isDarkMode, setTheme: setCurrentTheme, setDarkMode: setIsDarkMode } = useAdminTheme();
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [adminName, setAdminName] = useState<string>('Admin Root');
 
@@ -246,20 +246,6 @@ export default function AdminAiCapsPage() {
   const cardSearchTimeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
 
   // ── Theme Effect ──
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('latexify-admin-theme') as Theme | null;
-    const savedMode = localStorage.getItem('latexify-admin-mode');
-    if (savedTheme) setCurrentTheme(savedTheme);
-    if (savedMode) setIsDarkMode(savedMode === 'dark');
-    const storedName = localStorage.getItem('latexify-admin-name');
-    if (storedName) setAdminName(storedName);
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('latexify-admin-theme', currentTheme);
-    localStorage.setItem('latexify-admin-mode', isDarkMode ? 'dark' : 'light');
-    window.dispatchEvent(new Event('admin-theme-changed'));
-  }, [currentTheme, isDarkMode]);
 
   // ── Toast ──
   useEffect(() => {

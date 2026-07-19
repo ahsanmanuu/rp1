@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import ProLoader from '@/components/ProLoader';
 import AdminSidebar from '@/components/AdminSidebar';
 import { Theme, getAccentColor, themes } from '@/components/AdminThemeStyles';
+import { useAdminTheme } from '@/contexts/AdminThemeContext';
 
 function timeAgo(dateStr: string): string {
   const now = Date.now();
@@ -30,8 +31,7 @@ function truncate(str: string, len: number): string {
 const ALL_THEMES: Theme[] = ['indigo', 'emerald', 'rose', 'violet', 'amber', 'cyan', 'sky', 'pink', 'orange', 'lime', 'teal', 'fuchsia', 'red', 'yellow', 'stone', 'zinc'];
 
 export default function AdminGeneralQueriesPage() {
-  const [currentTheme, setCurrentTheme] = useState<Theme>('indigo');
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+  const { currentTheme, isDarkMode, setTheme: setCurrentTheme, setDarkMode: setIsDarkMode } = useAdminTheme();
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [adminName, setAdminName] = useState('Admin Root');
 
@@ -41,21 +41,6 @@ export default function AdminGeneralQueriesPage() {
   const [activeTab, setActiveTab] = useState<'recent' | 'history'>('recent');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
-
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('latexify-admin-theme') as Theme | null;
-    const savedMode = localStorage.getItem('latexify-admin-mode');
-    if (savedTheme && themes[savedTheme]) setCurrentTheme(savedTheme);
-    if (savedMode) setIsDarkMode(savedMode === 'dark');
-    const storedName = localStorage.getItem('latexify-admin-name');
-    if (storedName) setAdminName(storedName);
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('latexify-admin-theme', currentTheme);
-    localStorage.setItem('latexify-admin-mode', isDarkMode ? 'dark' : 'light');
-    window.dispatchEvent(new Event('admin-theme-changed'));
-  }, [currentTheme, isDarkMode]);
 
   const fetchQueries = useCallback(async () => {
     setLoading(true);

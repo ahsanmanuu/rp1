@@ -5,6 +5,7 @@ import Image from "next/image";
 import AdminSidebar from "@/components/AdminSidebar";
 import { createPb } from "@/lib/pb";
 import { Theme, themes, getAccentColor } from "@/components/AdminThemeStyles";
+import { useAdminTheme } from '@/contexts/AdminThemeContext';
 
 
 const ALL_THEMES: Theme[] = ['indigo', 'emerald', 'rose', 'violet', 'amber', 'cyan', 'sky', 'pink', 'orange', 'lime', 'teal', 'fuchsia', 'red', 'yellow', 'stone', 'zinc'];
@@ -54,8 +55,7 @@ const TYPE_ICONS: Record<string, string> = {
 };
 
 export default function AdminAnomaliesPage() {
-  const [currentTheme, setCurrentTheme] = useState<Theme>("indigo");
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const { currentTheme, isDarkMode, setTheme: setCurrentTheme, setDarkMode: setIsDarkMode } = useAdminTheme();
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [adminName, setAdminName] = useState("Admin Root");
   const [alerts, setAlerts] = useState<any[]>([]);
@@ -137,20 +137,8 @@ export default function AdminAnomaliesPage() {
   };
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem("latexify-admin-theme") as Theme | null;
-    const savedMode = localStorage.getItem("latexify-admin-mode");
-    if (savedTheme) setCurrentTheme(savedTheme);
-    if (savedMode) setIsDarkMode(savedMode === "dark");
-    const storedName = localStorage.getItem("latexify-admin-name");
-    if (storedName) setAdminName(storedName);
     fetchAlerts();
   }, [fetchAlerts]);
-
-  useEffect(() => {
-    localStorage.setItem("latexify-admin-theme", currentTheme);
-    localStorage.setItem("latexify-admin-mode", isDarkMode ? "dark" : "light");
-    window.dispatchEvent(new Event('admin-theme-changed'));
-  }, [currentTheme, isDarkMode]);
 
   useEffect(() => {
     const pb = createPb();

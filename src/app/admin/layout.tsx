@@ -1,6 +1,7 @@
 "use client";
 
 import AdminThemeStyles from "@/components/AdminThemeStyles";
+import { AdminThemeProvider } from "@/contexts/AdminThemeContext";
 import Script from "next/script";
 
 export default function AdminLayout({
@@ -43,8 +44,10 @@ export default function AdminLayout({
           })();
         `}
       </Script>
-      <AdminThemeStyles />
-      {children}
+      <AdminThemeProvider>
+        <AdminThemeStyles />
+        {children}
+      </AdminThemeProvider>
     </>
   );
 }

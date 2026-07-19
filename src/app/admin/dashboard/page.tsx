@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { useLayoutSync } from "@/hooks/useLayoutSync";
 import { useAdminRealtime } from "@/hooks/useAdminRealtime";
 import Link from "next/link";
 import Image from "next/image";
@@ -9,6 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { createPb } from "@/lib/pb";
 import AdminSidebar from "@/components/AdminSidebar";
 import { Theme, themes, getAccentColor } from "@/components/AdminThemeStyles";
+import { useAdminTheme } from "@/contexts/AdminThemeContext";
 
 const CURRENCIES: Record<string, { symbol: string; rate: number }> = {
   INR: { symbol: '₹',   rate: 1       },
@@ -23,28 +23,8 @@ const CURRENCIES: Record<string, { symbol: string; rate: number }> = {
   JPY: { symbol: '¥',   rate: 1.93    },
 };
 
-function detectCurrency(): string {
-  try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-    const locale = (navigator.language || '').toLowerCase();
-    if (tz.startsWith('Asia/Kolkata') || tz.startsWith('Asia/Calcutta') || locale.includes('-in') || locale === 'hi') return 'INR';
-    if (tz.startsWith('Europe/London')) return 'GBP';
-    if (tz.startsWith('Europe/')) return 'EUR';
-    if (tz.startsWith('Asia/Dubai') || tz.startsWith('Asia/Muscat') || tz.startsWith('Asia/Abu_Dhabi')) return 'AED';
-    if (tz.startsWith('Asia/Riyadh') || tz.startsWith('Asia/Bahrain') || tz.startsWith('Asia/Kuwait')) return 'SAR';
-    if (tz.startsWith('Asia/Singapore')) return 'SGD';
-    if (tz.startsWith('Asia/Tokyo') || locale.startsWith('ja')) return 'JPY';
-    if (tz.startsWith('Australia/')) return 'AUD';
-    if (tz.startsWith('America/Toronto') || tz.startsWith('America/Vancouver') || tz.startsWith('America/Winnipeg')) return 'CAD';
-  } catch {}
-  return 'INR';
-}
-
 export default function AdminDashboardPage() {
-  const [mounted, setMounted] = useState(false);
-  const { settings, updatePanels } = useLayoutSync(true);
-  const [currentTheme, setCurrentTheme] = useState<Theme>("indigo");
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const { currentTheme, isDarkMode, activeCurrency, mounted, setTheme: setCurrentTheme, setDarkMode: setIsDarkMode, setCurrency: setActiveCurrency } = useAdminTheme();
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -63,7 +43,6 @@ export default function AdminDashboardPage() {
   const notificationsRef = useRef<HTMLDivElement>(null);
 
   // ── Currency display conversion state ──
-  const [activeCurrency, setActiveCurrency] = useState<string>('INR');
   const [currencyRates, setCurrencyRates] = useState<Record<string, number>>({});
 
   // Dynamic aggregates states
@@ -599,34 +578,7 @@ export default function AdminDashboardPage() {
     : ticketListFilter === "archived" ? allTickets.filter((t: any) => t.archivedAt !== null)
     : [];
 
-  // Load layout from PocketBase when available (guard against infinite re-render)
-  const prevPanelsRef = useRef<string>("");
   useEffect(() => {
-    const key = JSON.stringify(settings.panels);
-    if (key === prevPanelsRef.current) return;
-    prevPanelsRef.current = key;
-    if (settings.panels?.theme) {
-      setCurrentTheme(settings.panels.theme as Theme);
-    }
-    if (settings.panels?.mode) {
-      setIsDarkMode(settings.panels.mode === "dark");
-    }
-    if (settings.panels?.currency) {
-      setActiveCurrency(settings.panels.currency);
-    }
-  }, [settings.panels?.theme, settings.panels?.mode, settings.panels?.currency]);
-
-  useEffect(() => {
-    setMounted(true);
-    // Load theme setting
-    const savedTheme = settings.panels?.theme || (localStorage.getItem("latexify-admin-theme") as Theme | null);
-    const savedMode = settings.panels?.mode || localStorage.getItem("latexify-admin-mode");
-    const savedCurrency = settings.panels?.currency || localStorage.getItem("latexify-admin-currency");
-    
-    if (savedTheme) setCurrentTheme(savedTheme);
-    if (savedMode) setIsDarkMode(savedMode === "dark");
-    setActiveCurrency(savedCurrency || detectCurrency());
-
     // Load admin info from server session
     fetch("/api/admin/session")
       .then(r => r.json())
@@ -734,25 +686,6 @@ export default function AdminDashboardPage() {
     })();
     return () => { for (const fn of unsubFns) { try { fn(); } catch {} } };
   }, [fetchSocialMediaStats]);
-
-  // Save theme selection changes
-  useEffect(() => {
-    if (mounted) {
-      localStorage.setItem("latexify-admin-theme", currentTheme);
-      localStorage.setItem("latexify-admin-mode", isDarkMode ? "dark" : "light");
-      localStorage.setItem("latexify-admin-currency", activeCurrency);
-      window.dispatchEvent(new Event("admin-theme-changed"));
-
-      const nextMode = isDarkMode ? "dark" : "light";
-      if (settings.panels?.theme !== currentTheme || settings.panels?.mode !== nextMode || settings.panels?.currency !== activeCurrency) {
-        updatePanels({
-          theme: currentTheme,
-          mode: nextMode,
-          currency: activeCurrency,
-        });
-      }
-    }
-  }, [currentTheme, isDarkMode, activeCurrency, mounted, updatePanels, settings.panels?.theme, settings.panels?.mode, settings.panels?.currency]);
 
   // Handle click outside for profile, theme, and notifications dropdowns
   useEffect(() => {

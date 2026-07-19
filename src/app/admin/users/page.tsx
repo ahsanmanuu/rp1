@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { useUsersRealtime } from '@/hooks/useUsersRealtime';
 import { Theme, themes, getAccentColor } from '@/components/AdminThemeStyles';
 import AdminSidebar from '@/components/AdminSidebar';
+import { useAdminTheme } from '@/contexts/AdminThemeContext';
 
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -499,8 +500,7 @@ function SubscriptionEditDialog({ user, onConfirm, onCancel, loading }: Subscrip
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function AdminUsersPage() {
   const [mounted, setMounted] = useState(false);
-  const [currentTheme, setCurrentTheme] = useState<Theme>('indigo');
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+  const { currentTheme, isDarkMode, setTheme: setCurrentTheme, setDarkMode: setIsDarkMode } = useAdminTheme();
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [adminName, setAdminName] = useState<string>("Admin Root");
 
@@ -545,19 +545,8 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     setMounted(true);
-    const savedTheme = localStorage.getItem('latexify-admin-theme') as Theme | null;
-    const savedMode = localStorage.getItem('latexify-admin-mode');
-    if (savedTheme) setCurrentTheme(savedTheme);
-    if (savedMode) setIsDarkMode(savedMode === 'dark');
-    const storedName = localStorage.getItem('latexify-admin-name');
-    if (storedName) setAdminName(storedName);
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem('latexify-admin-theme', currentTheme);
-    localStorage.setItem('latexify-admin-mode', isDarkMode ? 'dark' : 'light');
-    window.dispatchEvent(new Event('admin-theme-changed'));
-  }, [currentTheme, isDarkMode]);
 
   // Fetch conflict audit data dynamically when selected user changes
   useEffect(() => {

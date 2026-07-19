@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { createPb } from '@/lib/pb';
 import AdminSidebar from '@/components/AdminSidebar';
 import { Theme, themes, getAccentColor } from "@/components/AdminThemeStyles";
+import { useAdminTheme } from '@/contexts/AdminThemeContext';
 
 const ALL_THEMES: Theme[] = ['indigo', 'emerald', 'rose', 'violet', 'amber', 'cyan', 'sky', 'pink', 'orange', 'lime', 'teal', 'fuchsia', 'red', 'yellow', 'stone', 'zinc'];
 
@@ -66,8 +67,7 @@ interface Documentation {
 }
 
 export default function AdminHelpPage() {
-    const [currentTheme, setCurrentTheme] = useState<Theme>('indigo');
-    const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+    const { currentTheme, isDarkMode, setTheme: setCurrentTheme, setDarkMode: setIsDarkMode } = useAdminTheme();
     const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
     const [adminName, setAdminName] = useState<string>("Admin Root");
 
@@ -297,14 +297,6 @@ export default function AdminHelpPage() {
     };
 
     useEffect(() => {
-        const savedTheme = localStorage.getItem('latexify-admin-theme') as Theme | null;
-        const savedMode = localStorage.getItem('latexify-admin-mode');
-
-        if (savedTheme) setCurrentTheme(savedTheme);
-        if (savedMode) setIsDarkMode(savedMode === 'dark');
-        const storedName = localStorage.getItem('latexify-admin-name');
-        if (storedName) setAdminName(storedName);
-
         fetchData();
 
         // Refresh dynamic components every 15 seconds for near-real-time health monitoring
@@ -339,12 +331,6 @@ export default function AdminHelpPage() {
       }, 10000);
       return () => clearInterval(syncInterval);
     }, []);
-
-    useEffect(() => {
-        localStorage.setItem('latexify-admin-theme', currentTheme);
-        localStorage.setItem('latexify-admin-mode', isDarkMode ? 'dark' : 'light');
-        window.dispatchEvent(new Event('admin-theme-changed'));
-    }, [currentTheme, isDarkMode]);
 
     const showToast = (type: 'success' | 'error', text: string) => {
       setToastMessage({ type, text });

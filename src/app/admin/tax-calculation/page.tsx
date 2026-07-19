@@ -5,6 +5,7 @@ import { createPb } from '@/lib/pb';
 import ProLoader from '@/components/ProLoader';
 import AdminSidebar from '@/components/AdminSidebar';
 import { Theme, getAccentColor, themes } from '@/components/AdminThemeStyles';
+import { useAdminTheme } from '@/contexts/AdminThemeContext';
 
 const GST_SLABS = [
   { min: 0, max: 500000, rate: 0, name: 'Nil', type: 'Exempt' },
@@ -21,8 +22,7 @@ function getGstSlab(amount: number) {
 const ALL_THEMES: Theme[] = ['indigo', 'emerald', 'rose', 'violet', 'amber', 'cyan', 'sky', 'pink', 'orange', 'lime', 'teal', 'fuchsia', 'red', 'yellow', 'stone', 'zinc'];
 
 export default function AdminTaxCalculationPage() {
-  const [currentTheme, setCurrentTheme] = useState<Theme>('indigo');
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+  const { currentTheme, isDarkMode, setTheme: setCurrentTheme, setDarkMode: setIsDarkMode } = useAdminTheme();
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [adminName, setAdminName] = useState("Admin Root");
 
@@ -50,21 +50,6 @@ export default function AdminTaxCalculationPage() {
   const [showEditPopup, setShowEditPopup] = useState(false);
   const [editField, setEditField] = useState('');
   const [editValue, setEditValue] = useState('');
-
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('latexify-admin-theme') as Theme | null;
-    const savedMode = localStorage.getItem('latexify-admin-mode');
-    if (savedTheme && themes[savedTheme]) setCurrentTheme(savedTheme);
-    if (savedMode) setIsDarkMode(savedMode === 'dark');
-    const storedName = localStorage.getItem('latexify-admin-name');
-    if (storedName) setAdminName(storedName);
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('latexify-admin-theme', currentTheme);
-    localStorage.setItem('latexify-admin-mode', isDarkMode ? 'dark' : 'light');
-    window.dispatchEvent(new Event('admin-theme-changed'));
-  }, [currentTheme, isDarkMode]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);

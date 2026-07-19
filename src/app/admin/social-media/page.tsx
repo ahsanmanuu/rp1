@@ -9,6 +9,7 @@ import { useSiteLogo } from '@/lib/useSiteLogo';
 import ProLoader from '@/components/ProLoader';
 import AdminSidebar from '@/components/AdminSidebar';
 import { Theme, themes, getAccentColor } from '@/components/AdminThemeStyles';
+import { useAdminTheme } from '@/contexts/AdminThemeContext';
 
 
 const TOOL_TITLES = [
@@ -72,8 +73,7 @@ function ModalField({ label, children }: { label: string; children: React.ReactN
 }
 
 export default function AdminSocialMediaPage() {
-  const [currentTheme, setCurrentTheme] = useState<Theme>('indigo');
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const { currentTheme, isDarkMode, setTheme: setCurrentTheme, setDarkMode: setIsDarkMode } = useAdminTheme();
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -116,21 +116,6 @@ export default function AdminSocialMediaPage() {
   const { logoUrl, loading: logoLoading } = useSiteLogo();
 
   const pathname = usePathname();
-
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('latexify-admin-theme') as Theme | null;
-    const savedMode = localStorage.getItem('latexify-admin-mode');
-    if (savedTheme) setCurrentTheme(savedTheme);
-    if (savedMode) setIsDarkMode(savedMode === 'dark');
-    const storedName = localStorage.getItem('latexify-admin-name');
-    if (storedName) setAdminName(storedName);
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('latexify-admin-theme', currentTheme);
-    localStorage.setItem('latexify-admin-mode', isDarkMode ? 'dark' : 'light');
-    window.dispatchEvent(new Event('admin-theme-changed'));
-  }, [currentTheme, isDarkMode]);
 
   useEffect(() => {
     const fetchAdminInfo = async () => {

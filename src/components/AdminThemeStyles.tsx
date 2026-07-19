@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useAdminTheme } from "@/contexts/AdminThemeContext";
 
 export type Theme =
   | "indigo"
@@ -321,26 +321,7 @@ export function getAccentColor(theme: Theme, isDark: boolean): string {
 }
 
 export default function AdminThemeStyles() {
-  const [theme, setTheme] = useState<Theme>("indigo");
-  const [isDarkMode, setIsDarkMode] = useState(true);
-
-  useEffect(() => {
-    const updateTheme = () => {
-      const savedTheme = localStorage.getItem("latexify-admin-theme") as Theme | null;
-      const savedMode = localStorage.getItem("latexify-admin-mode");
-      if (savedTheme && themes[savedTheme]) setTheme(savedTheme);
-      if (savedMode) setIsDarkMode(savedMode === "dark");
-    };
-
-    updateTheme();
-    window.addEventListener("storage", updateTheme);
-    window.addEventListener("admin-theme-changed", updateTheme);
-
-    return () => {
-      window.removeEventListener("storage", updateTheme);
-      window.removeEventListener("admin-theme-changed", updateTheme);
-    };
-  }, []);
+  const { currentTheme: theme, isDarkMode } = useAdminTheme();
 
   const colors = themes[theme];
 

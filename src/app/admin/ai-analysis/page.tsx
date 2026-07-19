@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import { createPb } from '@/lib/pb';
 import { Theme, themes, getAccentColor } from "@/components/AdminThemeStyles";
+import { useAdminTheme } from '@/contexts/AdminThemeContext';
 
 const ALL_THEMES: Theme[] = ['indigo', 'emerald', 'rose', 'violet', 'amber', 'cyan', 'sky', 'pink', 'orange', 'lime', 'teal', 'fuchsia', 'red', 'yellow', 'stone', 'zinc'];
 
@@ -47,8 +48,7 @@ function detectCurrency(): string {
 }
 
 export default function AdminAiAnalysisPage() {
-  const [currentTheme, setCurrentTheme] = useState<Theme>('indigo');
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+  const { currentTheme, isDarkMode, setTheme: setCurrentTheme, setDarkMode: setIsDarkMode } = useAdminTheme();
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [adminName, setAdminName] = useState<string>("Admin Root");
   const [stats, setStats] = useState<any>(null);
@@ -89,15 +89,6 @@ export default function AdminAiAnalysisPage() {
   }, []);
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem('latexify-admin-theme') as Theme | null;
-    const savedMode = localStorage.getItem('latexify-admin-mode');
-    const savedCurrency = localStorage.getItem('latexify-admin-currency');
-    if (savedTheme) setCurrentTheme(savedTheme);
-    if (savedMode) setIsDarkMode(savedMode === 'dark');
-    const storedName = localStorage.getItem('latexify-admin-name');
-    if (storedName) setAdminName(storedName);
-    setActiveCurrency(savedCurrency || detectCurrency());
-
     const fetchRates = async () => {
       try {
         const res = await fetch("/api/currency/rates");
@@ -110,12 +101,6 @@ export default function AdminAiAnalysisPage() {
     fetchRates();
     fetchStats();
   }, [fetchStats]);
-
-  useEffect(() => {
-    localStorage.setItem('latexify-admin-theme', currentTheme);
-    localStorage.setItem('latexify-admin-mode', isDarkMode ? 'dark' : 'light');
-    window.dispatchEvent(new Event('admin-theme-changed'));
-  }, [currentTheme, isDarkMode]);
 
   // ── PB Realtime Subscriptions ──
   useEffect(() => {

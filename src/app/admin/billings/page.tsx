@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { useBillingRealtime } from '@/hooks/useBillingRealtime';
 import AdminSidebar from '@/components/AdminSidebar';
 import { Theme, themes, getAccentColor } from "@/components/AdminThemeStyles";
+import { useAdminTheme } from '@/contexts/AdminThemeContext';
 
 const ALL_THEMES: Theme[] = ['indigo', 'emerald', 'rose', 'violet', 'amber', 'cyan', 'sky', 'pink', 'orange', 'lime', 'teal', 'fuchsia', 'red', 'yellow', 'stone', 'zinc'];
 
@@ -25,33 +26,12 @@ const CURRENCIES: Record<string, CurrencyDef> = {
     JPY: { code: 'JPY', symbol: '¥',   rate: 1.93,    label: '¥ JPY — Japanese Yen' },
 };
 
-/** Auto-detect currency from browser timezone and locale */
-function detectCurrency(): string {
-    try {
-        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-        const locale = (navigator.language || '').toLowerCase();
-        if (tz.startsWith('Asia/Kolkata') || tz.startsWith('Asia/Calcutta') || locale.includes('-in') || locale === 'hi') return 'INR';
-        if (tz.startsWith('Europe/London')) return 'GBP';
-        if (tz.startsWith('Europe/')) return 'EUR';
-        if (tz.startsWith('Asia/Dubai') || tz.startsWith('Asia/Muscat') || tz.startsWith('Asia/Abu_Dhabi')) return 'AED';
-        if (tz.startsWith('Asia/Riyadh') || tz.startsWith('Asia/Bahrain') || tz.startsWith('Asia/Kuwait')) return 'SAR';
-        if (tz.startsWith('Asia/Singapore')) return 'SGD';
-        if (tz.startsWith('Asia/Tokyo') || locale.startsWith('ja')) return 'JPY';
-        if (tz.startsWith('Australia/')) return 'AUD';
-        if (tz.startsWith('America/Toronto') || tz.startsWith('America/Vancouver') || tz.startsWith('America/Winnipeg')) return 'CAD';
-    } catch {}
-    return 'USD'; // default fallback
-}
-
 export default function AdminBillingsPage() {
-    const [mounted, setMounted] = useState(false);
-    const [currentTheme, setCurrentTheme] = useState<Theme>('indigo');
-    const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+    const { currentTheme, isDarkMode, activeCurrency, mounted, setTheme: setCurrentTheme, setDarkMode: setIsDarkMode, setCurrency: setActiveCurrency } = useAdminTheme();
     const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
     const [adminName, setAdminName] = useState<string>("Admin Root");
 
     // ── Currency state ────────────────────────────────────────────────────
-    const [activeCurrency, setActiveCurrency] = useState<string>('INR');
     const [isCurrencyMenuOpen, setIsCurrencyMenuOpen] = useState(false);
     const [currencyRates, setCurrencyRates] = useState<Record<string, number>>({});
     const currencyMenuRef = useRef<HTMLDivElement>(null);
@@ -140,25 +120,9 @@ export default function AdminBillingsPage() {
     const MODAL_PAGE_SIZE = 10;
 
     useEffect(() => {
-        setMounted(true);
-        const savedTheme = localStorage.getItem('latexify-admin-theme') as Theme | null;
-        const savedMode = localStorage.getItem('latexify-admin-mode');
-        const savedCurrency = localStorage.getItem('latexify-admin-currency');
-
-        if (savedTheme) setCurrentTheme(savedTheme);
-        if (savedMode) setIsDarkMode(savedMode === 'dark');
         const storedName = localStorage.getItem('latexify-admin-name');
         if (storedName) setAdminName(storedName);
-        // Auto-detect currency from locale/timezone; respect saved preference
-        setActiveCurrency(savedCurrency || detectCurrency());
     }, []);
-
-    useEffect(() => {
-        localStorage.setItem('latexify-admin-theme', currentTheme);
-        localStorage.setItem('latexify-admin-mode', isDarkMode ? 'dark' : 'light');
-        localStorage.setItem('latexify-admin-currency', activeCurrency);
-        window.dispatchEvent(new Event('admin-theme-changed'));
-    }, [currentTheme, isDarkMode, activeCurrency]);
 
     const generatePathD = (data: { value: number }[]) => {
         if (!data || data.length === 0) return "";

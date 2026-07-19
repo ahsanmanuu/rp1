@@ -6,6 +6,7 @@ import Image from 'next/image';
 import AdminSidebar from '@/components/AdminSidebar';
 import { createPb } from '@/lib/pb';
 import { Theme, themes, getAccentColor } from '@/components/AdminThemeStyles';
+import { useAdminTheme } from '@/contexts/AdminThemeContext';
 
 
 interface EmailLog {
@@ -45,8 +46,7 @@ const EMAIL_TYPE_ICONS: Record<string, string> = {
 };
 
 export default function AdminEmailsPage() {
-  const [currentTheme, setCurrentTheme] = useState<Theme>('indigo');
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+  const { currentTheme, isDarkMode, setTheme: setCurrentTheme, setDarkMode: setIsDarkMode } = useAdminTheme();
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [adminName, setAdminName] = useState<string>('Admin Root');
   const [hydrated, setHydrated] = useState(false);
@@ -106,12 +106,6 @@ export default function AdminEmailsPage() {
   useEffect(() => { setHydrated(true); }, []);
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem('latexify-admin-theme') as Theme | null;
-    const savedMode = localStorage.getItem('latexify-admin-mode');
-    if (savedTheme) setCurrentTheme(savedTheme);
-    if (savedMode) setIsDarkMode(savedMode === 'dark');
-    const storedName = localStorage.getItem('latexify-admin-name');
-    if (storedName) setAdminName(storedName);
     fetchData();
     const interval = setInterval(() => fetchData(), 30000);
     return () => clearInterval(interval);
@@ -132,12 +126,6 @@ export default function AdminEmailsPage() {
     setup();
     return () => { for (const fn of unsubFns) { try { fn(); } catch {} } };
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem('latexify-admin-theme', currentTheme);
-    localStorage.setItem('latexify-admin-mode', isDarkMode ? 'dark' : 'light');
-    window.dispatchEvent(new Event('admin-theme-changed'));
-  }, [currentTheme, isDarkMode]);
 
   useEffect(() => {
     const syncInterval = setInterval(() => {

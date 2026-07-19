@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import AdminSidebar from "@/components/AdminSidebar";
 import { Theme, themes, getAccentColor } from "@/components/AdminThemeStyles";
+import { useAdminTheme } from '@/contexts/AdminThemeContext';
 
 
 let globalPlansCache: any[] = [];
@@ -14,8 +15,7 @@ export default function AdminProfilePage() {
   const [mounted, setMounted] = useState(false);
 
   // Theme & Appearance State
-  const [currentTheme, setCurrentTheme] = useState<Theme>("indigo");
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  const { currentTheme, isDarkMode, setTheme: setCurrentTheme, setDarkMode: setIsDarkMode } = useAdminTheme();
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const themeRef = useRef<HTMLDivElement>(null);
 
@@ -257,12 +257,6 @@ export default function AdminProfilePage() {
   useEffect(() => {
     setMounted(true);
 
-    // Load theme & mode
-    const savedTheme = localStorage.getItem("latexify-admin-theme") as Theme | null;
-    const savedMode = localStorage.getItem("latexify-admin-mode");
-    if (savedTheme) setCurrentTheme(savedTheme);
-    if (savedMode) setIsDarkMode(savedMode === "dark");
-
     // Load admin info from server session
     fetch("/api/admin/session")
       .then(r => r.json())
@@ -320,14 +314,6 @@ export default function AdminProfilePage() {
     fetchAiPlans();
   }, []);
 
-  // Save Theme Selection
-  useEffect(() => {
-    if (mounted) {
-      localStorage.setItem("latexify-admin-theme", currentTheme);
-      localStorage.setItem("latexify-admin-mode", isDarkMode ? "dark" : "light");
-      window.dispatchEvent(new Event("admin-theme-changed"));
-    }
-  }, [currentTheme, isDarkMode, mounted]);
 
   // Click outside listener
   useEffect(() => {
