@@ -278,13 +278,21 @@ export async function isPocketBaseReachable(): Promise<boolean> {
 }
 
 export async function pbAdmin(): Promise<PocketBase> {
-  // Return cached valid client
+  // Return cached valid client — but validate token with PB server first
   if (_adminPb) {
     if (_adminPb.authStore.isValid) {
-      return _adminPb;
+      try {
+        await _adminPb.collection('_superusers').authRefresh();
+        return _adminPb;
+      } catch {
+        _adminPb.authStore.clear();
+        _adminPb = null;
+        _adminAuthPromise = null;
+      }
+    } else {
+      _adminPb = null;
+      _adminAuthPromise = null;
     }
-    _adminPb = null;
-    _adminAuthPromise = null;
   }
 
   // If a recent auth attempt failed, don't retry for a while
@@ -314,8 +322,14 @@ export async function pbAdmin(): Promise<PocketBase> {
           const now = Date.now();
           if (payload.exp && payload.exp * 1000 > now) {
             pb.authStore.save(data.token, data.model);
-            _adminPb = pb;
-            return pb;
+            try {
+              await pb.collection('_superusers').authRefresh();
+              _adminPb = pb;
+              return pb;
+            } catch {
+              pb.authStore.clear();
+              try { fs.unlinkSync(tokenPath); } catch {}
+            }
           }
         }
       }

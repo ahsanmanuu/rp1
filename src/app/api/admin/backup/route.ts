@@ -27,6 +27,19 @@ interface BackupProgress {
 export async function GET(req: NextRequest) {
   try {
     const pb = await pbAdmin();
+
+    // Pre-flight: verify admin token actually works before doing heavy work
+    try {
+      const testResult = await pb.collection('users').getList(1, 1, { requestKey: null });
+      console.log(`[Backup] Pre-flight OK — users collection has ${testResult.totalItems} records`);
+    } catch (preflightErr: any) {
+      console.error(`[Backup] Pre-flight FAILED: ${preflightErr.message}`);
+      return NextResponse.json(
+        { success: false, error: `PocketBase admin auth failed: ${preflightErr.message}` },
+        { status: 500 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const includeFiles = searchParams.get('includeFiles') !== 'false';
     const requestedCollections = searchParams.get('collections')?.split(',').filter(Boolean);
@@ -151,17 +164,16 @@ export async function GET(req: NextRequest) {
                 const urlVal = record[field];
                 if (!urlVal || typeof urlVal !== 'string') continue;
 
-                // Skip external URLs (YouTube, Vimeo, etc.) — only download PB-hosted files
-                const pbHost = new URL(pb.baseURL).host;
-                let isPbUrl = false;
+                // Only download PB-hosted files — check if URL path matches PB file pattern
+                let isPbFileUrl = false;
                 try {
                   const parsed = new URL(urlVal);
-                  isPbUrl = parsed.host === pbHost && parsed.pathname.startsWith('/api/files/');
+                  isPbFileUrl = parsed.pathname.startsWith('/api/files/');
                 } catch {
                   // Not a valid URL — skip
                   continue;
                 }
-                if (!isPbUrl) continue;
+                if (!isPbFileUrl) continue;
 
                 try {
                   const resp = await fetch(urlVal);
