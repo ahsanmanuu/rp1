@@ -15,6 +15,7 @@ interface BackupResult {
   totalSize: number;
   filename: string;
   backupId: string;
+  errors?: { name: string; error: string }[];
 }
 
 interface RestoreResult {
@@ -142,6 +143,7 @@ export default function AdminBackupPage() {
   const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null);
   const [showRestoreResult, setShowRestoreResult] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
+  const [showBackupErrors, setShowBackupErrors] = useState(false);
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -171,13 +173,8 @@ export default function AdminBackupPage() {
 
   useEffect(() => {
     if (!mounted) return;
-    fetch("/api/admin/backup?includeFiles=true&countOnly=true", { method: "HEAD" })
-      .catch(() => {});
-    fetch("/api/admin/backup?section=collections")
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setCollectionCount(d.total || d.collections?.length || 76); })
-      .catch(() => setCollectionCount(76))
-      .finally(() => setLoadingCollections(false));
+    setCollectionCount(76);
+    setLoadingCollections(false);
 
     fetch("/api/admin/backup/schedule")
       .then((r) => r.json())
@@ -250,6 +247,10 @@ export default function AdminBackupPage() {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
 
+      const actualRecords = parseInt(res.headers.get("X-Backup-Records") || "0", 10);
+      const actualFiles = parseInt(res.headers.get("X-Backup-Files") || "0", 10);
+      const actualCollections = parseInt(res.headers.get("X-Backup-Collections") || "0", 10);
+
       setBackupProgress(100);
       setBackupPhase("Backup complete!");
       if (progressInterval) clearInterval(progressInterval);
@@ -257,13 +258,29 @@ export default function AdminBackupPage() {
       const filename = `latexify-backup-${Date.now()}.zip`;
       setBackupBlobUrl(url);
 
+      let collectionErrors: { name: string; error: string }[] = [];
+      try {
+        const JSZip = (await import("jszip")).default;
+        const zipData = await JSZip.loadAsync(blob);
+        const metaFile = zipData.file("metadata.json");
+        if (metaFile) {
+          const meta = JSON.parse(await metaFile.async("text"));
+          if (meta.collections) {
+            collectionErrors = Object.entries(meta.collections)
+              .filter(([, v]: [string, any]) => v.error)
+              .map(([name, v]: [string, any]) => ({ name, error: v.error }));
+          }
+        }
+      } catch {}
+
       setBackupResult({
-        collectionsExported: collectionCount || 76,
-        totalRecords: 0,
-        totalFiles: 0,
+        collectionsExported: actualCollections || collectionCount || 76,
+        totalRecords: actualRecords,
+        totalFiles: actualFiles,
         totalSize: blob.size,
         filename,
         backupId: `bk_${Date.now()}`,
+        errors: collectionErrors,
       });
       setShowResultModal(true);
     } catch (err: any) {
@@ -1230,6 +1247,43 @@ export default function AdminBackupPage() {
                   </div>
                 ))}
               </div>
+
+              {backupResult.errors && backupResult.errors.length > 0 && (
+                <div className="mb-6 text-left">
+                  <button
+                    onClick={() => setShowBackupErrors((v) => !v)}
+                    className="flex items-center gap-2 w-full py-2 px-3 rounded-lg transition-all hover:opacity-80"
+                    style={{ backgroundColor: "rgba(245, 158, 11, 0.1)" }}
+                  >
+                    <span className="material-symbols-outlined text-[16px]" style={{ color: "#f59e0b" }}>warning</span>
+                    <span className="text-sm font-bold" style={{ color: "#f59e0b" }}>
+                      {backupResult.errors.length} collection{backupResult.errors.length > 1 ? "s" : ""} skipped
+                    </span>
+                    <span className="material-symbols-outlined text-[16px] ml-auto" style={{ color: "#f59e0b" }}>
+                      {showBackupErrors ? "expand_less" : "expand_more"}
+                    </span>
+                  </button>
+                  <AnimatePresence>
+                    {showBackupErrors && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="max-h-40 overflow-y-auto mt-2 space-y-1 p-2 rounded-lg" style={{ backgroundColor: "var(--color-admin-surface-container-lowest)" }}>
+                          {backupResult.errors.map((err, idx) => (
+                            <div key={idx} className="text-xs p-2 rounded" style={{ backgroundColor: "rgba(245, 158, 11, 0.05)" }}>
+                              <span className="font-bold" style={{ color: "#f59e0b" }}>{err.name}: </span>
+                              <span style={{ color: "var(--color-admin-on-surface-variant)" }}>{err.error}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
 
               <div className="flex gap-3">
                 <button

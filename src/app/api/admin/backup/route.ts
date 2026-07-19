@@ -201,6 +201,13 @@ export async function GET(req: NextRequest) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const filename = `latexify-backup-${timestamp}.zip`;
 
+    const errorCount = Object.values(metadata.collections).filter((c: any) => c.error).length;
+    const errorSummary = Object.entries(metadata.collections)
+      .filter(([, c]: [string, any]) => c.error)
+      .slice(0, 10)
+      .map(([name, c]: [string, any]) => `${name}: ${c.error}`)
+      .join(' | ');
+
     return new NextResponse(new Uint8Array(zipBuffer), {
       status: 200,
       headers: {
@@ -209,6 +216,8 @@ export async function GET(req: NextRequest) {
         'X-Backup-Records': String(metadata.totalRecords),
         'X-Backup-Files': String(metadata.totalFiles),
         'X-Backup-Collections': String(Object.keys(metadata.collections).length),
+        'X-Backup-Errors': String(errorCount),
+        ...(errorSummary ? { 'X-Backup-Error-Details': errorSummary.slice(0, 500) } : {}),
       },
     });
   } catch (err: any) {
