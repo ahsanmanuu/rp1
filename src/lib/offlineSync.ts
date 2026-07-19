@@ -163,7 +163,27 @@ export function cacheGetResponse(url: string, data: any) {
       timestamp: Date.now()
     }));
   } catch (e) {
-    console.warn("[OfflineSync] Failed to cache GET response:", e);
+    try {
+      // Evict stale cache entries (older than 30 minutes) to free space
+      const cutoff = Date.now() - 30 * 60 * 1000;
+      const keysToEvict: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(CACHE_PREFIX)) {
+          try {
+            const parsed = JSON.parse(localStorage.getItem(k) || '{}');
+            if (!parsed.timestamp || parsed.timestamp < cutoff) keysToEvict.push(k);
+          } catch { keysToEvict.push(k); }
+        }
+      }
+      keysToEvict.forEach(k => localStorage.removeItem(k));
+      if (keysToEvict.length === 0) return; // Nothing to evict, give up
+      // Retry after eviction
+      const key = CACHE_PREFIX + url;
+      localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
+    } catch {
+      // Still no space — silently skip
+    }
   }
 }
 
