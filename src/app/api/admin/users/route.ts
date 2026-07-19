@@ -55,17 +55,7 @@ export async function GET(req: NextRequest) {
             createdAt: true,
           },
         },
-        sessionActivities: {
-          orderBy: { createdAt: "desc" },
-          take: 1,
-          select: {
-            ipAddress: true,
-            location: true,
-            latitude: true,
-            longitude: true,
-            createdAt: true,
-          },
-        },
+        sessionActivities: false as any,
         membershipTransactions: {
           where: { paymentStatus: "paid" },
           orderBy: { createdAt: "desc" },
@@ -91,8 +81,35 @@ export async function GET(req: NextRequest) {
       if (log.userId) tokenMap[log.userId] = log._sum.totalTokens || 0;
     });
 
+    // Fetch latest session activity per user separately (PB adapter can't expand reverse relations)
+    const userIds = users.map((u: any) => u.id);
+    const activityMap: Record<string, any> = {};
+    if (userIds.length > 0) {
+      try {
+        const allActivities = await prisma.userSessionActivity.findMany({
+          where: { userId: { in: userIds } },
+          orderBy: { createdAt: "desc" },
+          select: {
+            userId: true,
+            ipAddress: true,
+            location: true,
+            latitude: true,
+            longitude: true,
+            createdAt: true,
+          },
+        });
+        for (const act of allActivities) {
+          if (!activityMap[act.userId]) {
+            activityMap[act.userId] = act;
+          }
+        }
+      } catch (e: any) {
+        console.warn("[admin/users] Failed to fetch session activities:", e?.message);
+      }
+    }
+
     const result = users.map((u: any) => {
-      const lastSession = u.sessionActivities?.[0] || null;
+      const lastSession = activityMap[u.id] || null;
       return {
         id: u.id,
         name: u.name || "Unnamed Scholar",

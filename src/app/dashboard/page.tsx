@@ -1057,7 +1057,7 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                {(userLocation || locationLoading) && (
+                {(userLocation || locationLoading || !permissionDenied) && (
                   <div className="mt-6 pt-4 border-t border-outline/10 grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10 text-xs font-semibold text-secondary">
                     <div className="flex items-center gap-2">
                       <span className="material-symbols-outlined text-primary text-[18px] shrink-0">location_on</span>
@@ -1079,17 +1079,24 @@ export default function DashboardPage() {
                         </strong>
                       </span>
                     </div>
-                    {userLocation?.latitude != null && (
-                      <div className="flex items-center gap-2 sm:justify-end">
-                        <span className="material-symbols-outlined text-primary text-[18px] shrink-0">pin_drop</span>
-                        <span>
-                          Coordinates:{' '}
-                          <strong className="text-on-surface font-mono">
-                            {userLocation.latitude.toFixed(4)}, {userLocation.longitude.toFixed(4)}
-                          </strong>
-                        </span>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2 sm:justify-end">
+                      <span className="material-symbols-outlined text-primary text-[18px] shrink-0">pin_drop</span>
+                      <span>
+                        Coordinates:{' '}
+                        <strong className="text-on-surface font-mono">
+                          {locationLoading ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="w-3 h-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                              Detecting…
+                            </span>
+                          ) : userLocation?.latitude != null ? (
+                            `${userLocation.latitude.toFixed(4)}, ${userLocation.longitude.toFixed(4)}`
+                          ) : (
+                            'Not available'
+                          )}
+                        </strong>
+                      </span>
+                    </div>
                   </div>
                 )}
                 

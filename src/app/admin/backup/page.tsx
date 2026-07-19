@@ -1087,7 +1087,7 @@ export default function AdminBackupPage() {
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.8, opacity: 0 }}
-              className="flex flex-col items-center max-w-sm w-full px-6 text-center"
+              className="flex flex-col items-center max-w-lg w-full px-6 text-center"
             >
               <div className="relative w-32 h-32 mb-8 flex items-center justify-center">
                 <motion.div
