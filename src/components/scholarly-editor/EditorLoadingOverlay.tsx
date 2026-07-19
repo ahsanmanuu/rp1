@@ -32,7 +32,10 @@ export default function EditorLoadingOverlay({ visible, label = 'LOADING LATEX S
     if (visible) {
       if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); hideTimerRef.current = null; }
       setShow(true);
+      setStep(0);
+      setProgress(0);
     } else {
+      setProgress(100);
       hideTimerRef.current = setTimeout(() => {
         hideTimerRef.current = null;
         setShow(false);
@@ -47,8 +50,8 @@ export default function EditorLoadingOverlay({ visible, label = 'LOADING LATEX S
     if (!show) return;
     const total = ICON_STEPS.length;
     const interval = setInterval(() => {
-      setStep(s => (s + 1) % total);
-      setProgress(p => Math.min(p + 100 / total + Math.random() * 4, 97));
+      setStep(s => s < total - 1 ? s + 1 : s);
+      setProgress(p => p < 95 ? Math.min(p + 100 / total + Math.random() * 4, 95) : p);
     }, 380);
     return () => clearInterval(interval);
   }, [show]);

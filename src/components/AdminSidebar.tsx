@@ -24,6 +24,7 @@ const NAV_LINKS = [
   { href: '/admin/general-queries', icon: 'forum',          label: 'General Queries' },
   { href: '/admin/social-media',    icon: 'share',          label: 'Social Media' },
   { href: '/admin/tax-calculation', icon: 'calculate',      label: 'Tax Calculation' },
+  { href: '/admin/backup',          icon: 'cloud_download', label: 'Backup & Restore' },
 ];
 
 export default function AdminSidebar({ isDarkMode = false, adminName = 'Admin Root' }: AdminSidebarProps) {

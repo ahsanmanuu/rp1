@@ -195,11 +195,17 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [isResizingPdf, setIsResizingPdf] = useState(false);
 
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  const statusRef = useRef(status);
+  statusRef.current = status;
+
   useEffect(() => {
-    if (status === 'loading') return;
+    if (statusRef.current === 'loading') return;
+    const currentSession = sessionRef.current;
     
     // Support Guest mode if no session or explicitly asked
-    const userEmail = session?.user?.email || 'guest-session';
+    const userEmail = currentSession?.user?.email || 'guest-session';
     const studioFs = new StudioFS(userEmail);
     setFs(studioFs);
 
@@ -310,7 +316,8 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
     };
 
     init();
-  }, [session, status, initialProjectId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialProjectId]);
 
   const saveFile = useCallback(async (path: string, content: string) => {
     if (!fs || !projectId) return;
@@ -433,6 +440,7 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
   }, [errors, activeFile, code]);
 
   const switchTab = async (path: string) => {
+    if (path === activeFile) return;
     if (fs && projectId) await fs.writeFile(projectId, activeFile, code);
     setLoadingCode(true);
     setActiveFile(path);

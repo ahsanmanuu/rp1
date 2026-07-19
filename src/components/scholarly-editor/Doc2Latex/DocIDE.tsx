@@ -116,12 +116,18 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     filesRef.current = files;
   }, [files]);
 
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  const statusRef = useRef(status);
+  statusRef.current = status;
+
   useEffect(() => {
     setMounted(true);
     document.body.classList.add('theme-purple');
 
-    if (status === 'loading') return;
-    const userEmail = session?.user?.email || 'guest';
+    if (statusRef.current === 'loading') return;
+    const currentSession = sessionRef.current;
+    const userEmail = currentSession?.user?.email || 'guest';
 
     const loadPdfBlob = async (projId: string) => {
       try {
@@ -290,7 +296,8 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       }
     };
     init();
-  }, [session, status, projectId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
 
   useEffect(() => {
     if (!autoEngine || !code || activeFile !== 'main.tex') return;
@@ -1013,7 +1020,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                      msOverflowStyle: 'none'
                    }}>
                       {openTabs.map(t => (
-                        <div key={t} onClick={() => switchTab(t)} style={{ 
+                        <div key={t} onClick={() => switchTab(t)} className="group" style={{ 
                           padding: '0 1rem', height: '100%', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.65rem', fontWeight: activeFile === t ? 800 : 600,
                           background: activeFile === t ? 'var(--bg-primary)' : 'transparent', borderRight: '1px solid var(--border)', 
                           color: activeFile === t ? 'var(--text-primary)' : 'var(--text-secondary)', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', position: 'relative', fontFamily: 'var(--font-headline)', letterSpacing: '0.05em',
@@ -1032,8 +1039,8 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                                size={10} 
                                strokeWidth={2.5} 
                                onClick={(e) => handleCloseTab(e, t)} 
-                               style={{ flexShrink: 0, opacity: activeFile === t ? 0.7 : 0.4, color: 'currentColor' }} 
-                               className="hover:text-red-500 transition-colors cursor-pointer"
+                               style={{ flexShrink: 0, color: 'inherit', cursor: 'pointer' }} 
+                               className="opacity-0 group-hover:opacity-100 hover:!text-red-500 transition-opacity transition-colors"
                              />
                            )}
                         </div>

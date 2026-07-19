@@ -329,12 +329,18 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
     setTimeout(() => compileRef.current?.(), 100);
   };
 
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  const statusRef = useRef(status);
+  statusRef.current = status;
+
   useEffect(() => {
     setMounted(true);
     document.body.classList.add('theme-indigo');
 
-    if (status === 'loading') return;
-    const userEmail = session?.user?.email || 'guest';
+    if (statusRef.current === 'loading') return;
+    const currentSession = sessionRef.current;
+    const userEmail = currentSession?.user?.email || 'guest';
     const studioFs = new StudioFS(userEmail);
     setFs(studioFs);
 
@@ -511,7 +517,8 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
       setLoadingCode(false);
     };
     init().catch((err) => console.debug("Init error (non-blocking):", err));
-  }, [session, status, projectId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (isResizingSidebar) {
@@ -1516,7 +1523,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                      msOverflowStyle: 'none'
                    }}>
                       {openTabs.map(t => (
-                        <div key={t} onClick={() => switchTab(t)} style={{ 
+                        <div key={t} onClick={() => switchTab(t)} className="group" style={{ 
                           padding: '0 1rem', height: '100%', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: activeFile === t ? 800 : 600,
                           background: activeFile === t ? 'var(--bg-primary)' : 'transparent', borderRight: '1px solid var(--border)', 
                           color: activeFile === t ? 'var(--text-primary)' : 'var(--text-secondary)', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', position: 'relative', fontFamily: 'var(--font-headline)', letterSpacing: '0.05em',
@@ -1537,8 +1544,8 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                                    if (foundFile) setCode(foundFile.content);
                                  }
                                }}
-                               style={{ background: 'transparent', border: 'none', color: 'currentColor', opacity: activeFile === t ? 0.7 : 0.4, cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px', flexShrink: 0 }}
-                               className="hover:text-red-500 transition-colors cursor-pointer"
+                               style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px', flexShrink: 0 }}
+                               className="opacity-0 group-hover:opacity-100 hover:!text-red-500 transition-opacity transition-colors"
                              >
                                <X size={12} />
                              </button>
