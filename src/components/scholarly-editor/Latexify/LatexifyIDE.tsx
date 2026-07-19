@@ -84,6 +84,18 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const codeRef = useRef('');
+
+  const safeSetItem = useCallback((key: string, value: string) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      try {
+        localStorage.removeItem(key);
+        localStorage.setItem(key, value);
+      } catch { /* quota exceeded — silently skip */ }
+    }
+  }, []);
 
 
   // Auto Scroll to current position
@@ -120,7 +132,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
   const saveChatHistory = (msgs: { role: 'user' | 'assistant', content: string }[]) => {
     setChatMessages(msgs);
     if (typeof window !== 'undefined' && projectId) {
-      localStorage.setItem(`latexify_chat_${projectId}`, JSON.stringify(msgs));
+      safeSetItem(`latexify_chat_${projectId}`, JSON.stringify(msgs));
     }
   };
 
@@ -499,7 +511,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
       setLoadingCode(false);
     };
     init().catch((err) => console.debug("Init error (non-blocking):", err));
-  }, [session, status, projectId, openTabs]);
+  }, [session, status, projectId]);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (isResizingSidebar) {
@@ -513,11 +525,11 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
 
   const handleMouseUp = useCallback(() => {
     if (isResizingSidebar) {
-      localStorage.setItem(`latexify_sidebar_${projectId}`, sidebarWidth.toString());
+      safeSetItem(`latexify_sidebar_${projectId}`, sidebarWidth.toString());
       updatePanels({ [`latexify_sidebar_${projectId}`]: sidebarWidth });
     }
     if (isResizingPdf) {
-      localStorage.setItem(`latexify_pdf_${projectId}`, pdfWidth.toString());
+      safeSetItem(`latexify_pdf_${projectId}`, pdfWidth.toString());
       updatePanels({ [`latexify_pdf_${projectId}`]: pdfWidth });
     }
     setIsResizingSidebar(false);
@@ -588,19 +600,19 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
   };
 
   useEffect(() => {
-    if (isAutoMode && code && activeFile === 'main.tex') {
+    if (!isAutoMode || activeFile !== 'main.tex' || !code) return;
+    const timer = setTimeout(() => {
       const best = detectBestEngine(code);
-      if (best !== engine) {
-        setEngine(best);
-      }
-    }
-  }, [code, isAutoMode, activeFile, engine]);
+      if (best !== engine) setEngine(best);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [code, isAutoMode, activeFile]);
 
   useEffect(() => {
     if (mounted && project) {
-      localStorage.setItem(`latexify_engine_${projectId}`, engine);
-      localStorage.setItem(`latexify_auto_${projectId}`, isAutoMode.toString());
-      localStorage.setItem(`latexify_mood_${projectId}`, editorMood);
+      safeSetItem(`latexify_engine_${projectId}`, engine);
+      safeSetItem(`latexify_auto_${projectId}`, isAutoMode.toString());
+      safeSetItem(`latexify_mood_${projectId}`, editorMood);
 
       updatePages({
         [`latexify_engine_${projectId}`]: engine,
@@ -636,6 +648,10 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
           'editorCursor.foreground': '#ffffff',
           'editor.lineHighlightBackground': 'rgba(255,255,255,0.03)',
           'editorLineNumber.foreground': 'rgba(255,255,255,0.2)',
+          'scrollbarSlider.background': 'rgba(255,255,255,0.18)',
+          'scrollbarSlider.hoverBackground': 'rgba(255,255,255,0.32)',
+          'scrollbarSlider.activeBackground': 'rgba(255,255,255,0.40)',
+          'scrollbarSlider.border': '1px solid rgba(255,255,255,0.05)',
         }
       });
       mon.editor.setTheme('scholarly-vibrant');
@@ -644,6 +660,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
 
   // Safely update editor value without resetting cursor position
   useEffect(() => {
+    codeRef.current = code;
     if (editorRef.current) {
       if (isSelfChange.current) {
         isSelfChange.current = false;
@@ -744,7 +761,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
 
       editor.errorDecorations = editor.deltaDecorations(oldDecorations, newDecorations);
     }
-  }, [errors, activeFile, code]);
+  }, [errors, activeFile]);
   const compile = useCallback(async () => {
     if (!fs || compiling || !project || isSyncing) return;
     const rootFile = project?.mainFile || 'main.tex';
@@ -888,7 +905,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
     } finally {
       setCompiling(false);
     }
-  }, [fs, compiling, projectId, activeFile, engine, code, project, isSyncing]);
+  }, [fs, compiling, projectId, activeFile, engine, project, isSyncing]);
 
   // Keep compileRef current so async callbacks always call the latest version
   useEffect(() => {
@@ -1239,7 +1256,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                               onClick={() => {
                                 const nextAuto = !isAutoMode;
                                 setIsAutoMode(nextAuto);
-                                localStorage.setItem(`latexify_auto_${projectId}`, nextAuto.toString());
+                                safeSetItem(`latexify_auto_${projectId}`, nextAuto.toString());
                                 if (nextAuto) toast.success("Auto-engine detection enabled");
                               }}
                               style={{
@@ -2068,7 +2085,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                             throw new Error('No internet connection. Cannot compile for download.');
                           }
                           if (!isImage(activeFile)) {
-                             await fs.writeFile(projectId, activeFile, code);
+      await fs.writeFile(projectId, activeFile, codeRef.current);
                           }
                           const fileData = await fs.listFiles(projectId);
                           const payload = fileData.map(f => ({ path: f.path, content: f.content }));

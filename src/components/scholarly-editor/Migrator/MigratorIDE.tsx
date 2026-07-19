@@ -124,7 +124,19 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
   const monacoRef = useRef<any>(null);
   const isSelfChange = useRef<boolean>(false);
   const compileRef = useRef<(() => Promise<void>) | null>(null);
+  const codeRef = useRef('');
   const filesRef = useRef<StudioFile[]>([]);
+
+  const safeSetItem = useCallback((key: string, value: string) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      try {
+        localStorage.removeItem(key);
+        localStorage.setItem(key, value);
+      } catch { /* quota exceeded — silently skip */ }
+    }
+  }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currentPdfBlob = useRef<Blob | null>(null);
 
@@ -218,8 +230,8 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
   }, [isResizingSidebar, isResizingPdf]);
 
   const handleMouseUp = useCallback(() => {
-    if (isResizingSidebar) localStorage.setItem(`migrator_sidebar_${projectId}`, sidebarWidth.toString());
-    if (isResizingPdf) localStorage.setItem(`migrator_pdf_${projectId}`, pdfWidth.toString());
+    if (isResizingSidebar) safeSetItem(`migrator_sidebar_${projectId}`, sidebarWidth.toString());
+    if (isResizingPdf) safeSetItem(`migrator_pdf_${projectId}`, pdfWidth.toString());
     setIsResizingSidebar(false);
     setIsResizingPdf(false);
   }, [isResizingSidebar, isResizingPdf, sidebarWidth, pdfWidth, projectId]);
@@ -245,19 +257,19 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
   }, [isResizingSidebar, isResizingPdf, handleMouseMove, handleMouseUp]);
 
   useEffect(() => {
-    if (autoEngine && code && activeFile === 'main.tex') {
+    if (!autoEngine || activeFile !== 'main.tex' || !code) return;
+    const timer = setTimeout(() => {
       const best = detectBestEngine(code);
-      if (best !== engine) {
-        setEngine(best);
-      }
-    }
-  }, [code, autoEngine, activeFile, engine]);
+      setEngine(best);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [code, autoEngine, activeFile]);
 
   useEffect(() => {
     if (mounted && project) {
-      localStorage.setItem(`migrator_engine_${projectId}`, engine);
-      localStorage.setItem(`migrator_auto_${projectId}`, autoEngine.toString());
-      localStorage.setItem(`migrator_mood_${projectId}`, editorMood);
+      safeSetItem(`migrator_engine_${projectId}`, engine);
+      safeSetItem(`migrator_auto_${projectId}`, autoEngine.toString());
+      safeSetItem(`migrator_mood_${projectId}`, editorMood);
     }
   }, [engine, autoEngine, editorMood, mounted, project, projectId]);
 
@@ -283,6 +295,10 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
           'editorCursor.foreground': '#ffffff',
           'editor.lineHighlightBackground': 'rgba(255,255,255,0.03)',
           'editorLineNumber.foreground': 'rgba(255,255,255,0.2)',
+          'scrollbarSlider.background': 'rgba(255,255,255,0.18)',
+          'scrollbarSlider.hoverBackground': 'rgba(255,255,255,0.32)',
+          'scrollbarSlider.activeBackground': 'rgba(255,255,255,0.40)',
+          'scrollbarSlider.border': '1px solid rgba(255,255,255,0.05)',
         }
       });
       mon.editor.setTheme('scholarly-vibrant');
@@ -303,6 +319,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
       }
     }
   }, [code]);
+  useEffect(() => { codeRef.current = code; }, [code]);
 
   // Handle Diagnostic Markers (Error Squiggles) & Whole Line Highlights
   useEffect(() => {
@@ -387,7 +404,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
         }));
       editor.errorDecorations = editor.deltaDecorations(oldDecorations, newDecorations);
     }
-  }, [errors, activeFile, code]);
+  }, [errors, activeFile]);
 
   const jumpToLine = async (line: number, path?: string) => {
     if (!editorRef.current) return;
@@ -436,13 +453,13 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
     if (!fs || compiling || !project) return;
     const rootFile = project.mainFile || 'main.tex';
     setCompiling(true);
-    setPdfUrl(null);
+    // NOTE: Do NOT clear pdfUrl here — keep the old PDF visible while recompiling.
     setSyncTexStr(null);
     setCompileLog(`> Compilation Started: ${rootFile}\n`);
     setErrors([]);
 
     try {
-      await fs.writeFile(projectId, activeFile, code);
+      await fs.writeFile(projectId, activeFile, codeRef.current);
       const payloadMeta = await fs.listFiles(projectId);
       
       const formData = new FormData();
@@ -576,7 +593,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
     } finally {
       setCompiling(false);
     }
-  }, [fs, compiling, projectId, activeFile, engine, code, project]);
+  }, [fs, compiling, projectId, activeFile, engine, project]);
 
   // Keep compileRef current so async callbacks always call the latest version
   useEffect(() => {
@@ -850,7 +867,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
                 onChange={e => {
                   setEngine(e.target.value as any);
                   setAutoEngine(false); // Manual override
-                  localStorage.setItem(`migrator_auto_${projectId}`, 'false');
+                   safeSetItem(`migrator_auto_${projectId}`, 'false');
                   toast.success(`Engine set to ${e.target.value}. Auto-detection disabled.`, { icon: '⚙️', style: { borderRadius: '10px', background: '#333', color: '#fff', fontSize: '0.8rem' } });
                 }}
                 style={{ background: 'transparent', color: 'var(--ide-select-text)', border: 'none', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', outline: 'none', fontFamily: 'var(--font-headline)' }}
@@ -865,7 +882,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
               onClick={() => {
                 const nextAuto = !autoEngine;
                 setAutoEngine(nextAuto);
-                localStorage.setItem(`migrator_auto_${projectId}`, nextAuto.toString());
+                safeSetItem(`migrator_auto_${projectId}`, nextAuto.toString());
                 if (nextAuto) toast.success("Auto-engine detection enabled");
               }}
               style={{ 

@@ -88,7 +88,7 @@ export default function ConsolePanel({
       };
       const handleMouseUp = () => {
         setIsResizing(false);
-        localStorage.setItem(`console_height_${projectId}`, height.toString());
+        try { localStorage.setItem(`console_height_${projectId}`, height.toString()); } catch {}
         window.removeEventListener('mousemove', handleMouseMove);
         window.removeEventListener('mouseup', handleMouseUp);
       };

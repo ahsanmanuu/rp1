@@ -79,6 +79,7 @@ export async function POST(req: NextRequest) {
   // Build the system prompt separately — do NOT inject it into messages[]
   // to avoid the SDK security warning and model confusion.
   let systemPrompt = agentConfig.buildSystemPrompt(context);
+  const userId = session.user.id as string;
   try {
     const dbOverride = await prisma.aiContextConfig.findUnique({
       where: { agentId: 'diagram' }
@@ -115,7 +116,7 @@ export async function POST(req: NextRequest) {
       });
       if (files.length > 0) {
         let docContext = `\n\n### ACTIVE USER RESEARCH PROJECT CONTEXT:\nProject Name: "${latestProj.title}"\n`;
-        files.forEach(f => {
+        files.forEach((f: { path: string; content: string }) => {
           if (f.path.endsWith('.tex') || f.path.endsWith('.bib') || f.path.endsWith('.md')) {
             docContext += `File: "${f.path}" (${f.content.length} chars):\n\`\`\`latex\n${f.content.substring(0, 1500)}\n\`\`\`\n`;
           }
@@ -165,7 +166,6 @@ export async function POST(req: NextRequest) {
   });
 
   // ── AI Cap Rule Enforcement ─────────────────────────────────────────────
-  const userId = session.user.id as string;
   const geo = await getClientGeoInfo(req);
   const ruleResult = await enforceAiCapRules(userId, {
     email: session.user.email || undefined,

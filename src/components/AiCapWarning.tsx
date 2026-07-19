@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Clock, Bot, RefreshCw, Zap } from 'lucide-react';
+import { AlertTriangle, Clock, Bot, RefreshCw, Zap, ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface CapStatus {
@@ -37,6 +37,16 @@ function fmtDate(iso: string | null | undefined): string {
   } catch { return '—'; }
 }
 
+function fmtDateFull(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+  } catch { return '—'; }
+}
+
 function formatCountdown(targetIso: string | null | undefined): string {
   if (!targetIso) return '';
   const diffMs = new Date(targetIso).getTime() - Date.now();
@@ -55,13 +65,15 @@ function agentLabel(key: string): string {
     'latex-review': 'AI Reviewer', 'chat': 'AI Chat', 'ai-fix': 'AI Fix',
     'diagram': 'Diagrams', 'extract': 'Doc Extract', 'doc2latex': 'Doc2LaTeX',
     'reviewer': 'Peer Review',
+    'citation-enrich': 'Citation Enrich', 'citation-validate': 'Citation Validate',
+    'citation-format': 'Citation Format',
   };
   return map[key] || key.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
   const pathname = usePathname();
-  const forceDashboardOnly = pathname && (pathname.startsWith('/doc2latex') || pathname.startsWith('/reviewer'));
+  const isForceBlockPage = !!pathname && (pathname.startsWith('/doc2latex') || pathname.startsWith('/reviewer'));
 
   const [status, setStatus] = useState<CapStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -114,13 +126,9 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
   useEffect(() => { setMounted(true); fetchStatus(); }, [fetchStatus]);
 
   useEffect(() => {
-    const handleCapTrigger = () => {
-      fetchStatus();
-    };
+    const handleCapTrigger = () => { fetchStatus(); };
     window.addEventListener('ai-cap-triggered', handleCapTrigger);
-    return () => {
-      window.removeEventListener('ai-cap-triggered', handleCapTrigger);
-    };
+    return () => { window.removeEventListener('ai-cap-triggered', handleCapTrigger); };
   }, [fetchStatus]);
 
   useEffect(() => {
@@ -177,6 +185,15 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
 
   const agentEntries  = Object.entries(status.agentBreakdown).filter(([, v]) => v > 0).sort(([, a], [, b]) => b - a);
   const isAdminBlocked = !!status.capExpiresAt;
+  const isFreeTier = status.planName === 'Free' || status.planName === 'free';
+
+  const consumedAtStr = (() => {
+    const now = new Date();
+    now.setHours(now.getHours() - 1);
+    return fmtDateFull(now.toISOString());
+  })();
+
+  const resetAtStr = fmtDateFull(status.quotaResetAt);
 
   const modal = (
     <AnimatePresence>
@@ -188,22 +205,43 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
           <motion.div initial={{ opacity: 0, scale: 0.92, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 20 }} transition={{ duration: 0.3, ease: 'easeOut' }}
             style={{ background: 'var(--bg-primary, #1e1e1e)', border: '1px solid var(--border, rgba(255,255,255,0.1))',
-              borderRadius: '20px', padding: '36px', maxWidth: '480px', width: '100%',
+              borderRadius: '20px', padding: '36px', maxWidth: '500px', width: '100%',
               boxShadow: '0 25px 60px rgba(0,0,0,0.5)', textAlign: 'center' }}>
 
             <div style={{ width: '72px', height: '72px', background: 'var(--bg-secondary, rgba(255,255,255,0.03))',
-              border: '1px solid var(--accent-primary, #10b981)', borderRadius: '50%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px',
-              boxShadow: '0 0 20px var(--accent-glow, rgba(16,185,129,0.1))' }}>
-              <Bot size={36} style={{ color: 'var(--accent-primary, #10b981)' }} />
+              border: `1px solid ${isAdminBlocked ? 'var(--color-admin-error, #ef4444)' : 'var(--accent-primary, #10b981)'}`,
+              borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 20px',
+              boxShadow: `0 0 20px ${isAdminBlocked ? 'rgba(239,68,68,0.1)' : 'var(--accent-glow, rgba(16,185,129,0.1))'}` }}>
+              <Bot size={36} style={{ color: isAdminBlocked ? 'var(--color-admin-error, #ef4444)' : 'var(--accent-primary, #10b981)' }} />
             </div>
 
-            <h2 style={{ margin: '0 0 4px', color: 'var(--text-primary, #fff)', fontSize: '20px', fontWeight: '700', letterSpacing: '-0.3px', fontFamily: 'var(--font-headline)' }}>
-              Daily AI Limit Reached
+            <h2 style={{ margin: '0 0 6px', color: 'var(--text-primary, #fff)', fontSize: '20px', fontWeight: '700', letterSpacing: '-0.3px', fontFamily: 'var(--font-headline)' }}>
+              {isAdminBlocked ? 'AI Access Blocked' : 'Daily AI Limit Reached'}
             </h2>
             <p style={{ margin: '0 0 20px', color: 'var(--color-admin-error, #ef4444)', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'var(--font-headline)' }}>
-              {isAdminBlocked ? `Cap Rule: ${status.ruleName ?? 'Admin Override'}` : 'Usage cap exceeded'}
+              {isAdminBlocked ? `Cap Rule: ${status.ruleName ?? 'Admin Override'}` : isFreeTier ? 'Free tier token limit exhausted' : 'Usage cap exceeded'}
             </p>
+
+            {/* Token Exhaustion Message */}
+            <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.15))', border: '1px solid var(--border, rgba(255,255,255,0.05))', borderRadius: '14px', padding: '16px', marginBottom: '16px', textAlign: 'left' }}>
+              <p style={{ margin: '0 0 10px', color: 'var(--text-primary, #e5e7eb)', fontSize: '13px', lineHeight: '1.6' }}>
+                You have consumed all your {status.planName} plan tokens. Your AI quota was fully used earlier today.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ color: 'var(--text-secondary, #9ca3af)', fontWeight: 600, minWidth: '90px' }}>Used from:</span>
+                  <span style={{ color: 'var(--text-primary, #d1d5db)', fontWeight: 500 }}>{consumedAtStr}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ color: 'var(--text-secondary, #9ca3af)', fontWeight: 600, minWidth: '90px' }}>Resets on:</span>
+                  <span style={{ color: 'var(--accent-primary, #10b981)', fontWeight: 700 }}>{resetAtStr}</span>
+                </div>
+              </div>
+              <p style={{ margin: '12px 0 0', color: 'var(--text-secondary, #9ca3af)', fontSize: '12px', lineHeight: '1.5', fontStyle: 'italic' }}>
+                You can continue your work without AI agent. All non-AI features remain fully available.
+              </p>
+            </div>
 
             {/* Usage bar */}
             <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.2))', border: '1px solid var(--border, rgba(255,255,255,0.05))', borderRadius: '12px', padding: '14px', marginBottom: '14px', textAlign: 'left' }}>
@@ -222,7 +260,7 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
               </div>
             </div>
 
-            {/* Quota schedule */}
+            {/* Quota countdown */}
             <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.1))', border: '1px solid var(--border, rgba(255,255,255,0.05))', borderRadius: '12px', padding: '14px', marginBottom: '14px', textAlign: 'left' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -279,24 +317,17 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
               </div>
             )}
 
-            {/* Upgradation plan details (only rendered when forcing return to dashboard) */}
-            {forceDashboardOnly && (
-              <div style={{
-                background: 'rgba(251,191,36,0.06)',
-                border: '1px solid rgba(251,191,36,0.2)',
-                borderRadius: '12px',
-                padding: '14px',
-                marginBottom: '14px',
-                textAlign: 'left'
-              }}>
+            {/* Upgrade plan options for free tier */}
+            {isFreeTier && (
+              <div style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: '12px', padding: '14px', marginBottom: '14px', textAlign: 'left' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                   <Zap size={14} style={{ color: '#fbbf24' }} />
                   <span style={{ color: '#fbbf24', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                    AI Plan Upgradation Options
+                    Upgrade for More Tokens
                   </span>
                 </div>
                 <p style={{ margin: '0 0 10px', color: '#d1d5db', fontSize: '12px', lineHeight: '1.4' }}>
-                  Unlock higher daily token limits and continuous agent access by subscribing to a premium plan.
+                  Unlock higher daily token limits and continuous agent access.
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11px', color: '#9ca3af' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '4px' }}>
@@ -320,7 +351,6 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
                 onClick={() => {
                   hasBeenDismissed.current = true;
                   setShowBlockModal(false);
-                  window.location.href = '/dashboard';
                 }}
                 style={{
                   width: '100%', padding: '12px',
@@ -334,35 +364,34 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
                 onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
                 onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
               >
-                Return to Dashboard
+                Continue Without AI
               </button>
-              
-              {!forceDashboardOnly && (
-                <button
-                  onClick={() => {
-                    hasBeenDismissed.current = true;
-                    setShowBlockModal(false);
-                  }}
-                  style={{
-                    width: '100%', padding: '10px',
-                    background: 'transparent', border: '1px solid var(--border, rgba(255,255,255,0.1))',
-                    borderRadius: '12px', color: 'var(--text-secondary, #9ca3af)', fontSize: '12px',
-                    fontWeight: '600', cursor: 'pointer', display: 'flex',
-                    alignItems: 'center', justifyContent: 'center', gap: '6px',
-                    transition: 'all 0.2s', fontFamily: 'var(--font-headline)'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--bg-secondary, rgba(255,255,255,0.05))';
-                    e.currentTarget.style.color = 'var(--text-primary, #fff)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.color = 'var(--text-secondary, #9ca3af)';
-                  }}
-                >
-                  Continue in Read-Only Mode
-                </button>
-              )}
+
+              <button
+                onClick={() => {
+                  hasBeenDismissed.current = true;
+                  setShowBlockModal(false);
+                  window.location.href = '/dashboard';
+                }}
+                style={{
+                  width: '100%', padding: '10px',
+                  background: 'transparent', border: '1px solid var(--border, rgba(255,255,255,0.1))',
+                  borderRadius: '12px', color: 'var(--text-secondary, #9ca3af)', fontSize: '12px',
+                  fontWeight: '600', cursor: 'pointer', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  transition: 'all 0.2s', fontFamily: 'var(--font-headline)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--bg-secondary, rgba(255,255,255,0.05))';
+                  e.currentTarget.style.color = 'var(--text-primary, #fff)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = 'var(--text-secondary, #9ca3af)';
+                }}
+              >
+                <ArrowLeft size={14} /> Return to Dashboard
+              </button>
             </div>
           </motion.div>
         </motion.div>

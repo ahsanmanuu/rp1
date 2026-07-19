@@ -1,4 +1,4 @@
-export type AgentId = 'chat' | 'reviewer' | 'ai-fix' | 'extract' | 'diagram' | 'doc2latex';
+export type AgentId = 'chat' | 'reviewer' | 'ai-fix' | 'extract' | 'diagram' | 'doc2latex' | 'citation-enrich' | 'citation-validate' | 'citation-format';
 
 export interface ProviderConfig {
   name: string;

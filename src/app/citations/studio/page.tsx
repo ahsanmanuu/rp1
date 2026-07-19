@@ -7,7 +7,8 @@ import {
   Search, BookOpen, Copy, ChevronRight, Sparkles, Plus, FileText, Edit2,
   Globe, Download, Book, X, List, Loader2, LayoutPanelLeft, Trash, Settings,
   ChevronDown, Keyboard, PanelLeftClose, PanelLeftOpen, ShieldCheck, AlertCircle,
-  Video, Newspaper, Gavel, GraduationCap, MoreVertical, Database, Cpu, Folder, CloudUpload
+  Video, Newspaper, Gavel, GraduationCap, MoreVertical, Database, Cpu, Folder, CloudUpload,
+  Wand2, CheckCircle, RefreshCw, Zap, AlertTriangle
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { saveAs } from "file-saver";
@@ -107,6 +108,12 @@ export default function CitationGeneratorPage() {
   const [searchResults, setSearchResults] = useState<Citation[] | null>(null);
 
   const [activeRowMenu, setActiveRowMenu] = useState<string | null>(null);
+
+  // AI Agent State
+  const [aiLoading, setAiLoading] = useState<string | null>(null);
+  const [aiResult, setAiResult] = useState<any>(null);
+  const [aiAgentUsed, setAiAgentUsed] = useState<string | null>(null);
+  const [aiCapStatus, setAiCapStatus] = useState<{ capped: boolean; remaining: number; percentage: number } | null>(null);
 
   // Manual Entry / Edit State
   const [manualData, setManualData] = useState<Partial<Citation>>({
@@ -219,6 +226,75 @@ export default function CitationGeneratorPage() {
     }
     return `${authors} (${year}). ${title}. ${source}.`;
   };
+
+  const handleAiAgent = async (agent: string) => {
+    if (citations.length === 0) return toast.error("No citations to process");
+    setAiLoading(agent);
+    setAiResult(null);
+    setAiAgentUsed(agent);
+    try {
+      const res = await fetch('/api/citations/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agent,
+          citations: citations.map(c => ({
+            id: c.id,
+            title: c.title,
+            authors: c.authors,
+            year: c.year,
+            sourceName: c.sourceName,
+            doi: c.doi,
+            isbn: c.isbn,
+            url: c.url,
+            publisher: c.publisher,
+            publisherCity: c.publisherCity,
+            volume: c.volume,
+            issue: c.issue,
+            pages: c.pages,
+            edition: c.edition,
+            sourceType: c.sourceType,
+          })),
+          style: selectedStyle,
+          targetStyle: selectedStyle,
+          currentStyle: selectedStyle,
+        }),
+      });
+      const data = await res.json();
+      if (res.status === 429) {
+        toast.error(data.error === 'AI_CAP_REACHED' ? "Daily AI limit reached" : "AI access blocked by admin");
+        window.dispatchEvent(new CustomEvent('ai-cap-triggered'));
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || "AI request failed");
+      setAiResult(data.data);
+      toast.success(`AI ${agent.replace('citation-', '')} complete`);
+    } catch (err: any) {
+      toast.error(err.message || "AI request failed");
+    } finally {
+      setAiLoading(null);
+    }
+  };
+
+  const fetchAiCapStatus = async () => {
+    try {
+      const res = await fetch('/api/user/ai-cap/status');
+      if (res.ok) {
+        const data = await res.json();
+        setAiCapStatus({
+          capped: data.isCapped,
+          remaining: data.remaining ?? 0,
+          percentage: data.percentage ?? 0,
+        });
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    fetchAiCapStatus();
+    const interval = setInterval(fetchAiCapStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const toggleCheck = (id: string) => {
     setCheckedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
@@ -350,6 +426,35 @@ export default function CitationGeneratorPage() {
                     <button onClick={() => setViewMode("in-text")} style={{ padding: '0.4rem 1.25rem', borderRadius: '18px', fontSize: '0.8rem', fontWeight: 700, background: viewMode === "in-text" ? 'var(--bg-primary)' : 'transparent', color: viewMode === "in-text" ? 'var(--accent-primary)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer' }}>In-text</button>
                   </div>
                   <button onClick={handleExportWord} className="btn btn-secondary"><Download size={18} /> Export</button>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    {aiCapStatus && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', borderRadius: '20px', background: aiCapStatus.capped ? 'rgba(255,77,79,0.1)' : 'rgba(0,168,107,0.1)', fontSize: '0.7rem', fontWeight: 700, color: aiCapStatus.capped ? '#ff4d4f' : accentGreen }}>
+                        {aiCapStatus.capped ? <AlertTriangle size={12} /> : <Zap size={12} />}
+                        {aiCapStatus.capped ? 'Capped' : `${aiCapStatus.remaining} left`}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => handleAiAgent('citation-enrich')}
+                      disabled={!!aiLoading || aiCapStatus?.capped}
+                      style={{ padding: '0.5rem 1rem', borderRadius: '20px', border: 'none', background: aiLoading === 'citation-enrich' ? '#e0e0e0' : '#f0fdf4', color: aiLoading === 'citation-enrich' ? '#999' : '#16a34a', fontWeight: 800, fontSize: '0.8rem', cursor: aiLoading || aiCapStatus?.capped ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', opacity: aiCapStatus?.capped ? 0.5 : 1 }}
+                    >
+                      {aiLoading === 'citation-enrich' ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />} Enrich
+                    </button>
+                    <button
+                      onClick={() => handleAiAgent('citation-validate')}
+                      disabled={!!aiLoading || aiCapStatus?.capped}
+                      style={{ padding: '0.5rem 1rem', borderRadius: '20px', border: 'none', background: aiLoading === 'citation-validate' ? '#e0e0e0' : '#eff6ff', color: aiLoading === 'citation-validate' ? '#999' : '#2563eb', fontWeight: 800, fontSize: '0.8rem', cursor: aiLoading || aiCapStatus?.capped ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', opacity: aiCapStatus?.capped ? 0.5 : 1 }}
+                    >
+                      {aiLoading === 'citation-validate' ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />} Validate
+                    </button>
+                    <button
+                      onClick={() => handleAiAgent('citation-format')}
+                      disabled={!!aiLoading || aiCapStatus?.capped}
+                      style={{ padding: '0.5rem 1rem', borderRadius: '20px', border: 'none', background: aiLoading === 'citation-format' ? '#e0e0e0' : '#faf5ff', color: aiLoading === 'citation-format' ? '#999' : '#9333ea', fontWeight: 800, fontSize: '0.8rem', cursor: aiLoading || aiCapStatus?.capped ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', opacity: aiCapStatus?.capped ? 0.5 : 1 }}
+                    >
+                      {aiLoading === 'citation-format' ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Format
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -412,6 +517,86 @@ export default function CitationGeneratorPage() {
                   <BulkBtn icon={<Download size={18} />} label="Export" onClick={handleExportWord} />
                   <BulkBtn icon={<Trash size={18} />} label="Delete" color="#ff4d4f" onClick={() => { setCitations(citations.filter(c => !checkedIds.includes(c.id))); setCheckedIds([]); }} />
                   <button onClick={() => setCheckedIds([])} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', padding: '0.5rem', borderRadius: '50%', color: 'var(--bg-primary)', cursor: 'pointer' }}><X size={16} /></button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* AI Results Panel */}
+            <AnimatePresence>
+              {aiResult && (
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ borderTop: '1px solid var(--border)', overflow: 'hidden', background: 'var(--bg-secondary)' }}>
+                  <div style={{ padding: '1.25rem 2.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: aiAgentUsed === 'citation-enrich' ? '#f0fdf4' : aiAgentUsed === 'citation-validate' ? '#eff6ff' : '#faf5ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {aiAgentUsed === 'citation-enrich' ? <Wand2 size={16} color="#16a34a" /> : aiAgentUsed === 'citation-validate' ? <CheckCircle size={16} color="#2563eb" /> : <RefreshCw size={16} color="#9333ea" />}
+                        </div>
+                        <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>AI {aiAgentUsed?.replace('citation-', '').replace(/\b\w/g, c => c.toUpperCase())} Results</span>
+                      </div>
+                      <button onClick={() => setAiResult(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#8c8c8c' }}><X size={18} /></button>
+                    </div>
+
+                    {/* Enrichment Results */}
+                    {aiResult.enrichedCitations && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {aiResult.globalSuggestions?.length > 0 && (
+                          <div style={{ padding: '0.75rem 1rem', background: '#f0fdf4', borderRadius: '12px', border: '1px solid #bbf7d0', fontSize: '0.85rem' }}>
+                            {aiResult.globalSuggestions.map((s: string, i: number) => <div key={i}>{s}</div>)}
+                          </div>
+                        )}
+                        {aiResult.enrichedCitations.map((ec: any, i: number) => (
+                          <div key={ec.id || i} style={{ padding: '0.75rem 1rem', background: 'var(--bg-primary)', borderRadius: '12px', border: '1px solid var(--border)', fontSize: '0.85rem' }}>
+                            <div style={{ fontWeight: 700, marginBottom: '0.4rem' }}>{ec.fields?.title || `Citation ${i + 1}`}</div>
+                            {ec.missingCritical?.length > 0 && <div style={{ color: '#ff4d4f', fontSize: '0.8rem' }}>Missing: {ec.missingCritical.join(', ')}</div>}
+                            {ec.suggestions?.length > 0 && ec.suggestions.map((s: string, j: number) => <div key={j} style={{ color: '#8c8c8c', fontSize: '0.8rem' }}>• {s}</div>)}
+                            {ec.confidence !== undefined && <div style={{ marginTop: '0.4rem', fontSize: '0.75rem', color: accentGreen, fontWeight: 700 }}>Confidence: {ec.confidence}%</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Validation Results */}
+                    {aiResult.validatedCitations && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {aiResult.summary && (
+                          <div style={{ display: 'flex', gap: '1.5rem', padding: '0.75rem 1rem', background: 'var(--bg-primary)', borderRadius: '12px', border: '1px solid var(--border)', fontSize: '0.85rem' }}>
+                            <span><strong>{aiResult.summary.totalCitations}</strong> total</span>
+                            <span style={{ color: '#16a34a' }}><strong>{aiResult.summary.validCount}</strong> valid</span>
+                            <span style={{ color: '#ff4d4f' }}><strong>{aiResult.summary.invalidCount}</strong> issues</span>
+                          </div>
+                        )}
+                        {aiResult.validatedCitations.map((vc: any, i: number) => (
+                          <div key={vc.id || i} style={{ padding: '0.75rem 1rem', background: 'var(--bg-primary)', borderRadius: '12px', border: `1px solid ${vc.isValid ? '#bbf7d0' : '#fecaca'}`, fontSize: '0.85rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                              <span style={{ fontWeight: 700 }}>{vc.id || `Citation ${i + 1}`}</span>
+                              <span style={{ padding: '0.2rem 0.6rem', borderRadius: '10px', background: vc.isValid ? '#f0fdf4' : '#fef2f2', color: vc.isValid ? '#16a34a' : '#ff4d4f', fontWeight: 800, fontSize: '0.75rem' }}>{vc.score || 0}%</span>
+                            </div>
+                            {vc.errors?.map((e: any, j: number) => <div key={j} style={{ color: e.severity === 'error' ? '#ff4d4f' : e.severity === 'warning' ? '#f59e0b' : '#8c8c8c', fontSize: '0.8rem' }}>• [{e.field}] {e.message}</div>)}
+                            {vc.autoFixes?.length > 0 && <div style={{ marginTop: '0.4rem', color: accentGreen, fontSize: '0.8rem' }}>Suggested fixes: {vc.autoFixes.length}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Format Results */}
+                    {aiResult.formattedCitations && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {aiResult.styleGuide?.tips?.length > 0 && (
+                          <div style={{ padding: '0.75rem 1rem', background: '#faf5ff', borderRadius: '12px', border: '1px solid #e9d5ff', fontSize: '0.85rem' }}>
+                            {aiResult.styleGuide.tips.map((t: string, i: number) => <div key={i}>{t}</div>)}
+                          </div>
+                        )}
+                        {aiResult.formattedCitations.map((fc: any, i: number) => (
+                          <div key={fc.id || i} style={{ padding: '0.75rem 1rem', background: 'var(--bg-primary)', borderRadius: '12px', border: '1px solid var(--border)', fontSize: '0.85rem' }}>
+                            <div style={{ fontWeight: 700, marginBottom: '0.4rem' }}>{fc.id || `Citation ${i + 1}`}</div>
+                            <div style={{ marginBottom: '0.3rem' }}><span style={{ color: '#8c8c8c', fontSize: '0.75rem', fontWeight: 700 }}>BIBLIOGRAPHY:</span> {fc.bibliography}</div>
+                            <div style={{ marginBottom: '0.3rem' }}><span style={{ color: '#8c8c8c', fontSize: '0.75rem', fontWeight: 700 }}>IN-TEXT:</span> {fc.inText}</div>
+                            {fc.inTextNarrative && <div><span style={{ color: '#8c8c8c', fontSize: '0.75rem', fontWeight: 700 }}>NARRATIVE:</span> {fc.inTextNarrative}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>

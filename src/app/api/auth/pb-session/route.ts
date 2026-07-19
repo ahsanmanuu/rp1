@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Validate session exists in DB first to handle database availability correctly
-  let sessionRecord = null;
+  let sessionRecord: Awaited<ReturnType<typeof prisma.userSession.findUnique>> = null;
   let dbError = false;
   try {
     sessionRecord = await prisma.userSession.findUnique({
@@ -117,7 +117,8 @@ export async function GET(req: NextRequest) {
 
       // Always log activity
       const { logUserActivity } = await import("@/lib/security");
-      logUserActivity(sessionRecord.userId, nextIp, nextLoc, userAgent).catch(() => {});
+      const uid = (sessionRecord!.userId ?? sessionRecord!.id ?? 'unknown') as string;
+      logUserActivity(uid, nextIp || '127.0.0.1', nextLoc || 'Unknown', userAgent).catch(() => {});
 
       // Update PocketBase user_sessions if exists
       import("@/lib/pb").then(({ pbAdmin }) =>

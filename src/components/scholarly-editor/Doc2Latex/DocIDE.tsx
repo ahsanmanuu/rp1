@@ -92,6 +92,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
   const filesRef = useRef<StudioFile[]>([]);
   const currentPdfBlob = useRef<Blob | null>(null);
   const compileRef = useRef<(() => Promise<void>) | null>(null);
+  const codeRef = useRef('');
   const shareProject = async () => {
     const tid = toast.loading("Generating share link...");
     try {
@@ -289,20 +290,33 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       }
     };
     init();
-  }, [session, status, projectId, openTabs]);
+  }, [session, status, projectId]);
 
   useEffect(() => {
-    if (autoEngine && code) {
-      const best = detectBestEngine(code); // Corrected to match the lib signature if it changed
+    if (!autoEngine || !code || activeFile !== 'main.tex') return;
+    const timer = setTimeout(() => {
+      const best = detectBestEngine(code);
       setEngine(best);
-    }
-  }, [code, autoEngine, activeFile, engine]);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [code, autoEngine, activeFile]);
 
   useEffect(() => {
     if (mounted && project) {
-      localStorage.setItem(`doc_engine_${projectId}`, engine);
-      localStorage.setItem(`doc_auto_${projectId}`, autoEngine.toString());
-      localStorage.setItem(`doc_mood_${projectId}`, editorMood);
+      try {
+        localStorage.setItem(`doc_engine_${projectId}`, engine);
+        localStorage.setItem(`doc_auto_${projectId}`, autoEngine.toString());
+        localStorage.setItem(`doc_mood_${projectId}`, editorMood);
+      } catch {
+        try {
+          localStorage.removeItem(`doc_engine_${projectId}`);
+          localStorage.removeItem(`doc_auto_${projectId}`);
+          localStorage.removeItem(`doc_mood_${projectId}`);
+          localStorage.setItem(`doc_engine_${projectId}`, engine);
+          localStorage.setItem(`doc_auto_${projectId}`, autoEngine.toString());
+          localStorage.setItem(`doc_mood_${projectId}`, editorMood);
+        } catch { /* storage full, skip */ }
+      }
 
       updatePages({
         [`doc_engine_${projectId}`]: engine,
@@ -338,6 +352,10 @@ export default function DocIDE({ projectId }: { projectId: string }) {
           'editorCursor.foreground': '#ffffff',
           'editor.lineHighlightBackground': 'rgba(255,255,255,0.03)',
           'editorLineNumber.foreground': 'rgba(255,255,255,0.2)',
+          'scrollbarSlider.background': 'rgba(255,255,255,0.18)',
+          'scrollbarSlider.hoverBackground': 'rgba(255,255,255,0.32)',
+          'scrollbarSlider.activeBackground': 'rgba(255,255,255,0.40)',
+          'scrollbarSlider.border': '1px solid rgba(255,255,255,0.05)',
         }
       });
       mon.editor.setTheme('scholarly-vibrant');
@@ -358,8 +376,8 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       }
     }
   }, [code]);
-
-  // Handle Diagnostic Markers (Error Squiggles) & Whole Line Highlights
+  // Sync codeRef for compile callbacks
+  useEffect(() => { codeRef.current = code; }, [code]);
   useEffect(() => {
     if (monacoRef.current && editorRef.current) {
       const model = editorRef.current.getModel();
@@ -442,7 +460,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
         }));
       editor.errorDecorations = editor.deltaDecorations(oldDecorations, newDecorations);
     }
-  }, [errors, activeFile, code]);
+  }, [errors, activeFile]);
 
   const projectStatus = (project as any)?.status;
 
@@ -664,11 +682,11 @@ export default function DocIDE({ projectId }: { projectId: string }) {
 
   const handleMouseUp = useCallback(() => {
     if (isResizingSidebar) {
-      localStorage.setItem(`doc_sidebar_${projectId}`, sidebarWidth.toString());
+      try { localStorage.setItem(`doc_sidebar_${projectId}`, sidebarWidth.toString()); } catch {}
       updatePanels({ [`doc_sidebar_${projectId}`]: sidebarWidth });
     }
     if (isResizingPdf) {
-      localStorage.setItem(`doc_pdf_${projectId}`, pdfWidth.toString());
+      try { localStorage.setItem(`doc_pdf_${projectId}`, pdfWidth.toString()); } catch {}
       updatePanels({ [`doc_pdf_${projectId}`]: pdfWidth });
     }
     setIsResizingSidebar(false);
@@ -721,7 +739,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     setErrors([]);
 
     try {
-      await fs.writeFile(projectId, activeFile, code);
+      await fs.writeFile(projectId, activeFile, codeRef.current);
       const payloadMeta = await fs.listFiles(projectId);
       
       // AUTO-SYNC TO PERSISTENT STORE BEFORE COMPILING
@@ -878,7 +896,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     } finally {
       setCompiling(false);
     }
-  }, [fs, compiling, projectId, activeFile, engine, code, project, isSyncing]);
+  }, [fs, compiling, projectId, activeFile, engine, project, isSyncing]);
 
   // Keep compileRef current so async callbacks always call the latest version
   useEffect(() => {
@@ -895,7 +913,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
         compile();
       }
     }
-  }, [fs, project, code, compiling, isSyncing, projectId, compile]);
+  }, [fs, project, compiling, isSyncing, projectId, compile]);
 
   // Global Ctrl+Enter / Cmd+Enter key listener for compilation
   useEffect(() => {
@@ -931,12 +949,12 @@ export default function DocIDE({ projectId }: { projectId: string }) {
           setEngine={(val: any) => {
             setEngine(val);
             setAutoEngine(false);
-            localStorage.setItem(`doc_auto_${projectId}`, 'false');
+            try { localStorage.setItem(`doc_auto_${projectId}`, 'false'); } catch {}
           }}
           autoEngine={autoEngine}
           setAutoEngine={(val: boolean) => {
             setAutoEngine(val);
-            localStorage.setItem(`doc_auto_${projectId}`, val.toString());
+            try { localStorage.setItem(`doc_auto_${projectId}`, val.toString()); } catch {}
           }}
           compile={compile}
           compiling={compiling}

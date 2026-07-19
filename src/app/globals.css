@@ -709,6 +709,14 @@ html.theme-slate, body.theme-slate { --accent-primary: #475569; --accent-rgb: 71
     background: rgba(255, 255, 255, 0.05) !important;
   }
 
+  body.theme-indigo ::-webkit-scrollbar-track,
+  body.theme-purple ::-webkit-scrollbar-track,
+  body.theme-emerald ::-webkit-scrollbar-track,
+  body.theme-gold ::-webkit-scrollbar-track,
+  body.theme-slate ::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05) !important;
+  }
+
   ::-webkit-scrollbar-thumb {
     background: rgba(0, 104, 95, 0.5) !important; /* Primary Academic Green */
     border: 2px solid transparent !important;
@@ -717,8 +725,19 @@ html.theme-slate, body.theme-slate { --accent-primary: #475569; --accent-rgb: 71
   }
 
   .dark ::-webkit-scrollbar-thumb, [data-theme='dark'] ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.45) !important; /* Higher contrast */
-    border: 2px solid rgba(255, 255, 255, 0.1) !important;
+    background: rgba(255, 255, 255, 0.55) !important;
+    border: 2px solid rgba(255, 255, 255, 0.15) !important;
+    border-radius: 10px !important;
+  }
+
+  body.theme-indigo ::-webkit-scrollbar-thumb,
+  body.theme-purple ::-webkit-scrollbar-thumb,
+  body.theme-emerald ::-webkit-scrollbar-thumb,
+  body.theme-gold ::-webkit-scrollbar-thumb,
+  body.theme-slate ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.55) !important;
+    border: 2px solid rgba(255, 255, 255, 0.15) !important;
+    border-radius: 10px !important;
   }
 
   ::-webkit-scrollbar-thumb:hover {
@@ -726,7 +745,19 @@ html.theme-slate, body.theme-slate { --accent-primary: #475569; --accent-rgb: 71
   }
 
   .dark ::-webkit-scrollbar-thumb:hover, [data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.65) !important;
+    background: rgba(255, 255, 255, 0.75) !important;
+  }
+
+  body.theme-indigo ::-webkit-scrollbar-thumb:hover,
+  body.theme-purple ::-webkit-scrollbar-thumb:hover,
+  body.theme-emerald ::-webkit-scrollbar-thumb:hover,
+  body.theme-gold ::-webkit-scrollbar-thumb:hover,
+  body.theme-slate ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.75) !important;
+  }
+
+  .dark ::-webkit-scrollbar-corner, [data-theme='dark'] ::-webkit-scrollbar-corner {
+    background: transparent !important;
   }
 
   .glass-card {

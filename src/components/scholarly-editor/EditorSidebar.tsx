@@ -31,7 +31,7 @@ export default function EditorSidebar({ files, outline }: EditorSidebarProps) {
           <span>Components 📦</span>
           <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>{files.length} items</span>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 0' }}>
+        <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 0' }}>
           {files.length === 0 ? (
             <div style={{ padding: '1rem', color: 'var(--text-secondary)', fontSize: '0.8rem', textAlign: 'center' }}>
               No assets uploaded
@@ -76,7 +76,7 @@ export default function EditorSidebar({ files, outline }: EditorSidebarProps) {
         }}>
           Structure 📑
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 0' }}>
+        <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 0' }}>
           {outline.length === 0 ? (
             <div style={{ padding: '1rem', color: 'var(--text-secondary)', fontSize: '0.8rem', textAlign: 'center' }}>
               Empty document structure

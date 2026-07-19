@@ -138,9 +138,20 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
   }, [settings.panels?.sidebarWidth, settings.panels?.pdfWidth, settings.panels?.editorMood]);
 
   useEffect(() => {
-    localStorage.setItem('sidebarWidth', sidebarWidth.toString());
-    localStorage.setItem('pdfWidth', pdfWidth.toString());
-    localStorage.setItem('guest_mood', editorMood);
+    try {
+      localStorage.setItem('sidebarWidth', sidebarWidth.toString());
+      localStorage.setItem('pdfWidth', pdfWidth.toString());
+      localStorage.setItem('guest_mood', editorMood);
+    } catch {
+      try {
+        localStorage.removeItem('sidebarWidth');
+        localStorage.removeItem('pdfWidth');
+        localStorage.removeItem('guest_mood');
+        localStorage.setItem('sidebarWidth', sidebarWidth.toString());
+        localStorage.setItem('pdfWidth', pdfWidth.toString());
+        localStorage.setItem('guest_mood', editorMood);
+      } catch { /* quota exceeded — silently skip */ }
+    }
 
     updatePanels({
       sidebarWidth,
@@ -171,6 +182,10 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
           'editorCursor.foreground': '#ffffff',
           'editor.lineHighlightBackground': 'rgba(255,255,255,0.03)',
           'editorLineNumber.foreground': 'rgba(255,255,255,0.2)',
+          'scrollbarSlider.background': 'rgba(255,255,255,0.18)',
+          'scrollbarSlider.hoverBackground': 'rgba(255,255,255,0.32)',
+          'scrollbarSlider.activeBackground': 'rgba(255,255,255,0.40)',
+          'scrollbarSlider.border': '1px solid rgba(255,255,255,0.05)',
         }
       });
       mon.editor.setTheme('scholarly-vibrant');
@@ -1277,7 +1292,7 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
             )}
           </AnimatePresence>
 
-          <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 0' }}>
+          <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 0' }}>
             {activePanel === 'files' && (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', display: 'flex', gap: '0.25rem' }}>
@@ -1640,7 +1655,7 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
 
             <div>
               <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '1rem', textTransform: 'uppercase' }}>Current Members</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '200px', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '200px', overflowY: 'auto' }} className="custom-scroll">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--accent-primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 800 }}>M</div>
@@ -1724,7 +1739,7 @@ function AIAssistPanel({ code, errors, onInsert, onApplyEdits, onClose }: { code
           <button type="button" key={m} onClick={() => setMode(m)} style={{ flex: 1, padding: '0.4rem', fontSize: '0.65rem', fontWeight: 600, background: mode === m ? 'var(--bg-tertiary)' : 'transparent', border: 'none', cursor: 'pointer', color: mode === m ? 'var(--accent-primary)' : 'var(--text-secondary)', textTransform: 'uppercase' }}>{m}</button>
         ))}
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         {mode === 'fix' && errors.length > 0 && (
           <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', padding: '0.6rem' }}>
             <p style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--error)', marginBottom: '0.3rem' }}>{errors.length} errors found</p>
@@ -1745,7 +1760,7 @@ function AIAssistPanel({ code, errors, onInsert, onApplyEdits, onClose }: { code
               )}
             </div>
             {parsedJson ? (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem', minHeight: 0, overflowY: 'auto' }}>
+              <div className="custom-scroll" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem', minHeight: 0, overflowY: 'auto' }}>
                 <pre style={{ fontSize: '0.7rem', whiteSpace: 'pre-wrap', background: '#000', padding: '0.5rem', borderRadius: '4px', margin: 0 }}>{parsedJson.explanation}</pre>
                 {parsedJson.edits && parsedJson.edits.length > 0 && (
                   <div style={{ background: 'var(--bg-tertiary)', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '0.65rem' }}>

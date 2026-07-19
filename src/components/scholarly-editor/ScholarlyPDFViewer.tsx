@@ -457,6 +457,7 @@ const ScholarlyPDFViewer = memo(({ pdfUrl, syncTexStr, compiling, onJumpToLatexC
       <div 
         ref={containerRef}
         onClick={handleSyncClick}
+        className="pdf-scroll"
         style={{ 
           flex: 1, 
           overflowY: 'auto', 

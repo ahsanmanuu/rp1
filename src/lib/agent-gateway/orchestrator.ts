@@ -224,6 +224,15 @@ export async function routeToAgent(req: GatewayRequest): Promise<GatewayResponse
     } else if (req.agent === 'doc2latex') {
       toolName = 'doc2latex';
       action = 'ai_enhance';
+    } else if (req.agent === 'citation-enrich') {
+      toolName = 'citation_studio';
+      action = 'enrich_citations';
+    } else if (req.agent === 'citation-validate') {
+      toolName = 'citation_studio';
+      action = 'validate_citations';
+    } else if (req.agent === 'citation-format') {
+      toolName = 'citation_studio';
+      action = 'format_citations';
     }
     // Fire-and-forget: don't await, don't block the request
     import('../security').then(({ logToolUsage }) => {
@@ -413,6 +422,29 @@ export async function routeToAgent(req: GatewayRequest): Promise<GatewayResponse
         keywordSuggestions: [],
         templateNotes: 'AI enhancement temporarily unavailable. Your LaTeX was generated using the structural parser.',
         conversionConfidence: 75,
+        _failSafe: true,
+      };
+    } else if (req.agent === 'citation-enrich') {
+      syntheticData = {
+        enrichedCitations: [],
+        globalSuggestions: ['AI enrichment temporarily unavailable. Please verify your citation metadata manually.'],
+        _failSafe: true,
+      };
+    } else if (req.agent === 'citation-validate') {
+      syntheticData = {
+        validatedCitations: [],
+        summary: {
+          totalCitations: 0,
+          validCount: 0,
+          invalidCount: 0,
+          commonIssues: ['AI validation temporarily unavailable.'],
+        },
+        _failSafe: true,
+      };
+    } else if (req.agent === 'citation-format') {
+      syntheticData = {
+        formattedCitations: [],
+        styleGuide: { rules: [], tips: ['AI formatting temporarily unavailable.'] },
         _failSafe: true,
       };
     }

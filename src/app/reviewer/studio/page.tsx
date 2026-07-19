@@ -34,6 +34,23 @@ function safeStr(val: any, fallback = ''): string {
   return String(val);
 }
 
+function safeSetItem(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    try {
+      const keys = Object.keys(localStorage);
+      const reviewKeys = keys.filter(k => k.startsWith('scholarly_review_history') || k.startsWith('pending_review_'));
+      for (const k of reviewKeys.slice(0, 5)) {
+        localStorage.removeItem(k);
+      }
+      localStorage.setItem(key, value);
+    } catch {
+      // Storage is full and cleanup didn't help — silently skip
+    }
+  }
+}
+
 // Helper function to mathematically convert OKLCH/OKLab color strings to safe, accurate sRGB
 function oklchToRgb(oklchStr: string): string {
   try {
@@ -310,7 +327,7 @@ export default function ReviewerPage() {
         const data = await res.json();
         if (data.success && data.reviews) {
           setActiveHistory(data.reviews);
-          localStorage.setItem('scholarly_review_history', JSON.stringify(data.reviews));
+          safeSetItem('scholarly_review_history', JSON.stringify(data.reviews));
         }
       } catch {
         // Ignore transient network/compile errors
@@ -364,7 +381,7 @@ export default function ReviewerPage() {
       const data = await res.json();
       if (data.success && data.reviews) {
         setActiveHistory(data.reviews);
-        localStorage.setItem('scholarly_review_history', JSON.stringify(data.reviews));
+        safeSetItem('scholarly_review_history', JSON.stringify(data.reviews));
       }
     } catch { /* transient compile/network error */ }
   };
@@ -393,14 +410,14 @@ export default function ReviewerPage() {
       setExtractedAbstract(data.abstract || "");
 
       if (typeof window !== 'undefined') {
-        localStorage.setItem('pending_review_filename', f.name);
-        localStorage.setItem('pending_review_text', data.text);
-        localStorage.setItem('pending_review_stats', JSON.stringify(data.stats));
-        localStorage.setItem('pending_review_keywords', JSON.stringify(data.keywords || []));
-        localStorage.setItem('pending_review_authors', JSON.stringify(data.authors || []));
-        localStorage.setItem('pending_review_affiliations', data.affiliations || "");
-        localStorage.setItem('pending_review_title', data.title || "");
-        localStorage.setItem('pending_review_abstract', data.abstract || "");
+        safeSetItem('pending_review_filename', f.name);
+        safeSetItem('pending_review_text', data.text);
+        safeSetItem('pending_review_stats', JSON.stringify(data.stats));
+        safeSetItem('pending_review_keywords', JSON.stringify(data.keywords || []));
+        safeSetItem('pending_review_authors', JSON.stringify(data.authors || []));
+        safeSetItem('pending_review_affiliations', data.affiliations || "");
+        safeSetItem('pending_review_title', data.title || "");
+        safeSetItem('pending_review_abstract', data.abstract || "");
       }
 
       toast.success("Manuscript Synthesized");
@@ -465,7 +482,7 @@ export default function ReviewerPage() {
           journalsJson: JSON.stringify(data.journals || [])
         });
         setActiveHistory(manualCache);
-        localStorage.setItem('scholarly_review_history', JSON.stringify(manualCache));
+        safeSetItem('scholarly_review_history', JSON.stringify(manualCache));
       }
     } catch (err: any) {
       setError(err.message);
@@ -1374,7 +1391,7 @@ export default function ReviewerPage() {
                 try {
                   const parsed = JSON.parse(cached);
                   const filtered = parsed.filter((h: any) => h.id !== currentReviewId);
-                  localStorage.setItem('scholarly_review_history', JSON.stringify(filtered));
+                  safeSetItem('scholarly_review_history', JSON.stringify(filtered));
                   setActiveHistory(filtered);
                 } catch {}
               }

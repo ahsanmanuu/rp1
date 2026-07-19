@@ -676,3 +676,204 @@ Return ONLY valid JSON. No markdown, no text before or after.`;
     };
   },
 });
+
+register({
+  id: 'citation-enrich',
+  name: 'Citation Enrichment Agent',
+  description: 'Enriches citation metadata by filling missing fields, correcting inconsistencies, and suggesting improvements',
+  temperature: 0.15,
+  maxTokens: 4096,
+  rateLimit: 60,
+  buildSystemPrompt(ctx) {
+    const citations = JSON.stringify(ctx.citations || [], null, 2).substring(0, 6000);
+    const style = String(ctx.style || 'APA 7th edition');
+    return `You are an expert citation metadata enrichment AI agent inside the Citation Studio.
+
+## Task
+Analyze the provided citation(s) and enrich them:
+1. Fill in missing fields (publisher, volume, issue, pages, DOI, city) where possible
+2. Correct inconsistencies (e.g., author name format, year placement)
+3. Suggest improvements for completeness
+4. Flag any missing critical fields
+
+## Target Citation Style
+${style}
+
+## Citation Data
+\`\`\`json
+${citations}
+\`\`\`
+
+## Output Format
+Return a JSON object with this EXACT structure:
+{
+  "enrichedCitations": [
+    {
+      "id": "<original citation id>",
+      "fields": {
+        "title": "<corrected/enhanced title or original>",
+        "authors": "<corrected author format>",
+        "year": "<year or n.d.>",
+        "sourceName": "<journal/book name>",
+        "doi": "<doi or empty string>",
+        "publisher": "<suggested publisher>",
+        "publisherCity": "<suggested city>",
+        "volume": "<volume or empty>",
+        "issue": "<issue or empty>",
+        "pages": "<pages or empty>",
+        "edition": "<edition or empty>"
+      },
+      "missingCritical": ["<list of critical missing fields>"],
+      "suggestions": ["<specific improvement suggestions>"],
+      "confidence": <integer 0-100>
+    }
+  ],
+  "globalSuggestions": ["<general suggestions across all citations>"]
+}
+
+Return ONLY valid JSON. No markdown, no text before or after.`;
+  },
+  parseResponse(raw) {
+    try { return JSON.parse(raw.trim()); } catch { /* continue */ }
+    const json = extractJsonBlock(raw);
+    if (json) {
+      try { return cleanAndParseJson(json); } catch { /* continue */ }
+    }
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    try { return cleanAndParseJson(cleaned); } catch {
+      return { enrichedCitations: [], globalSuggestions: ['AI enrichment unavailable. Please check your citations manually.'], _partial: true };
+    }
+  },
+});
+
+register({
+  id: 'citation-validate',
+  name: 'Citation Validation Agent',
+  description: 'Validates citation data for accuracy, completeness, and style compliance with detailed error reporting',
+  temperature: 0.1,
+  maxTokens: 4096,
+  rateLimit: 60,
+  buildSystemPrompt(ctx) {
+    const citations = JSON.stringify(ctx.citations || [], null, 2).substring(0, 6000);
+    const style = String(ctx.style || 'APA 7th edition');
+    return `You are an expert citation validation AI agent inside the Citation Studio.
+
+## Task
+Validate the provided citation(s) against the target style rules:
+1. Check for missing required fields per the citation style
+2. Validate format correctness (author format, date placement, title capitalization)
+3. Flag potential data inconsistencies (e.g., DOI format, ISBN length)
+4. Score each citation on completeness and accuracy
+
+## Target Citation Style
+${style}
+
+## Citation Data
+\`\`\`json
+${citations}
+\`\`\`
+
+## Output Format
+Return a JSON object with this EXACT structure:
+{
+  "validatedCitations": [
+    {
+      "id": "<original citation id>",
+      "isValid": <boolean>,
+      "score": <integer 0-100>,
+      "errors": [
+        { "field": "<field name>", "message": "<error description>", "severity": "error" | "warning" | "info" }
+      ],
+      "styleIssues": ["<citation style violations>"],
+      "autoFixes": [
+        { "field": "<field name>", "current": "<current value>", "suggested": "<corrected value>", "reason": "<why this fix>" }
+      ]
+    }
+  ],
+  "summary": {
+    "totalCitations": <number>,
+    "validCount": <number>,
+    "invalidCount": <number>,
+    "commonIssues": ["<recurring issues across citations>"]
+  }
+}
+
+Return ONLY valid JSON. No markdown, no text before or after.`;
+  },
+  parseResponse(raw) {
+    try { return JSON.parse(raw.trim()); } catch { /* continue */ }
+    const json = extractJsonBlock(raw);
+    if (json) {
+      try { return cleanAndParseJson(json); } catch { /* continue */ }
+    }
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    try { return cleanAndParseJson(cleaned); } catch {
+      return { validatedCitations: [], summary: { totalCitations: 0, validCount: 0, invalidCount: 0, commonIssues: ['AI validation unavailable.'] }, _partial: true };
+    }
+  },
+});
+
+register({
+  id: 'citation-format',
+  name: 'Citation Formatting Agent',
+  description: 'Converts citations between styles (APA, MLA, Chicago, Harvard, Vancouver, IEEE) and generates multiple format variants',
+  temperature: 0.1,
+  maxTokens: 4096,
+  rateLimit: 60,
+  buildSystemPrompt(ctx) {
+    const citations = JSON.stringify(ctx.citations || [], null, 2).substring(0, 6000);
+    const targetStyle = String(ctx.targetStyle || 'APA 7th edition');
+    const currentStyle = String(ctx.currentStyle || 'APA 7th edition');
+    return `You are an expert citation formatting AI agent inside the Citation Studio.
+
+## Task
+Convert the provided citation(s) from one style to another:
+1. Apply the target citation style rules precisely
+2. Handle special cases (multiple authors, et al. rules, italicization markers)
+3. Generate both bibliography and in-text citation formats
+4. Maintain consistency across all citations
+
+## Current Style
+${currentStyle}
+
+## Target Style
+${targetStyle}
+
+## Citation Data
+\`\`\`json
+${citations}
+\`\`\`
+
+## Output Format
+Return a JSON object with this EXACT structure:
+{
+  "formattedCitations": [
+    {
+      "id": "<original citation id>",
+      "bibliography": "<fully formatted bibliography entry>",
+      "inText": "<in-text citation format>",
+      "inTextNarrative": "<narrative in-text format, e.g. Author (Year)>",
+      "style": "${targetStyle}",
+      "notes": ["<any formatting notes or caveats>"]
+    }
+  ],
+  "styleGuide": {
+    "rules": ["<key rules of the target style applied>"],
+    "tips": ["<tips for using this style correctly>"]
+  }
+}
+
+Return ONLY valid JSON. No markdown, no text before or after.`;
+  },
+  parseResponse(raw) {
+    try { return JSON.parse(raw.trim()); } catch { /* continue */ }
+    const json = extractJsonBlock(raw);
+    if (json) {
+      try { return cleanAndParseJson(json); } catch { /* continue */ }
+    }
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    try { return cleanAndParseJson(cleaned); } catch {
+      return { formattedCitations: [], styleGuide: { rules: [], tips: ['AI formatting unavailable.'] }, _partial: true };
+    }
+  },
+});
