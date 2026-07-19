@@ -134,6 +134,7 @@ export default function AdminBackupPage() {
   const [backupResult, setBackupResult] = useState<BackupResult | null>(null);
   const [showResultModal, setShowResultModal] = useState(false);
   const [backupBlobUrl, setBackupBlobUrl] = useState<string | null>(null);
+  const backupSuccessRef = useRef(false);
 
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [restoreMode, setRestoreMode] = useState<"merge" | "replace" | "skip">("merge");
@@ -144,6 +145,7 @@ export default function AdminBackupPage() {
   const [showRestoreResult, setShowRestoreResult] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const [showBackupErrors, setShowBackupErrors] = useState(false);
+  const [backupError, setBackupError] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -218,6 +220,8 @@ export default function AdminBackupPage() {
     setBackupCancelled(false);
     setBackupResult(null);
     setBackupBlobUrl(null);
+    setBackupError(null);
+    backupSuccessRef.current = false;
     backupAbortRef.current = new AbortController();
 
     let progressInterval: NodeJS.Timeout | undefined;
@@ -240,11 +244,14 @@ export default function AdminBackupPage() {
       if (!res.ok) {
         const text = await res.text();
         let errMsg = "Backup failed";
-        try { errMsg = JSON.parse(text).error || errMsg; } catch { errMsg = text.slice(0, 200) || errMsg; }
+        try { errMsg = JSON.parse(text).error || errMsg; } catch { errMsg = text.slice(0, 300) || errMsg; }
         throw new Error(errMsg);
       }
 
       const blob = await res.blob();
+      if (blob.size < 100) {
+        throw new Error("Server returned empty file. PocketBase may be down.");
+      }
       const url = URL.createObjectURL(blob);
 
       const actualRecords = parseInt(res.headers.get("X-Backup-Records") || "0", 10);
@@ -282,17 +289,23 @@ export default function AdminBackupPage() {
         backupId: `bk_${Date.now()}`,
         errors: collectionErrors,
       });
+      backupSuccessRef.current = true;
       setShowResultModal(true);
     } catch (err: any) {
+      if (progressInterval) clearInterval(progressInterval);
       if (err.name === "AbortError") {
         setBackupPhase("Backup cancelled.");
+        setBackupError("Backup was cancelled by user.");
       } else {
-        setBackupPhase("Backup failed: " + (err.message || "Unknown error"));
-        setRestoreError(err.message);
+        setBackupPhase("Backup failed!");
+        setBackupError(err.message || "Unknown error");
       }
     } finally {
       if (progressInterval) clearInterval(progressInterval);
-      setTimeout(() => setBackupRunning(false), 500);
+      if (backupSuccessRef.current) {
+        setBackupRunning(false);
+      }
+      // On error: don't auto-close — user clicks "Close" button to dismiss
     }
   };
 
@@ -652,6 +665,14 @@ export default function AdminBackupPage() {
             <span className="material-symbols-outlined">error</span>
             <span>{restoreError}</span>
             <button onClick={() => setRestoreError(null)} className="ml-auto underline">Dismiss</button>
+          </div>
+        )}
+
+        {backupError && !backupRunning && (
+          <div className="mb-6 p-4 rounded-xl border text-sm font-medium flex items-center gap-3" style={{ backgroundColor: "rgba(239, 68, 68, 0.1)", borderColor: "rgba(239, 68, 68, 0.25)", color: "#ef4444" }}>
+            <span className="material-symbols-outlined">error</span>
+            <span>Backup Error: {backupError}</span>
+            <button onClick={() => setBackupError(null)} className="ml-auto underline">Dismiss</button>
           </div>
         )}
 
@@ -1122,42 +1143,60 @@ export default function AdminBackupPage() {
               className="flex flex-col items-center max-w-2xl w-full px-8 text-center"
             >
               <div className="relative w-32 h-32 mb-8 flex items-center justify-center">
-                <motion.div
-                  className="absolute inset-0 rounded-full border-[3px] border-transparent"
-                  style={{ borderTopColor: "var(--color-admin-primary)", borderRightColor: "var(--color-admin-primary)" }}
-                  animate={{ rotate: 360 }}
-                  transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
-                />
-                <motion.div
-                  className="absolute inset-2 rounded-full border-[2px] border-transparent"
-                  style={{ borderBottomColor: "#8b5cf6", borderLeftColor: "#8b5cf6" }}
-                  animate={{ rotate: -360 }}
-                  transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-                />
-                <motion.div
-                  className="absolute inset-4 rounded-full"
-                  style={{ background: "radial-gradient(circle, var(--color-admin-primary) 0%, transparent 70%)" }}
-                  animate={{ scale: [0.8, 1.2, 0.8], opacity: [0.1, 0.25, 0.1] }}
-                  transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-                />
-                <span className="material-symbols-outlined text-[36px] relative z-10" style={{ color: "var(--color-admin-primary)" }}>
-                  {backupRunning ? "cloud_download" : "cloud_upload"}
-                </span>
+                {backupError ? (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                    className="w-24 h-24 rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: "rgba(239, 68, 68, 0.15)" }}
+                  >
+                    <span className="material-symbols-outlined text-[48px]" style={{ color: "#ef4444" }}>error</span>
+                  </motion.div>
+                ) : (
+                  <>
+                    <motion.div
+                      className="absolute inset-0 rounded-full border-[3px] border-transparent"
+                      style={{ borderTopColor: "var(--color-admin-primary)", borderRightColor: "var(--color-admin-primary)" }}
+                      animate={{ rotate: 360 }}
+                      transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+                    />
+                    <motion.div
+                      className="absolute inset-2 rounded-full border-[2px] border-transparent"
+                      style={{ borderBottomColor: "#8b5cf6", borderLeftColor: "#8b5cf6" }}
+                      animate={{ rotate: -360 }}
+                      transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+                    />
+                    <motion.div
+                      className="absolute inset-4 rounded-full"
+                      style={{ background: "radial-gradient(circle, var(--color-admin-primary) 0%, transparent 70%)" }}
+                      animate={{ scale: [0.8, 1.2, 0.8], opacity: [0.1, 0.25, 0.1] }}
+                      transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+                    />
+                    <span className="material-symbols-outlined text-[36px] relative z-10" style={{ color: "var(--color-admin-primary)" }}>
+                      {backupRunning ? "cloud_download" : "cloud_upload"}
+                    </span>
+                  </>
+                )}
               </div>
 
               <h3 className="text-xl font-bold mb-2" style={{ color: "#ffffff" }}>
-                {backupRunning ? "Creating Backup" : "Restoring Backup"}
+                {backupError ? "Backup Failed" : backupRunning ? "Creating Backup" : "Restoring Backup"}
               </h3>
-              <p className="text-sm mb-6" style={{ color: "rgba(255,255,255,0.6)" }}>{backupRunning ? backupPhase : restorePhase}</p>
+              <p className="text-sm mb-6" style={{ color: backupError ? "#ef4444" : "rgba(255,255,255,0.6)" }}>
+                {backupError || (backupRunning ? backupPhase : restorePhase)}
+              </p>
 
-              <div className="w-full max-w-sm h-2 bg-white/10 rounded-full overflow-hidden relative mb-3">
-                <motion.div
-                  className="h-full rounded-full absolute top-0 left-0"
-                  style={{ background: `linear-gradient(90deg, var(--color-admin-primary), #8b5cf6)` }}
-                  animate={{ width: `${backupRunning ? backupProgress : restoreProgress}%` }}
-                  transition={{ duration: 0.5, ease: "easeOut" }}
-                />
-              </div>
+              {!backupError && (
+                <div className="w-full max-w-sm h-2 bg-white/10 rounded-full overflow-hidden relative mb-3">
+                  <motion.div
+                    className="h-full rounded-full absolute top-0 left-0"
+                    style={{ background: `linear-gradient(90deg, var(--color-admin-primary), #8b5cf6)` }}
+                    animate={{ width: `${backupRunning ? backupProgress : restoreProgress}%` }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
+                  />
+                </div>
+              )}
 
               <div className="flex items-center gap-2 mb-6">
                 {(backupRunning ? PROGRESS_PHASES : RESTORE_PHASES).map((_, i) => {
@@ -1179,24 +1218,37 @@ export default function AdminBackupPage() {
                 })}
               </div>
 
-              <motion.div
-                className="absolute w-48 h-48 rounded-full pointer-events-none"
-                style={{ background: "radial-gradient(circle, var(--color-admin-primary) 0%, transparent 70%)" }}
-                animate={{ scale: [0.8, 1.1, 0.8], opacity: [0.03, 0.08, 0.03] }}
-                transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
-              />
+              {!backupError && (
+                <motion.div
+                  className="absolute w-48 h-48 rounded-full pointer-events-none"
+                  style={{ background: "radial-gradient(circle, var(--color-admin-primary) 0%, transparent 70%)" }}
+                  animate={{ scale: [0.8, 1.1, 0.8], opacity: [0.03, 0.08, 0.03] }}
+                  transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
+                />
+              )}
 
               <button
-                onClick={backupRunning ? handleCancelBackup : undefined}
+                onClick={() => {
+                  if (backupError) {
+                    if (backupBlobUrl) URL.revokeObjectURL(backupBlobUrl);
+                    setBackupBlobUrl(null);
+                    setBackupError(null);
+                    setBackupRunning(false);
+                  } else {
+                    handleCancelBackup();
+                  }
+                }}
                 className="px-6 py-2.5 rounded-xl text-sm font-bold transition-all hover:opacity-80 border"
                 style={{
-                  backgroundColor: "transparent",
-                  color: "rgba(255,255,255,0.7)",
-                  borderColor: "rgba(255,255,255,0.2)",
+                  backgroundColor: backupError ? "rgba(239, 68, 68, 0.2)" : "transparent",
+                  color: backupError ? "#ef4444" : "rgba(255,255,255,0.7)",
+                  borderColor: backupError ? "rgba(239, 68, 68, 0.3)" : "rgba(255,255,255,0.2)",
                 }}
               >
-                <span className="material-symbols-outlined text-[16px] align-middle mr-1">close</span>
-                {backupRunning ? "Cancel Backup" : "Restore in progress..."}
+                <span className="material-symbols-outlined text-[16px] align-middle mr-1">
+                  {backupError ? "close" : "close"}
+                </span>
+                {backupError ? "Close" : "Cancel Backup"}
               </button>
             </motion.div>
           </motion.div>

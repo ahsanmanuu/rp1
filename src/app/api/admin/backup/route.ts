@@ -46,24 +46,39 @@ export async function GET(req: NextRequest) {
     };
 
     const BATCH_SIZE = 200;
+    const COLLECTION_TIMEOUT = 15000; // 15s per collection
+    const startTime = Date.now();
 
     // ── Phase 1: Export all collections ──
     let consecutiveErrors = 0;
     for (let i = 0; i < collections.length; i++) {
       const col = collections[i];
+      if (Date.now() - startTime > 250000) {
+        console.warn(`[Backup] Total time exceeded 250s — stopping at collection ${i}/${collections.length}`);
+        break;
+      }
       try {
         let allRecords: any[] = [];
         let page = 1;
         let hasMore = true;
 
         while (hasMore) {
-          const result = await pb.collection(col.name).getList(page, BATCH_SIZE, {
-            requestKey: null,
-            sort: '-created',
-          });
-          allRecords = allRecords.concat(result.items);
-          hasMore = result.items.length === BATCH_SIZE;
-          page++;
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), COLLECTION_TIMEOUT);
+          try {
+            const result = await pb.collection(col.name).getList(page, BATCH_SIZE, {
+              requestKey: null,
+              sort: '-created',
+              $cancelKey: `backup-${col.name}-${page}`,
+            });
+            clearTimeout(timer);
+            allRecords = allRecords.concat(result.items);
+            hasMore = result.items.length === BATCH_SIZE;
+            page++;
+          } catch (pageErr: any) {
+            clearTimeout(timer);
+            throw pageErr;
+          }
         }
 
         consecutiveErrors = 0;
@@ -119,7 +134,10 @@ export async function GET(req: NextRequest) {
 
                 try {
                   const fileUrl = pb.files.getUrl(record, fileVal);
-                  const resp = await fetch(fileUrl);
+                  const fileController = new AbortController();
+                  const fileTimer = setTimeout(() => fileController.abort(), 10000);
+                  const resp = await fetch(fileUrl, { signal: fileController.signal });
+                  clearTimeout(fileTimer);
                   if (!resp.ok) continue;
 
                   const arrayBuffer = await resp.arrayBuffer();
@@ -174,7 +192,10 @@ export async function GET(req: NextRequest) {
                 if (!isPbFileUrl) continue;
 
                 try {
-                  const resp = await fetch(urlVal);
+                  const urlController = new AbortController();
+                  const urlTimer = setTimeout(() => urlController.abort(), 10000);
+                  const resp = await fetch(urlVal, { signal: urlController.signal });
+                  clearTimeout(urlTimer);
                   if (!resp.ok) continue;
 
                   const arrayBuffer = await resp.arrayBuffer();
