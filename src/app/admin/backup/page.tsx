@@ -609,7 +609,7 @@ export default function AdminBackupPage() {
         </div>
       </header>
 
-      <main className="ml-0 lg:ml-64 pt-24 pb-12 px-4 sm:px-8 min-h-screen transition-colors duration-500 w-full max-w-full overflow-x-hidden">
+      <main className="ml-0 lg:ml-64 pt-24 pb-12 px-4 sm:px-8 min-h-screen transition-colors duration-500 overflow-x-hidden">
         <div className="mb-8">
           <h1 className="text-2xl font-bold" style={{ color: "var(--color-admin-on-surface)" }}>Backup & Restore</h1>
           <p className="text-sm mt-1" style={{ color: "var(--color-admin-on-surface-variant)" }}>Full system backup, restore, and automated scheduling</p>
