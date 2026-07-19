@@ -6,25 +6,13 @@ import { BACKUP_COLLECTIONS, getFileFields, getUrlFields } from '@/lib/backup-co
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-interface BackupProgress {
-  phase: 'init' | 'collections' | 'files' | 'packaging' | 'done';
-  current: number;
-  total: number;
-  collectionName: string;
-  recordCount: number;
-}
-
 /**
  * GET /api/admin/backup
  * Creates a full PocketBase backup as a downloadable ZIP.
- *
- * Query params:
- *   ?includeFiles=true|false  — download file attachments (default true)
- *   ?collections=a,b,c        — optional subset (default all)
- *
- * Returns a streaming ZIP download.
  */
 export async function GET(req: NextRequest) {
+  const startTime = Date.now();
+
   try {
     const pb = await pbAdmin();
     const { searchParams } = new URL(req.url);
@@ -37,6 +25,18 @@ export async function GET(req: NextRequest) {
 
     console.log(`[Backup] Starting — ${collections.length} collections, includeFiles=${includeFiles}`);
 
+    // ── Pre-flight: verify PB auth works ──
+    try {
+      const test = await pb.collection('users').getList(1, 1, { requestKey: null });
+      console.log(`[Backup] Pre-flight OK — users has ${test.totalItems} records`);
+    } catch (preErr: any) {
+      console.error(`[Backup] Pre-flight FAILED: ${preErr.message}`);
+      return NextResponse.json(
+        { success: false, error: `PocketBase auth failed: ${preErr.message}` },
+        { status: 500 }
+      );
+    }
+
     const zip = new JSZip();
     const metadata: Record<string, any> = {
       version: '1.0.0',
@@ -48,87 +48,98 @@ export async function GET(req: NextRequest) {
     };
 
     const BATCH_SIZE = 200;
-    const startTime = Date.now();
+    const PARALLEL_BATCH = 10;
 
-    // ── Phase 1: Export all collections ──
-    let consecutiveErrors = 0;
-    for (let i = 0; i < collections.length; i++) {
-      const col = collections[i];
+    // ── Phase 1: Export all collections (parallel batches) ──
+    for (let batchStart = 0; batchStart < collections.length; batchStart += PARALLEL_BATCH) {
       if (Date.now() - startTime > 120000) {
-        console.warn(`[Backup] Total time exceeded 120s — stopping at collection ${i}/${collections.length}`);
+        console.warn(`[Backup] Stopping at batch ${batchStart} — exceeded 120s`);
         break;
       }
-      try {
-        let allRecords: any[] = [];
-        let page = 1;
-        let hasMore = true;
 
-        while (hasMore) {
-          const result = await pb.collection(col.name).getList(page, BATCH_SIZE, {
-            requestKey: null,
-            sort: '-created',
-          });
-          allRecords = allRecords.concat(result.items);
-          hasMore = result.items.length === BATCH_SIZE;
-          page++;
-        }
+      const batch = collections.slice(batchStart, batchStart + PARALLEL_BATCH);
 
-        consecutiveErrors = 0;
+      const results = await Promise.allSettled(
+        batch.map(async (col) => {
+          let allRecords: any[] = [];
+          let page = 1;
+          let hasMore = true;
 
-        // Strip PocketBase internal fields for cleaner restore
-        const cleanRecords = allRecords.map(r => {
-          const clean: Record<string, any> = { id: r.id };
-          for (const [k, v] of Object.entries(r)) {
-            if (!['collectionId', 'collectionName', 'expand'].includes(k)) {
-              clean[k] = v;
-            }
+          while (hasMore) {
+            const result = await pb.collection(col.name).getList(page, BATCH_SIZE, {
+              requestKey: null,
+              sort: '-created',
+            });
+            allRecords = allRecords.concat(result.items);
+            hasMore = result.items.length === BATCH_SIZE;
+            page++;
           }
-          return clean;
-        });
 
-        zip.file(`collections/${col.name}.json`, JSON.stringify(cleanRecords, null, 2));
-        metadata.collections[col.name] = { recordCount: cleanRecords.length };
-        metadata.totalRecords += cleanRecords.length;
-      } catch (err: any) {
-        consecutiveErrors++;
-        console.warn(`[Backup] Skipping collection ${col.name}: ${err.message}`);
-        metadata.collections[col.name] = { recordCount: 0, error: err.message };
+          const cleanRecords = allRecords.map(r => {
+            const clean: Record<string, any> = { id: r.id };
+            for (const [k, v] of Object.entries(r)) {
+              if (!['collectionId', 'collectionName', 'expand'].includes(k)) {
+                clean[k] = v;
+              }
+            }
+            return clean;
+          });
 
-        if (consecutiveErrors >= 3 && metadata.totalRecords === 0) {
-          console.error(`[Backup] ${consecutiveErrors} consecutive collection failures with 0 total records — aborting`);
-          return NextResponse.json(
-            { success: false, error: `PocketBase query failed after ${consecutiveErrors} collections: ${err.message}. Admin auth may be invalid.` },
-            { status: 500 }
-          );
+          return { name: col.name, records: cleanRecords };
+        })
+      );
+
+      let consecutiveErrors = 0;
+      for (let j = 0; j < results.length; j++) {
+        const result = results[j];
+        const col = batch[j];
+
+        if (result.status === 'fulfilled') {
+          consecutiveErrors = 0;
+          const { name, records } = result.value;
+          zip.file(`collections/${name}.json`, JSON.stringify(records, null, 2));
+          metadata.collections[name] = { recordCount: records.length };
+          metadata.totalRecords += records.length;
+        } else {
+          consecutiveErrors++;
+          const errMsg = result.reason?.message || 'Unknown error';
+          console.warn(`[Backup] Skipping ${col.name}: ${errMsg}`);
+          metadata.collections[col.name] = { recordCount: 0, error: errMsg };
+
+          if (consecutiveErrors >= 5 && metadata.totalRecords === 0) {
+            console.error(`[Backup] ${consecutiveErrors} consecutive failures with 0 records — aborting`);
+            return NextResponse.json(
+              { success: false, error: `PB auth or connectivity failed: ${errMsg}` },
+              { status: 500 }
+            );
+          }
         }
       }
     }
 
-    const phase1Duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`[Backup] Phase 1 done in ${phase1Duration}s — ${metadata.totalRecords} records across ${Object.keys(metadata.collections).length} collections`);
+    const phase1Time = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`[Backup] Phase 1 done in ${phase1Time}s — ${metadata.totalRecords} records`);
 
     if (metadata.totalRecords === 0) {
-      const errorDetails = Object.entries(metadata.collections)
+      const errorSamples = Object.entries(metadata.collections)
         .filter(([, v]: [string, any]) => v.error)
         .slice(0, 5)
         .map(([name, v]: [string, any]) => `${name}: ${(v as any).error}`)
         .join(' | ');
-      console.error(`[Backup] 0 total records. Sample errors: ${errorDetails}`);
+      console.error(`[Backup] 0 records. Errors: ${errorSamples}`);
       return NextResponse.json(
-        {
-          success: false,
-          error: `Backup produced 0 records. PocketBase collections may be empty or admin auth is invalid.`,
-          details: errorDetails || 'No collection errors recorded — all queries returned 0 records.',
-        },
+        { success: false, error: `Backup produced 0 records. ${errorSamples || 'All collections empty.'}` },
         { status: 500 }
       );
     }
 
-    // ── Phase 2: Download file attachments ──
-    if (includeFiles) {
+    // ── Phase 2: Download file attachments (if enabled and time permits) ──
+    if (includeFiles && (Date.now() - startTime) < 90000) {
       const fileCollections = collections.filter(c => getFileFields(c.name).length > 0);
 
       for (const col of fileCollections) {
+        if ((Date.now() - startTime) > 110000) break;
+
         const fileFields = getFileFields(col.name);
         try {
           let page = 1;
@@ -169,11 +180,13 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // ── Phase 2b: Download URL-based assets ──
-    if (includeFiles) {
+    // ── Phase 2b: Download URL-based assets (if enabled and time permits) ──
+    if (includeFiles && (Date.now() - startTime) < 110000) {
       const urlCollections = collections.filter(c => getUrlFields(c.name).length > 0);
 
       for (const col of urlCollections) {
+        if ((Date.now() - startTime) > 115000) break;
+
         const urlFields = getUrlFields(col.name);
         try {
           let page = 1;
@@ -189,13 +202,11 @@ export async function GET(req: NextRequest) {
                 const urlVal = record[field];
                 if (!urlVal || typeof urlVal !== 'string') continue;
 
-                // Only download PB-hosted files — check if URL path matches PB file pattern
                 let isPbFileUrl = false;
                 try {
                   const parsed = new URL(urlVal);
                   isPbFileUrl = parsed.pathname.startsWith('/api/files/');
                 } catch {
-                  // Not a valid URL — skip
                   continue;
                 }
                 if (!isPbFileUrl) continue;
@@ -205,7 +216,6 @@ export async function GET(req: NextRequest) {
                   if (!resp.ok) continue;
 
                   const arrayBuffer = await resp.arrayBuffer();
-                  // Extract filename from URL path: /api/files/{collection}/{id}/{filename}
                   const urlParts = urlVal.split('/');
                   const safeName = (urlParts[urlParts.length - 1] || 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
                   const filePath = `files/${col.name}/${record.id}/${field}/${safeName}`;
@@ -226,7 +236,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // ── Phase 3: Write metadata + package ──
+    // ── Phase 3: Package ZIP ──
     zip.file('metadata.json', JSON.stringify(metadata, null, 2));
 
     const zipBuffer = await zip.generateAsync({
@@ -235,15 +245,21 @@ export async function GET(req: NextRequest) {
       compressionOptions: { level: 6 },
     });
 
+    if (!zipBuffer || zipBuffer.length < 200) {
+      console.error(`[Backup] ZIP buffer suspiciously small: ${zipBuffer?.length || 0} bytes`);
+      return NextResponse.json(
+        { success: false, error: 'Generated backup file is too small. PocketBase may have no data.' },
+        { status: 500 }
+      );
+    }
+
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const filename = `latexify-backup-${timestamp}.zip`;
 
     const errorCount = Object.values(metadata.collections).filter((c: any) => c.error).length;
-    const errorSummary = Object.entries(metadata.collections)
-      .filter(([, c]: [string, any]) => c.error)
-      .slice(0, 10)
-      .map(([name, c]: [string, any]) => `${name}: ${c.error}`)
-      .join(' | ');
+
+    console.log(`[Backup] Complete in ${totalTime}s — ${metadata.totalRecords} records, ${metadata.totalFiles} files, ${zipBuffer.length} bytes, ${errorCount} collection errors`);
 
     return new NextResponse(new Uint8Array(zipBuffer), {
       status: 200,
@@ -254,11 +270,11 @@ export async function GET(req: NextRequest) {
         'X-Backup-Files': String(metadata.totalFiles),
         'X-Backup-Collections': String(Object.keys(metadata.collections).length),
         'X-Backup-Errors': String(errorCount),
-        ...(errorSummary ? { 'X-Backup-Error-Details': errorSummary.slice(0, 500) } : {}),
       },
     });
   } catch (err: any) {
-    console.error('[Backup] Fatal error:', err);
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.error(`[Backup] Fatal error after ${totalTime}s:`, err);
     return NextResponse.json(
       { success: false, error: err.message || 'Backup failed' },
       { status: 500 }
