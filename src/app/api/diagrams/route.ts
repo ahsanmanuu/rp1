@@ -19,9 +19,9 @@ export async function POST(req: Request) {
 
     if (user?.membership === 'free' || !user?.membership) {
       const [projectCount, citationCount, reviewCount] = await Promise.all([
-        prisma.project.count({ where: { userId: session.user.id, status: "completed" } }),
-        prisma.citationProject.count({ where: { userId: session.user.id, status: "completed" } }),
-        prisma.paperReview.count({ where: { userId: session.user.id, status: "completed" } }),
+        prisma.project.count({ where: { userId: session.user.id } }),
+        prisma.citationProject.count({ where: { userId: session.user.id } }),
+        prisma.paperReview.count({ where: { userId: session.user.id } }),
       ]);
       const totalCount = projectCount + citationCount + reviewCount;
       if (totalCount >= 7) {

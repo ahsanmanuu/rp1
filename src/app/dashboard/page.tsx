@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useSession } from "@/lib/pb-auth-react";
 import { createPb } from "@/lib/pb";
 import { useRouter } from "next/navigation";
@@ -99,7 +99,7 @@ export default function DashboardPage() {
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [loadingAnnouncements, setLoadingAnnouncements] = useState(false);
 
-  const fetchAnnouncements = async () => {
+  const fetchAnnouncements = useCallback(async () => {
     setLoadingAnnouncements(true);
     try {
       const res = await fetch("/api/announcements");
@@ -114,9 +114,9 @@ export default function DashboardPage() {
     } finally {
       setLoadingAnnouncements(false);
     }
-  };
+  }, []);
 
-  const fetchUserOffers = async () => {
+  const fetchUserOffers = useCallback(async () => {
     setLoadingOffers(true);
     try {
       const res = await fetch("/api/user/offers");
@@ -133,7 +133,7 @@ export default function DashboardPage() {
     } finally {
       setLoadingOffers(false);
     }
-  };
+  }, []);
 
   const loadAllHistory = useCallback(async (showLoader = false) => {
     if (showLoader) setLoading(true);
@@ -341,6 +341,15 @@ export default function DashboardPage() {
     success: false,
   } as any, [rawMembership]);
 
+  // Refetch membership (and thus project count) when PB projects change in realtime
+  const prevProjectsCountRef = useRef(pbAllProjects.length);
+  useEffect(() => {
+    if (pbAllProjects.length !== prevProjectsCountRef.current) {
+      prevProjectsCountRef.current = pbAllProjects.length;
+      refetchMembership();
+    }
+  }, [pbAllProjects.length, refetchMembership]);
+
   // Sync reminderInfo from membership hook data
   useEffect(() => {
     if (rawMembership?.showReminder && rawMembership?.daysLeft && rawMembership?.expiryDate) {
@@ -509,9 +518,6 @@ export default function DashboardPage() {
 
     if (!session?.user?.email) return;
     
-    // Only show loader if we have no projects loaded yet (initial load)
-    const isInitialLoad = projects.length === 0;
-    loadAllHistory(isInitialLoad);
     fetchAiCapStatus();
     loadCurrencyAndGeo();
     fetchUserOffers();
@@ -534,18 +540,21 @@ export default function DashboardPage() {
       fetchUserOffers();
     }).then(u => unsubFns.push(u)).catch(() => {});
 
-    // Subscribe to projects for the current user
+    // Subscribe to citation_projects and paper_reviews for realtime counter updates
     if (session?.user?.id) {
-      pb.collection('projects').subscribe('*', () => {
-        loadAllHistory(false);
+      pb.collection('citation_projects').subscribe('*', () => {
+        refetchMembership();
+      }, { filter: `userId = "${session?.user?.id}"` }).then(u => unsubFns.push(u)).catch(() => {});
+
+      pb.collection('paper_reviews').subscribe('*', () => {
+        refetchMembership();
       }, { filter: `userId = "${session?.user?.id}"` }).then(u => unsubFns.push(u)).catch(() => {});
     }
 
-    // Background refresh for offers, announcements, and projects
+    // Background refresh for offers and announcements
     const bgPoll = setInterval(() => {
       fetchUserOffers();
       fetchAnnouncements();
-      loadAllHistory(false);
     }, 30000);
 
     // Check payment redirect statuses
@@ -579,7 +588,7 @@ export default function DashboardPage() {
         if (conn) conn.removeEventListener('change', updateConnection);
       }
     };
-  }, [sessionKey, loadCurrencyAndGeo, router]);
+  }, [session?.user?.id, loadCurrencyAndGeo, router]);
 
   useEffect(() => {
     if (showUpgradeModal) {

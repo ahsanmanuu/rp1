@@ -124,12 +124,12 @@ export async function GET(_req: NextRequest) {
 
     const [subscriptionCount, projectCount, citationCount, reviewCount, doc2latexCount, latexCount, diagramCount] = await Promise.all([
       prisma.membershipTransaction.count({ where: { userId, paymentStatus: "paid" } }),
-      prisma.project.count({ where: { userId, status: "completed" } }),
-      prisma.citationProject.count({ where: { userId, status: "completed" } }),
-      prisma.paperReview.count({ where: { userId, status: "completed" } }),
-      prisma.project.count({ where: { userId, projectType: "DOC2LATEX", status: "completed" } }),
-      prisma.project.count({ where: { userId, projectType: "LATEX_STUDIO", status: "completed" } }),
-      prisma.project.count({ where: { userId, projectType: "DIAGRAM", status: "completed" } })
+      prisma.project.count({ where: { userId } }),
+      prisma.citationProject.count({ where: { userId } }),
+      prisma.paperReview.count({ where: { userId } }),
+      prisma.project.count({ where: { userId, projectType: "DOC2LATEX" } }),
+      prisma.project.count({ where: { userId, projectType: "LATEX_STUDIO" } }),
+      prisma.project.count({ where: { userId, projectType: "DIAGRAM" } })
     ]);
 
     const projectsCount = projectCount + citationCount + reviewCount;

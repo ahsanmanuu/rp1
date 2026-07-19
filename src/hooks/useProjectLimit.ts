@@ -4,7 +4,7 @@ import { useSession } from "@/lib/pb-auth-react";
 
 /**
  * useProjectLimit
- * Checks on mount whether the current free-tier user has hit the 5-project cap.
+ * Checks on mount whether the current free-tier user has hit the 7-project cap.
  * Returns isOpen state + setter so any tool page can show <ProjectLimitModal>.
  */
 export function useProjectLimit() {

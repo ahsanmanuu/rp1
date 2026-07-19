@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 /**
  * GET /api/projects/limit-status
- * Returns whether the current free-tier user has reached the 5-project cap.
+ * Returns whether the current free-tier user has reached the 7-project cap.
  */
 export async function GET() {
   try {
@@ -26,9 +26,9 @@ export async function GET() {
     }
 
     const [projectCount, citationCount, reviewCount] = await Promise.all([
-      prisma.project.count({ where: { userId: session.user.id, status: "completed" } }),
-      prisma.citationProject.count({ where: { userId: session.user.id, status: "completed" } }),
-      prisma.paperReview.count({ where: { userId: session.user.id, status: "completed" } }),
+      prisma.project.count({ where: { userId: session.user.id } }),
+      prisma.citationProject.count({ where: { userId: session.user.id } }),
+      prisma.paperReview.count({ where: { userId: session.user.id } }),
     ]);
 
     const totalCount = projectCount + citationCount + reviewCount;
