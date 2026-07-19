@@ -525,7 +525,7 @@ export default function AdminBackupPage() {
     <div className="font-sans overflow-x-hidden transition-colors duration-500" style={{ backgroundColor: "var(--color-admin-background)", color: "var(--color-admin-on-background)" }}>
       <AdminSidebar isDarkMode={isDarkMode} adminName={adminName} />
 
-      <header className="flex justify-between items-center fixed top-0 left-64 right-0 2xl:right-80 px-6 py-4 border-b z-40 transition-colors duration-500" style={{ backgroundColor: "var(--color-admin-surface)", borderColor: "var(--color-admin-outline-variant)" }}>
+      <header className="flex justify-between items-center fixed top-0 left-0 lg:left-64 right-0 px-6 py-4 border-b z-40 transition-colors duration-500" style={{ backgroundColor: "var(--color-admin-surface)", borderColor: "var(--color-admin-outline-variant)" }}>
         <div className="flex items-center gap-4 flex-1">
           <span className="material-symbols-outlined" style={{ color: "var(--color-admin-primary)" }}>cloud_download</span>
           <h2 className="text-lg font-bold" style={{ color: "var(--color-admin-on-surface)" }}>Backup & Restore</h2>
@@ -609,7 +609,7 @@ export default function AdminBackupPage() {
         </div>
       </header>
 
-      <main className="ml-0 lg:ml-64 2xl:mr-80 pt-24 pb-12 px-4 sm:px-8 min-h-screen transition-colors duration-500">
+      <main className="ml-0 lg:ml-64 pt-24 pb-12 px-4 sm:px-8 min-h-screen transition-colors duration-500 w-full max-w-full overflow-x-hidden">
         <div className="mb-8">
           <h1 className="text-2xl font-bold" style={{ color: "var(--color-admin-on-surface)" }}>Backup & Restore</h1>
           <p className="text-sm mt-1" style={{ color: "var(--color-admin-on-surface-variant)" }}>Full system backup, restore, and automated scheduling</p>
