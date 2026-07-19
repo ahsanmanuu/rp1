@@ -1,18 +1,12 @@
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 function createPrisma(): PrismaClient {
-  try {
-    return new PrismaClient();
-  } catch (err: any) {
-    if (err?.message?.includes('non-empty') || err?.message?.includes('PrismaClientOptions')) {
-      throw new Error(
-        '❌ Database connection failed: Prisma client is not generated or schema is missing.\n' +
-        '   Run: npx prisma generate\n' +
-        '   Then restart the dev server.'
-      );
-    }
-    throw err;
-  }
+  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+  return new PrismaClient({
+    adapter,
+    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+  });
 }
 
 const g = globalThis as any;
