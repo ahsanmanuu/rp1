@@ -31,7 +31,7 @@ export default function AdminSidebar({ isDarkMode = false, adminName = 'Admin Ro
 
   return (
     <aside
-      className="flex flex-col h-full p-4 gap-2 fixed h-screen w-64 left-0 top-0 border-r z-50 transition-colors duration-500"
+      className="flex flex-col p-4 gap-2 fixed h-screen w-64 left-0 top-0 border-r z-50 transition-colors duration-500"
       style={{
         backgroundColor: 'var(--color-admin-surface-container)',
         borderColor: 'var(--color-admin-outline-variant)',

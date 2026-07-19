@@ -28,7 +28,8 @@ export const authOptions: NextAuthOptions = {
 
           console.log("[AUTH] Searching for user...");
 
-          const user = await prisma.user.findUnique({
+          const { prisma: pgDb } = await import("@/lib/db");
+          const user = await pgDb.user.findUnique({
             where: { email: credentials.email },
           });
 

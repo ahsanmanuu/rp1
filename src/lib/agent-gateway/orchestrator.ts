@@ -173,7 +173,11 @@ export async function routeToAgent(req: GatewayRequest): Promise<GatewayResponse
       checkAiCap(userId),
       (async () => {
         const { checkUserAnomaly } = await import('../security');
-        return checkUserAnomaly(userId);
+        return checkUserAnomaly(
+          userId,
+          req.context?.ipAddress as string | undefined,
+          req.context?.location as string | undefined,
+        );
       })(),
     ]);
     capResult = cap;

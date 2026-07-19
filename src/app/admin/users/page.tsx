@@ -901,7 +901,7 @@ export default function AdminUsersPage() {
                 onChange={e => setSearchQuery(e.target.value)}
                 className="w-full border rounded-lg pl-10 pr-4 py-2 text-sm outline-none"
                 style={{ backgroundColor: 'var(--color-admin-surface-container-lowest)', borderColor: 'var(--color-admin-outline-variant)', color: 'var(--color-admin-on-surface)' }}
-                placeholder="Search users by name, email or ID..."
+                placeholder="Filter by name, email, or scholar credentials..."
                 type="text"
               />
             </div>
@@ -1455,7 +1455,7 @@ export default function AdminUsersPage() {
                   {/* Geo Location display */}
                   <div className="mb-3 text-xs flex items-center gap-1 font-semibold" style={{ color: 'var(--color-admin-on-surface)' }}>
                     <span className="material-symbols-outlined text-[15px] select-none" style={{ color: 'var(--color-admin-primary)', fontVariationSettings: "'FILL' 1" }}>location_on</span>
-                    <span>Geo Location: <strong style={{ color: 'var(--color-admin-on-surface)' }}>{selectedUser.lastLocation || 'Unknown Location'}</strong></span>
+                    <span>Geo Location: <strong style={{ color: 'var(--color-admin-on-surface)' }}>{selectedUser.lastLocation || 'Not recorded'}</strong></span>
                   </div>
 
                   <div className="flex items-center justify-between mb-2">
@@ -1810,14 +1810,14 @@ export default function AdminUsersPage() {
                       <div className="flex justify-between items-center text-xs">
                         <span style={{ color: 'var(--color-admin-on-surface-variant)' }}>Last Login IP:</span>
                         <span className="font-semibold font-mono" style={{ color: 'var(--color-admin-on-surface)' }}>
-                          {selectedUser.lastIp || '127.0.0.1'}
+                           {selectedUser.lastIp || 'Not recorded'}
                         </span>
                       </div>
 
                       <div className="flex justify-between items-center text-xs">
                         <span style={{ color: 'var(--color-admin-on-surface-variant)' }}>Geo Location:</span>
                         <span className="font-semibold truncate max-w-[140px]" style={{ color: 'var(--color-admin-on-surface)' }} title={selectedUser.lastLocation}>
-                          {selectedUser.lastLocation || 'Localhost'}
+                           {selectedUser.lastLocation || 'Not recorded'}
                         </span>
                       </div>
                       {(selectedUser.lastLatitude != null || selectedUser.lastLongitude != null) && (

@@ -92,41 +92,49 @@ export async function GET(req: NextRequest) {
     role: record.role || "user",
   };
 
-  // Fire-and-forget: update IP/location in background (non-blocking)
+  // Update IP/location and activity in background (non-blocking)
   Promise.resolve().then(async () => {
     try {
       const { getClientGeoInfo } = await import("@/lib/clientGeo");
       const geo = await getClientGeoInfo(req);
 
-      const currentIp = geo.ipAddress;
-      const currentLoc = geo.location || "Unknown Location";
-
-      const ipChanged = currentIp && currentIp !== sessionRecord.ipAddress;
-      const locChanged = currentLoc && currentLoc !== "Unknown Location" && currentLoc !== sessionRecord.location;
-
-      if (ipChanged || locChanged) {
-        const nextIp = currentIp || sessionRecord.ipAddress;
-        const nextLoc = (currentLoc && currentLoc !== "Unknown Location") ? currentLoc : sessionRecord.location;
-
-        prisma.userSession.update({
-          where: { id: sessionRecord.id },
-          data: { ipAddress: nextIp, location: nextLoc }
-        }).catch(() => null);
-
-        import("@/lib/pb").then(({ pbAdmin }) =>
-          pbAdmin().then(admPb =>
-            admPb.collection("user_sessions").getFirstListItem(`sessionToken = "${token}"`)
-              .then(pbRecord => {
-                if (pbRecord) {
-                  admPb.collection("user_sessions").update(pbRecord.id, {
-                    ipAddress: nextIp, location: nextLoc,
-                  }).catch(() => null);
-                }
-              })
-          )
-        ).catch(() => null);
+      let nextIp = geo.ipAddress;
+      if (!nextIp || nextIp === "127.0.0.1" || nextIp === "::1" || nextIp === "localhost") {
+        const forwarded = req.headers.get("x-forwarded-for");
+        nextIp = forwarded ? forwarded.split(",")[0].trim() : (sessionRecord.ipAddress || "127.0.0.1");
       }
-    } catch {}
+      let nextLoc = geo.location;
+      if (!nextLoc || nextLoc === "Unknown Location") {
+        nextLoc = "Localhost";
+      }
+      const userAgent = req.headers.get("user-agent") || "Unknown";
+
+      // Always update session in DB
+      prisma.userSession.update({
+        where: { id: sessionRecord.id },
+        data: { ipAddress: nextIp, location: nextLoc, lastActiveAt: new Date() }
+      }).catch(() => null);
+
+      // Always log activity
+      const { logUserActivity } = await import("@/lib/security");
+      logUserActivity(sessionRecord.userId, nextIp, nextLoc, userAgent).catch(() => {});
+
+      // Update PocketBase user_sessions if exists
+      import("@/lib/pb").then(({ pbAdmin }) =>
+        pbAdmin().then(admPb =>
+          admPb.collection("user_sessions").getFirstListItem(`sessionToken = "${token}"`)
+            .then(pbRecord => {
+              if (pbRecord) {
+                admPb.collection("user_sessions").update(pbRecord.id, {
+                  ipAddress: nextIp, location: nextLoc,
+                }).catch(() => null);
+              }
+            })
+        )
+      ).catch(() => null);
+    } catch (e) {
+      console.warn("[PB-Session API] Failed to update session details:", e);
+    }
   });
 
   cookieStore.set("pb_token", token, {

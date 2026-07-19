@@ -69,7 +69,37 @@ async function handler(request: NextRequest) {
     }
 
     const hasNoBody = res.status === 204 || res.status === 304 || res.status === 205;
-    const resBody = hasNoBody ? null : await res.arrayBuffer();
+    let resBody: any = hasNoBody ? null : await res.arrayBuffer();
+
+    if (resBody && !hasNoBody) {
+      const contentType = resHeaders.get('content-type') || '';
+      if (
+        contentType.includes('text/html') ||
+        contentType.includes('javascript') ||
+        contentType.includes('css') ||
+        pbPath.includes('/_/')
+      ) {
+        try {
+          let text = new TextDecoder('utf-8').decode(resBody);
+          text = text.replaceAll('"/_/"', '"/pb/_/"')
+                     .replaceAll('\'/_/\'', '\'/pb/_/\'')
+                     .replaceAll('"/_/', '"/pb/_/')
+                     .replaceAll('\'/_/', '\'/pb/_/')
+                     .replaceAll('(/_/', '(/pb/_/');
+
+          text = text.replaceAll('"/api/"', '"/pb/api/"')
+                     .replaceAll('\'/api/\'', '\'/pb/api/\'')
+                     .replaceAll('"/api/', '"/pb/api/')
+                     .replaceAll('\'/api/', '\'/pb/api/')
+                     .replaceAll('(/api/', '(/pb/api/');
+
+          resBody = new TextEncoder().encode(text);
+          resHeaders.set('content-length', String(resBody.byteLength));
+        } catch (decErr) {
+          console.warn('[PB Proxy] Failed to decode/replace proxy response text:', decErr);
+        }
+      }
+    }
 
     return new NextResponse(resBody, {
       status: res.status,

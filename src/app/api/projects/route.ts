@@ -7,8 +7,10 @@ export async function GET(req: Request) {
     const session = await getServerSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    const { getClientGeoInfo } = await import('@/lib/clientGeo');
+    const geo = await getClientGeoInfo(req as any);
     const { checkUserAnomaly } = await import('@/lib/security');
-    const result = await checkUserAnomaly(session.user.id);
+    const result = await checkUserAnomaly(session.user.id, geo.ipAddress || undefined, geo.location || undefined);
     if (result.blocked) {
       return NextResponse.json({ error: 'BLOCKED', blockedUntil: result.blockedUntil?.toISOString() }, { status: 403 });
     }
@@ -78,8 +80,10 @@ export async function POST(req: Request) {
     const session = await getServerSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    const { getClientGeoInfo } = await import('@/lib/clientGeo');
+    const geo = await getClientGeoInfo(req as any);
     const { checkUserAnomaly, logToolUsage } = await import('@/lib/security');
-    const result = await checkUserAnomaly(session.user.id);
+    const result = await checkUserAnomaly(session.user.id, geo.ipAddress || undefined, geo.location || undefined);
     if (result.blocked) {
       return NextResponse.json({ error: 'BLOCKED', blockedUntil: result.blockedUntil?.toISOString() }, { status: 403 });
     }

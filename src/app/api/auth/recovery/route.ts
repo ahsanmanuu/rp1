@@ -92,6 +92,20 @@ export async function PUT(req: Request) {
         password,
         passwordConfirm: password,
       });
+
+      // Sync new password hash to real PostgreSQL database
+      try {
+        const bcrypt = await import("bcryptjs");
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const { prisma: pgDb } = await import("@/lib/db");
+        await pgDb.user.update({
+          where: { email },
+          data: { password: hashedPassword }
+        });
+        console.log(`[Recovery API] Synced recovered password hash to PostgreSQL for ${email}`);
+      } catch (pgErr: any) {
+        console.warn("[Recovery API] Failed to sync recovered password hash to PostgreSQL:", pgErr.message);
+      }
     }
 
     // Delete verification token

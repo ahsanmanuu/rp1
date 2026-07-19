@@ -37,9 +37,10 @@ export async function GET(req: NextRequest) {
     });
 
     if (!chatSession) {
-      const ipAddress = req.headers.get("x-forwarded-for") || "127.0.0.1";
-      // Fetch city, region, country using client geo-location if possible, or header defaults
-      const location = req.headers.get("x-vercel-ip-country") || "Localhost";
+      const { getClientGeoInfo } = await import("@/lib/clientGeo");
+      const geo = await getClientGeoInfo(req);
+      const ipAddress = geo.ipAddress || "unknown";
+      const location = geo.location || "Unknown Location";
       
       chatSession = await prisma.chatSession.create({
         data: {

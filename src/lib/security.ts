@@ -25,8 +25,8 @@ export async function logUserActivity(userId: string, ipAddress: string, locatio
     await prisma.userSessionActivity.create({
       data: {
         userId,
-        ipAddress: ipAddress || "127.0.0.1",
-        location: location || "Localhost",
+        ipAddress: ipAddress || "unknown",
+        location: location || "Unknown Location",
         userAgent: userAgent || "Unknown"
       }
     });

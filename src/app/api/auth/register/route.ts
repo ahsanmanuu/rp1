@@ -102,6 +102,60 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
+    // 5. Store Credentials in PostgreSQL Database (real persistent storage)
+    try {
+      const bcrypt = await import("bcryptjs");
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const { prisma: pgDb } = await import("@/lib/db");
+      
+      await pgDb.user.upsert({
+        where: { email: cleanEmail },
+        update: {
+          name: cleanName || cleanEmail.split("@")[0],
+          password: hashedPassword,
+          points: 50,
+          theme: "dark",
+          role: "user",
+          status: "active",
+        },
+        create: {
+          id: record.id,
+          email: cleanEmail,
+          name: cleanName || cleanEmail.split("@")[0],
+          password: hashedPassword,
+          points: 50,
+          theme: "dark",
+          role: "user",
+          status: "active",
+        }
+      });
+      console.log(`[Register API] Stored user credentials in PostgreSQL for: ${cleanEmail}`);
+    } catch (pgErr: any) {
+      console.warn("[Register API] Failed to store user credentials in PostgreSQL:", pgErr.message);
+    }
+
+    // 6. Log Initial Session Activity with Geo Location
+    try {
+      const { getClientGeoInfo } = await import("@/lib/clientGeo");
+      const geo = await getClientGeoInfo(req as any);
+      let ipAddress = geo.ipAddress;
+      if (!ipAddress || ipAddress === "127.0.0.1" || ipAddress === "::1" || ipAddress === "localhost") {
+        const forwarded = req.headers.get("x-forwarded-for");
+        ipAddress = forwarded ? forwarded.split(",")[0].trim() : "127.0.0.1";
+      }
+      let location = geo.location;
+      if (!location || location === "Unknown Location") {
+        location = "Localhost";
+      }
+      const userAgent = req.headers.get("user-agent") || "Unknown";
+
+      const { logUserActivity } = await import("@/lib/security");
+      await logUserActivity(record.id, ipAddress, location, userAgent);
+      console.log(`[Register API] Logged initial session activity: IP=${ipAddress}, Location=${location}`);
+    } catch (actErr: any) {
+      console.warn("[Register API] Failed to log initial session activity:", actErr.message);
+    }
+
     return NextResponse.json(
       { 
         message: "User registered successfully", 

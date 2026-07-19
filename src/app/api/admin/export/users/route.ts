@@ -58,8 +58,8 @@ function drawPdfHeader(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  doc.text('www.latexify.io',     pw - 14, 13, { align: 'right' });
-  doc.text('contact@latexify.io', pw - 14, 18, { align: 'right' });
+  doc.text('www.latexify.in',     pw - 14, 13, { align: 'right' });
+  doc.text('contact@latexify.in', pw - 14, 18, { align: 'right' });
   doc.text('Bangalore, India',    pw - 14, 23, { align: 'right' });
 
   // Divider
