@@ -599,8 +599,12 @@ export default function AdminDashboardPage() {
     : ticketListFilter === "archived" ? allTickets.filter((t: any) => t.archivedAt !== null)
     : [];
 
-  // Load layout from PocketBase when available
+  // Load layout from PocketBase when available (guard against infinite re-render)
+  const prevPanelsRef = useRef<string>("");
   useEffect(() => {
+    const key = JSON.stringify(settings.panels);
+    if (key === prevPanelsRef.current) return;
+    prevPanelsRef.current = key;
     if (settings.panels?.theme) {
       setCurrentTheme(settings.panels.theme as Theme);
     }
