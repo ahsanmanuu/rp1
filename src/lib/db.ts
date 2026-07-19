@@ -1,7 +1,18 @@
 import { PrismaClient } from '@prisma/client';
 
 function createPrisma(): PrismaClient {
-  return new PrismaClient();
+  try {
+    return new PrismaClient();
+  } catch (err: any) {
+    if (err?.message?.includes('non-empty') || err?.message?.includes('PrismaClientOptions')) {
+      throw new Error(
+        '❌ Database connection failed: Prisma client is not generated or schema is missing.\n' +
+        '   Run: npx prisma generate\n' +
+        '   Then restart the dev server.'
+      );
+    }
+    throw err;
+  }
 }
 
 const g = globalThis as any;
