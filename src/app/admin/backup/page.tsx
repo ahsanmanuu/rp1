@@ -237,7 +237,7 @@ export default function AdminBackupPage() {
         });
       }, 1800);
 
-      const res = await fetch("/api/admin/backup?includeFiles=true", {
+      const res = await fetch("/api/admin/backup?includeFiles=false", {
         signal: backupAbortRef.current.signal,
       });
 
@@ -325,7 +325,7 @@ export default function AdminBackupPage() {
       return;
     }
     try {
-      const res = await fetch("/api/admin/backup?includeFiles=true");
+      const res = await fetch("/api/admin/backup?includeFiles=false");
       if (!res.ok) throw new Error("Backup download failed");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);

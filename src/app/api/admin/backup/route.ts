@@ -35,6 +35,8 @@ export async function GET(req: NextRequest) {
       ? BACKUP_COLLECTIONS.filter(c => requestedCollections.includes(c.name))
       : BACKUP_COLLECTIONS;
 
+    console.log(`[Backup] Starting — ${collections.length} collections, includeFiles=${includeFiles}`);
+
     const zip = new JSZip();
     const metadata: Record<string, any> = {
       version: '1.0.0',
@@ -46,15 +48,14 @@ export async function GET(req: NextRequest) {
     };
 
     const BATCH_SIZE = 200;
-    const COLLECTION_TIMEOUT = 15000; // 15s per collection
     const startTime = Date.now();
 
     // ── Phase 1: Export all collections ──
     let consecutiveErrors = 0;
     for (let i = 0; i < collections.length; i++) {
       const col = collections[i];
-      if (Date.now() - startTime > 250000) {
-        console.warn(`[Backup] Total time exceeded 250s — stopping at collection ${i}/${collections.length}`);
+      if (Date.now() - startTime > 120000) {
+        console.warn(`[Backup] Total time exceeded 120s — stopping at collection ${i}/${collections.length}`);
         break;
       }
       try {
@@ -63,22 +64,13 @@ export async function GET(req: NextRequest) {
         let hasMore = true;
 
         while (hasMore) {
-          const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), COLLECTION_TIMEOUT);
-          try {
-            const result = await pb.collection(col.name).getList(page, BATCH_SIZE, {
-              requestKey: null,
-              sort: '-created',
-              $cancelKey: `backup-${col.name}-${page}`,
-            });
-            clearTimeout(timer);
-            allRecords = allRecords.concat(result.items);
-            hasMore = result.items.length === BATCH_SIZE;
-            page++;
-          } catch (pageErr: any) {
-            clearTimeout(timer);
-            throw pageErr;
-          }
+          const result = await pb.collection(col.name).getList(page, BATCH_SIZE, {
+            requestKey: null,
+            sort: '-created',
+          });
+          allRecords = allRecords.concat(result.items);
+          hasMore = result.items.length === BATCH_SIZE;
+          page++;
         }
 
         consecutiveErrors = 0;
@@ -112,6 +104,26 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const phase1Duration = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`[Backup] Phase 1 done in ${phase1Duration}s — ${metadata.totalRecords} records across ${Object.keys(metadata.collections).length} collections`);
+
+    if (metadata.totalRecords === 0) {
+      const errorDetails = Object.entries(metadata.collections)
+        .filter(([, v]: [string, any]) => v.error)
+        .slice(0, 5)
+        .map(([name, v]: [string, any]) => `${name}: ${(v as any).error}`)
+        .join(' | ');
+      console.error(`[Backup] 0 total records. Sample errors: ${errorDetails}`);
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Backup produced 0 records. PocketBase collections may be empty or admin auth is invalid.`,
+          details: errorDetails || 'No collection errors recorded — all queries returned 0 records.',
+        },
+        { status: 500 }
+      );
+    }
+
     // ── Phase 2: Download file attachments ──
     if (includeFiles) {
       const fileCollections = collections.filter(c => getFileFields(c.name).length > 0);
@@ -134,10 +146,7 @@ export async function GET(req: NextRequest) {
 
                 try {
                   const fileUrl = pb.files.getUrl(record, fileVal);
-                  const fileController = new AbortController();
-                  const fileTimer = setTimeout(() => fileController.abort(), 10000);
-                  const resp = await fetch(fileUrl, { signal: fileController.signal });
-                  clearTimeout(fileTimer);
+                  const resp = await fetch(fileUrl);
                   if (!resp.ok) continue;
 
                   const arrayBuffer = await resp.arrayBuffer();
@@ -192,10 +201,7 @@ export async function GET(req: NextRequest) {
                 if (!isPbFileUrl) continue;
 
                 try {
-                  const urlController = new AbortController();
-                  const urlTimer = setTimeout(() => urlController.abort(), 10000);
-                  const resp = await fetch(urlVal, { signal: urlController.signal });
-                  clearTimeout(urlTimer);
+                  const resp = await fetch(urlVal);
                   if (!resp.ok) continue;
 
                   const arrayBuffer = await resp.arrayBuffer();
