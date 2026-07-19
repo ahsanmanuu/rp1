@@ -1,6 +1,5 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { headers } from "next/headers";
 
@@ -28,34 +27,16 @@ export const authOptions: NextAuthOptions = {
 
           console.log("[AUTH] Searching for user...");
 
-          const { prisma: pgDb } = await import("@/lib/db");
-          const user = await pgDb.user.findUnique({
-            where: { email: credentials.email },
-          });
-
-          let isValid = false;
-
-          if (user && user.password) {
-            console.log("[AUTH] Comparing passwords from public User table...");
-            isValid = await bcrypt.compare(credentials.password, user.password);
-          }
-
-          if (!isValid || !user) {
+          const { createPb } = await import("@/lib/pb");
+          const testPb = createPb();
+          let authData;
+          try {
+            authData = await testPb.collection("users").authWithPassword(credentials.email, credentials.password);
+          } catch {
             console.warn("[AUTH] Invalid password or user not found:", credentials.email);
             throw new Error("Invalid credentials");
           }
-
-          // Enforce local database match & auto-heal
-          try {
-            const { verifyUserInLocalDb, syncUserPasswordToLocalDb } = await import("@/lib/localDbSync");
-            const localValid = await verifyUserInLocalDb(credentials.email, credentials.password);
-            if (!localValid && user.password) {
-              console.log("[AUTH] Local user DB out of sync. Auto-healing password hash...");
-              syncUserPasswordToLocalDb(credentials.email, user.password);
-            }
-          } catch (syncErr: any) {
-            console.warn("[AUTH] Failed to verify/sync user in local DB:", syncErr.message);
-          }
+          const user = authData.record;
 
           // ─── DUP LOGIN CHECK & RECORD CREATION ────────────────────────────
           const machineId = credentials.machineId || "unknown";

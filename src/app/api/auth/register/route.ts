@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = name ? name.trim() : null;
 
-    // 1. Strict Duplicate Checks in PostgreSQL
+    // 1. Strict Duplicate Checks in PocketBase
     const existingUserByEmail = await prisma.user.findUnique({
       where: { email: cleanEmail }
     });
@@ -102,39 +102,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
-    // 5. Store Credentials in PostgreSQL Database (real persistent storage)
-    try {
-      const bcrypt = await import("bcryptjs");
-      const hashedPassword = await bcrypt.hash(password, 10);
-      const { prisma: pgDb } = await import("@/lib/db");
-      
-      await pgDb.user.upsert({
-        where: { email: cleanEmail },
-        update: {
-          name: cleanName || cleanEmail.split("@")[0],
-          password: hashedPassword,
-          points: 50,
-          theme: "dark",
-          role: "user",
-          status: "active",
-        },
-        create: {
-          id: record.id,
-          email: cleanEmail,
-          name: cleanName || cleanEmail.split("@")[0],
-          password: hashedPassword,
-          points: 50,
-          theme: "dark",
-          role: "user",
-          status: "active",
-        }
-      });
-      console.log(`[Register API] Stored user credentials in PostgreSQL for: ${cleanEmail}`);
-    } catch (pgErr: any) {
-      console.warn("[Register API] Failed to store user credentials in PostgreSQL:", pgErr.message);
-    }
-
-    // 6. Log Initial Session Activity with Geo Location
+    // 5. Log Initial Session Activity with Geo Location
     try {
       const { getClientGeoInfo } = await import("@/lib/clientGeo");
       const geo = await getClientGeoInfo(req as any);

@@ -3,7 +3,6 @@ import { cookies } from "next/headers";
 import { createPb } from "@/lib/pb";
 import { setAuthCookie } from "@/lib/auth-pb";
 import { prisma } from "@/lib/prisma";
-import bcrypt from "bcryptjs";
 
 export const dynamic = "force-dynamic";
 
@@ -27,64 +26,7 @@ export async function POST(req: NextRequest) {
     try {
       authData = await pb.collection("users").authWithPassword(email, password);
     } catch (pbAuthErr: any) {
-      // PB auth failed — query the real PostgreSQL database to check credentials
-      const { prisma: pgDb } = await import("@/lib/db");
-      const dbUser = await pgDb.user.findUnique({
-        where: { email },
-      });
-
-      if (dbUser && dbUser.password) {
-        const isDbValid = await bcrypt.compare(password, dbUser.password);
-        if (isDbValid) {
-          console.log(`[AUTH pb-login] PostgreSQL password valid for ${email}. Syncing to PocketBase...`);
-          try {
-            const { pbAdmin } = await import("@/lib/pb");
-            const admPb = await pbAdmin();
-            
-            let pbUserRecord;
-            try {
-              pbUserRecord = await admPb.collection("users").getFirstListItem(`email = "${email}"`);
-            } catch {
-              // User doesn't exist in PB (deleted or wiped) — re-create them in PB
-              const freePlan = await pgDb.aiCapPlan.findFirst({ where: { name: 'free' } }).catch(() => null);
-              pbUserRecord = await admPb.collection("users").create({
-                id: dbUser.id,
-                email: dbUser.email,
-                password: password,
-                passwordConfirm: password,
-                name: dbUser.name || email.split("@")[0],
-                points: dbUser.points,
-                theme: dbUser.theme,
-                membership: dbUser.membership,
-                role: dbUser.role,
-                status: dbUser.status,
-                aiCapPlanId: dbUser.aiCapPlanId || freePlan?.id || null,
-              });
-            }
-
-            await admPb.collection("users").update(pbUserRecord.id, {
-              password: password,
-              passwordConfirm: password,
-              name: dbUser.name || email.split("@")[0],
-              points: dbUser.points,
-              theme: dbUser.theme,
-              membership: dbUser.membership,
-              role: dbUser.role,
-              status: dbUser.status,
-            });
-
-            console.log(`[AUTH pb-login] Credentials successfully synced/re-created in PocketBase for ${email}. Retrying login...`);
-            authData = await pb.collection("users").authWithPassword(email, password);
-          } catch (syncErr: any) {
-            console.error(`[AUTH pb-login] Failed to sync credentials to PocketBase:`, syncErr.message);
-            throw pbAuthErr;
-          }
-        } else {
-          throw pbAuthErr;
-        }
-      } else {
-        throw pbAuthErr;
-      }
+      throw pbAuthErr;
     }
 
     const record = authData.record;

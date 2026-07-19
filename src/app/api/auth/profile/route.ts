@@ -35,18 +35,6 @@ export async function PUT(req: Request) {
           where: { id: session.user.id },
           data: updateData,
         });
-
-        // Sync profile fields to real PostgreSQL database
-        try {
-          const { prisma: pgDb } = await import("@/lib/db");
-          await pgDb.user.update({
-            where: { email: session.user.email },
-            data: updateData,
-          });
-          console.log(`[Profile API] Synced name/theme updates to PostgreSQL for ${session.user.email}`);
-        } catch (pgErr: any) {
-          console.warn("[Profile API] Failed to sync profile fields to PostgreSQL:", pgErr.message);
-        }
       } catch (profileErr) {
         console.error("Failed to update profile fields:", profileErr);
         return NextResponse.json({ error: "Failed to update profile" }, { status: 500 });
@@ -62,20 +50,6 @@ export async function PUT(req: Request) {
           password: password,
           passwordConfirm: password,
         });
-
-        // Sync new password hash to real PostgreSQL database
-        try {
-          const bcrypt = await import("bcryptjs");
-          const hashedPassword = await bcrypt.hash(password, 10);
-          const { prisma: pgDb } = await import("@/lib/db");
-          await pgDb.user.update({
-            where: { email: session.user.email },
-            data: { password: hashedPassword }
-          });
-          console.log(`[Profile API] Synced password update to PostgreSQL for ${session.user.email}`);
-        } catch (pgErr: any) {
-          console.warn("[Profile API] Failed to sync password update to PostgreSQL:", pgErr.message);
-        }
       } catch (pbErr) {
         console.error("Failed to update password in PocketBase:", pbErr);
         return NextResponse.json({ error: "Failed to update password in auth system" }, { status: 500 });
