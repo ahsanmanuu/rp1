@@ -1,11 +1,14 @@
 /**
  * Master list of ALL PocketBase collections for backup/restore.
- * Each entry: { name, fileFields? } where fileFields lists PB file columns.
+ * Each entry: { name, fileFields?, urlFields? }
+ *   fileFields — PB file-type fields (downloaded via pb.files.getUrl())
+ *   urlFields  — text/url fields holding full URLs to downloadable files
  */
 
 export interface CollectionDef {
   name: string;
   fileFields?: string[];
+  urlFields?: string[];
 }
 
 export const BACKUP_COLLECTIONS: CollectionDef[] = [
@@ -24,7 +27,7 @@ export const BACKUP_COLLECTIONS: CollectionDef[] = [
 
   // ── Projects & Documents ──
   { name: 'projects' },
-  { name: 'project_files', fileFields: ['fileContent'] },
+  { name: 'project_files', fileFields: ['file'] },
   { name: 'project_collaborators' },
   { name: 'share_links' },
   { name: 'templates', fileFields: ['file'] },
@@ -59,7 +62,7 @@ export const BACKUP_COLLECTIONS: CollectionDef[] = [
   { name: 'support_tickets' },
   { name: 'ticket_messages' },
   { name: 'chat_sessions' },
-  { name: 'chat_messages' },
+  { name: 'chat_messages', fileFields: ['attachment'] },
   { name: 'general_queries' },
 
   // ── Admin & Operations ──
@@ -101,21 +104,21 @@ export const BACKUP_COLLECTIONS: CollectionDef[] = [
 
   // ── CMS / Homepage Content ──
   { name: 'home_content' },
-  { name: 'how_it_works', fileFields: ['image'] },
-  { name: 'gallery_items', fileFields: ['image'] },
-  { name: 'institution_logos', fileFields: ['image'] },
-  { name: 'features', fileFields: ['icon'] },
-  { name: 'benefits', fileFields: ['icon'] },
-  { name: 'product_details', fileFields: ['image'] },
+  { name: 'how_it_works', urlFields: ['imageUrl'] },
+  { name: 'gallery_items', urlFields: ['imageUrl'] },
+  { name: 'institution_logos', urlFields: ['logoUrl'] },
+  { name: 'features' },
+  { name: 'benefits' },
+  { name: 'product_details' },
   { name: 'footer_links' },
   { name: 'tasar_stats' },
   { name: 'platform_stats' },
-  { name: 'site_settings', fileFields: ['logo', 'favicon'] },
+  { name: 'site_settings', fileFields: ['logo'] },
   { name: 'uploads', fileFields: ['file'] },
-  { name: 'floating_banners', fileFields: ['image'] },
-  { name: 'videos' },
-  { name: 'banners', fileFields: ['image'] },
-  { name: 'testimonials', fileFields: ['image'] },
+  { name: 'floating_banners', urlFields: ['imageUrl'] },
+  { name: 'videos', urlFields: ['videoUrl', 'posterUrl'] },
+  { name: 'banners', urlFields: ['imageUrl'] },
+  { name: 'testimonials', urlFields: ['avatarUrl'] },
 
   // ── Backup Schedules (self-referential) ──
   { name: 'backup_schedules' },
@@ -130,5 +133,11 @@ export function getFileFields(collectionName: string): string[] {
   return def?.fileFields ?? [];
 }
 
+/** Get URL fields for a collection (returns empty array if none). */
+export function getUrlFields(collectionName: string): string[] {
+  const def = BACKUP_COLLECTIONS.find(c => c.name === collectionName);
+  return def?.urlFields ?? [];
+}
+
 /** Collections known to have file attachments (for progress tracking). */
-export const FILE_COLLECTIONS = BACKUP_COLLECTIONS.filter(c => c.fileFields && c.fileFields.length > 0);
+export const FILE_COLLECTIONS = BACKUP_COLLECTIONS.filter(c => (c.fileFields && c.fileFields.length > 0) || (c.urlFields && c.urlFields.length > 0));

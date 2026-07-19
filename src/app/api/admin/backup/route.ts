@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pbAdmin } from '@/lib/pb';
 import JSZip from 'jszip';
-import { BACKUP_COLLECTIONS, getFileFields } from '@/lib/backup-collections';
+import { BACKUP_COLLECTIONS, getFileFields, getUrlFields } from '@/lib/backup-collections';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -127,6 +127,64 @@ export async function GET(req: NextRequest) {
           }
         } catch (err: any) {
           console.warn(`[Backup] File collection skip ${col.name}: ${err.message}`);
+        }
+      }
+    }
+
+    // ── Phase 2b: Download URL-based assets ──
+    if (includeFiles) {
+      const urlCollections = collections.filter(c => getUrlFields(c.name).length > 0);
+
+      for (const col of urlCollections) {
+        const urlFields = getUrlFields(col.name);
+        try {
+          let page = 1;
+          let hasMore = true;
+
+          while (hasMore) {
+            const result = await pb.collection(col.name).getList(page, BATCH_SIZE, {
+              requestKey: null,
+            });
+
+            for (const record of result.items) {
+              for (const field of urlFields) {
+                const urlVal = record[field];
+                if (!urlVal || typeof urlVal !== 'string') continue;
+
+                // Skip external URLs (YouTube, Vimeo, etc.) — only download PB-hosted files
+                const pbHost = new URL(pb.baseURL).host;
+                let isPbUrl = false;
+                try {
+                  const parsed = new URL(urlVal);
+                  isPbUrl = parsed.host === pbHost && parsed.pathname.startsWith('/api/files/');
+                } catch {
+                  // Not a valid URL — skip
+                  continue;
+                }
+                if (!isPbUrl) continue;
+
+                try {
+                  const resp = await fetch(urlVal);
+                  if (!resp.ok) continue;
+
+                  const arrayBuffer = await resp.arrayBuffer();
+                  // Extract filename from URL path: /api/files/{collection}/{id}/{filename}
+                  const urlParts = urlVal.split('/');
+                  const safeName = (urlParts[urlParts.length - 1] || 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
+                  const filePath = `files/${col.name}/${record.id}/${field}/${safeName}`;
+                  zip.file(filePath, Buffer.from(arrayBuffer));
+                  metadata.totalFiles++;
+                } catch (fileErr: any) {
+                  console.warn(`[Backup] URL skip ${col.name}/${record.id}/${field}: ${fileErr.message}`);
+                }
+              }
+            }
+
+            hasMore = result.items.length === BATCH_SIZE;
+            page++;
+          }
+        } catch (err: any) {
+          console.warn(`[Backup] URL collection skip ${col.name}: ${err.message}`);
         }
       }
     }
