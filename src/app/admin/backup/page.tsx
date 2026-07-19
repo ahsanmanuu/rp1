@@ -1087,7 +1087,7 @@ export default function AdminBackupPage() {
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.8, opacity: 0 }}
-              className="flex flex-col items-center max-w-lg w-full px-6 text-center"
+              className="flex flex-col items-center max-w-2xl w-full px-8 text-center"
             >
               <div className="relative w-32 h-32 mb-8 flex items-center justify-center">
                 <motion.div
@@ -1118,7 +1118,7 @@ export default function AdminBackupPage() {
               </h3>
               <p className="text-sm mb-6" style={{ color: "rgba(255,255,255,0.6)" }}>{backupRunning ? backupPhase : restorePhase}</p>
 
-              <div className="w-full max-w-xs h-2 bg-white/10 rounded-full overflow-hidden relative mb-3">
+              <div className="w-full max-w-sm h-2 bg-white/10 rounded-full overflow-hidden relative mb-3">
                 <motion.div
                   className="h-full rounded-full absolute top-0 left-0"
                   style={{ background: `linear-gradient(90deg, var(--color-admin-primary), #8b5cf6)` }}
@@ -1191,7 +1191,7 @@ export default function AdminBackupPage() {
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.8, opacity: 0 }}
-              className="rounded-2xl border p-8 max-w-md w-full text-center"
+              className="rounded-2xl border p-8 max-w-lg w-full text-center"
               style={{ backgroundColor: "var(--color-admin-surface-container)", borderColor: "var(--color-admin-outline-variant)" }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -1270,7 +1270,7 @@ export default function AdminBackupPage() {
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.8, opacity: 0 }}
-              className="rounded-2xl border p-8 max-w-md w-full text-center"
+              className="rounded-2xl border p-8 max-w-lg w-full text-center"
               style={{ backgroundColor: "var(--color-admin-surface-container)", borderColor: "var(--color-admin-outline-variant)" }}
               onClick={(e) => e.stopPropagation()}
             >
