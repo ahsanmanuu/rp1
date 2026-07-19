@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "node dev.js",
     "dev:next": "next dev -p 3000",
-    "build": "next build --webpack",
+    "build": "node scripts/fix-prisma-exports.js && next build --webpack",
     "start": "node start.js",
     "lint": "eslint",
     "postinstall": "prisma generate && node scripts/fix-prisma-exports.js"
