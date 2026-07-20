@@ -527,10 +527,12 @@ export async function runHardenedPipeline(
           fn: async () => {
             if (!projectId) return { pdfBase64: null, log: 'Tectonic Local: No project ID provided.' };
             const projectDir = path.join(process.cwd(), 'public', 'uploads', 'projects', projectId);
-            const tectonicPath = path.join(process.cwd(), 'bin', 'tectonic.exe');
+            const isWin = process.platform === 'win32';
+            const tectonicBin = isWin ? 'tectonic.exe' : 'tectonic';
+            const tectonicPath = path.join(process.cwd(), 'bin', tectonicBin);
 
             if (!fs.existsSync(tectonicPath)) {
-                return { pdfBase64: null, log: 'Tectonic Local: tectonic.exe binary missing.' };
+                return { pdfBase64: null, log: `Tectonic Local: ${tectonicBin} binary missing.` };
             }
 
             const os = require('os');
@@ -652,7 +654,7 @@ export async function runHardenedPipeline(
                 console.log(`[TECTONIC] Bibliography detected: \\bibliography=${hasBibliography}, \\bibliographystyle=${hasBibStyle}, \\cite=${hasCitations}, .bib files=[${bibFiles.map(f => f.path).join(', ')}]`);
             }
 
-            console.log(`[TECTONIC] Executing: tectonic.exe -Z continue-on-errors -Z bibtex-mode=default --synctex "${mainRelative}" in ${compileTempDir}`);
+            console.log(`[TECTONIC] Executing: ${tectonicBin} -Z continue-on-errors -Z bibtex-mode=default --synctex "${mainRelative}" in ${compileTempDir}`);
 
             let logOutput = '';
             let currentTimeout = 30000; // Start at 30s
