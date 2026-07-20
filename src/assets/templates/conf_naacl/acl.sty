@@ -1,0 +1,13 @@
+% acl.sty - Minimal stub for ACL
+\NeedsTeXFormat{LaTeX2e}
+\RequirePackage{packages}
+\ProvidesPackage{acl}[2026/04/30 ACL stub]
+\RequirePackage{geometry}
+\geometry{margin=1in}
+\renewcommand{\maketitle}{%
+  \begin{center}
+    {\huge \bfseries \@title \par}
+    \vspace{1em}
+    {\large \@author \par}
+  \end{center}
+}

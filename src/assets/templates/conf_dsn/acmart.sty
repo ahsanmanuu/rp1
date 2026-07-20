@@ -1,0 +1,20 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{acmart}[2024/01/01 ACM Article Class]
+
+\RequirePackage[letterpaper,margin=1in]{geometry}
+\RequirePackage{times}
+\RequirePackage{titling}
+\RequirePackage{abstract}
+
+\setlength{\droptitle}{-4\baselineskip}
+\pretitle{\begin{center}\LARGE\bfseries}
+\posttitle{\end{center}\vskip 0.5\baselineskip}
+\preauthor{\begin{center}\large}
+\postauthor{\end{center}}
+\predate{\begin{center}\large}
+\postdate{\end{center}}
+
+\renewcommand{\abstractnamefont}{\normalfont\bfseries}
+\renewcommand{\abstracttextfont}{\normalfont\small}
+
+\endinput
