@@ -110,6 +110,10 @@ export async function runHardenedPipeline(
     const finalNormalized = [...normalized, ...autoLinkedFiles];
 
     const cleanMain = finalNormalized.find(f => f.path.toLowerCase() === mainFile.toLowerCase())?.path || mainFile;
+
+    // SAFETY: Ensure all file content values are strings (disk reads may return Buffers)
+    finalNormalized.forEach(f => { if (typeof f.content !== 'string') f.content = String(f.content || ''); });
+
     const totalBytes = calculatePayloadSize(finalNormalized);
     const imageCount = finalNormalized.filter(f => f.content.startsWith('data:image')).length;
 
@@ -252,6 +256,9 @@ export async function runHardenedPipeline(
     });
 
     let activeFiles = await optimizeAssets(finalNormalized);
+
+    // SAFETY: Ensure all file content values are strings (disk reads may return Buffers)
+    activeFiles.forEach(f => { if (typeof f.content !== 'string') f.content = String(f.content || ''); });
     
     // PATH SYNCHRONIZATION: Update LaTeX references if images were renamed (e.g. .png -> .jpg)
     if (Object.keys(renames).length > 0) {
@@ -292,6 +299,44 @@ export async function runHardenedPipeline(
                 
                 return `\\${cmd}${opts ? `[${opts}]` : ''}{${cleanedPkgs}}`;
             });
+        }
+    });
+
+    // ── UNIVERSAL BIBLIOGRAPHY CONFLICT FIX ──────────────────────────────────
+    // Many journal classes (elsarticle, nature, IEEEtran, acmart, etc.) load
+    // natbib or have built-in citation handling. \usepackage{cite} conflicts
+    // with these classes and causes fatal "File ended while scanning \@citex" errors.
+    // Strip \usepackage{cite} when the class already provides citation support.
+    const NATBIB_CLASSES = new Set([
+        'elsarticle', 'nature', 'ieee', 'ieeetran', 'acmart', 'sigconf', 'sigplan', 'sigchi',
+        'llncs', 'svproc', 'springer', 'siamart', 'siam', 'amsart', 'amscls',
+        'revtex', 'apa', 'apa6', 'apa7', 'bjnp', 'bjnpp', 'rnc', 'chemmacros',
+        'chemacs', 'gloss', 'glossaries', 'memoir', 'scrartcl', 'scrreprt', 'scrbook'
+    ]);
+    activeFiles.forEach(f => {
+        const ext = f.path.split('.').pop()?.toLowerCase() || '';
+        if (ext !== 'tex') return;
+        if (normalizePath(f.path) !== normalizePath(cleanMain)) return;
+
+        const dcMatch = f.content.match(/\\documentclass\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/);
+        if (!dcMatch) return;
+        const docClass = dcMatch[1].trim().toLowerCase();
+
+        const isNatbibClass = NATBIB_CLASSES.has(docClass) ||
+            /ieee|nature|elsarticle|acmart|llncs|svproc|siam|revtex|apa/.test(docClass);
+        const hasNatbibPkg = /\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\bnatbib\b[^}]*\}/i.test(f.content);
+
+        if (isNatbibClass || hasNatbibPkg) {
+            const beforeLen = f.content.length;
+            // Strip only the "cite" package from comma-separated lists, not the entire \usepackage line
+            f.content = f.content.replace(/\\(usepackage|RequirePackage)\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/gi, (match: string, cmd: string, pkgList: string) => {
+                const pkgs = pkgList.split(',').map((p: string) => p.trim()).filter((p: string) => p.toLowerCase() !== 'cite');
+                if (pkgs.length === 0) return ''; // All packages removed, drop the entire line
+                return `\\${cmd}{${pkgs.join(', ')}}`;
+            });
+            if (f.content.length !== beforeLen) {
+                console.log(`[PIPELINE] Stripped \\usepackage{cite} — document class "${docClass}" has built-in citation support.`);
+            }
         }
     });
 
@@ -572,7 +617,8 @@ export async function runHardenedPipeline(
                 }
             };
 
-            // ── Write session files to disk with CONTENT HASHING (Minimize I/O) ────
+            activeFiles.forEach(f => { if (typeof f.content !== 'string') f.content = String(f.content || ''); });
+            console.log(`[TECTONIC] Writing ${activeFiles.length} files to temp dir: ${activeFiles.map(f => `${f.path}(${typeof f.content === 'string' && f.content.startsWith('data:') ? 'BIN:' + f.content.split(';')[0].split(':')[1] : (typeof f.content === 'string' ? f.content.length : 0) + 'b'})`).join(', ')}`);
             try {
                 await Promise.all(activeFiles.map(async (f) => {
                     const isBinary = isBinaryFile(f.path);
@@ -654,7 +700,7 @@ export async function runHardenedPipeline(
 
             const mainRelative = cleanMain.replace(/\\/g, '/');
 
-            console.log(`[TECTONIC] Executing: ${tectonicBin} -Z continue-on-errors -Z bibtex-mode=default --synctex "${mainRelative}" in ${compileTempDir}`);
+            console.log(`[TECTONIC] Executing: ${tectonicBin} -Z continue-on-errors --synctex "${mainRelative}" in ${compileTempDir}`);
 
             let logOutput = '';
             let currentTimeout = 30000; // Start at 30s
@@ -668,7 +714,7 @@ export async function runHardenedPipeline(
                 try {
                     const { stdout, stderr } = await execFileAsync(
                         tectonicPath,
-                        ['-Z', 'continue-on-errors', '-Z', 'bibtex-mode=default', '--synctex', mainRelative],
+                        ['-Z', 'continue-on-errors', '--synctex', mainRelative],
                         { cwd: compileTempDir, timeout: currentTimeout }
                     );
                     logOutput = (stdout || '') + (stderr || '');
@@ -1293,7 +1339,17 @@ function walkSync(dir: string, baseDir: string = dir): string[] {
 }
 
 export async function hardenedDiscovery(projectId: string | null, files: FilePayload[], mainFile: string): Promise<FilePayload[]> {
-  const sanitized = sanitizeFiles(files);
+  const sanitized = sanitizeFiles(files).map(f => {
+    let c = f.content;
+    if (typeof c !== 'string') {
+      if (c && typeof c === 'object' && typeof (c as any).value === 'string') {
+        c = (c as any).value;
+      } else {
+        c = String(c ?? '');
+      }
+    }
+    return { ...f, content: c };
+  });
   const { files: normalized, mainFile: cleanMain } = prepareStructuredPayload(sanitized, mainFile);
   
   if (!projectId) return normalized;
