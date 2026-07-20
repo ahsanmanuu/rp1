@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { StudioFS } from '@/lib/studio-fs';
 import { TEMPLATE_REGISTRY } from '@/lib/templates/registry';
+import { getTemplateLogo } from '@/lib/templates/logos';
 import { migrateToTemplate } from '@/lib/migration-engine';
 import { useSession } from "@/lib/pb-auth-react";
 import toast from 'react-hot-toast';
@@ -616,11 +617,13 @@ export default function TemplateMigratorPage() {
                       </button>
                     )}
                     <div style={{ fontSize: '2rem', marginBottom: '1rem', height: '48px', display: 'flex', alignItems: 'center' }}>
-                      {t.icon && (typeof t.icon === 'string' && (t.icon.startsWith('http') || t.icon.startsWith('/') || t.icon.includes('.') || t.icon.includes('/'))) ? (
-                        <Image src={t.icon} width={48} height={48} style={{ objectFit: 'contain' }} alt="" unoptimized />
-                      ) : (
-                        t.icon || '📄'
-                      )}
+                      {(() => {
+                        const logo = getTemplateLogo(t.publisher, t.icon);
+                        if (logo && (logo.startsWith('http') || logo.startsWith('/'))) {
+                          return <Image src={logo} width={48} height={48} style={{ objectFit: 'contain' }} alt="" unoptimized />;
+                        }
+                        return logo || '📄';
+                      })()}
                     </div>
                     <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem', paddingRight: t.isCustom ? '60px' : '0' }}>{t.label}</h3>
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{t.desc}</p>

@@ -6,6 +6,7 @@ import { useState, Suspense, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { TEMPLATE_REGISTRY, TemplateMetadata } from "@/lib/templates/registry";
+import { getTemplateLogo } from "@/lib/templates/logos";
 import Sidebar from "@/components/Sidebar";
 import SiteFooter from "@/components/SiteFooter";
 import { useSession } from "@/lib/pb-auth-react";
@@ -23,8 +24,11 @@ import {
 } from "lucide-react";
 
 // --- Robust Icon Component ---
-const TemplateIcon = ({ src, label, category }: { src: string, label: string, category: string }) => {
+const TemplateIcon = ({ src, label, category, publisher }: { src: string, label: string, category: string, publisher?: string }) => {
   const [error, setError] = useState(false);
+  // Always resolve to a reliable, offline-safe logo keyed by publisher
+  // (real brand PNG where available, otherwise a generated monogram SVG).
+  const resolved = getTemplateLogo(publisher, src);
   const getFallbackIcon = () => {
     switch (category) {
       case 'Journal': return <FlaskConical size={16} className="text-primary-joy" />;
@@ -36,17 +40,17 @@ const TemplateIcon = ({ src, label, category }: { src: string, label: string, ca
     }
   };
 
-  if (!src) {
+  if (!resolved) {
     return <div className="w-full h-full flex items-center justify-center bg-slate-50 rounded-lg">{getFallbackIcon()}</div>;
   }
 
-  if (src.startsWith('http') || src.startsWith('/')) {
+  if (resolved.startsWith('http') || resolved.startsWith('/')) {
     if (error) {
       return <div className="w-full h-full flex items-center justify-center bg-slate-50 rounded-lg">{getFallbackIcon()}</div>;
     }
     return (
       <img
-        src={src}
+        src={resolved}
         alt={label}
         className="w-full h-full object-contain p-0.5"
         onError={() => setError(true)}
@@ -55,7 +59,7 @@ const TemplateIcon = ({ src, label, category }: { src: string, label: string, ca
     );
   }
 
-  return <div className="w-full h-full flex items-center justify-center text-lg">{src}</div>;
+  return <div className="w-full h-full flex items-center justify-center text-lg">{resolved}</div>;
 };
 
 function TemplatesContent() {
@@ -466,7 +470,7 @@ function TemplatesContent() {
                        <div className="relative z-10 flex flex-col h-full">
                           <div className="flex justify-between items-start mb-3">
                              <div className="w-10 h-10 rounded-lg bg-white shadow-sm overflow-hidden flex items-center justify-center p-1.5 border border-slate-100">
-                                <TemplateIcon src={tpl.icon} label={tpl.label} category={tpl.category} />
+                                 <TemplateIcon src={tpl.icon} label={tpl.label} category={tpl.category} publisher={tpl.publisher} />
                              </div>
                               {(tpl.assetFolder || tpl.isCustom) && (
                                  <div className="flex items-center gap-1.5">

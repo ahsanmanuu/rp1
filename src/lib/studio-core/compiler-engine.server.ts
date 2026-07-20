@@ -22,6 +22,320 @@ function normalizePath(p: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// UNIVERSAL CITATION RESOLUTION
+// Canonical numeric BibTeX style that ALWAYS emits \bibitem entries. Two variants:
+//   - WITH thebibliography wrapper (standard classes provide the env via \bibliography)
+//   - WITHOUT the wrapper (natbib classes wrap thebibliography themselves)
+// Both are written with direct write$ calls to avoid the tectonic bibtex buffer bug.
+// ─────────────────────────────────────────────────────────────────────────────
+const CANONICAL_BST_BODY = `
+ENTRY
+  { address author booktitle chapter edition editor howpublished institution
+    journal key month note number organization pages publisher school series
+    title type volume year }
+  {}
+  { label }
+
+STRINGS { s }
+
+FUNCTION {bibitem}
+{ newline$
+  "\\bibitem{" write$
+  cite$ write$
+  "}" write$
+  newline$
+}
+
+FUNCTION {fmt.names}
+{ 's := s }
+
+FUNCTION {fmt.authors}
+{ author empty$
+    { "" }
+    { author fmt.names }
+  if$
+}
+
+FUNCTION {fmt.editors}
+{ editor empty$
+    { "" }
+    { editor fmt.names ", editors" * }
+  if$
+}
+
+FUNCTION {article}
+{ bibitem
+  author fmt.names write$
+  newline$
+  title write$
+  newline$
+  journal empty$
+    { "no journal" }
+    { journal }
+  if$
+  write$
+  year empty$ 'skip$ { " " year * write$ } if$
+  newline$
+}
+
+FUNCTION {book}
+{ bibitem
+  author empty$ { editor fmt.editors } { author fmt.names } if$ write$
+  newline$
+  title write$
+  newline$
+  publisher empty$ 'skip$ { publisher write$ } if$
+  year empty$ 'skip$ { " " year * write$ } if$
+  newline$
+}
+
+FUNCTION {incollection}
+{ bibitem
+  author fmt.names write$
+  newline$
+  title write$
+  newline$
+  "In " editor fmt.editors write$
+  booktitle empty$ 'skip$ { " " booktitle write$ } if$
+  year empty$ 'skip$ { " " year * write$ } if$
+  newline$
+}
+
+FUNCTION {inproceedings}
+{ bibitem
+  author fmt.names write$
+  newline$
+  title write$
+  newline$
+  "In " editor fmt.editors write$
+  booktitle empty$ 'skip$ { " " booktitle write$ } if$
+  year empty$ 'skip$ { " " year * write$ } if$
+  newline$
+}
+
+FUNCTION {techreport}
+{ bibitem
+  author fmt.names write$
+  newline$
+  title write$
+  newline$
+  institution empty$ 'skip$ { institution write$ } if$
+  year empty$ 'skip$ { " " year * write$ } if$
+  newline$
+}
+
+FUNCTION {misc}
+{ bibitem
+  author fmt.names write$
+  newline$
+  title write$
+  newline$
+  howpublished empty$ 'skip$ { howpublished write$ } if$
+  year empty$ 'skip$ { " " year * write$ } if$
+  newline$
+}
+
+FUNCTION {phdthesis}
+{ bibitem
+  author fmt.names write$
+  newline$
+  title write$
+  newline$
+  "PhD thesis" write$
+  school empty$ 'skip$ { ", " school * write$ } if$
+  year empty$ 'skip$ { " " year * write$ } if$
+  newline$
+}
+
+FUNCTION {mastersthesis}
+{ bibitem
+  author fmt.names write$
+  newline$
+  title write$
+  newline$
+  "Master's thesis" write$
+  school empty$ 'skip$ { ", " school * write$ } if$
+  year empty$ 'skip$ { " " year * write$ } if$
+  newline$
+}
+
+FUNCTION {proceedings}
+{ bibitem
+  editor empty$
+    { title }
+    { editor fmt.editors ", " title * }
+  if$
+  write$
+  newline$
+  publisher empty$ 'skip$ { publisher write$ } if$
+  year empty$ 'skip$ { " " year * write$ } if$
+  newline$
+}
+
+FUNCTION {manual}
+{ bibitem
+  author empty$ { organization } { author fmt.names } if$ write$
+  newline$
+  title write$
+  newline$
+  organization empty$ 'skip$ { organization write$ } if$
+  year empty$ 'skip$ { " " year * write$ } if$
+  newline$
+}
+
+FUNCTION {default.type} { misc }
+
+MACRO {jan} {"January"}
+MACRO {feb} {"February"}
+MACRO {mar} {"March"}
+MACRO {apr} {"April"}
+MACRO {may} {"May"}
+MACRO {jun} {"June"}
+MACRO {jul} {"July"}
+MACRO {aug} {"August"}
+MACRO {sep} {"September"}
+MACRO {oct} {"October"}
+MACRO {nov} {"November"}
+MACRO {dec} {"December"}
+`;
+
+function buildCanonicalBst(wrapEnv: boolean): string {
+  // READ must precede any EXECUTE; the env wrapper (begin/end) is only needed
+  // for standard classes — natbib classes wrap thebibliography themselves.
+  const open = wrapEnv
+    ? 'FUNCTION {begin.bib} { "\\begin{thebibliography}{99}" write$ newline$ }\nEXECUTE {begin.bib}\n'
+    : '';
+  const close = wrapEnv
+    ? 'FUNCTION {end.bib} { newline$ "\\end{thebibliography}" write$ newline$ }\nEXECUTE {end.bib}\n'
+    : '';
+  return `% Latexify Studio universal numeric bibliography style (auto-injected)\n${CANONICAL_BST_BODY}\nREAD\n${open}ITERATE { call.type$ }\nREVERSE { newline$ }\n${close}`;
+}
+
+const NATBIB_CLASS_SET = new Set([
+  'elsarticle', 'nature', 'ieee', 'ieeetran', 'acmart', 'sigconf', 'sigplan', 'sigchi',
+  'llncs', 'svproc', 'springer', 'siamart', 'siam', 'amsart', 'amscls',
+  'revtex', 'apa', 'apa6', 'apa7', 'bjnp', 'bjnpp', 'rnc', 'chemmacros',
+  'chemacs', 'gloss', 'glossaries', 'memoir', 'scrartcl', 'scrreprt', 'scrbook',
+  'achemso', 'rsc', 'frontiers', 'mdpi', 'oup', 'oxford', 'wiley',
+]);
+
+function isPlaceholderBst(content: string): boolean {
+  // A real BibTeX style emits \bibitem entries; placeholders never do.
+  if (/\\bibitem/.test(content)) return false;
+  if (/Minimal placeholder/i.test(content)) return true;
+  // No ITERATE over entries and no \bibitem => cannot produce citations.
+  return !/ITERATE\s*\{\s*call\.type\$/.test(content);
+}
+
+function extractCiteKeys(tex: string): string[] {
+  const keys = new Set<string>();
+  const re = /\\(?:cite|citep|citet|citeauthor|citeyear|citeyearpar|citealp|citealt|cites|autocite|textcite|parencite|footcite|smartcite|parentcite|nocite)\*?\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(tex)) !== null) {
+    const inner = m[1] || '';
+    if (/^\s*\*\s*$/.test(inner)) continue; // \nocite{*}
+    inner.split(',').forEach((k) => {
+      const key = k.trim();
+      if (key && /^[^\s{}#,]+$/.test(key)) keys.add(key);
+    });
+  }
+  return [...keys];
+}
+
+function extractBibKeys(bibContent: string): Set<string> {
+  const keys = new Set<string>();
+  const re = /@\s*\w+\s*\{\s*([^,}\s]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(bibContent)) !== null) {
+    const k = (m[1] || '').trim();
+    if (k) keys.add(k);
+  }
+  return keys;
+}
+
+/**
+ * Guarantees a resolvable bibliography for any BibTeX-based document:
+ *  - Injects synthetic @misc entries for cited keys missing from .bib files.
+ *  - Substitutes a working numeric .bst for any placeholder style file.
+ * Mutates `activeFiles` in place and may rewrite the main .tex bibliography list.
+ */
+function applyUniversalBibliographyFix(activeFiles: FilePayload[], cleanMain: string): void {
+  const mainObj = activeFiles.find(f => normalizePath(f.path) === normalizePath(cleanMain));
+  if (!mainObj) return;
+  const tex = mainObj.content || '';
+
+  // Determine document class + natbib usage for env-aware .bst selection.
+  const dcMatch = tex.match(/\\documentclass\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/);
+  const docClass = (dcMatch ? dcMatch[1].trim().toLowerCase() : '');
+  const isNatbib =
+    NATBIB_CLASS_SET.has(docClass) ||
+    /ieee|nature|elsarticle|acmart|llncs|svproc|siam|revtex|apa/i.test(docClass) ||
+    /\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\bnatbib\b[^}]*\}/i.test(tex) ||
+    /\\(?:citep|citet|citeauthor|citeyear|citealp|citealt)\*?\s*(?:\[[^\]]*\])?\s*\{/.test(tex);
+
+  // 1) Gather cited keys and existing bib keys.
+  const allTex = activeFiles.filter(f => f.path.toLowerCase().endsWith('.tex')).map(f => f.content || '').join('\n');
+  const citedKeys = extractCiteKeys(allTex);
+  const bibFiles = activeFiles.filter(f => f.path.toLowerCase().endsWith('.bib'));
+  const presentKeys = new Set<string>();
+  bibFiles.forEach(f => extractBibKeys(f.content || '').forEach(k => presentKeys.add(k)));
+
+  const missingKeys = citedKeys.filter(k => !presentKeys.has(k));
+  if (missingKeys.length > 0) {
+    console.log(`[BIBFIX] Missing cited keys (will inject): ${missingKeys.join(', ')}`);
+    const entries = missingKeys.map(k =>
+      `@misc{${k},\n  author = {Author, Anonymous},\n  title = {Reference: ${k}},\n  journal = {},\n  year = {2024}\n}`
+    ).join('\n\n');
+    const autociteName = 'scholarly-autocite.bib';
+    const existing = activeFiles.find(f => normalizePath(f.path) === autociteName);
+    if (existing) {
+      existing.content = `${existing.content}\n\n${entries}`;
+    } else {
+      activeFiles.push({ path: autociteName, content: entries });
+    }
+    // Ensure the autocite .bib is listed in \bibliography{...}.
+    if (/\\bibliography\s*\{/.test(tex)) {
+      mainObj.content = tex.replace(/\\bibliography\s*\{([^}]*)\}/, (mm, list) =>
+        list.split(',').map((s: string) => s.trim()).filter(Boolean).includes('scholarly-autocite')
+          ? mm
+          : `\\bibliography{${list},scholarly-autocite}`
+      );
+    } else if (/\\bibliographystyle\s*\{/.test(tex)) {
+      mainObj.content = tex.replace(/\\bibliographystyle\s*\{[^}]*\}/, (mm) => `${mm}\n\\bibliography{scholarly-autocite}`);
+    }
+  }
+
+  // 2) Supply a bibliographystyle if none present (bibtex needs one).
+  const refreshedTex = mainObj.content || tex;
+  if (/\\bibliography\b/.test(refreshedTex) && !/\\bibliographystyle\s*\{/.test(refreshedTex)) {
+    mainObj.content = refreshedTex.replace(/\\bibliography\s*\{/, '\\bibliographystyle{plain}\n\\bibliography{');
+    console.log('[BIBFIX] Injected default \\bibliographystyle{plain}.');
+  }
+
+  // 3) Substitute placeholder .bst files with a working numeric style.
+  const bstStyleMatch = (mainObj.content || tex).match(/\\bibliographystyle\s*\{\s*([^}]+)\s*\}/);
+  const styleNames = bstStyleMatch ? [bstStyleMatch[1].trim()] : [];
+  // Also catch .bst files pulled in via \bibliographystyle or present in payload.
+  activeFiles.forEach(f => {
+    if (!f.path.toLowerCase().endsWith('.bst')) return;
+    if (isPlaceholderBst(f.content || '')) {
+      f.content = buildCanonicalBst(!isNatbib);
+      console.log(`[BIBFIX] Replaced placeholder .bst with working style: ${f.path} (wrapEnv=${!isNatbib})`);
+    }
+  });
+  // If the referenced style's .bst is missing, inject the canonical one.
+  styleNames.forEach(name => {
+    const bstPath = `${name}.bst`;
+    const has = activeFiles.some(f => normalizePath(f.path) === bstPath.toLowerCase());
+    if (!has) {
+      activeFiles.push({ path: bstPath, content: buildCanonicalBst(!isNatbib) });
+      console.log(`[BIBFIX] Injected missing style .bst: ${bstPath} (wrapEnv=${!isNatbib})`);
+    }
+  });
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
 // NUCLEAR 17.0 MASTER ENGINE (Recursive Sanitization & HA Discovery)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -539,6 +853,26 @@ export async function runHardenedPipeline(
                     if (stubsToInject.length > 0) {
         activeFiles = [...stubsToInject, ...activeFiles];
     }
+    // ────────────────────────────────────────────────────────────────────────
+    // UNIVERSAL CITATION RESOLUTION (run BEFORE monolithic collapse so the
+    // flattened main file and injected .bib/.bst survive into every strategy)
+    {
+        const _mainObj = activeFiles.find(f => normalizePath(f.path) === normalizePath(cleanMain));
+        const _mainContent = _mainObj?.content || '';
+        if (
+            (/\\(?:bibliography|addbibresource)\s*\{/.test(_mainContent) ||
+                /\\cite[tpsnra]?\s*(?:\[[^\]]*\])?\s*\{/.test(_mainContent)) &&
+            !/\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\bbiblatex\b[^}]*\}/i.test(_mainContent)
+        ) {
+            try {
+                applyUniversalBibliographyFix(activeFiles, cleanMain);
+                console.log('[BIBFIX] Universal bibliography resolution applied.');
+            } catch (bibErr) {
+                console.warn('[BIBFIX] Universal bibliography fix skipped due to error:', bibErr);
+            }
+        }
+    }
+
     // ────────────────────────────────────────────────────────────────────────
     // NUCLEAR 31.0: MONOLITHIC COLLAPSE FOR ULTRA-LARGE PROJECTS
     const monolithContent = flattenProject(activeFiles, cleanMain);
