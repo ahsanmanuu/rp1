@@ -1040,6 +1040,23 @@
 
 \long\def\ABSTRACT#1{\long\gdef\theABSTRACT{#1}}\def\theABSTRACT{}%
 
+% --- Standard LaTeX compatibility shims ---------------------------------
+% Documents written with generic LaTeX markup use \title / \author / \date
+% and the `abstract` environment. The INFORMS class expects its own
+% internal macros (\TITLE, \ARTICLEAUTHORS, \ABSTRACT). These shims map the
+% standard commands onto the class internals so ALL documents render their
+% metadata correctly, while leaving the native \TITLE / \AUTHOR / \ABSTRACT
+% workflow untouched.
+\def\title#1{\TITLE{#1}}
+\def\author#1{\ARTICLEAUTHORS{#1}}
+\def\date#1{\gdef\theDATE{#1}}
+
+% The class does not define an `abstract` environment; it expects \ABSTRACT{...}.
+% Capture the body and forward it to \ABSTRACT, then typeset the abstract block
+% immediately so it renders even when the environment appears after \maketitle.
+\RequirePackage{environ}
+\NewEnviron{abstract}{\ABSTRACT{\BODY}\theARTICLEABSTRACT}
+
 \def\SEPBAR{$\mskip2.5mu|\mskip2.5mu$}
 
 \def\SUBJECTCLASSname{{\it Subject classifications\/}{\kern0.7pt}:\enskip}
@@ -1207,7 +1224,9 @@
 %  \theARTICLETOP
   \theARTICLETITLE
   \theARTICLEAUTHORS
-  \theARTICLEABSTRACT
+%  \theARTICLEABSTRACT removed from here: the abstract environment typesets
+%  itself at its own location so it works regardless of whether it appears
+%  before or after \maketitle (standard docs put it after).
   \theARTICLERULE
 }
 
