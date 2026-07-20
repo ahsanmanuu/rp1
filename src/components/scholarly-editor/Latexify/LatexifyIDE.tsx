@@ -940,7 +940,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
     } finally {
       setCompiling(false);
     }
-  }, [fs, compiling, projectId, activeFile, engine, project, isSyncing]);
+  }, [fs, compiling, projectId, activeFile, code, engine, project, isSyncing]);
 
   // Keep compileRef current so async callbacks always call the latest version
   useEffect(() => {
@@ -1880,17 +1880,34 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                                                   setMessageStates(prev => ({ ...prev, [i]: 'applied' }));
                                                   return;
                                                 }
-                                                const match = m.content.match(/```(?:latex|tex|bib|bst|cls|sty)?\n([\s\S]*?)```/);
-                                                if (match && match[1]) {
-                                                  const extracted = match[1];
+
+                                                // Try fenced code block: any language tag, case-insensitive, optional space after ```
+                                                const fencedMatch = m.content.match(/```[\s]*([a-zA-Z0-9]*)\s*\r?\n([\s\S]*?)\r?\n[\s]*```/i);
+                                                if (fencedMatch && fencedMatch[2] && fencedMatch[2].trim()) {
+                                                  const extracted = fencedMatch[2].trim();
                                                   const isFullDoc = extracted.includes('\\documentclass');
                                                   const newCode = isFullDoc ? extracted : `${code}\n${extracted}`;
                                                   setCode(newCode);
                                                   toast.success(isFullDoc ? "Full document applied to editor!" : "Snippet inserted into editor!");
                                                   setTimeout(() => compileRef.current?.(), 100);
-                                                } else {
-                                                  toast.error("No code block detected in message.");
+                                                  setMessageStates(prev => ({ ...prev, [i]: 'applied' }));
+                                                  return;
                                                 }
+
+                                                // Fallback: if message looks like raw LaTeX (has \command or \begin), treat the whole thing as code
+                                                const hasLatexMarkers = /\\(?:documentclass|begin|end|usepackage|section|cite|ref|include)/i.test(m.content);
+                                                if (hasLatexMarkers) {
+                                                  const trimmed = m.content.trim();
+                                                  const isFullDoc = trimmed.includes('\\documentclass');
+                                                  const newCode = isFullDoc ? trimmed : `${code}\n${trimmed}`;
+                                                  setCode(newCode);
+                                                  toast.success(isFullDoc ? "Full document applied to editor!" : "LaTeX content inserted into editor!");
+                                                  setTimeout(() => compileRef.current?.(), 100);
+                                                  setMessageStates(prev => ({ ...prev, [i]: 'applied' }));
+                                                  return;
+                                                }
+
+                                                toast.error("No code block detected in message.");
                                                 setMessageStates(prev => ({ ...prev, [i]: 'applied' }));
                                               }}
                                              style={{ 

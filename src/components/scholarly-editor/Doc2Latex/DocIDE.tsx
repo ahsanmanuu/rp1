@@ -903,7 +903,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     } finally {
       setCompiling(false);
     }
-  }, [fs, compiling, projectId, activeFile, engine, project, isSyncing]);
+  }, [fs, compiling, projectId, activeFile, code, engine, project, isSyncing]);
 
   // Keep compileRef current so async callbacks always call the latest version
   useEffect(() => {
