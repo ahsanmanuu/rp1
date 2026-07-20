@@ -640,7 +640,19 @@ export async function runHardenedPipeline(
             const execFileAsync = promisify(execFile);
 
             const mainRelative = cleanMain.replace(/\\/g, '/');
-            console.log(`[TECTONIC] Executing: tectonic.exe -Z continue-on-errors "${mainRelative}" in ${compileTempDir}`);
+
+            // ── BIBLIOGRAPHY DETECTION ────────────────────────────────────────
+            const mainFileObj = activeFiles.find(f => normalizePath(f.path) === normalizePath(cleanMain));
+            const mainContent = mainFileObj?.content || '';
+            const hasBibliography = /\\(?:bibliography|addbibresource)\s*\{/.test(mainContent);
+            const hasBibStyle = /\\bibliographystyle\s*\{/.test(mainContent);
+            const hasCitations = /\\cite[tpsnra]?\s*(?:\[[^\]]*\])?\s*\{/.test(mainContent);
+            const bibFiles = activeFiles.filter(f => f.path.toLowerCase().endsWith('.bib'));
+            if (hasCitations || hasBibliography) {
+                console.log(`[TECTONIC] Bibliography detected: \\bibliography=${hasBibliography}, \\bibliographystyle=${hasBibStyle}, \\cite=${hasCitations}, .bib files=[${bibFiles.map(f => f.path).join(', ')}]`);
+            }
+
+            console.log(`[TECTONIC] Executing: tectonic.exe -Z continue-on-errors -Z bibtex-mode=default --synctex "${mainRelative}" in ${compileTempDir}`);
 
             let logOutput = '';
             let currentTimeout = 30000; // Start at 30s
@@ -654,7 +666,7 @@ export async function runHardenedPipeline(
                 try {
                     const { stdout, stderr } = await execFileAsync(
                         tectonicPath,
-                        ['-Z', 'continue-on-errors', '--synctex', mainRelative],
+                        ['-Z', 'continue-on-errors', '-Z', 'bibtex-mode=default', '--synctex', mainRelative],
                         { cwd: compileTempDir, timeout: currentTimeout }
                     );
                     logOutput = (stdout || '') + (stderr || '');
@@ -881,6 +893,10 @@ export async function runHardenedPipeline(
     } catch (e: any) { combinedLog += `--- TECTONIC LOCAL ERROR ---\n${e.message}\n`; }
 
     // ── PHASE 2: REMOTE FALLBACK ─────────────────────────────────────────────
+    const remoteBibFiles = monoFiles.filter(f => f.path.toLowerCase().endsWith('.bib'));
+    if (hasCitations || hasBibliography) {
+        console.log(`[PIPELINE] Remote fallback with bibliography: .bib files=[${remoteBibFiles.map(f => f.path).join(', ')}], main includes \\bibliography=${hasBibliography}`);
+    }
     const remoteStrategies = [
         { name: 'YTOTECH', fn: () => compileWithYtoTech(selectedEngine, monoFiles, cleanMain) },
         { name: 'TEXLIVE', fn: () => compileWithTexLive(monoFiles, cleanMain, selectedEngine) }
