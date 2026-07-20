@@ -1,10 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pbAdmin } from '@/lib/pb';
+import { execSync } from 'child_process';
+import path from 'path';
+import { pbAdmin, clearAdminCache } from '@/lib/pb';
 import JSZip from 'jszip';
 import { ALL_COLLECTION_NAMES, getFileFields } from '@/lib/backup-collections';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 600;
+
+/**
+ * Collections that must NEVER be restored from backup.
+ * Restoring _superusers would overwrite the active admin's bcrypt hash,
+ * locking out pbAdmin() and breaking all authenticated user operations.
+ */
+const NEVER_RESTORE_COLLECTIONS = new Set(['_superusers']);
+
+/**
+ * Re-upsert superuser credentials via CLI after any restore,
+ * ensuring the active server credentials always win over backup data.
+ */
+function reUpsertSuperusers(): void {
+  const isWindows = process.platform === 'win32';
+  const pbBinary = isWindows
+    ? path.join(process.cwd(), 'pocketbase.exe')
+    : path.join(process.cwd(), 'pocketbase');
+  const pbDataDir = process.env.PB_DATA_DIR || path.join(process.cwd(), 'pb_data');
+
+  const emailsToUpsert = Array.from(new Set([
+    process.env.POCKETBASE_ADMIN_EMAIL || 'admin@latexify.io',
+    process.env.ADMIN_EMAIL || '',
+  ].filter(Boolean)));
+
+  let password = process.env.POCKETBASE_ADMIN_PASSWORD || 'Sczone@123';
+  if (password === 'admin123456') password = 'Sczone@123'; // ignore stale default
+
+  for (const email of emailsToUpsert) {
+    try {
+      const cmd = isWindows
+        ? `"${pbBinary}" superuser upsert ${email} ${password} --dir="${pbDataDir}"`
+        : `"${pbBinary}" superuser upsert ${email} ${password} --dir="${pbDataDir}"`;
+      execSync(cmd, { stdio: 'ignore' });
+      console.log(`[Restore] Superuser re-upserted: ${email}`);
+    } catch (err: any) {
+      console.warn(`[Restore] Superuser re-upsert failed for ${email}: ${err.message}`);
+    }
+  }
+
+  // Clear stale admin token cache so the next pbAdmin() call re-authenticates
+  clearAdminCache();
+  try {
+    const fs = require('fs');
+    const tokenPath = path.join(pbDataDir, 'admin_token.json');
+    if (fs.existsSync(tokenPath)) fs.unlinkSync(tokenPath);
+  } catch {}
+}
 
 interface RestoreResult {
   collection: string;
@@ -61,7 +110,7 @@ export async function POST(req: NextRequest) {
 
     // Sort collections: simpler tables first, complex ones with relations later
     const priorityOrder = [
-      'users', '_superusers', 'membership_plans', 'ai_cap_plans',
+      'users', 'membership_plans', 'ai_cap_plans',
       'admin_users', 'site_settings', 'platform_stats',
     ];
 
@@ -80,6 +129,16 @@ export async function POST(req: NextRequest) {
       if (!colFile) continue;
 
       const result: RestoreResult = { collection: colName, imported: 0, skipped: 0, errors: [] };
+
+      // SAFETY: Never restore _superusers — importing an old bcrypt hash would
+      // overwrite the current admin credentials and lock out all admin operations,
+      // breaking user sign-in for every user on the platform.
+      if (NEVER_RESTORE_COLLECTIONS.has(colName)) {
+        result.errors.push(`Collection "${colName}" is protected and cannot be restored from backup.`);
+        results.push(result);
+        console.warn(`[Restore] Skipping protected collection: ${colName}`);
+        continue;
+      }
 
       try {
         const records = JSON.parse(await colFile.async('text'));
@@ -209,6 +268,16 @@ export async function POST(req: NextRequest) {
           }
         }
       }
+    }
+
+    // ── Phase 3: Re-upsert superuser credentials ──
+    // This is CRITICAL: even if _superusers was not in the backup, we always
+    // re-assert the current server credentials after any restore to prevent
+    // any accidental credential state drift from breaking admin auth.
+    try {
+      reUpsertSuperusers();
+    } catch (suErr: any) {
+      console.warn('[Restore] Post-restore superuser re-upsert failed (non-fatal):', suErr.message);
     }
 
     const summary = {
