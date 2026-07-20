@@ -76,89 +76,47 @@ export default function EditorLoadingOverlay({ visible, label = 'LOADING LATEX S
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '1.5rem',
+            gap: '1.25rem',
             background: 'rgba(8, 8, 12, 0.88)',
             backdropFilter: 'blur(14px)',
           }}
         >
-          {/* Orbiting icon ring */}
-          <div style={{ position: 'relative', width: 88, height: 88 }}>
-            {/* Outer orbit */}
-            {ICON_STEPS.map((item, i) => {
-              const angle = (i / ICON_STEPS.length) * 2 * Math.PI - Math.PI / 2;
-              const r = 38;
-              const x = r * Math.cos(angle);
-              const y = r * Math.sin(angle);
-              const isActive = i === step;
-              return (
-                <motion.div
-                  key={i}
-                  animate={{
-                    opacity: isActive ? 1 : 0.18,
-                    scale: isActive ? 1.35 : 0.85,
-                  }}
-                  transition={{ duration: 0.3 }}
-                  style={{
-                    position: 'absolute',
-                    left: '50%',
-                    top: '50%',
-                    transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
-                    color: item.color,
-                    filter: isActive ? `drop-shadow(0 0 8px ${item.color})` : 'none',
-                  }}
-                >
-                  <item.Icon size={14} />
-                </motion.div>
-              );
-            })}
-
-            {/* Centre pulsing icon */}
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={step}
-                initial={{ scale: 0.6, opacity: 0, rotate: -30 }}
-                animate={{ scale: 1, opacity: 1, rotate: 0 }}
-                exit={{ scale: 0.6, opacity: 0, rotate: 30 }}
-                transition={{ duration: 0.28, ease: 'easeOut' }}
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: '50%',
-                  background: `radial-gradient(circle, ${current.color}22 0%, transparent 70%)`,
-                }}
-              >
-                <div style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: '12px',
-                  background: `linear-gradient(135deg, ${current.color}cc, ${ICON_STEPS[(step + 2) % ICON_STEPS.length].color}cc)`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: `0 0 22px ${current.color}88, 0 0 50px ${current.color}33`,
-                }}>
-                  <CurrentIcon size={20} color="#fff" />
-                </div>
-              </motion.div>
-            </AnimatePresence>
-
-            {/* Rotating ring border */}
+          {/* Single calm loader: rotating accent ring with center icon */}
+          <div style={{ position: 'relative', width: 72, height: 72 }}>
             <motion.div
               animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 3, ease: 'linear' }}
+              transition={{ repeat: Infinity, duration: 1.1, ease: 'linear' }}
               style={{
                 position: 'absolute',
-                inset: -2,
+                inset: 0,
                 borderRadius: '50%',
-                border: `2px solid transparent`,
-                borderTopColor: current.color,
-                borderRightColor: ICON_STEPS[(step + 2) % ICON_STEPS.length].color,
-                opacity: 0.7,
+                border: '3px solid transparent',
+                borderTopColor: 'var(--accent-primary, #00a395)',
+                borderRightColor: 'var(--accent-secondary, #06b6d4)',
+                opacity: 0.9,
               }}
             />
+            <div
+              style={{
+                position: 'absolute',
+                inset: 10,
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'rgba(255,255,255,0.04)',
+              }}
+            >
+              <motion.div
+                key={step}
+                initial={{ scale: 0.8, opacity: 0.5 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.3, ease: 'easeOut' }}
+                style={{ color: 'var(--accent-primary, #00a395)', display: 'flex' }}
+              >
+                <CurrentIcon size={24} />
+              </motion.div>
+            </div>
           </div>
 
           {/* Step label */}
@@ -173,7 +131,7 @@ export default function EditorLoadingOverlay({ visible, label = 'LOADING LATEX S
                 style={{
                   fontSize: '0.62rem',
                   fontWeight: 700,
-                  color: current.color,
+                  color: 'var(--accent-primary, #00a395)',
                   letterSpacing: '0.12em',
                   textTransform: 'uppercase',
                   margin: '0 0 0.35rem 0',
@@ -203,8 +161,8 @@ export default function EditorLoadingOverlay({ visible, label = 'LOADING LATEX S
             </p>
           </div>
 
-          {/* Multicolor segmented progress bar */}
-          <div style={{ width: 200, height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
+          {/* Single smooth progress bar (no shimmer) */}
+          <div style={{ width: 200, height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
             <motion.div
               animate={{ width: `${progress}%` }}
               transition={{ duration: 0.35, ease: 'easeOut' }}
@@ -212,34 +170,9 @@ export default function EditorLoadingOverlay({ visible, label = 'LOADING LATEX S
                 position: 'absolute',
                 left: 0, top: 0, bottom: 0,
                 borderRadius: 4,
-                background: `linear-gradient(90deg, #6366f1, #a855f7, #06b6d4, #10b981, ${current.color})`,
-                boxShadow: `0 0 10px ${current.color}88`,
+                background: 'linear-gradient(90deg, var(--accent-primary, #00a395), var(--accent-secondary, #06b6d4))',
               }}
             />
-            {/* shimmer */}
-            <motion.div
-              animate={{ x: ['-100%', '300%'] }}
-              transition={{ repeat: Infinity, duration: 1.6, ease: 'easeInOut', repeatDelay: 0.2 }}
-              style={{
-                position: 'absolute',
-                top: 0, bottom: 0,
-                width: '40%',
-                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent)',
-                borderRadius: 4,
-              }}
-            />
-          </div>
-
-          {/* Step dots */}
-          <div style={{ display: 'flex', gap: '5px' }}>
-            {ICON_STEPS.map((item, i) => (
-              <motion.div
-                key={i}
-                animate={{ scale: i === step ? 1.4 : 1, opacity: i <= step ? 1 : 0.2 }}
-                transition={{ duration: 0.2 }}
-                style={{ width: 5, height: 5, borderRadius: '50%', background: item.color }}
-              />
-            ))}
           </div>
         </motion.div>
       )}

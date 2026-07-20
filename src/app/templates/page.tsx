@@ -563,7 +563,7 @@ function TemplatesContent() {
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.9, y: 40 }}
                     className="w-full max-w-4xl rounded-[2.5rem] p-10 border border-slate-200 shadow-2xl relative overflow-hidden"
-                    style={{ backgroundColor: 'var(--card-bg)', opacity: 1 }}
+                    style={{ backgroundColor: '#0f172a', opacity: 1 }}
                   >
                      <div className="absolute top-0 right-0 w-64 h-64 bg-primary-joy/5 rounded-full -mr-32 -mt-32 blur-[80px]" />
                      <button 
@@ -573,7 +573,7 @@ function TemplatesContent() {
                      <div className="space-y-8 relative z-10">
                         <div className="space-y-2">
                            <div className="inline-flex items-center gap-2 px-3 py-1 bg-slate-900 text-white text-[9px] font-black uppercase tracking-[0.2em] rounded-full"><Command size={10} /> Template Hardening</div>
-                           <h2 className="text-2xl font-black text-slate-900 tracking-tight">Manage {allTemplates.find(t => t.id === pendingTemplateId)?.label}</h2>
+                            <h2 className="text-2xl font-black text-slate-100 tracking-tight">Manage {allTemplates.find(t => t.id === pendingTemplateId)?.label}</h2>
                            <p className="text-slate-400 text-xs font-medium leading-relaxed">Replace specific template components with high-fidelity versions.</p>
                         </div>
                         <div className="space-y-6">
@@ -612,25 +612,25 @@ function TemplatesContent() {
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 30 }}
                     className="w-full max-w-4xl rounded-[3rem] p-8 md:p-12 border-2 border-primary-joy/20 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.2)] relative overflow-hidden"
-                    style={{ backgroundColor: 'var(--card-bg)', opacity: 1 }}
+                    style={{ backgroundColor: '#0f172a', opacity: 1 }}
                   >
                      <div className="absolute top-0 right-0 w-64 h-64 bg-primary-joy/5 rounded-full -mr-32 -mt-32 blur-[80px]" />
                      <button onClick={() => setShowModal(false)} className="absolute top-6 right-6 p-2 text-slate-300 hover:text-slate-900 transition-colors z-20 bg-slate-50 rounded-xl border border-slate-100"><X size={18} /></button>
                      <div className="space-y-10 relative z-10">
                         <div className="space-y-4 text-center">
                            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-primary-joy/5 text-primary-joy text-[10px] font-black uppercase tracking-widest rounded-full border border-primary-joy/10 mx-auto"><Zap size={14} /> Workflow Selection</div>
-                           <h2 className="text-3xl font-black tracking-tight text-slate-900">Choose Your Studio</h2>
+                            <h2 className="text-3xl font-black tracking-tight text-slate-100">Choose Your Studio</h2>
                            <p className="text-slate-400 font-medium text-base leading-relaxed max-w-full mx-auto">Select the optimized environment for this template. You can switch later if needed.</p>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                            <button onClick={() => handleApplyFinal('latexify')} className="group relative p-10 rounded-[2rem] border-2 border-outline-joy/10 hover:border-primary-joy bg-white hover:bg-primary-joy/[0.02] transition-all text-center space-y-5 shadow-sm hover:shadow-joy-premium flex flex-col items-center">
                               <div className="w-16 h-16 rounded-2xl bg-primary-joy/10 flex items-center justify-center text-primary-joy group-hover:scale-110 transition-transform duration-500 mx-auto"><Monitor size={32} /></div>
-                              <div className="space-y-2"><h3 className="text-2xl font-black text-slate-800 tracking-tight">Latexify Studio</h3><p className="text-sm text-slate-400 font-medium leading-relaxed max-w-xs mx-auto">Full-featured LaTeX IDE with real-time sync, PDF preview, and version control.</p></div>
+                              <div className="space-y-2"><h3 className="text-2xl font-black text-slate-100 tracking-tight">Latexify Studio</h3><p className="text-sm text-slate-400 font-medium leading-relaxed max-w-xs mx-auto">Full-featured LaTeX IDE with real-time sync, PDF preview, and version control.</p></div>
                               <div className="flex items-center gap-2 text-[10px] font-black text-primary-joy uppercase tracking-widest transition-all">Launch Now <ArrowUpRight size={14} /></div>
                            </button>
                            <button onClick={() => handleApplyFinal('doc2latex')} className="group relative p-10 rounded-[2rem] border-2 border-outline-joy/10 hover:border-primary-joy bg-white hover:bg-primary-joy/[0.02] transition-all text-center space-y-5 shadow-sm hover:shadow-joy-premium flex flex-col items-center">
                               <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 group-hover:scale-110 transition-transform duration-500 mx-auto"><Sparkles size={32} /></div>
-                              <div className="space-y-2"><h3 className="text-2xl font-black text-slate-800 tracking-tight">Doc2Latex</h3><p className="text-sm text-slate-400 font-medium leading-relaxed max-w-xs mx-auto">AI-powered document parser and automatic manuscript format converter.</p></div>
+                              <div className="space-y-2"><h3 className="text-2xl font-black text-slate-100 tracking-tight">Doc2Latex</h3><p className="text-sm text-slate-400 font-medium leading-relaxed max-w-xs mx-auto">AI-powered document parser and automatic manuscript format converter.</p></div>
                               <div className="flex items-center gap-2 text-[10px] font-black text-emerald-500 uppercase tracking-widest transition-all">Launch Now <ArrowUpRight size={14} /></div>
                            </button>
                         </div>
@@ -648,14 +648,14 @@ function TemplatesContent() {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 20, scale: 0.95 }}
                     className="w-full max-w-4xl rounded-[3rem] p-8 md:p-12 border-2 border-slate-200 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.15)] relative overflow-hidden"
-                    style={{ backgroundColor: 'var(--card-bg)', opacity: 1 }}
+                    style={{ backgroundColor: '#0f172a', opacity: 1 }}
                   >
                      <div className="absolute top-0 left-0 w-48 h-48 bg-primary-joy/5 rounded-full -ml-24 -mt-24 blur-[60px]" />
                      <button onClick={() => setShowUploadModal(false)} className="absolute top-8 right-8 p-3 text-slate-300 hover:text-slate-900 bg-slate-50 rounded-2xl border border-slate-100 transition-all z-20"><X size={20} /></button>
                      <form onSubmit={handleUpload} className="space-y-8 relative z-10">
                         <div className="space-y-3">
                            <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary-joy/5 text-primary-joy text-[10px] font-black uppercase tracking-widest rounded-full border border-primary-joy/10"><FileArchive size={14} /> Repository Expansion</div>
-                           <h2 className="text-3xl font-black text-slate-900 tracking-tight">Upload Custom Template</h2>
+                            <h2 className="text-3xl font-black text-slate-100 tracking-tight">Upload Custom Template</h2>
                            <p className="text-sm text-slate-400 font-medium leading-relaxed">Add your own professional formats to the Scholarly Archive. Ensure your ZIP includes all .tex, .cls, and .bst files.</p>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

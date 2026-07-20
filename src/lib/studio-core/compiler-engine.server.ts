@@ -372,6 +372,48 @@ async function fetchWithRetry(urls: string[], options: any, mirrorPath = ''): Pr
   throw lastError || new Error("All mirrors exhausted");
 }
 
+// ── BIBLIOGRAPHY HEADING SELF-CORRECTION ────────────────────────────────────
+// Some document classes/packages (e.g. `acmart` loaded on `article`) silently
+// drop the "References"/"Bibliography" heading. We detect a missing heading in
+// the *rendered* PDF and inject one, so every template shows the heading —
+// without ever producing a duplicate (we only inject when it is truly absent).
+
+const BIB_HEADING_MARKER = '%%SCHOLARLY_BIB_HEADING%%';
+
+function injectBibliographyHeading(fileSets: FilePayload[][], cleanMain: string): boolean {
+    const mainNorm = normalizePath(cleanMain);
+    let injected = false;
+    for (const files of fileSets) {
+        const main = files.find(f => normalizePath(f.path) === mainNorm);
+        if (!main || typeof main.content !== 'string') continue;
+        if (main.content.includes(BIB_HEADING_MARKER)) continue; // already injected
+        const bibRegex = /(\\bibliography(?:\s*\[[^\]]*\])?\s*\{)/;
+        if (!bibRegex.test(main.content)) continue;
+        const heading = `\n${BIB_HEADING_MARKER}\n\\providecommand{\\refname}{References}\\section*{\\refname}\n`;
+        main.content = main.content.replace(bibRegex, heading + '$1');
+        injected = true;
+    }
+    return injected;
+}
+
+async function bibliographyHeadingPresent(pdfBase64: string): Promise<boolean> {
+    try {
+        const buffer = Buffer.from(pdfBase64, 'base64');
+        const mod: any = await import('pdf-parse');
+        const PDFParseCtor = mod.PDFParse ?? mod.default?.PDFParse;
+        if (!PDFParseCtor) return true; // conservative: don't inject if unverifiable
+        const inst = new PDFParseCtor({ data: buffer });
+        const r = await inst.getText();
+        const text = (typeof r === 'string') ? r : (r && r.text ? r.text : '');
+        if (!text) return true;
+        // Bibliographies sit at the end of the document — inspect the tail.
+        const tail = text.slice(-3000);
+        return /\b(references|bibliography|reference|works cited|references cited)\b/i.test(tail);
+    } catch {
+        return true; // conservative: avoid injecting a duplicate heading
+    }
+}
+
 // --- MASTER ORCHESTRATOR (ELEVATED FOR TURBOPACK VISIBILITY) ---
 
 export async function runHardenedPipeline(
@@ -1246,33 +1288,48 @@ export async function runHardenedPipeline(
 
     // ── PHASE 1: TECTONIC LOCAL (Primary for Scholarly/Modular) ──────────────
     let combinedLog = "";
-    try {
-        const res = (await strategies[0].fn()) as any;
-        if (res.pdfBase64 || res.pdfUrl) {
-            let finalPdf = res.pdfBase64;
-            // Ghost Inking: composite real images onto the ghost PDF
-            if (useGhostMode && finalPdf && fullAssets.length > 0) {
-                try {
-                    finalPdf = await inkGhostPdf(finalPdf, res.log, fullAssets);
-                    console.log(`[PIPELINE] Ghost inking completed: ${fullAssets.length} assets`);
-                } catch (inkErr: any) {
-                    console.warn(`[PIPELINE] Ghost inking failed (PDF still returned): ${inkErr.message}`);
+    let bibHeadingInjected = false;
+    for (let tectonicPass = 0; tectonicPass < 2; tectonicPass++) {
+        try {
+            const res = (await strategies[0].fn()) as any;
+            if (res.pdfBase64 || res.pdfUrl) {
+                let finalPdf = res.pdfBase64;
+                // Ghost Inking: composite real images onto the ghost PDF
+                if (useGhostMode && finalPdf && fullAssets.length > 0) {
+                    try {
+                        finalPdf = await inkGhostPdf(finalPdf, res.log, fullAssets);
+                        console.log(`[PIPELINE] Ghost inking completed: ${fullAssets.length} assets`);
+                    } catch (inkErr: any) {
+                        console.warn(`[PIPELINE] Ghost inking failed (PDF still returned): ${inkErr.message}`);
+                    }
                 }
+                if (finalPdf) {
+                    savePdfToDisk(finalPdf);
+                }
+
+                // Self-correcting bibliography heading: if the rendered PDF has a
+                // bibliography but no visible "References"/"Bibliography" heading,
+                // inject one and recompile once. Idempotent — never duplicates.
+                if (!bibHeadingInjected && hasBibliography && finalPdf && !(await bibliographyHeadingPresent(finalPdf))) {
+                    injectBibliographyHeading([activeFiles, monoFiles, pristineFiles], cleanMain);
+                    bibHeadingInjected = true;
+                    console.log(`[PIPELINE] Bibliography heading missing in PDF — injecting and recompiling (Tectonic pass 2)`);
+                    continue;
+                }
+
+                return {
+                    success: true,
+                    pdfBase64: finalPdf,
+                    pdfUrl: `/api/projects/${projectId}/pdf?t=${Date.now()}`,
+                    log: res.log,
+                    errors: parseLog(res.log || ""),
+                    strategy: 'TECTONIC_LOCAL'
+                };
             }
-            if (finalPdf) {
-                savePdfToDisk(finalPdf);
-            }
-            return {
-                success: true,
-                pdfBase64: finalPdf,
-                pdfUrl: `/api/projects/${projectId}/pdf?t=${Date.now()}`,
-                log: res.log,
-                errors: parseLog(res.log || ""),
-                strategy: 'TECTONIC_LOCAL'
-            };
-        }
-        combinedLog += `--- TECTONIC LOCAL FAILED ---\n${res.log}\n`;
-    } catch (e: any) { combinedLog += `--- TECTONIC LOCAL ERROR ---\n${e.message}\n`; }
+            combinedLog += `--- TECTONIC LOCAL FAILED ---\n${res.log}\n`;
+            break;
+        } catch (e: any) { combinedLog += `--- TECTONIC LOCAL ERROR ---\n${e.message}\n`; break; }
+    }
 
     // ── PHASE 2: REMOTE FALLBACK ─────────────────────────────────────────────
     const remoteBibFiles = monoFiles.filter(f => f.path.toLowerCase().endsWith('.bib'));

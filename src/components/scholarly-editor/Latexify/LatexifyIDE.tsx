@@ -665,6 +665,9 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
   useEffect(() => {
     if (monacoRef.current && editorMood) {
       const mon = monacoRef.current;
+      const accentScroll = (typeof window !== 'undefined')
+        ? getComputedStyle(document.documentElement).getPropertyValue('--accent-primary').trim() || '#00a395'
+        : '#00a395';
       mon.editor.defineTheme('scholarly-vibrant', {
         base: 'vs-dark',
         inherit: true,
@@ -683,10 +686,10 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
           'editorCursor.foreground': '#ffffff',
           'editor.lineHighlightBackground': 'rgba(255,255,255,0.03)',
           'editorLineNumber.foreground': 'rgba(255,255,255,0.2)',
-          'scrollbarSlider.background': 'rgba(255,255,255,0.18)',
-          'scrollbarSlider.hoverBackground': 'rgba(255,255,255,0.32)',
-          'scrollbarSlider.activeBackground': 'rgba(255,255,255,0.40)',
-          'scrollbarSlider.border': '1px solid rgba(255,255,255,0.05)',
+          'scrollbarSlider.background': accentScroll + '55',
+          'scrollbarSlider.hoverBackground': accentScroll + '99',
+          'scrollbarSlider.activeBackground': accentScroll + 'cc',
+          'scrollbarSlider.border': '1px solid ' + accentScroll + '22',
         }
       });
       mon.editor.setTheme('scholarly-vibrant');
@@ -1043,19 +1046,29 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
 
   const handleRenameFile = async (oldPath: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (oldPath === 'main.tex') return toast.error("Cannot rename main.tex");
     const newName = window.prompt("Rename file path:", oldPath);
     if (!newName || newName.trim() === "" || newName === oldPath) return;
+    const trimmed = newName.trim();
     try {
       if (fs && projectId) {
-        await fs.renameFile(projectId, oldPath, newName.trim());
+        await fs.renameFile(projectId, oldPath, trimmed);
         toast.success("File renamed");
         const newList = await fs.listFiles(projectId);
         setFiles(newList);
         if (activeFile === oldPath) {
-          setActiveFile(newName.trim());
+          setActiveFile(trimmed);
         }
-        setOpenTabs(tabs => tabs.map(t => t === oldPath ? newName.trim() : t));
+        setOpenTabs(tabs => tabs.map(t => t === oldPath ? trimmed : t));
+        if (oldPath === (project?.mainFile || 'main.tex')) {
+          setProject(prev => prev ? { ...prev, mainFile: trimmed } : null);
+          try {
+            await fetch(`/api/projects/${projectId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mainFile: trimmed })
+            });
+          } catch { /* non-fatal: local rename succeeds regardless */ }
+        }
       }
     } catch (err: any) {
       toast.error("Rename failed: " + err.message);
@@ -1105,6 +1118,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
   const handleFormat = () => {
     const formatted = formatLatexCode(code);
     setCode(formatted);
+    if (editorRef.current) editorRef.current.setValue(formatted);
     toast.success("Code Beautified", { icon: '✨' });
   };
 
@@ -1116,16 +1130,18 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
   const switchTab = async (path: string) => {
     if (path === activeFile) return;
     if (fs && !isImage(activeFile)) await fs.writeFile(projectId, activeFile, code);
-    setLoadingCode(true);
     setActiveFile(path);
     if (!openTabs.includes(path)) setOpenTabs(t => [...t, path]);
-    const file = files.find(f => f.path === path);
-    if (file) {
-      setCode(file.content);
-      setLoadingCode(false);
+    let content = '';
+    if (fs) {
+      const fresh = await fs.readFile(projectId, path);
+      content = fresh?.content || '';
     } else {
-      setLoadingCode(false);
+      const f = files.find(x => x.path === path);
+      content = f?.content || '';
     }
+    setCode(content);
+    setLoadingCode(false);
   };
 
   if (!mounted) return null;
@@ -1456,7 +1472,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
 
                 <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
                   {files.map(f => {
-                    const isMain = f.path === 'main.tex';
+                    const isMain = f.path === (project?.mainFile || 'main.tex');
                     return (
                     <motion.div 
                       whileHover={{ x: 2 }}
@@ -1464,16 +1480,12 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                       onClick={() => switchTab(f.path)} 
                       className={`file-sidebar-item ${activeFile === f.path ? 'active' : ''}`}
                       onMouseEnter={e => {
-                        if (!isMain) {
-                          const btns = e.currentTarget.querySelector('.file-action-btns') as HTMLElement;
-                          if (btns) btns.style.opacity = '1';
-                        }
+                        const btns = e.currentTarget.querySelector('.file-action-btns') as HTMLElement;
+                        if (btns && !isMain) btns.style.opacity = '1';
                       }}
                       onMouseLeave={e => {
-                        if (!isMain) {
-                          const btns = e.currentTarget.querySelector('.file-action-btns') as HTMLElement;
-                          if (btns) btns.style.opacity = activeFile === f.path ? '1' : '0';
-                        }
+                        const btns = e.currentTarget.querySelector('.file-action-btns') as HTMLElement;
+                        if (btns && !isMain) btns.style.opacity = activeFile === f.path ? '1' : '0';
                       }}
                       style={{ 
                         display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.55rem 0.75rem', borderRadius: '8px', cursor: 'pointer',
@@ -1495,35 +1507,61 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                            />
                            <span style={{ color: 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.path}</span>
                         </div>
-                        {!isMain && (
-                          <div 
-                            className="file-action-btns"
-                            style={{ 
-                              display: 'flex', gap: '0.4rem', alignItems: 'center', flexShrink: 0, marginLeft: '0.5rem',
-                              opacity: activeFile === f.path ? 1 : 0,
-                              transition: 'opacity 0.15s'
-                            }}
-                          >
-                            <button 
-                              onClick={(e) => handleRenameFile(f.path, e)}
-                              style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.6, transition: 'all 0.15s', cursor: 'pointer', padding: '2px 3px', display: 'flex', alignItems: 'center', borderRadius: '4px' }}
-                              onMouseOver={e => { e.currentTarget.style.opacity = '1'; }}
-                              onMouseOut={e => { e.currentTarget.style.opacity = '0.6'; }}
-                              title="Rename File"
-                            >
-                               <Pencil size={11} />
-                            </button>
-                            <button 
-                              onClick={(e) => handleDeleteFile(f.path, e)}
-                              style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.6, transition: 'all 0.15s', cursor: 'pointer', padding: '2px 3px', display: 'flex', alignItems: 'center', borderRadius: '4px' }}
-                              onMouseOver={e => { e.currentTarget.style.opacity = '1'; (e.currentTarget as HTMLElement).style.color = '#ef4444'; }}
-                              onMouseOut={e => { e.currentTarget.style.opacity = '0.6'; (e.currentTarget as HTMLElement).style.color = 'inherit'; }}
-                              title="Delete File"
-                            >
-                               <Trash2 size={11} />
-                            </button>
-                          </div>
-                        )}
+                         <div 
+                           className="file-action-btns"
+                           style={{ 
+                             display: 'flex', gap: '0.4rem', alignItems: 'center', flexShrink: 0, marginLeft: '0.5rem',
+                             opacity: (activeFile === f.path || isMain) ? 1 : 0,
+                             transition: 'opacity 0.15s'
+                           }}
+                         >
+                           <button 
+                             onClick={(e) => handleRenameFile(f.path, e)}
+                             style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.6, transition: 'all 0.15s', cursor: 'pointer', padding: '2px 3px', display: 'flex', alignItems: 'center', borderRadius: '4px' }}
+                             onMouseOver={e => { e.currentTarget.style.opacity = '1'; }}
+                             onMouseOut={e => { e.currentTarget.style.opacity = '0.6'; }}
+                             title="Rename File"
+                           >
+                              <Pencil size={11} />
+                           </button>
+                           {isMain ? (
+                             <button 
+                               onClick={(e) => {
+                                 e.stopPropagation();
+                                 if (openTabs.length > 1) {
+                                   const newTabs = openTabs.filter(tab => tab !== f.path);
+                                   setOpenTabs(newTabs);
+                                   if (activeFile === f.path) {
+                                     const nextActive = newTabs[0] || '';
+                                     setActiveFile(nextActive);
+                                     if (fs && nextActive) {
+                                       fs.readFile(projectId, nextActive).then(ff => { if (ff) setCode(ff.content); });
+                                     } else {
+                                       const ff = files.find(x => x.path === nextActive);
+                                       if (ff) setCode(ff.content);
+                                     }
+                                   }
+                                 }
+                               }}
+                               style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.6, transition: 'all 0.15s', cursor: 'pointer', padding: '2px 3px', display: 'flex', alignItems: 'center', borderRadius: '4px' }}
+                               onMouseOver={e => { e.currentTarget.style.opacity = '1'; (e.currentTarget as HTMLElement).style.color = '#ef4444'; }}
+                               onMouseOut={e => { e.currentTarget.style.opacity = '0.6'; (e.currentTarget as HTMLElement).style.color = 'inherit'; }}
+                               title="Close Tab"
+                             >
+                                <X size={11} />
+                             </button>
+                           ) : (
+                             <button 
+                               onClick={(e) => handleDeleteFile(f.path, e)}
+                               style={{ background: 'transparent', border: 'none', color: 'inherit', opacity: 0.6, transition: 'all 0.15s', cursor: 'pointer', padding: '2px 3px', display: 'flex', alignItems: 'center', borderRadius: '4px' }}
+                               onMouseOver={e => { e.currentTarget.style.opacity = '1'; (e.currentTarget as HTMLElement).style.color = '#ef4444'; }}
+                               onMouseOut={e => { e.currentTarget.style.opacity = '0.6'; (e.currentTarget as HTMLElement).style.color = 'inherit'; }}
+                               title="Delete File"
+                             >
+                                <Trash2 size={11} />
+                             </button>
+                           )}
+                         </div>
                      </motion.div>
                     );
                   })}
@@ -1555,7 +1593,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                <motion.main 
                  initial={{ y: 20, opacity: 0 }}
                  animate={{ y: 0, opacity: 1 }}
-                  style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: EDITOR_MOODS[editorMood].bg, borderRadius: '16px', border: '1px solid var(--border)', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}
+                  style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: EDITOR_MOODS[editorMood].bg, borderRadius: '16px', border: '1px solid color-mix(in srgb, var(--accent-primary) 28%, var(--border))', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}
                >
                  <div className="custom-scroll" style={{ 
                      height: '42px', 
@@ -1579,25 +1617,31 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                         }}>
                            {isImage(t) ? <Layout size={14} strokeWidth={2.5} style={{ opacity: activeFile === t ? 1 : 0.5, flexShrink: 0 }} /> : <FileText size={14} strokeWidth={2.5} style={{ opacity: activeFile === t ? 1 : 0.5, flexShrink: 0 }} />}
                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{t.toUpperCase()}</span>
-                           {openTabs.length > 1 && (
-                             <button 
-                               onClick={(e) => {
-                                 e.stopPropagation();
-                                 const newTabs = openTabs.filter(tab => tab !== t);
-                                 setOpenTabs(newTabs);
-                                 if (activeFile === t) {
-                                   const nextActive = newTabs[0] || '';
-                                   setActiveFile(nextActive);
-                                   const foundFile = files.find(f => f.path === nextActive);
-                                   if (foundFile) setCode(foundFile.content);
-                                 }
-                               }}
-                               style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px', flexShrink: 0 }}
-                               className="opacity-0 group-hover:opacity-100 hover:!text-red-500 transition-opacity transition-colors"
-                             >
-                               <X size={12} />
-                             </button>
-                           )}
+                            {openTabs.length > 1 && (
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const newTabs = openTabs.filter(tab => tab !== t);
+                                  setOpenTabs(newTabs);
+                                  if (activeFile === t) {
+                                    const nextActive = newTabs[0] || '';
+                                    setActiveFile(nextActive);
+                                    if (fs && nextActive) {
+                                      fs.readFile(projectId, nextActive).then(ff => { if (ff) setCode(ff.content); });
+                                    } else {
+                                      const foundFile = files.find(f => f.path === nextActive);
+                                      if (foundFile) setCode(foundFile.content);
+                                    }
+                                  }
+                                }}
+                                title="Close tab"
+                                onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.opacity = '1'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.opacity = '0.6'; }}
+                                style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', opacity: 0.6, cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px', flexShrink: 0, transition: 'all 0.15s' }}
+                              >
+                                <X size={12} />
+                              </button>
+                            )}
                           {activeFile === t && (
                             <motion.div 
                               layoutId="tab-highlight-l" 
