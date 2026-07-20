@@ -971,6 +971,26 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
     return () => window.removeEventListener('keydown', handleKeydown);
   }, [compile]);
 
+  // Restore editor content after browser tab switch — browsers may GC the Monaco model
+  // when the tab is backgrounded. Detect blank editor and repopulate from codeRef.
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && editorRef.current) {
+        const savedCode = codeRef.current;
+        if (!savedCode) return;
+        try {
+          const model = editorRef.current.getModel();
+          const currentValue = model ? model.getValue() : '';
+          if (!currentValue && savedCode) {
+            editorRef.current.setValue(savedCode);
+          }
+        } catch {}
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
+
   const exportProjectZip = async () => {
     if (!fs) return;
     const blob = await fs.exportZip(projectId);
