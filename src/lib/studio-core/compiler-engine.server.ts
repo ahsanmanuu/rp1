@@ -521,6 +521,17 @@ export async function runHardenedPipeline(
         monoFiles.push({ path: cleanMain, content: monolithContent });
     }
 
+    // ── BIBLIOGRAPHY DETECTION (shared across strategies) ─────────────────────
+    const mainFileObj = activeFiles.find(f => normalizePath(f.path) === normalizePath(cleanMain));
+    const mainContent = mainFileObj?.content || '';
+    const hasBibliography = /\\(?:bibliography|addbibresource)\s*\{/.test(mainContent);
+    const hasBibStyle = /\\bibliographystyle\s*\{/.test(mainContent);
+    const hasCitations = /\\cite[tpsnra]?\s*(?:\[[^\]]*\])?\s*\{/.test(mainContent);
+    const bibFiles = activeFiles.filter(f => f.path.toLowerCase().endsWith('.bib'));
+    if (hasCitations || hasBibliography) {
+        console.log(`[TECTONIC] Bibliography detected: \\bibliography=${hasBibliography}, \\bibliographystyle=${hasBibStyle}, \\cite=${hasCitations}, .bib files=[${bibFiles.map(f => f.path).join(', ')}]`);
+    }
+
     const strategies = [
         {
           name: 'TECTONIC_LOCAL',
@@ -642,17 +653,6 @@ export async function runHardenedPipeline(
             const execFileAsync = promisify(execFile);
 
             const mainRelative = cleanMain.replace(/\\/g, '/');
-
-            // ── BIBLIOGRAPHY DETECTION ────────────────────────────────────────
-            const mainFileObj = activeFiles.find(f => normalizePath(f.path) === normalizePath(cleanMain));
-            const mainContent = mainFileObj?.content || '';
-            const hasBibliography = /\\(?:bibliography|addbibresource)\s*\{/.test(mainContent);
-            const hasBibStyle = /\\bibliographystyle\s*\{/.test(mainContent);
-            const hasCitations = /\\cite[tpsnra]?\s*(?:\[[^\]]*\])?\s*\{/.test(mainContent);
-            const bibFiles = activeFiles.filter(f => f.path.toLowerCase().endsWith('.bib'));
-            if (hasCitations || hasBibliography) {
-                console.log(`[TECTONIC] Bibliography detected: \\bibliography=${hasBibliography}, \\bibliographystyle=${hasBibStyle}, \\cite=${hasCitations}, .bib files=[${bibFiles.map(f => f.path).join(', ')}]`);
-            }
 
             console.log(`[TECTONIC] Executing: ${tectonicBin} -Z continue-on-errors -Z bibtex-mode=default --synctex "${mainRelative}" in ${compileTempDir}`);
 
