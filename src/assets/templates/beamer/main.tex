@@ -8,6 +8,7 @@
 \usepackage{graphicx}
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{booktabs,multirow,array,tabularx}
+\usepackage{natbib}
 
 \title{Complete Scholarly Template for Beamer}
 \author{Author Name \\ \small Department of Research, University of Scholarly AI}
@@ -31,10 +32,10 @@
 
 \section{Related Work}
 \begin{frame}{Related Work}
-  Academic research is built upon the contributions of others. This section demonstrates the citation system, which is powered by the accompanying .bib and .bst files.
+  Academic research is built upon the contributions of others \citep{knuth1984,lamport1994}. This section demonstrates the citation system, which is powered by the accompanying .bib and .bst files.
 
   \begin{itemize}
-    \item First key contribution from prior work
+    \item First key contribution from prior work \citep{einstein1905}
     \item Second relevant study
     \item Third important reference
   \end{itemize}
@@ -69,11 +70,14 @@
 
 \section{Conclusion}
 \begin{frame}{Conclusion}
-  In conclusion, this template provides a 100\% complete and validated environment for scholarly presentations. No additional configuration is required to begin your slides.
+  In conclusion, this template provides a 100\% complete and validated environment for scholarly presentations \citep{knuth1984}. No additional configuration is required to begin your slides.
 \end{frame}
 
 \begin{frame}{Acknowledgements}
   The authors would like to thank the Scholarly Template Ecosystem for providing this high-fidelity workspace.
 \end{frame}
+
+\bibliographystyle{plain}
+\bibliography{presentation}
 
 \end{document}
