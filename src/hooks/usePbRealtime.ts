@@ -73,7 +73,12 @@ export function usePbRealtime<T = any>(options: PbRealtimeOptions<T>) {
         if (errMsg.includes('aborted') || errMsg.includes('autocancelled') || errMsg.includes('autocancel') || errMsg === 'offline') {
           return [];
         }
-        throw new Error(errMsg || `Failed to fetch ${collection} (${res.status})`);
+        // Server returned an error — set error state gracefully, don't throw
+        // (throwing here can cause infinite re-render loops if error state triggers re-renders)
+        const msg = errMsg || `Failed to fetch ${collection} (${res.status})`;
+        console.warn(`[usePbRealtime] Server error for ${collection}:`, msg);
+        setError(msg);
+        return [];
       }
       const json = await res.json();
       let items = (json.items || []).map((r: any) => (mapperRef.current ? mapperRef.current(r) : r as any as T));

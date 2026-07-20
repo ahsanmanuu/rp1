@@ -17,6 +17,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ coll
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       const pb = await pbAdmin();
+      if (!pb) {
+        console.error(`[data proxy] pbAdmin() returned null for ${collection}`);
+        return NextResponse.json({ items: [], total: 0 });
+      }
       const list = await pb.collection(collection).getList(page, batchSize, opts);
       return NextResponse.json({ items: list.items, total: list.totalItems });
     } catch (err: any) {
@@ -32,7 +36,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ coll
         return NextResponse.json({ items: [], total: 0 });
       }
       console.error(`[data proxy] Error fetching ${collection}:`, err);
-      return NextResponse.json({ error: msg || 'Failed to fetch data' }, { status: 500 });
+      return NextResponse.json({ items: [], total: 0, error: msg || 'Failed to fetch data' }, { status: 500 });
     }
   }
 }
