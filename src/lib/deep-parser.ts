@@ -1749,7 +1749,14 @@ export class DeepDocumentParser {
 
     // Case E: Simple standalone equations (e.g., "y = x", "E = mc^2")
     if (hasRelational && f.wordCount < 10 && stopwordDensity === 0 && letters > 0) {
-      return true;
+      // Reject text labels with multiple long plain English words: e.g. "0 = illumination failure, 1 = illumination available"
+      const longPlainWords = text.split(/\s+/).filter(w => {
+        const clean = w.replace(/[^a-zA-Z]/g, '');
+        return clean.length >= 5 && !/\b(sin|cos|tan|log|ln|exp|lim|max|min|sqrt|sum|prod|div|grad|curl)\b/i.test(clean);
+      });
+      if (longPlainWords.length <= 1) {
+        return true;
+      }
     }
 
     return false;
