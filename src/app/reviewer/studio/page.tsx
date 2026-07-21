@@ -454,6 +454,12 @@ export default function ReviewerPage() {
         }),
       });
       const data = await res.json();
+      if (res.status === 429) {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('ai-cap-triggered'));
+        }
+        throw new Error('AI cap reached. Please wait for quota reset.');
+      }
       if (!res.ok) throw new Error(data.error || "Analysis failed");
       // ── CRITICAL: stop analyzing FIRST, THEN set result.
       // AnimatePresence mode="wait" requires only ONE keyed child visible at a time.

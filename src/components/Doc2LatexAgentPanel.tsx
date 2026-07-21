@@ -73,6 +73,12 @@ export default function Doc2LatexAgentPanel({ projectId, initialEnhancement, ini
     setError(null);
     try {
       const res = await fetch(`/api/doc2latex-agent?projectId=${projectId}`);
+      if (res.status === 429) {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('ai-cap-triggered'));
+        }
+        throw new Error('AI cap reached. Please wait for quota reset.');
+      }
       if (!res.ok) throw new Error(`Status ${res.status}`);
       // This GET just confirms availability — actual enhancement uses POST with context
       // For existing projects, show the cached result from upload response

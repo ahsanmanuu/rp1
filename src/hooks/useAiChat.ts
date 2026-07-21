@@ -97,6 +97,9 @@ export function useAiChat({ projectId, storageKey, apiEndpoint, buildContext }: 
 
       if (!res.ok) {
         if (data.error === 'AI_CAP_REACHED' || data.error === 'AI_CAP_RULE_BLOCKED') {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('ai-cap-triggered'));
+          }
           throw new Error(data.error === 'AI_CAP_RULE_BLOCKED'
             ? `AI usage rule enforced: ${data.reason || 'Blocked'}`
             : `Daily AI cap reached. Resets at ${data.reactivatesAt ? new Date(data.reactivatesAt).toLocaleString() : 'next cycle'}.`
