@@ -790,7 +790,7 @@ function UploadContent() {
                       </div>
                       <div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--accent-primary)', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.25em', marginBottom: '0.25rem' }}>
-                          Latexify Studio
+                          Doc2LaTeX Studio
                         </div>
                         <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--strict-text)', letterSpacing: '-0.02em' }}>
                           Latexify Intelligence Report
