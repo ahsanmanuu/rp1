@@ -1400,7 +1400,7 @@ function UploadContent() {
                   <LatexifyLogo size={26} color="#fff" />
                 </div>
                 <div style={{ fontSize: '0.75rem', fontWeight: 900, color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: '0.2em' }}>
-                  Latexify Studio
+                  Doc2LaTeX Studio
                 </div>
               </div>
               <h1 style={{ 
