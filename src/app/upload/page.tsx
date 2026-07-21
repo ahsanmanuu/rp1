@@ -50,23 +50,62 @@ function UploadContent() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [repRes, projRes] = await Promise.all([
+        const [repRes, docRes, studioRes] = await Promise.all([
           fetch('/api/reports'),
-          fetch('/api/projects?type=DOC2LATEX')
+          fetch('/api/projects?type=DOC2LATEX'),
+          fetch('/api/projects?type=LATEX_STUDIO')
         ]);
         
+        let fetchedReports = [];
         if (repRes.ok) {
           const data = await repRes.json();
-          const rawReports = data.reports || [];
-          // DE-DUPLICATION
-          const uniqueReports = Array.from(new Map(rawReports.map((r: any) => [r.id, r])).values());
-          setReports(uniqueReports);
+          fetchedReports = data.reports || [];
         }
         
-        if (projRes.ok) {
-          const data = await projRes.json();
+        let doc2latexProjects = [];
+        if (docRes.ok) {
+          const data = await docRes.json();
+          doc2latexProjects = data.projects || [];
+        }
+
+        // Merge report_history and DOC2LATEX projects
+        const fromReports = fetchedReports.map((r: any) => ({
+          id: r.id,
+          projectId: r.projectId || r.id,
+          title: r.title || 'Untitled Report',
+          createdAt: r.createdAt || r.created,
+          statsJson: r.statsJson || JSON.stringify(r.stats || {}),
+        }));
+
+        const fromProjects = doc2latexProjects.map((p: any) => ({
+          id: p.id,
+          projectId: p.id,
+          title: p.title || 'Untitled Document',
+          createdAt: p.createdAt || p.updatedAt || p.created,
+          statsJson: JSON.stringify(p.stats || {
+            words: p.wordCount || 0,
+            tables: p.tableCount || 0,
+            images: p.imageCount || 0,
+            equations: p.equationCount || 0,
+          }),
+        }));
+
+        const byProjectId = new Map<string, any>();
+        for (const item of fromProjects) {
+          byProjectId.set(item.projectId, item);
+        }
+        for (const item of fromReports) {
+          byProjectId.set(item.projectId, item);
+        }
+
+        const merged = Array.from(byProjectId.values()).sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        setReports(merged);
+
+        if (studioRes.ok) {
+          const data = await studioRes.json();
           const rawProjects = data.projects || [];
-          // DE-DUPLICATION
           const uniqueProjects = Array.from(new Map(rawProjects.map((p: any) => [p.id, p])).values());
           setProjects(uniqueProjects);
         }
@@ -1305,7 +1344,7 @@ function UploadContent() {
                     <p style={{ fontSize: '0.75rem', color: 'var(--muted-text)', margin: 0, fontWeight: 600 }}>Active production workspace</p>
                   </div>
                 </div>
-                <Link href="/history" className="pro-link" style={{ fontSize: '0.8rem', fontWeight: 800, color: '#3b82f6', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                <Link href="/history?tab=LATEX_STUDIO" className="pro-link" style={{ fontSize: '0.8rem', fontWeight: 800, color: '#3b82f6', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                   Full History <ChevronRight size={14} />
                 </Link>
               </div>

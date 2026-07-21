@@ -40,6 +40,12 @@ function HistoryContent() {
   const [loading, setLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState(initialTab);
+
+  const tabParam = searchParams.get('tab') || 'ALL';
+  useEffect(() => {
+    setActiveTab(tabParam);
+  }, [tabParam]);
+
   const [searchQuery, setSearchQuery] = useState("");
   const isFirstLoadRef = useRef(true);
 
