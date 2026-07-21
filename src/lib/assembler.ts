@@ -1501,6 +1501,7 @@ export class ModularLatexAssembler {
     pkgReg.add("amssymb");
     pkgReg.add("mathrsfs");
     preamble.push("\\allowdisplaybreaks");
+    preamble.push("\\emergencystretch 3em");
     
     pkgReg.add("graphicx", "export");
     pkgReg.add("xcolor");

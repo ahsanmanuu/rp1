@@ -1311,6 +1311,11 @@ export class DeepDocumentParser {
     const trimmed = line.trim();
     if (trimmed.length < 10) return false;
 
+    // 1. Matches numeric prefix: [1], 1., 1)
+    // If it starts with a clear numbered prefix inside the reference block, it is almost certainly a new reference start.
+    const hasNumberedPrefix = /^\[?\d+\]?[\dots\-\t\s]+/.test(trimmed) || /^\[?\d+\]?[\.\-\t\s]+/.test(trimmed);
+    if (hasNumberedPrefix) return true;
+
     // Safety check: a real reference almost always contains a year, quotes, or academic publication keywords.
     // If none of these are present, it is highly likely instructional text or name list examples.
     const hasYear = /\b(19|20)\d{2}\b/.test(trimmed);

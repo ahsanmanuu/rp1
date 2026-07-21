@@ -455,38 +455,20 @@ export async function POST(req: Request) {
       ];
 
       alternateContents.forEach((alt: any) => {
-        const choices = [
-          ...Array.from(alt.getElementsByTagName('mc:Choice')),
-          ...Array.from(alt.getElementsByTagName('Choice')),
-          ...Array.from(alt.getElementsByTagName('mc:choice')),
-          ...Array.from(alt.getElementsByTagName('choice')),
+        const fallbacks = [
+          ...Array.from(alt.getElementsByTagName('mc:Fallback')),
+          ...Array.from(alt.getElementsByTagName('Fallback')),
+          ...Array.from(alt.getElementsByTagName('mc:fallback')),
+          ...Array.from(alt.getElementsByTagName('fallback')),
         ];
-        const choice = choices[0] as any;
-        if (!choice) return;
-
-        const choiceChildren = Array.from(choice.getElementsByTagName('*'));
-        const hasChart = choiceChildren.some((el: any) => (el.tagName || '').toLowerCase().includes('chart'));
-        const hasSmartArt = choiceChildren.some((el: any) => (el.tagName || '').toLowerCase().includes('dgm:relids') || (el.tagName || '').toLowerCase().includes('dgm:datamodel'));
-        const hasWordShape = choiceChildren.some((el: any) => (el.tagName || '').toLowerCase().includes('wps:wsp'));
-        const hasGroupShape = choiceChildren.some((el: any) => (el.tagName || '').toLowerCase().includes('wpg:wgp'));
-        const hasCanvas = choiceChildren.some((el: any) => (el.tagName || '').toLowerCase().includes('wpc:wpc'));
-
-        if (hasChart || hasSmartArt || hasWordShape || hasGroupShape || hasCanvas) {
-          const fallbacks = [
-            ...Array.from(alt.getElementsByTagName('mc:Fallback')),
-            ...Array.from(alt.getElementsByTagName('Fallback')),
-            ...Array.from(alt.getElementsByTagName('mc:fallback')),
-            ...Array.from(alt.getElementsByTagName('fallback')),
-          ];
-          const fallback = fallbacks[0] as any;
-          if (fallback) {
-            // Replace the alternate content wrapper with just the fallback contents
-            const fragment = dom.window.document.createDocumentFragment();
-            while (fallback.firstChild) {
-              fragment.appendChild(fallback.firstChild);
-            }
-            alt.parentNode?.replaceChild(fragment, alt);
+        const fallback = fallbacks[0] as any;
+        if (fallback) {
+          // Replace alternate content with its fallback unconditionally to ensure maximum compatibility with Mammoth
+          const fragment = dom.window.document.createDocumentFragment();
+          while (fallback.firstChild) {
+            fragment.appendChild(fallback.firstChild);
           }
+          alt.parentNode?.replaceChild(fragment, alt);
         }
       });
 
