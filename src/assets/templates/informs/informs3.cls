@@ -898,7 +898,7 @@
 \newcommand\tablename{Table}%       <-- to be adjusted per journal
 \newcommand\refname{References}%    <-- to be adjusted per journal
 \newcommand\appendixname{Appendix}% <-- to be adjusted per journal
-%\newcommand\abstractname{Abstract:}
+\newcommand\abstractname{Abstract}
 %
 \newcommand\today{}
 \edef\today{\ifcase\month\or
@@ -1959,7 +1959,7 @@ manuscript {\theMANUSCRIPTNO}\end{tabular}}}%
   \vspace*{18pt}
   \begin{minipage}{\ABSwidth}\parindent1em
     \ABSfont
-    \noindent\theABSTRACT\endgraf
+    \noindent\textbf{\abstractname}\par\vspace{6pt}\par\noindent\ignorespaces\theABSTRACT\endgraf
     \vskip5pt
     \theKEYWORDS
     \theSUBJECTCLASS

@@ -90,6 +90,7 @@
 \renewenvironment{abstract}{%
     \setlength{\parindent}{0in}%
     \setlength{\parskip}{0in}%
+    \noindent\textbf{\abstractname}\par\vspace{6pt}\noindent\ignorespaces%
     \bfseries%
     }{\par\vspace{-6pt}}
 
