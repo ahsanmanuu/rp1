@@ -75,7 +75,7 @@ export function useAiChat({ projectId, storageKey, apiEndpoint, buildContext }: 
 
     const controller = new AbortController();
     abortRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 120000);
+    const timeoutId = setTimeout(() => controller.abort(), 300000);
 
     try {
       const ctx = buildContext ? await buildContext() : {};
