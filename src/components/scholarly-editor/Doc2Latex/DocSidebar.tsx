@@ -56,7 +56,7 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
     },
     {
       name: 'EQUATIONS',
-      files: files.filter(f => /^floats\/equations\.tex$/i.test(f.path)),
+      files: files.filter(f => /^floats\/equations\.tex$/i.test(f.path) || /^equations\/eq_\d+\.tex$/i.test(f.path)),
     },
     {
       name: 'REFERENCES',
@@ -69,6 +69,14 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
         /\.(cls|sty|bib|bst|cfg|clo|def|ldf)$/i.test(f.path) ||
         /^components\//i.test(f.path)
       ),
+    },
+    {
+      name: 'IMAGE ASSETS',
+      files: files.filter(f => /\.(png|jpg|jpeg|gif|svg|webp|eps|tiff?|bmp|heic|heif|avif)$/i.test(f.path)),
+    },
+    {
+      name: 'FLOAT REFERENCES',
+      files: files.filter(f => /^assets\/(figure|table|algorithm|equation)\.tex$/i.test(f.path)),
     },
   ];
   const mainFile = files.find(f => f.path === 'main.tex');
