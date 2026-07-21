@@ -59,7 +59,7 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${outfit.variable} ${jetbrains.variable} ${newsreader.variable}`} suppressHydrationWarning>
       <head>
         <link rel="preload" href="/fonts/material-symbols-outlined.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
-        <Script id="chunk-retry" strategy="beforeInteractive">{`
+        <script id="chunk-retry" dangerouslySetInnerHTML={{ __html: `
           (function(){
             var MAX_RETRIES = 3;
             function isChunkError(e){
@@ -144,7 +144,7 @@ export default function RootLayout({
               }
             });
           })();
-        `}</Script>
+        `}} />
       </head>
       <body className="antialiased font-body" suppressHydrationWarning>
         <NextAuthProvider>
