@@ -1855,12 +1855,12 @@ export async function hardenedDiscovery(projectId: string | null, files: FilePay
               const inSession = normalized.some(f => normalizePath(f.path) === normalizePath(fileToCopy));
               const onDisk = fs.existsSync(destFile);
 
-              if (!inSession || !onDisk) {
+              if (!inSession && !onDisk) {
                 if (fs.statSync(srcFile).isFile()) {
                   fs.copyFileSync(srcFile, destFile);
                   console.log(`[PIPELINE] Auto-copied: ${fileToCopy} to project directory`);
 
-                  // Sync to the Database
+                  // Sync to the Database (only for truly missing files)
                   try {
                     const { prisma } = require('@/lib/prisma');
                     const fileContent = fs.readFileSync(srcFile, 'utf-8');
@@ -1869,10 +1869,8 @@ export async function hardenedDiscovery(projectId: string | null, files: FilePay
                       where: { projectId, filename: fileToCopy }
                     });
                     if (existingAux) {
-                      await prisma.projectFile.update({
-                        where: { id: existingAux.id },
-                        data: { content: fileContent, filePath: `/uploads/projects/${projectId}/${fileToCopy}` }
-                      });
+                      // Don't overwrite user's existing DB record with template content
+                      console.log(`[PIPELINE] Skipped DB overwrite for existing user file: ${fileToCopy}`);
                     } else {
                       await prisma.projectFile.create({
                         data: {
