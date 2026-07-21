@@ -490,7 +490,12 @@ function UploadContent() {
           await new Promise((resolve) => {
             const s = document.createElement('script');
             s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-            s.onload = resolve;
+            const tempDefine = (window as any).define;
+            (window as any).define = undefined;
+            s.onload = () => {
+              (window as any).define = tempDefine;
+              resolve(null);
+            };
             document.head.appendChild(s);
           });
         }
@@ -500,14 +505,20 @@ function UploadContent() {
           await new Promise((resolve) => {
             const s = document.createElement('script');
             s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-            s.onload = resolve;
+            const tempDefine = (window as any).define;
+            (window as any).define = undefined;
+            s.onload = () => {
+              (window as any).define = tempDefine;
+              resolve(null);
+            };
             document.head.appendChild(s);
           });
         }
 
         try {
           // 1. Capture as ULTRA high-res Canvas (Lossless Rendering)
-          const canvas = await (window as any).html2canvas(originalElement, {
+          const html2canvasFn = (window as any).html2canvas?.default || (window as any).html2canvas;
+          const canvas = await html2canvasFn(originalElement, {
             scale: 3, // Increased from 2 to 3 for ultra-crisp text
             useCORS: true,
             allowTaint: true,
@@ -610,8 +621,9 @@ function UploadContent() {
           });
 
           const imgData = canvas.toDataURL('image/png');
-          const { jsPDF } = (window as any).jspdf;
-          const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
+          const jspdfModule = (window as any).jspdf;
+          const jsPDFClass = jspdfModule?.jsPDF || jspdfModule?.default?.jsPDF || jspdfModule;
+          const pdf = new jsPDFClass({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
           
           const pageWidth = 210;
           const pageHeight = 297;
