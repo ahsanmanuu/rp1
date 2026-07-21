@@ -137,6 +137,8 @@ export class LatexAssembler {
       "\\providecommand{\\letterspace}[1]{#1}",
       "\\providecommand{\\naturalwidth}{0.9\\textwidth}",
       "\\catcode`\\@=12",
+      "\\PassOptionsToPackage{export}{graphicx}",
+      "\\PassOptionsToPackage{export}{adjustbox}",
       "\\usepackage[T1]{fontenc}",
       "\\usepackage[utf8]{inputenc}",
       "\\ifdefined\\DeclareUnicodeCharacter\\DeclareUnicodeCharacter{200B}{}\\fi",
@@ -170,28 +172,28 @@ export class LatexAssembler {
       "\\usepackage{iftex,microtype}",
       "\\graphicspath{{./}{./assets/}{./images/}{./figures/}{../}{../assets/}{../images/}{./figures/}}",
       "\\DeclareGraphicsExtensions{.pdf,.eps,.png,.PNG,.jpg,.JPG,.jpeg,.JPEG,.tif,.tiff,.bmp,.gif,.webp,.avif,.svg,.ico,.heic,.HEIC,.heif,.HEIF}",
-      "\\setkeys{Gin}{max width=\\linewidth,max height=0.85\\textheight,keepaspectratio}",
+      "\\setkeys{Gin}{max width=\\linewidth,max height=0.7\\textheight,keepaspectratio}",
       "",
       "% --- UNIVERSAL ASSET RESOLVER (zimg) ---",
       "\\ifdefined\\zimg\\else",
       "  \\newcommand{\\zimg}[4]{%",
       "    \\IfFileExists{#1}{%",
-      "      \\csname includegraphics\\endcsname[#2,max height=0.85\\textheight]{#1}%",
+      "      \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{#1}%",
       "    }{%",
       "      \\IfFileExists{#1.png}{%",
-      "        \\csname includegraphics\\endcsname[#2,max height=0.85\\textheight]{#1.png}%",
+      "        \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{#1.png}%",
       "      }{%",
       "        \\IfFileExists{#1.jpg}{%",
-      "          \\csname includegraphics\\endcsname[#2,max height=0.85\\textheight]{#1.jpg}%",
+      "          \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{#1.jpg}%",
       "        }{%",
       "          \\IfFileExists{assets/#1}{%",
-      "            \\csname includegraphics\\endcsname[#2,max height=0.85\\textheight]{assets/#1}%",
+      "            \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{assets/#1}%",
       "          }{%",
       "            \\IfFileExists{assets/#1.png}{%",
-      "              \\csname includegraphics\\endcsname[#2,max height=0.85\\textheight]{assets/#1.png}%",
+      "              \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{assets/#1.png}%",
       "            }{%",
       "              \\IfFileExists{assets/#1.jpg}{%",
-      "                \\csname includegraphics\\endcsname[#2,max height=0.85\\textheight]{assets/#1.jpg}%",
+      "                \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{assets/#1.jpg}%",
       "              }{%",
       "                \\framebox(\\linewidth,100pt){Missing Image: \\detokenize{#1}}%",
       "              }%",
@@ -705,7 +707,7 @@ export class LatexAssembler {
                  const fileId = figMatch[2].replace(/^assets\//, '');
                  const caption = LatexAssembler.escapeText(figMatch[3] || 'Figure', mathBlocks);
                  const guid = `fig_${Math.random().toString(36).substring(2, 7)}`;
-                 return `\n\\begin{figure}[htbp]\n\\centering\n\\zimg{${fileId}}{${opts},max height=0.85\\textheight}{${guid}}{${fileId}}\n\\caption{${caption}}\n\\end{figure}\n`;
+                 return `\n\\begin{figure}[htbp]\n\\centering\n\\zimg{${fileId}}{${opts},max height=0.7\\textheight}{${guid}}{${fileId}}\n\\caption{${caption}}\n\\end{figure}\n`;
              }
         }
 
@@ -760,7 +762,7 @@ export class LatexAssembler {
         const rawId = String(node.id || "image").replace(/\\/g, '/');
         const fileId = rawId.replace(/^assets\//, '') || "image";
         const guid = `img_${Math.random().toString(36).substring(2, 7)}`;
-        return `\n\\begin{figure}[H]\n\\centering\n\\zimg{${fileId}}{width=0.9\\linewidth,max height=0.85\\textheight,keepaspectratio}{${guid}}{${fileId}}\n\\end{figure}\n`;
+        return `\n\\begin{figure}[H]\n\\centering\n\\zimg{${fileId}}{width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio}{${guid}}{${fileId}}\n\\end{figure}\n`;
       }
       case 'figure': {
         const rawId = String(node.id || 'figure').replace(/\\/g, '/');
@@ -771,7 +773,7 @@ export class LatexAssembler {
         const labelIdx = (node as any).labelIdx ?? Math.random().toString(36).substring(2, 7);
         const label = `fig:${String(labelIdx).replace(/[^a-z0-9]/gi, '_')}`;
         const guid = `fig_${String(labelIdx).replace(/[^a-z0-9]/gi, '_')}`;
-        return `\n\\begin{figure}[H]\n\\centering\n\\zimg{${fileId}}{width=0.9\\linewidth,max height=0.85\\textheight,keepaspectratio}{${guid}}{${fileId}}\n\\caption{${caption}}\n\\label{${label}}\n\\end{figure}\n`;
+        return `\n\\begin{figure}[H]\n\\centering\n\\zimg{${fileId}}{width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio}{${guid}}{${fileId}}\n\\caption{${caption}}\n\\label{${label}}\n\\end{figure}\n`;
       }
       case 'chart': {
         const rawId = String(node.id || 'chart').replace(/\\/g, '/');
@@ -782,7 +784,7 @@ export class LatexAssembler {
         const labelIdx = (node as any).labelIdx ?? Math.random().toString(36).substring(2, 7);
         const label = `chart:${String(labelIdx).replace(/[^a-z0-9]/gi, '_')}`;
         const guid = `chart_${String(labelIdx).replace(/[^a-z0-9]/gi, '_')}`;
-        return `\n\\begin{figure}[H]\n\\centering\n\\zimg{${fileId}}{width=0.9\\linewidth,max height=0.85\\textheight,keepaspectratio}{${guid}}{${fileId}}\n\\caption{${caption}}\n\\label{${label}}\n\\end{figure}\n`;
+        return `\n\\begin{figure}[H]\n\\centering\n\\zimg{${fileId}}{width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio}{${guid}}{${fileId}}\n\\caption{${caption}}\n\\label{${label}}\n\\end{figure}\n`;
       }
       case 'figure-group':
         return LatexAssembler.assembleFigureGroup(node, mathBlocks);
@@ -1020,7 +1022,7 @@ export class LatexAssembler {
       const cleanedCap = LatexAssembler.cleanFigureCaption(rawCap);
       const cap = cleanedCap ? `\\caption{${LatexAssembler.escapeText(cleanedCap, mathBlocks)}}\n` : '';
       const guid = `fig_${Math.random().toString(36).substring(2, 7)}`;
-      return `\n\\begin{figure}[htbp]\n\\centering\n\\zimg{${fileId}}{width=0.9\\linewidth,max height=0.85\\textheight,keepaspectratio}{${guid}}{${fileId}}\n${cap}\\end{figure}\n`;
+      return `\n\\begin{figure}[htbp]\n\\centering\n\\zimg{${fileId}}{width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio}{${guid}}{${fileId}}\n${cap}\\end{figure}\n`;
     }
 
     // Two-column templates (IEEE/ACM) use figure* to span both columns
@@ -1548,22 +1550,22 @@ export class ModularLatexAssembler {
       "\\ifdefined\\zimg\\else",
       "  \\newcommand{\\zimg}[4]{%",
       "    \\IfFileExists{#1}{%",
-      "      \\csname includegraphics\\endcsname[#2,max height=0.85\\textheight]{#1}%",
+      "      \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{#1}%",
       "    }{%",
       "      \\IfFileExists{#1.png}{%",
-      "        \\csname includegraphics\\endcsname[#2,max height=0.85\\textheight]{#1.png}%",
+      "        \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{#1.png}%",
       "      }{%",
       "        \\IfFileExists{#1.jpg}{%",
-      "          \\csname includegraphics\\endcsname[#2,max height=0.85\\textheight]{#1.jpg}%",
+      "          \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{#1.jpg}%",
       "        }{%",
       "          \\IfFileExists{assets/#1}{%",
-      "            \\csname includegraphics\\endcsname[#2,max height=0.85\\textheight]{assets/#1}%",
+      "            \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{assets/#1}%",
       "          }{%",
       "            \\IfFileExists{assets/#1.png}{%",
-      "              \\csname includegraphics\\endcsname[#2,max height=0.85\\textheight]{assets/#1.png}%",
+      "              \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{assets/#1.png}%",
       "            }{%",
       "              \\IfFileExists{assets/#1.jpg}{%",
-      "                \\csname includegraphics\\endcsname[#2,max height=0.85\\textheight]{assets/#1.jpg}%",
+      "                \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{assets/#1.jpg}%",
       "              }{%",
       "                \\framebox(\\linewidth,100pt){Missing Image: \\detokenize{#1}}%",
       "              }%",

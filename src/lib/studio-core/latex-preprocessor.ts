@@ -19,8 +19,8 @@ const HYPERREF_LIKE = /\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\bhyperref\b[^}]*
 const CLEVEREF_LIKE = /\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\bcleveref\b[^}]*\}/i;
 const ADJUSTBOX_LIKE = /\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\badjustbox\b[^}]*\}/i;
 const ALLOWDISPLAYBREAKS = /\\allowdisplaybreaks\s*/;
-const GRAPHICSPATH = /\\graphicspath\s*\{[^}]*\}/;
-const DECLARE_GRAPHICS_EXT = /\\DeclareGraphicsExtensions\s*\{[^}]*\}/;
+const GRAPHICSPATH = /\\graphicspath\s*\{([^{}]*|\{[^{}]*\})*\}/;
+const DECLARE_GRAPHICS_EXT = /\\DeclareGraphicsExtensions\s*\{([^{}]*|\{[^{}]*\})*\}/;
 const INCLUDE_MAX_KEYS = /\\includegraphics\s*(?:\[[^\]]*\b(max\s*(?:width|height))\b[^\]]*\])?\s*\{/i;
 const PACKAGES_REF = /\\(usepackage|RequirePackage|input)\s*(?:\[[^\]]*\])?\s*\{packages\}\s*/gi;
 
@@ -78,6 +78,32 @@ export function preprocessLatex(
 ): PreprocessorResult {
   let content = texContent;
   const allFixes: string[] = [];
+
+  // 0. Upgrade legacy graphics package to graphicx to prevent option clashes and enable keyval support
+  const graphicsPkgRegex = /\\(usepackage|RequirePackage)\s*(\[[^\]]*\])?\s*\{([^}]*)\bgraphics\b([^}]*)\}/g;
+  if (graphicsPkgRegex.test(content)) {
+    content = content.replace(graphicsPkgRegex, (match, cmd, opts, before, after) => {
+      allFixes.push('Upgraded legacy graphics package to graphicx');
+      return `\\${cmd}${opts || ''}{${before}graphicx${after}}`;
+    });
+  }
+
+  // 0c. Fix illegal [export] option on graphicx (which belongs to adjustbox)
+  if (content.includes('usepackage[export]{graphicx}') || content.includes('RequirePackage[export]{graphicx}')) {
+    content = content.replace(/\\(usepackage|RequirePackage)\s*\[export\]\s*\{graphicx\}/g, (match, cmd) => {
+      allFixes.push('Moved [export] option from graphicx to adjustbox');
+      return `\\${cmd}{graphicx}\n\\PassOptionsToPackage{export}{adjustbox}\n\\${cmd}{adjustbox}`;
+    });
+  }
+
+  // 0b. Clean up hyphenated input/include/import paths caused by previous breakLongWords bug
+  content = content.replace(/\\(input|include|import|subfile|subimport)(?:\*|\[.*?\])?\s*\{([^}]+)\}/gi, (match, cmd, filepath) => {
+    if (filepath.includes('\\-')) {
+      allFixes.push(`Healed hyphenated path in \\${cmd}{${filepath}}`);
+      return `\\${cmd}{${filepath.replace(/\\-/g, '')}}`;
+    }
+    return match;
+  });
 
   const hasPackagesSty = findInFiles(allFiles, 'packages.sty');
   const hasPackagesTex = findInFiles(allFiles, 'packages.tex');

@@ -456,7 +456,7 @@ function normalizeImageInner(optsStr: string | undefined): string {
   optStr = optStr.replace(/width\s*=\s*\\(text|column)width/g, "width=\\linewidth");
   
   if (!optStr.includes("max width")) optStr = optStr ? `${optStr},max width=\\linewidth` : "max width=\\linewidth";
-  if (!optStr.includes("max height")) optStr += (optStr ? "," : "") + "max height=0.9\\textheight";
+  if (!optStr.includes("max height")) optStr += (optStr ? "," : "") + "max height=0.7\\textheight";
   
   if (!optStr.includes("keepaspectratio")) {
     if (optStr.length > 0) optStr += ",keepaspectratio";
@@ -843,13 +843,13 @@ export function autoHealLatex(latex: string): string {
         `  \\newcommand{\\zimg}[4]{%`,
         `    \\leavevmode`,
         `    \\IfFileExists{\\detokenize{#1}}{%`,
-        `      \\csname includegraphics\\endcsname[#2,max height=0.85\\textheight]{\\detokenize{#1}}%`,
+        `      \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{\\detokenize{#1}}%`,
         `    }{%`,
         `      \\IfFileExists{\\detokenize{#1.png}}{%`,
-        `        \\csname includegraphics\\endcsname[#2,max height=0.85\\textheight]{\\detokenize{#1.png}}%`,
+        `        \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{\\detokenize{#1.png}}%`,
         `      }{%`,
         `        \\IfFileExists{\\detokenize{#1.jpg}}{%`,
-        `          \\csname includegraphics\\endcsname[#2,max height=0.85\\textheight]{\\detokenize{#1.jpg}}%`,
+        `          \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{\\detokenize{#1.jpg}}%`,
         `        }{%`,
         `          \\framebox(100,100){Missing Image: \\detokenize{#1}}%`,
         `        }%`,
@@ -883,7 +883,7 @@ export function autoHealLatex(latex: string): string {
         "\\fi\\makeatother"
       );
     }
-    if (!healed.includes("setkeys{Gin}")) bodyGuardLines.push("\\makeatletter\\ifx\\setkeys\\@undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.75\\textheight,keepaspectratio}\\fi\\makeatother");
+    if (!healed.includes("setkeys{Gin}")) bodyGuardLines.push("\\makeatletter\\ifx\\setkeys\\@undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.7\\textheight,keepaspectratio}\\fi\\makeatother");
     const bodyGuards = bodyGuardLines.join("\n");
 
     let patchedPre = patchedPreamble;
@@ -907,7 +907,7 @@ export function autoHealLatex(latex: string): string {
         const isRotated = around.includes("sidewaystable") || around.includes("landscape") || around.includes("sidewaysfigure");
 
         const widthConstraint = isRotated ? "0.9\\textheight" : "\\linewidth";
-        const heightConstraint = isRotated ? "\\linewidth" : "0.75\\textheight";
+        const heightConstraint = isRotated ? "\\linewidth" : "0.7\\textheight";
 
         // Wrap only the tabular content to ensure captions (which are part of the float) stay outside
         return `\\begin{center}\\begin{adjustbox}{max width=${widthConstraint}, max height=${heightConstraint}, keepaspectratio}\n${match}\n\\end{adjustbox}\\end{center}`;
@@ -921,7 +921,7 @@ export function autoHealLatex(latex: string): string {
         if (match.includes("adjustbox") || match.includes("\\resizebox") || match.includes("max size")) return match;
         // Avoid wrapping algorithm if it's a float, but minipages are safe
         if (envName === "algorithm") return match; 
-        return `\\begin{adjustbox}{max width=\\linewidth, max height=0.9\\textheight, keepaspectratio}\n${match}\n\\end{adjustbox}`;
+        return `\\begin{adjustbox}{max width=\\linewidth, max height=0.7\\textheight, keepaspectratio}\n${match}\n\\end{adjustbox}`;
     });
 
     if (isA) {
@@ -1019,6 +1019,8 @@ export function autoHealLatex(latex: string): string {
       // documentclass MUST be first — PassOptionsToPackage comes immediately after
       isA ? "\\documentclass[nonacm,sigconf]{acmart}" : dcl,
       "\\PassOptionsToPackage{unicode}{hyperref}",
+      "\\PassOptionsToPackage{export}{graphicx}",
+      "\\PassOptionsToPackage{export}{adjustbox}",
       "\\nonstopmode",
       "\\ifx\\abstract\\undefined\\else\\let\\abstract\\relax\\fi",
       "\\ifx\\endabstract\\undefined\\else\\let\\endabstract\\relax\\fi",
@@ -1059,7 +1061,7 @@ export function autoHealLatex(latex: string): string {
       "\\ifx\\UrlBreaks\\@undefined\\else",
       "  \\g@addto@macro{\\UrlBreaks}{\\do\\/\\do\\-\\do\\.\\do\\a\\do\\b\\do\\c\\do\\d\\do\\e\\do\\f\\do\\g\\do\\h\\do\\i\\do\\j\\do\\k\\do\\l\\do\\m\\do\\n\\do\\o\\do\\p\\do\\q\\do\\r\\do\\s\\do\\t\\do\\u\\do\\v\\do\\w\\do\\x\\do\\y\\do\\z\\do\\A\\do\\B\\do\\C\\do\\D\\do\\E\\do\\F\\do\\G\\do\\H\\do\\I\\do\\J\\do\\K\\do\\L\\do\\M\\do\\N\\do\\O\\do\\P\\do\\Q\\do\\R\\do\\S\\do\\T\\do\\U\\do\\V\\do\\W\\do\\X\\do\\Y\\do\\Z\\do\\0\\do\\1\\do\\2\\do\\3\\do\\4\\do\\5\\do\\6\\do\\7\\do\\8\\do\\9}",
       "\\fi",
-      "\\ifx\\setkeys\\@undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.85\\textheight,keepaspectratio}\\fi",
+      "\\ifx\\setkeys\\@undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.7\\textheight,keepaspectratio}\\fi",
       "\\makeatother"
     ].join("\n");
 

@@ -53,6 +53,12 @@ export function robustPreambleInjector(content: string): string {
   let modified = breakLongWords(content);
   if (!/\\documentclass\b/.test(modified)) return modified;
 
+  // Prepend graphicx and pass export option to adjustbox at the very top (before \documentclass)
+  // to prevent any legacy class files from loading graphics.sty first and clashing on keyval options.
+  if (!modified.includes('RequirePackage{graphicx}')) {
+    modified = '\\RequirePackage{graphicx}\n\\PassOptionsToPackage{export}{adjustbox}\n' + modified;
+  }
+
   // Detect custom/template document classes — skip harmonization & package injection
   // for classes like nature, IEEEtran, acmart, elsarticle, etc. that ship their own preambles.
   const _dcMatch = modified.match(/\\documentclass\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/);
@@ -64,6 +70,8 @@ export function robustPreambleInjector(content: string): string {
      const _B = "\u005c"; // Literal backslash
      const posCode = `
 % --- NUCLEAR 30.0 CORE DEFINITIONS (NuclearTrackerV30) ---
+${_B}PassOptionsToPackage{export}{graphicx}
+${_B}PassOptionsToPackage{export}{adjustbox}
 ${_B}ifdefined${_B}NuclearTrackerV30${_B}else
   ${_B}def${_B}NuclearTrackerV30{1}
   ${_B}usepackage{iftex} % MANDATORY Engine Guard
@@ -71,8 +79,8 @@ ${_B}ifdefined${_B}NuclearTrackerV30${_B}else
   ${_B}ifdefined${_B}pdflastxpos${_B}else${_B}let${_B}pdflastxpos${_B}lastxpos${_B}fi
   ${_B}ifdefined${_B}pdflastypos${_B}else${_B}let${_B}pdflastypos${_B}lastypos${_B}fi
   ${_B}maxdeadcycles=2000
-  ${_B}usepackage[export]{graphicx}
-  ${_B}graphicspath{{.}{./assets/}{./images/}{./figures/}{../}{../assets/}{../images/}{./figures/}}
+  ${_B}usepackage{graphicx}
+  ${_B}graphicspath{{./}{./assets/}{./images/}{./figures/}{../}{../assets/}{../images/}{./figures/}}
   ${_B}newwrite${_B}ghostwriter
   ${_B}immediate${_B}openout${_B}ghostwriter=ghost.trc
   ${_B}ifdefined${_B}zimgRender${_B}else
@@ -237,7 +245,7 @@ ${_B}fi
       '  \\g@addto@macro{\\UrlBreaks}{\\do\\/\\do\\-\\do\\.\\do\\a\\do\\b\\do\\c\\do\\d\\do\\e\\do\\f\\do\\g\\do\\h\\do\\i\\do\\j\\do\\k\\do\\l\\do\\m\\do\\n\\do\\o\\do\\p\\do\\q\\do\\r\\do\\s\\do\\t\\do\\u\\do\\v\\do\\w\\do\\x\\do\\y\\do\\z\\do\\A\\do\\B\\do\\C\\do\\D\\do\\E\\do\\F\\do\\G\\do\\H\\do\\I\\do\\J\\do\\K\\do\\L\\do\\M\\do\\N\\do\\O\\do\\P\\do\\Q\\do\\R\\do\\S\\do\\T\\do\\U\\do\\V\\do\\W\\do\\X\\do\\Y\\do\\Z\\do\\0\\do\\1\\do\\2\\do\\3\\do\\4\\do\\5\\do\\6\\do\\7\\do\\8\\do\\9}',
       '\\fi',
       // Image constraint: all images respect page width automatically
-      '\\ifx\\setkeys\\@undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.85\\textheight,keepaspectratio}\\fi',
+      '\\ifx\\setkeys\\@undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.7\\textheight,keepaspectratio}\\fi',
       // listings: enable line breaking for ALL lstlisting environments (if listings is loaded)
       '\\ifx\\lstset\\@undefined\\else',
       '  \\lstset{breaklines=true,breakatwhitespace=false,basicstyle=\\small\\ttfamily,',
