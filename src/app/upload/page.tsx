@@ -207,38 +207,47 @@ function UploadContent() {
           xhr.open("POST", "/api/upload");
           xhr.timeout = 300000; // 5 minutes timeout for large DOCX processing
           
-          let simulatedProgress = 50;
+          let simulatedProgress = 0;
+
+          // Start simulated progress immediately from 0 to 48% to ensure it never gets stuck at 0%
+          simulatedInterval = setInterval(() => {
+            if (simulatedProgress < 48) {
+              simulatedProgress += (48 - simulatedProgress) * 0.05 + 0.5;
+              setAnalysisProgress(Math.round(simulatedProgress));
+            }
+          }, 100);
 
           xhr.upload.onprogress = (event) => {
             if (event.lengthComputable) {
                // Upload represents the first 50% of the overall process
                const percent = Math.round((event.loaded / event.total) * 50);
-               setAnalysisProgress(percent);
+               simulatedProgress = Math.max(simulatedProgress, percent);
+               setAnalysisProgress(simulatedProgress);
             }
           };
 
-          // Once the file upload completes, start simulating database and asset extraction processing (50% to 99.9%)
-          // Single smooth asymptotic curve avoids visible "stuck at 98%" plateau
+          // Once the file upload completes, start simulating database and asset extraction processing (50% to 99.4%)
           xhr.upload.onload = () => {
-            if (!simulatedInterval) {
-              simulatedProgress = 50;
-              simulatedInterval = setInterval(() => {
-                simulatedProgress += (99.4 - simulatedProgress) * 0.01;
-                setAnalysisProgress(Math.min(99.4, simulatedProgress));
-              }, 40);
-            }
+            if (simulatedInterval) clearInterval(simulatedInterval);
+            simulatedProgress = Math.max(50, simulatedProgress);
+            setAnalysisProgress(simulatedProgress);
+
+            simulatedInterval = setInterval(() => {
+              simulatedProgress += (99.4 - simulatedProgress) * 0.01;
+              setAnalysisProgress(Math.min(99.4, simulatedProgress));
+            }, 40);
           };
 
           xhr.onload = () => {
-            // Don't clear interval — continue simulation toward 99.9% during post-processing fetches
-            simulatedProgress = Math.min(99.4, simulatedProgress);
-            if (simulatedInterval) {
-              clearInterval(simulatedInterval);
-              simulatedInterval = setInterval(() => {
-                simulatedProgress += (99.9 - simulatedProgress) * 0.005;
-                setAnalysisProgress(Math.min(99.9, simulatedProgress));
-              }, 120);
-            }
+            if (simulatedInterval) clearInterval(simulatedInterval);
+            simulatedProgress = Math.max(99.4, simulatedProgress);
+            setAnalysisProgress(simulatedProgress);
+
+            simulatedInterval = setInterval(() => {
+              simulatedProgress += (99.9 - simulatedProgress) * 0.005;
+              setAnalysisProgress(Math.min(99.9, simulatedProgress));
+            }, 120);
+
             if (xhr.status >= 200 && xhr.status < 300) {
               try {
                 resolve(JSON.parse(xhr.responseText));
