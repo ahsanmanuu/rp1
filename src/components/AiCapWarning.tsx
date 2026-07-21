@@ -73,7 +73,7 @@ function agentLabel(key: string): string {
 
 export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
   const pathname = usePathname();
-  const isForceBlockPage = !!pathname && (pathname.startsWith('/doc2latex') || pathname.startsWith('/reviewer'));
+  const isAiPage = !!pathname && (pathname.startsWith('/doc2latex') || pathname.startsWith('/reviewer') || pathname.startsWith('/latex-studio') || pathname.startsWith('/citations'));
 
   const [status, setStatus] = useState<CapStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -176,7 +176,7 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
         dismissedSession.current = false;
         hasBeenDismissed.current = false;
       }
-      if (!hasBeenDismissed.current && !dismissedSession.current) {
+      if (!hasBeenDismissed.current && !dismissedSession.current && isAiPage) {
         setShowBlockModal(true);
       }
     } else {
@@ -185,7 +185,7 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
       setShowBlockModal(false);
     }
     prevIsCapped.current = nowCapped;
-  }, [status?.isCapped, status?.percentage]);
+  }, [status?.isCapped, status?.percentage, isAiPage]);
 
   if (!mounted || loading) return null;
   if (error || !status) return null;
