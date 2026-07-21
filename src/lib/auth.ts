@@ -25,15 +25,17 @@ export const authOptions: NextAuthOptions = {
             throw new Error("Database connection failed");
           }
 
+          // Normalise email to lower case, matching the register route.
+          const cleanEmail = credentials.email.trim().toLowerCase();
           console.log("[AUTH] Searching for user...");
 
           const { createPb } = await import("@/lib/pb");
           const testPb = createPb();
           let authData;
           try {
-            authData = await testPb.collection("users").authWithPassword(credentials.email, credentials.password);
-          } catch {
-            console.warn("[AUTH] Invalid password or user not found:", credentials.email);
+            authData = await testPb.collection("users").authWithPassword(cleanEmail, credentials.password);
+          } catch (err: any) {
+            console.warn("[AUTH] Invalid password or user not found:", cleanEmail, err?.message || err);
             throw new Error("Invalid credentials");
           }
           const user = authData.record;

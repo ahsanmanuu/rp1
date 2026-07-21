@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createPb } from "@/lib/pb";
-import { setAuthCookie } from "@/lib/auth-pb";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -21,12 +20,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing email or password" }, { status: 400 });
     }
 
+    // Normalise email to lower case, matching the register route.
+    const cleanEmail = email.trim().toLowerCase();
+
     const pb = createPb();
+
+    // Retry authWithPassword once for transient PocketBase hiccups (WAL lock,
+    // cold-start latency, etc.) before surfacing the error to the client.
     let authData;
-    try {
-      authData = await pb.collection("users").authWithPassword(email, password);
-    } catch (pbAuthErr: any) {
-      throw pbAuthErr;
+    let lastAuthErr: any;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        authData = await pb.collection("users").authWithPassword(cleanEmail, password);
+        lastAuthErr = null;
+        break;
+      } catch (e: any) {
+        lastAuthErr = e;
+        if (attempt === 0) {
+          console.warn(`[AUTH pb-login] authWithPassword attempt ${attempt + 1} failed:`, e?.message || e);
+          // Wait 500 ms before retrying (PocketBase may be checkpointing WAL).
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+    }
+    if (!authData) {
+      throw lastAuthErr || new Error("Authentication failed after retry");
     }
 
     const record = authData.record;
@@ -75,9 +93,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // No duplicate: create a new session record
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-
+    // No duplicate: create a new session record (best-effort — login still
+    // succeeds if the adapter has a transient issue; the next session check
+    // heals or recreates the record).
     try {
       const { ensurePbSessionCollectionFields } = await import("@/lib/pb-sync");
       await ensurePbSessionCollectionFields();
@@ -85,18 +103,23 @@ export async function POST(req: NextRequest) {
       console.warn("[AUTH pb-login] Schema sync failed (non-fatal):", e.message);
     }
 
-    await prisma.userSession.create({
-      data: {
-        userId,
-        sessionToken,
-        machineId: clientMachineId,
-        ipAddress,
-        location,
-        userAgent,
-        lastActiveAt: new Date(),
-        expiresAt,
-      },
-    });
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    try {
+      await prisma.userSession.create({
+        data: {
+          userId,
+          sessionToken,
+          machineId: clientMachineId,
+          ipAddress,
+          location,
+          userAgent,
+          lastActiveAt: new Date(),
+          expiresAt,
+        },
+      });
+    } catch (sessionErr: any) {
+      console.warn("[AUTH pb-login] Failed to persist session record (non-fatal):", sessionErr.message);
+    }
 
     const { logUserActivity } = await import("@/lib/security");
     logUserActivity(userId, ipAddress, location, userAgent).catch(() => {});
@@ -122,11 +145,15 @@ export async function POST(req: NextRequest) {
     const response = NextResponse.json({ success: true, user, token: authData.token });
     return response;
   } catch (err: any) {
+    console.error("[AUTH pb-login] Login error:", err?.status, err?.message || err, err?.data ? JSON.stringify(err.data) : "");
     const msg = err?.message || String(err);
     const isConnError = msg.includes('Failed to fetch') || msg.includes('ECONNREFUSED') || msg.includes('fetch failed') || msg.includes('unreachable');
     if (isConnError) {
       return NextResponse.json({ error: 'Authentication service is temporarily unavailable. Please try again later.' }, { status: 503 });
     }
+    // PocketBase's authWithPassword returns a 400 ClientResponseError for
+    // "record not found" or "password doesn't match".  Our own 400s (missing
+    // email/password) are thrown before authWithPassword is called.
     const message = err?.status === 400 ? "Invalid credentials" : msg || "Login failed";
     return NextResponse.json({ error: message }, { status: err?.status || 500 });
   }
