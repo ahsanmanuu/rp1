@@ -438,9 +438,7 @@ function UploadContent() {
     }))
   ];
 
-  const [wasVerified, setWasVerified] = useState(() =>
-    typeof window !== 'undefined' ? sessionStorage.getItem("scholarly_verified") === "true" : false
-  );
+  const [wasVerified, setWasVerified] = useState(false);
 
   // Cache scholarly identity to prevent flash on refresh
   useEffect(() => {
