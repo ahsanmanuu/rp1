@@ -205,7 +205,7 @@ function UploadContent() {
         uploadData = await new Promise((resolve, reject) => {
           const xhr = new XMLHttpRequest();
           xhr.open("POST", "/api/upload");
-          xhr.timeout = 180000; // 3 minutes timeout
+          xhr.timeout = 300000; // 5 minutes timeout for large DOCX processing
           
           let simulatedProgress = 50;
 

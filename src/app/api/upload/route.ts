@@ -102,8 +102,8 @@ async function convertEmfToPngWindowsBatchAsync(emfBuffers: Buffer[]): Promise<(
     `;
     const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
     
-    // Execute ONE powershell instance for all images!
-    await psQueue.add(() => execAsync(`powershell -NoProfile -EncodedCommand ${encoded}`));
+    // Execute ONE powershell instance for all images with a 30s timeout to prevent hanging the queue
+    await psQueue.add(() => execAsync(`powershell -NoProfile -EncodedCommand ${encoded}`, { timeout: 30000 }));
     
     const results = await Promise.all(paths.map(async p => {
       if (fs.existsSync(p.png)) {
