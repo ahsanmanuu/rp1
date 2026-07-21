@@ -18,9 +18,9 @@ const GRAPHICX_LIKE = /\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\bgraphicx\b[^}]*
 const HYPERREF_LIKE = /\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\bhyperref\b[^}]*\}/i;
 const CLEVEREF_LIKE = /\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\bcleveref\b[^}]*\}/i;
 const ADJUSTBOX_LIKE = /\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\badjustbox\b[^}]*\}/i;
-const ALLOWDISPLAYBREAKS = /\\allowdisplaybreaks\s*/g;
-const GRAPHICSPATH = /\\graphicspath\s*\{[^}]*\}/g;
-const DECLARE_GRAPHICS_EXT = /\\DeclareGraphicsExtensions\s*\{[^}]*\}/g;
+const ALLOWDISPLAYBREAKS = /\\allowdisplaybreaks\s*/;
+const GRAPHICSPATH = /\\graphicspath\s*\{[^}]*\}/;
+const DECLARE_GRAPHICS_EXT = /\\DeclareGraphicsExtensions\s*\{[^}]*\}/;
 const INCLUDE_MAX_KEYS = /\\includegraphics\s*(?:\[[^\]]*\b(max\s*(?:width|height))\b[^\]]*\])?\s*\{/i;
 const PACKAGES_REF = /\\(usepackage|RequirePackage|input)\s*(?:\[[^\]]*\])?\s*\{packages\}\s*/gi;
 

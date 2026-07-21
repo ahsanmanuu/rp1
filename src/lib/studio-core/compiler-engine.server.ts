@@ -484,6 +484,33 @@ export async function runHardenedPipeline(
     // SAFETY: Ensure all file content values are strings (disk reads may return Buffers)
     finalNormalized.forEach(f => { if (typeof f.content !== 'string') f.content = String(f.content || ''); });
 
+    // ── MISSING FILE STUB CREATION ──────────────────────────────────────────
+    // Scan the main .tex for \input{...} and \include{...} references to files
+    // that don't exist in the file list, and create empty stubs to prevent
+    // fatal LaTeX errors.
+    const mainTex = finalNormalized.find(f => normalizePath(f.path) === normalizePath(cleanMain));
+    if (mainTex && typeof mainTex.content === 'string') {
+      const fileSet = new Set(finalNormalized.map(f => normalizePath(f.path)));
+      const texRefs = mainTex.content.match(/\\(?:include|input)\s*\{([^}]+)\}/gi);
+      if (texRefs) {
+        for (const ref of texRefs) {
+          const m = ref.match(/\\(?:include|input)\s*\{([^}]+)\}/);
+          if (!m) continue;
+          let target = m[1].trim();
+          // Try both with and without .tex extension
+          const candidates = target.endsWith('.tex') ? [target] : [target + '.tex'];
+          for (const cand of candidates) {
+            const norm = normalizePath(cand);
+            if (!fileSet.has(norm)) {
+              finalNormalized.push({ path: cand, content: '' });
+              fileSet.add(norm);
+              console.log(`[PIPELINE] Created empty stub for missing file: ${cand}`);
+            }
+          }
+        }
+      }
+    }
+
     const totalBytes = calculatePayloadSize(finalNormalized);
     const imageCount = finalNormalized.filter(f => f.content.startsWith('data:image')).length;
 

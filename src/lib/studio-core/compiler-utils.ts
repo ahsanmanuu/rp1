@@ -71,7 +71,7 @@ ${_B}ifdefined${_B}NuclearTrackerV30${_B}else
   ${_B}ifdefined${_B}pdflastxpos${_B}else${_B}let${_B}pdflastxpos${_B}lastxpos${_B}fi
   ${_B}ifdefined${_B}pdflastypos${_B}else${_B}let${_B}pdflastypos${_B}lastypos${_B}fi
   ${_B}maxdeadcycles=2000
-  ${_B}usepackage{graphicx}
+  ${_B}usepackage[export]{graphicx}
   ${_B}graphicspath{{.}{./assets/}{./images/}{./figures/}{../}{../assets/}{../images/}{./figures/}}
   ${_B}newwrite${_B}ghostwriter
   ${_B}immediate${_B}openout${_B}ghostwriter=ghost.trc
@@ -195,6 +195,10 @@ ${_B}fi
       // listings: ensure breaklines is available
       if (!hasPackage('listings')) {
         preamblePkgs.push('\\usepackage{listings}');
+      }
+      // setspace: provides \spacing command used by many templates
+      if (/\\spacing\b/.test(modified) && !hasPackage('setspace')) {
+        preamblePkgs.push('\\usepackage{setspace}');
       }
 
       if (preamblePkgs.length > 0) {
