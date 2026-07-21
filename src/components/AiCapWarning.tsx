@@ -205,7 +205,7 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
           <motion.div initial={{ opacity: 0, scale: 0.92, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 20 }} transition={{ duration: 0.3, ease: 'easeOut' }}
             style={{ background: 'var(--bg-primary, #1e1e1e)', border: '1px solid var(--border, rgba(255,255,255,0.1))',
-              borderRadius: '20px', padding: '36px', maxWidth: '500px', width: '100%',
+              borderRadius: '20px', padding: '24px', maxWidth: '300px', width: '100%',
               boxShadow: '0 25px 60px rgba(0,0,0,0.5)', textAlign: 'center' }}>
 
             <div style={{ width: '72px', height: '72px', background: 'var(--bg-secondary, rgba(255,255,255,0.03))',

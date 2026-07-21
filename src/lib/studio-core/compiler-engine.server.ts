@@ -14,6 +14,7 @@ import * as path from 'path';
 import sharp from 'sharp';
 import { PipelineGC } from '@/lib/pipeline-gc';
 import { applyFinalSanitizationSieve } from '@/lib/latex';
+import { preprocessProjectFiles } from '@/lib/studio-core/latex-preprocessor';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
@@ -434,11 +435,18 @@ export async function runHardenedPipeline(
     
     // NUCLEAR 28.0: MASTER PRE-PROCESSING (Sanitization)
     // CRITICAL: ONLY sanitize the main file to prevent mangling of support files (.cls, .sty, .bib)
-    const normalized = discovered.map(f => {
-      // Passthrough content exactly without aggressive sanitization
-      return f;
-      
-      // Passthrough for support files and sub-documents
+    // NUCLEAR 28.5: PRE-PROCESSOR (Fix code-level errors before compilation)
+    // Runs BEFORE robustPreambleInjector so common LaTeX errors are corrected first:
+    //   - \allowdisplaybreaks / \graphicspath before their required packages
+    //   - cleveref before hyperref
+    //   - Missing adjustbox[export] for max width/height keys
+    //   - Missing file includes (packages.sty etc.)
+    const ppResult = preprocessProjectFiles(discovered, mainFile);
+    if (ppResult.fixes.length > 0) {
+      console.log(`[PREPROCESSOR] Applied ${ppResult.fixes.length} fixes:\n  ${ppResult.fixes.join('\n  ')}`);
+    }
+
+    const normalized = ppResult.files.map(f => {
       return f;
     });
 
@@ -1104,7 +1112,10 @@ export async function runHardenedPipeline(
                 } catch (e: any) {
                     logOutput = (e.stdout || '') + (e.stderr || '');
                     
-                    // ── NUCLEAR AUTO-HEALER: Dynamic Package Stubbing ──
+                    // ── NUCLEAR AUTO-HEALER: Multi-Error Recovery ──
+                    let healed = false;
+
+                    // Pattern 1: Missing .sty file
                     const missingPkgMatch = logOutput.match(/!\s+LaTeX\s+Error:\s+File\s+[`']([^']+\.sty)['`]\s+not\s+found/i);
                     if (missingPkgMatch && currentTry < maxTries) {
                         const missingPkgName = missingPkgMatch[1];
@@ -1120,8 +1131,71 @@ export async function runHardenedPipeline(
                         const stubPath = path.join(compileTempDir, missingPkgName);
                         require('fs').writeFileSync(stubPath, Buffer.from(stubContent, 'utf8'));
                         
+                        healed = true;
+                    }
+
+                    // Pattern 2: Missing .cls file
+                    if (!healed && currentTry < maxTries) {
+                        const missingClsMatch = logOutput.match(/!\s+LaTeX\s+Error:\s+File\s+[`']([^']+\.cls)['`]\s+not\s+found/i);
+                        if (missingClsMatch) {
+                            const missingFileName = missingClsMatch[1];
+                            console.log(`[TECTONIC] Auto-Healer: Missing class detected: ${missingFileName}. Generating minimal stub...`);
+                            
+                            const stubContent = [
+                                `% Auto-generated stub for ${missingFileName}`,
+                                `\\NeedsTeXFormat{LaTeX2e}`,
+                                `\\ProvidesClass{${missingFileName.replace(/\.cls$/i, '')}}[2024/01/01 v1.0 Auto-Stub]`,
+                                `\\LoadClass{article}`,
+                                `\\endinput`
+                            ].join('\n');
+                            
+                            const stubPath = path.join(compileTempDir, missingFileName);
+                            require('fs').writeFileSync(stubPath, Buffer.from(stubContent, 'utf8'));
+                            
+                            healed = true;
+                        }
+                    }
+
+                    // Pattern 3: Missing generic file (.tex, .cfg, etc.)
+                    if (!healed && currentTry < maxTries) {
+                        const missingFileMatch = logOutput.match(/!\s+LaTeX\s+Error:\s+File\s+[`']([^']+)['`]\s+not\s+found/i);
+                        if (missingFileMatch) {
+                            const missingFileName = missingFileMatch[1];
+                            const ext = missingFileName.split('.').pop()?.toLowerCase() || '';
+                            if (!['sty', 'cls'].includes(ext)) {
+                                console.log(`[TECTONIC] Auto-Healer: Missing file detected: ${missingFileName}. Generating empty stub...`);
+                                const stubPath = path.join(compileTempDir, missingFileName);
+                                require('fs').writeFileSync(stubPath, Buffer.from(`% Auto-generated empty stub for ${missingFileName}\n`, 'utf8'));
+                                healed = true;
+                            }
+                        }
+                    }
+
+                    // Pattern 4: Option clash for package
+                    if (!healed && currentTry < maxTries) {
+                        const optionClashMatch = logOutput.match(/!\\?LaTeX\s+Error:\s+Option\s+clash\s+for\s+package\s+[`']([^']+)['`]/i);
+                        if (optionClashMatch) {
+                            const clashPkg = optionClashMatch[1].trim();
+                            console.log(`[TECTONIC] Auto-Healer: Option clash for "${clashPkg}". Injecting \\PassOptionsToPackage...`);
+                            try {
+                                const mainTexPath = path.join(compileTempDir, cleanMain);
+                                if (fs.existsSync(mainTexPath)) {
+                                    let mainContent = fs.readFileSync(mainTexPath, 'utf8');
+                                    // Insert PassOptionsToPackage before the package's usepackage line
+                                    const pkgRegex = new RegExp(`(\\\\usepackage(?:\\[[^\\]]*\\])?\\s*\\{[^}]*\\b${clashPkg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b[^}]*\\})`, 'i');
+                                    mainContent = mainContent.replace(pkgRegex, '\\PassOptionsToPackage{}{' + clashPkg + '}\n$1');
+                                    fs.writeFileSync(mainTexPath, mainContent, 'utf8');
+                                    healed = true;
+                                }
+                            } catch (ocErr) {
+                                console.warn(`[TECTONIC] Option clash handler error:`, ocErr);
+                            }
+                        }
+                    }
+
+                    if (healed) {
                         currentTry++;
-                        continue; // Retry compilation with the injected stub
+                        continue; // Retry with the applied fix
                     }
                     
                     // AUTO-INCREASE TIMEOUT (Interval of 30s)
