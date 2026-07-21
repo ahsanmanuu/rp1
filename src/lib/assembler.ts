@@ -168,7 +168,7 @@ export class LatexAssembler {
 
     preamble.push(
       "\\usepackage{iftex,microtype}",
-      "\\graphicspath{{./}{./assets/}{../}}",
+      "\\graphicspath{{./}{./assets/}{./images/}{./figures/}{../}{../assets/}{../images/}{./figures/}}",
       "\\DeclareGraphicsExtensions{.pdf,.eps,.png,.PNG,.jpg,.JPG,.jpeg,.JPEG,.tif,.tiff,.bmp,.gif,.webp,.avif,.svg,.ico,.heic,.HEIC,.heif,.HEIF}",
       "\\setkeys{Gin}{max width=\\linewidth,max height=0.85\\textheight,keepaspectratio}",
       "",
@@ -1500,7 +1500,7 @@ export class ModularLatexAssembler {
     pkgReg.add("mathrsfs");
     preamble.push("\\allowdisplaybreaks");
     
-    pkgReg.add("graphicx");
+    pkgReg.add("graphicx", "export");
     pkgReg.add("xcolor");
     pkgReg.add("textcomp");
     pkgReg.add("gensymb");
@@ -1541,7 +1541,7 @@ export class ModularLatexAssembler {
     }
 
     preamble.push(
-      "\\graphicspath{{./}{./assets/}{../}}",
+      "\\graphicspath{{./}{./assets/}{./images/}{./figures/}{../}{../assets/}{../images/}{./figures/}}",
       "\\DeclareGraphicsExtensions{.pdf,.eps,.png,.PNG,.jpg,.JPG,.jpeg,.JPEG,.tif,.tiff,.bmp,.gif,.webp,.avif,.svg,.ico,.heic,.HEIC,.heif,.HEIF}",
       "",
       "% --- UNIVERSAL ASSET RESOLVER (zimg) ---",
