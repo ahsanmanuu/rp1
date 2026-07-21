@@ -386,10 +386,16 @@ function injectBibliographyHeading(fileSets: FilePayload[][], cleanMain: string)
     for (const files of fileSets) {
         const main = files.find(f => normalizePath(f.path) === mainNorm);
         if (!main || typeof main.content !== 'string') continue;
-        if (main.content.includes(BIB_HEADING_MARKER)) continue; // already injected
+        if (main.content.includes(BIB_HEADING_MARKER)) continue;
         const bibRegex = /(\\bibliography(?:\s*\[[^\]]*\])?\s*\{)/;
         if (!bibRegex.test(main.content)) continue;
-        const heading = `\n${BIB_HEADING_MARKER}\n\\providecommand{\\refname}{References}\\section*{\\refname}\n`;
+
+        const dcMatch = main.content.match(/\\documentclass\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/);
+        const docClass = dcMatch ? dcMatch[1].trim().toLowerCase() : '';
+        const isChapterClass = docClass === 'book' || docClass === 'report' || docClass.startsWith('thesis') || /^(memoir|scrbook|scrreprt)\b/.test(docClass);
+        const headingCmd = isChapterClass ? 'chapter' : 'section';
+        const headingName = isChapterClass ? 'bibname' : 'refname';
+        const heading = `\n${BIB_HEADING_MARKER}\n\\providecommand{\\${headingName}}{References}\\${headingCmd}*{\\${headingName}}\n`;
         main.content = main.content.replace(bibRegex, heading + '$1');
         injected = true;
     }
