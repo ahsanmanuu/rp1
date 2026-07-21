@@ -45,6 +45,35 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       }).catch((err: any) => console.error('[API_PROJECT_HEAL] Failed to update healed main.tex in DB:', err));
     }
 
+    // Dynamic Self-Healing Sieve: Clean up hyphenated input/include paths caused by previous breakLongWords bug
+    if (mainFile && mainFile.content && (mainFile.content.includes('\\input{') || mainFile.content.includes('\\include{') || mainFile.content.includes('\\import{') || mainFile.content.includes('\\subfile{') || mainFile.content.includes('\\subimport{'))) {
+      const healInputPaths = (text: string) => {
+        return text.replace(/\\(input|include|import|subfile|subimport)(?:\*|\[.*?\])?\s*\{([^}]+)\}/gi, (match, cmd, filepath) => {
+          if (filepath.includes('\\-')) {
+            return `\\${cmd}{${filepath.replace(/\\-/g, '')}}`;
+          }
+          return match;
+        });
+      };
+      
+      const healedContent = healInputPaths(mainFile.content);
+      if (healedContent !== mainFile.content) {
+        console.log(`[API_PROJECT_HEAL] main.tex in project ${id} contained hyphenated input paths. Healing on-the-fly!`);
+        mainFile.content = healedContent;
+        project.latexContent = healedContent;
+        
+        prisma.projectFile.update({
+          where: { id: mainFile.id },
+          data: { content: healedContent }
+        }).catch((err: any) => console.error('[API_PROJECT_HEAL] Failed to update healed main.tex file:', err));
+        
+        prisma.project.update({
+          where: { id },
+          data: { latexContent: healedContent }
+        }).catch((err: any) => console.error('[API_PROJECT_HEAL] Failed to update healed project latexContent:', err));
+      }
+    }
+
     // Universal Metadata Healing for Visual Assets
     // Ensures that no matter which workflow created the file, images are always properly typed and addressable
     if (project.files) {

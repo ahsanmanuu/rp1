@@ -32,7 +32,9 @@ export function breakLongWords(tex: string): string {
     'usepackage', 'documentclass', 'url', 'href', 'geometry', 
     'bibliographystyle', 'bibliography', 'addbibresource', 
     'newcommand', 'renewcommand', 'providecommand', 'def', 
-    'hypersetup', 'lstset', 'lstlisting'
+    'hypersetup', 'lstset', 'lstlisting',
+    'input', 'include', 'import', 'subfile', 'subimport', 'includeonly',
+    'pageref', 'cref', 'Cref', 'autoref', 'zimg'
   ]);
   
   let inComment = false;
