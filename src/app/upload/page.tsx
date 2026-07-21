@@ -22,9 +22,10 @@ import "./print.css";
 
 
 
+import ScholarlySplashScreen from "@/components/ScholarlySplashScreen";
+
 // Heavy Analysis & Feedback Components
 const ProjectStats = dynamic(() => import("@/components/ProjectStats").then(m => m.ProjectStats), { ssr: false });
-const ScholarlySplashScreen = dynamic(() => import("@/components/ScholarlySplashScreen"), { ssr: false });
 const ScholarlyAnalysisModal = dynamic(() => import("@/components/ScholarlyAnalysisModal"), { ssr: false });
 
 function UploadContent() {
