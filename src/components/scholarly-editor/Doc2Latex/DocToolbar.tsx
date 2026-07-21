@@ -1,7 +1,7 @@
 "use client";
 
 import { 
-  Pencil, Sparkles, Zap, Command, RefreshCw, LayoutDashboard, Share2
+  Pencil, Sparkles, Zap, Command, RefreshCw, LayoutDashboard, Share2, Bot
 } from 'lucide-react';
 import Link from 'next/link';
 import ThemeSwitcher from '../ThemeSwitcher';
@@ -32,6 +32,8 @@ interface DocToolbarProps {
   isSyncing?: boolean;
   isReadOnly?: boolean;
   onShare?: () => void;
+  showAiChat?: boolean;
+  onToggleAiChat?: () => void;
 }
 
 export const DocToolbar: React.FC<DocToolbarProps> = ({
@@ -53,6 +55,8 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
   compiling,
   isReadOnly = false,
   onShare,
+  showAiChat = false,
+  onToggleAiChat,
 }) => {
   return (
     <header style={{ 
@@ -157,6 +161,26 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
 
       {/* ── RIGHT: Tools ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+
+        {/* AI Agent button */}
+        {onToggleAiChat && (
+          <button
+            onClick={onToggleAiChat}
+            title="Toggle AI Assistant"
+            style={{
+              background: showAiChat ? 'var(--accent-glow)' : 'var(--ide-btn-bg)',
+              border: '1px solid var(--ide-btn-border)',
+              color: 'var(--accent-primary)', cursor: 'pointer', display: 'flex',
+              alignItems: 'center', gap: '0.35rem', padding: '0.35rem 0.65rem',
+              borderRadius: '7px', fontSize: '0.65rem', fontWeight: 800,
+              whiteSpace: 'nowrap', flexShrink: 0,
+              transition: 'all 0.2s',
+            }}
+          >
+            <Bot size={13} />
+            <span>AI AGENT</span>
+          </button>
+        )}
 
         {/* Share button */}
         {onShare && (

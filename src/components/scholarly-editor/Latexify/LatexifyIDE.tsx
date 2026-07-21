@@ -12,7 +12,6 @@ import {
   Download, 
   Trash2, 
   Zap, 
-  ChevronRight, 
   RefreshCw,
   Plus,
   Layout,
@@ -20,7 +19,7 @@ import {
   X,
   FileText,
   Upload,
-  Settings, Pencil, Sparkles, Copy, Eye, EyeOff, LayoutDashboard, Bot
+  Settings, Pencil, Sparkles, Eye, EyeOff, LayoutDashboard, Bot
 } from 'lucide-react';
 import { getLatexSuggestions } from '@/lib/latex-suggestions';
 import { detectBestEngine } from '@/lib/studio-core/compiler-utils';
@@ -32,6 +31,7 @@ import ThemeSwitcher from '../ThemeSwitcher';
 import ConsolePanel from '../ConsolePanel';
 import StudioErrorBoundary from '../StudioErrorBoundary';
 import EditorLoadingOverlay from '../EditorLoadingOverlay';
+import { AiChatPanel } from '../AiChatPanel';
 import { type DiagnosticError, parseLog } from '@/lib/studio-core/compiler-utils';
 
 // UI Components
@@ -74,16 +74,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [loadingCode, setLoadingCode] = useState(false);
 
-  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant', content: string }[]>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [sendingChat, setSendingChat] = useState(false);
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editText, setEditText] = useState('');
-  const [messageStates, setMessageStates] = useState<Record<number, 'applied' | 'rejected' | 'none'>>({});
-  const [collapsedMessages, setCollapsedMessages] = useState<Record<number, boolean>>({});
-  const chatContainerRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
   const codeRef = useRef('');
 
   const safeSetItem = useCallback((key: string, value: string) => {
@@ -98,25 +89,6 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
   }, []);
 
 
-  // Auto Scroll to current position
-  useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: 'smooth' });
-    }
-  }, [chatMessages, sendingChat]);
-
-  // Load Chat History from Client Storage
-  useEffect(() => {
-    if (typeof window !== 'undefined' && projectId) {
-      try {
-        const saved = localStorage.getItem(`latexify_chat_${projectId}`);
-        if (saved) setChatMessages(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to load chat history", e);
-      }
-    }
-  }, [projectId]);
-
   // Click outside handler for Settings Dropdown
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -128,95 +100,6 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Save Chat History
-  const saveChatHistory = (msgs: { role: 'user' | 'assistant', content: string }[]) => {
-    setChatMessages(msgs);
-    if (typeof window !== 'undefined' && projectId) {
-      safeSetItem(`latexify_chat_${projectId}`, JSON.stringify(msgs));
-    }
-  };
-
-  const handleSendChat = async () => {
-    if (!chatInput.trim() || sendingChat) return;
-    const userMsg = chatInput.trim();
-    setChatInput('');
-    const updatedMsgs = [...chatMessages, { role: 'user' as const, content: userMsg }];
-    saveChatHistory(updatedMsgs);
-    setSendingChat(true);
-
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 seconds timeout
-
-    try {
-      const res = await fetch('/api/latex-studio/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: updatedMsgs,
-          activeFile,
-          fileContent: code,
-          allFiles: files.map(f => ({ path: f.path, content: f.path === activeFile ? code : f.content }))
-        }),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-      let data;
-      const text = await res.text();
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = { error: text || 'AI Agent encountered a runtime anomaly.' };
-      }
-      
-      if (!res.ok) throw new Error(data.error || 'AI Agent encountered a runtime anomaly.');
-
-      saveChatHistory([...updatedMsgs, { role: 'assistant' as const, content: data.message }]);
-      setCollapsedMessages(prev => ({ ...prev, [updatedMsgs.length]: true }));
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      let errorMsg = 'AI Agent connection disrupted.';
-      if (err.name === 'AbortError') {
-        errorMsg = 'AI Agent request timed out (exceeded 120 seconds). Please try a shorter prompt.';
-      } else if (err.message) {
-        errorMsg = err.message;
-      }
-      toast.error(errorMsg, { icon: '🤖' });
-      saveChatHistory([...updatedMsgs, { role: 'assistant' as const, content: `🛑 **ERROR:** ${errorMsg}` }]);
-      setCollapsedMessages(prev => ({ ...prev, [updatedMsgs.length]: true }));
-    } finally {
-      setSendingChat(false);
-    }
-  };
-
-  const handleAbortChat = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-      setSendingChat(false);
-      toast.error("AI prompt generation aborted.", { icon: '🛑' });
-    }
-  };
-
-  const handleDeleteMessage = (idx: number) => {
-    const updated = chatMessages.filter((_, i) => i !== idx);
-    saveChatHistory(updated);
-    toast.success("Message deleted");
-  };
-
-  const handleStartEdit = (idx: number, text: string) => {
-    setEditingIndex(idx);
-    setEditText(text);
-  };
-
-  const handleSaveEdit = (idx: number) => {
-    const updated = chatMessages.map((m, i) => i === idx ? { ...m, content: editText } : m);
-    saveChatHistory(updated);
-    setEditingIndex(null);
-    toast.success("Message updated");
-  };
-  
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const isSelfChange = useRef<boolean>(false);
@@ -229,133 +112,6 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
   useEffect(() => {
     filesRef.current = files;
   }, [files]);
-
-  const parseMessageJson = (content: string) => {
-    try {
-      let cleaned = content.trim();
-      // Remove markdown wrapping if present
-      cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-      
-      // Attempt standard JSON parse
-      try {
-        const parsed = JSON.parse(cleaned);
-        if (parsed && (parsed.edits || parsed.explanation)) {
-          return parsed;
-        }
-      } catch (_) {}
-
-      // Attempt to extract the JSON block between the first '{' and last '}'
-      const start = cleaned.indexOf('{');
-      const end = cleaned.lastIndexOf('}');
-      if (start !== -1 && end > start) {
-        const jsonBlock = cleaned.substring(start, end + 1);
-        try {
-          const parsed = JSON.parse(jsonBlock);
-          if (parsed && (parsed.edits || parsed.explanation)) {
-            return parsed;
-          }
-        } catch (_) {
-          // Attempt to clean trailing commas and parse
-          try {
-            const cleanedJsonBlock = jsonBlock.replace(/,(\s*[}\]])/g, '$1');
-            const parsed = JSON.parse(cleanedJsonBlock);
-            if (parsed && (parsed.edits || parsed.explanation)) {
-              return parsed;
-            }
-          } catch (_) {}
-        }
-      }
-    } catch (e) {
-      console.warn('[parseMessageJson] Failed to parse:', e);
-    }
-    return null;
-  };
-
-  const applyWorkspaceEdits = async (edits: any[]) => {
-    let currentCode = code;
-    let codeChanged = false;
-
-    for (const edit of edits) {
-      const filePath = edit.path;
-      if (filePath === activeFile) {
-        let newContent = currentCode;
-        if (edit.type === 'write') {
-          newContent = edit.content || '';
-        } else if (edit.type === 'replace') {
-          if (edit.target) {
-            newContent = currentCode.replace(edit.target, edit.content || '');
-          } else {
-            newContent = edit.content || '';
-          }
-        } else if (edit.type === 'delete') {
-          if (edit.target) {
-            newContent = currentCode.replace(edit.target, '');
-          }
-        } else if (edit.type === 'insert') {
-          if (edit.target) {
-            const idx = currentCode.indexOf(edit.target);
-            if (idx !== -1) {
-              newContent = currentCode.substring(0, idx) + (edit.content || '') + currentCode.substring(idx);
-            } else {
-              newContent = currentCode + '\n' + (edit.content || '');
-            }
-          } else {
-            newContent = currentCode + '\n' + (edit.content || '');
-          }
-        }
-        if (newContent !== currentCode) {
-          currentCode = newContent;
-          codeChanged = true;
-        }
-      } else {
-        if (fs && projectId) {
-          const fileObj = filesRef.current.find(f => f.path === filePath) || await fs.readFile(projectId, filePath);
-          let otherContent = fileObj?.content || '';
-          let newContent = otherContent;
-          if (edit.type === 'write') {
-            newContent = edit.content || '';
-          } else if (edit.type === 'replace') {
-            if (edit.target) {
-              newContent = otherContent.replace(edit.target, edit.content || '');
-            } else {
-              newContent = edit.content || '';
-            }
-          } else if (edit.type === 'delete') {
-            if (edit.target) {
-              newContent = otherContent.replace(edit.target, '');
-            }
-          } else if (edit.type === 'insert') {
-            if (edit.target) {
-              const idx = otherContent.indexOf(edit.target);
-              if (idx !== -1) {
-                newContent = otherContent.substring(0, idx) + (edit.content || '') + otherContent.substring(idx);
-              } else {
-                newContent = otherContent + '\n' + (edit.content || '');
-              }
-            } else {
-              newContent = otherContent + '\n' + (edit.content || '');
-            }
-          }
-          await fs.writeFile(projectId, filePath, newContent);
-        }
-      }
-    }
-
-    if (codeChanged) {
-      setCode(currentCode);
-      if (fs && projectId) {
-        await fs.writeFile(projectId, activeFile, currentCode);
-      }
-    }
-
-    if (fs && projectId) {
-      const list = await fs.listFiles(projectId);
-      setFiles(list);
-    }
-
-    toast.success("AI Agent edits applied to workspace!", { icon: '🤖' });
-    setTimeout(() => compileRef.current?.(), 100);
-  };
 
   const sessionRef = useRef(session);
   sessionRef.current = session;
@@ -1842,284 +1598,91 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                         )}
                      </div>
 
-                      {showAiChat && (
-                        <div style={{ 
-                          width: '340px', borderLeft: '1px solid var(--border)', 
-                          display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)', 
-                          backdropFilter: 'blur(30px)', fontFamily: 'var(--font-headline)', flexShrink: 0
-                        }}>
-                          <div style={{ padding: '0.6rem 0.9rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                             <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--accent-primary)', letterSpacing: '0.1em' }}>AI ASSISTANT</span>
-                             <button onClick={() => setShowAiChat(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex' }}>
-                               <X size={14} />
-                             </button>
-                          </div>
-                          
-                          <div ref={chatContainerRef} className="custom-scroll" style={{ flex: 1, overflowY: 'auto', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                            {chatMessages.length === 0 ? (
-                              <div style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '3rem', padding: '0 1rem', lineHeight: 1.5 }}>
-                                <Bot size={32} className="text-primary mb-2 block mx-auto" />
-                                Ask anything regarding formulas, bibliography files, structure overrides, or package settings!
-                              </div>
-                            ) : (
-                              chatMessages.map((m, i) => (
-                                <div key={i} style={{ 
-                                  padding: '0.75rem 1rem', borderRadius: '12px', 
-                                  background: m.role === 'user' ? 'var(--bg-tertiary)' : 'var(--bg-accent-faint)',
-                                  color: 'var(--text-primary)', alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-                                  maxWidth: '90%', fontSize: '0.8rem', border: m.role === 'user' ? '1px solid var(--border)' : '1px solid var(--border-accent)',
-                                  boxShadow: m.role === 'assistant' ? '0 4px 20px rgba(15, 98, 254, 0.1)' : 'none',
-                                  position: 'relative'
-                                }}>
-                                  {editingIndex === i ? (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                      <textarea 
-                                        value={editText}
-                                        onChange={e => setEditText(e.target.value)}
-                                        style={{ 
-                                          width: '100%', background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                                          borderRadius: '8px', padding: '0.5rem', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none',
-                                          fontFamily: 'var(--font-mono)', minHeight: '60px'
-                                        }}
-                                      />
-                                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.4rem' }}>
-                                        <button onClick={() => setEditingIndex(null)} style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', border: 'none', borderRadius: '4px', padding: '0.2rem 0.5rem', fontSize: '0.65rem', cursor: 'pointer' }}>Cancel</button>
-                                        <button onClick={() => handleSaveEdit(i)} style={{ background: 'var(--accent-primary)', color: '#fff', border: 'none', borderRadius: '4px', padding: '0.2rem 0.5rem', fontSize: '0.65rem', cursor: 'pointer' }}>Save</button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      {m.role === 'assistant' && (
-                                        <div 
-                                          onClick={() => setCollapsedMessages(prev => ({ ...prev, [i]: !prev[i] }))} 
-                                          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.3rem' }}
-                                        >
-                                           <ChevronRight size={14} className="text-primary transition-transform" style={{ transform: collapsedMessages[i] ? 'rotate(0deg)' : 'rotate(90deg)' }} />
-                                           <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                                            {collapsedMessages[i] ? 'Expand Response' : 'Collapse Response'}
-                                          </span>
-                                        </div>
-                                      )}
-
-                                      {!(m.role === 'assistant' && collapsedMessages[i]) && (
-                                        <>
-                                          {(() => {
-                                            const parsedJson = parseMessageJson(m.content);
-                                            if (parsedJson) {
-                                              return (
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                                  <p style={{ margin: '0 0 0.6rem 0', lineHeight: 1.4, wordBreak: 'break-word' }}>{parsedJson.explanation}</p>
-                                                  {parsedJson.edits && parsedJson.edits.length > 0 && (
-                                                    <div style={{ background: 'var(--bg-secondary)', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '0.7rem' }}>
-                                                      <span style={{ fontWeight: 700, color: 'var(--accent-primary)', display: 'block', marginBottom: '0.2rem' }}>AI Workspace Action ({parsedJson.edits.length} edits):</span>
-                                                      <ul style={{ margin: 0, paddingLeft: '1rem', listStyleType: 'disc' }}>
-                                                        {parsedJson.edits.map((e: any, idx: number) => (
-                                                          <li key={idx} style={{ marginBottom: '2px' }}>
-                                                            <span style={{ fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>{e.type}</span>: <code style={{ color: 'var(--accent-primary)' }}>{e.path}</code>
-                                                            {e.target && <span style={{ opacity: 0.7 }}> (Target: &quot;{e.target.substring(0, 15)}...&quot;)</span>}
-                                                          </li>
-                                                        ))}
-                                                      </ul>
-                                                    </div>
-                                                  )}
-                                                </div>
-                                              );
-                                            }
-                                            return m.content.split('\n').map((line, idx) => {
-                                               if (line.startsWith('```') && line.length > 3) return null;
-                                               if (line === '```') return null;
-                                               return <p key={idx} style={{ margin: '0 0 0.6rem 0', lineHeight: 1.4, wordBreak: 'break-word' }}>{line}</p>;
-                                            });
-                                          })()}
-                                        </>
-                                      )}
-                                      
-                                      {m.role === 'assistant' && (
-                                        <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem' }}>
-                                            <button 
-                                              onClick={() => {
-                                                const parsedJson = parseMessageJson(m.content);
-                                                if (parsedJson && parsedJson.edits) {
-                                                  applyWorkspaceEdits(parsedJson.edits);
-                                                  setMessageStates(prev => ({ ...prev, [i]: 'applied' }));
-                                                  return;
-                                                }
-
-                                                // Try fenced code block: any language tag, case-insensitive, optional space after ```
-                                                const fencedMatch = m.content.match(/```[\s]*([a-zA-Z0-9]*)\s*\r?\n([\s\S]*?)\r?\n[\s]*```/i);
-                                                if (fencedMatch && fencedMatch[2] && fencedMatch[2].trim()) {
-                                                  const extracted = fencedMatch[2].trim();
-                                                  const isFullDoc = extracted.includes('\\documentclass');
-                                                  const newCode = isFullDoc ? extracted : `${code}\n${extracted}`;
-                                                  setCode(newCode);
-                                                  toast.success(isFullDoc ? "Full document applied to editor!" : "Snippet inserted into editor!");
-                                                  setTimeout(() => compileRef.current?.(), 100);
-                                                  setMessageStates(prev => ({ ...prev, [i]: 'applied' }));
-                                                  return;
-                                                }
-
-                                                // Fallback: if message looks like raw LaTeX (has \command or \begin), treat the whole thing as code
-                                                const hasLatexMarkers = /\\(?:documentclass|begin|end|usepackage|section|cite|ref|include)/i.test(m.content);
-                                                if (hasLatexMarkers) {
-                                                  const trimmed = m.content.trim();
-                                                  const isFullDoc = trimmed.includes('\\documentclass');
-                                                  const newCode = isFullDoc ? trimmed : `${code}\n${trimmed}`;
-                                                  setCode(newCode);
-                                                  toast.success(isFullDoc ? "Full document applied to editor!" : "LaTeX content inserted into editor!");
-                                                  setTimeout(() => compileRef.current?.(), 100);
-                                                  setMessageStates(prev => ({ ...prev, [i]: 'applied' }));
-                                                  return;
-                                                }
-
-                                                toast.error("No code block detected in message.");
-                                                setMessageStates(prev => ({ ...prev, [i]: 'applied' }));
-                                              }}
-                                             style={{ 
-                                               background: messageStates[i] === 'applied' ? 'var(--bg-tertiary)' : 'var(--accent-primary)', 
-                                               color: '#fff', border: 'none', padding: '0.35rem 0.6rem', borderRadius: '6px', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer', flex: 1 
-                                             }}
-                                           >
-                                             {messageStates[i] === 'applied' ? 'Updates Applied' : 'Apply AI Updates'}
-                                           </button>
-                                           
-                                           <button 
-                                             onClick={() => {
-                                               setMessageStates(prev => ({ ...prev, [i]: 'rejected' }));
-                                               toast.success("Response marked as rejected");
-                                             }}
-                                             style={{ 
-                                                background: messageStates[i] === 'rejected' ? 'var(--bg-tertiary)' : 'rgba(255, 77, 77, 0.2)', 
-                                                color: messageStates[i] === 'rejected' ? 'var(--text-secondary)' : '#ff4d4d', border: '1px solid rgba(255, 77, 77, 0.3)', padding: '0.35rem 0.6rem', borderRadius: '6px', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer', flex: 1 
-                                             }}
-                                           >
-                                             {messageStates[i] === 'rejected' ? 'Rejected' : 'Reject'}
-                                           </button>
-                                        </div>
-                                      )}
-
-                                      <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'flex-end', marginTop: '0.4rem', opacity: 0.8, transition: 'opacity 0.2s' }} className="msg-controls">
-                                         <button 
-                                            onClick={async () => {
-                                              try {
-                                                if (navigator?.clipboard?.writeText) {
-                                                  await navigator.clipboard.writeText(m.content);
-                                                  toast.success("Copied to clipboard");
-                                                  return;
-                                                }
-                                              } catch (err) {
-                                                console.warn("Failed to copy with navigator.clipboard:", err);
-                                              }
-
-                                              try {
-                                                const textarea = document.createElement("textarea");
-                                                textarea.value = m.content;
-                                                textarea.style.position = "fixed";
-                                                textarea.style.opacity = "0";
-                                                document.body.appendChild(textarea);
-                                                textarea.select();
-                                                const success = document.execCommand("copy");
-                                                document.body.removeChild(textarea);
-                                                if (success) {
-                                                  toast.success("Copied to clipboard");
-                                                  return;
-                                                }
-                                              } catch (fallbackErr) {
-                                                console.error("Fallback copy failed:", fallbackErr);
-                                              }
-
-                                              toast.error("Failed to copy message. Please select and copy manually.");
-                                            }}
-                                            title="Copy Message"
-                                            style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', padding: '2px' }}
-                                          >
-                                           <Copy size={12} />
-                                         </button>
-                                         <button 
-                                           onClick={() => handleStartEdit(i, m.content)}
-                                           title="Edit Message"
-                                           style={{ background: 'transparent', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', display: 'flex', padding: '2px' }}
-                                         >
-                                           <Pencil size={12} />
-                                         </button>
-                                         <button 
-                                           onClick={() => handleDeleteMessage(i)}
-                                           title="Delete Message"
-                                           style={{ background: 'transparent', border: 'none', color: '#ff6b6b', cursor: 'pointer', display: 'flex', padding: '2px' }}
-                                         >
-                                           <Trash2 size={12} />
-                                         </button>
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
-                              ))
-                            )}
-                              {sendingChat && (
-                                <div style={{ 
-                                  alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '0.6rem', 
-                                  padding: '0.5rem 0.75rem', background: 'var(--bg-accent-faint)', 
-                                  border: '1px solid var(--border-accent)', borderRadius: '10px', 
-                                  color: 'var(--text-secondary)', fontSize: '0.75rem',
-                                  boxShadow: '0 4px 15px rgba(15, 98, 254, 0.1)',
-                                  marginBottom: '0.5rem'
-                                }}>
-                                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                    <span style={{ 
-                                      width: '10px', height: '10px', border: '2px solid var(--border)', 
-                                      borderTop: '2px solid var(--accent-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite',
-                                      display: 'inline-block' 
-                                    }} />
-                                 </div>
-                                 AI Agent is computing response...
-                               </div>
-                             )}
-                         </div>
-
-                          <div style={{ padding: '0.6rem 0.75rem', borderTop: '1px solid var(--border)', display: 'flex', gap: '0.5rem', background: 'var(--bg-secondary)' }}>
-                            <input 
-                              type="text" 
-                              value={chatInput}
-                              onChange={e => setChatInput(e.target.value)}
-                              onKeyDown={e => e.key === 'Enter' && handleSendChat()}
-                              placeholder="Ask AI assistant..."
-                              disabled={sendingChat}
-                              style={{ 
-                                flex: 1, background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                                borderRadius: '8px', padding: '0.5rem 0.75rem', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none',
-                                fontFamily: 'var(--font-headline)', transition: 'all 0.2s'
-                              }}
-                            />
-                            {sendingChat ? (
-                              <button 
-                                onClick={handleAbortChat}
-                                title="Abort AI Generation"
-                                style={{ 
-                                  background: '#ff4d4d', color: '#fff', border: 'none', 
-                                  borderRadius: '8px', padding: '0 0.75rem', cursor: 'pointer',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem',
-                                  fontSize: '0.7rem', fontWeight: 700
-                                }}
-                              >
-                                <X size={14} /> Abort
-                              </button>
-                            ) : (
-                              <button 
-                                onClick={handleSendChat}
-                                disabled={!chatInput.trim()}
-                                style={{ 
-                                  background: 'var(--accent-primary)', color: '#fff', border: 'none', 
-                                  borderRadius: '8px', padding: '0 0.75rem', cursor: 'pointer', opacity: !chatInput.trim() ? 0.5 : 1,
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                }}
-                              >
-                                <Zap size={16} />
-                              </button>
-                            )}
-                         </div>
-                       </div>
-                     )}
-                  </div>
-               </motion.main>
+                      <AiChatPanel
+                        isOpen={showAiChat}
+                        onClose={() => setShowAiChat(false)}
+                        projectId={projectId}
+                        storageKey={`latexify_chat_${projectId}`}
+                        apiEndpoint="/api/latex-studio/chat"
+                        buildContext={() => ({
+                          activeFile,
+                          fileContent: code,
+                          allFiles: files.map(f => ({ path: f.path, content: f.path === activeFile ? codeRef.current : f.content })),
+                        })}
+                        onApplyEdits={async (edits) => {
+                          let currentCode = code;
+                          let codeChanged = false;
+                          for (const edit of edits) {
+                            const filePath = edit.path;
+                            if (filePath === activeFile) {
+                              let newContent = currentCode;
+                              if (edit.type === 'write') newContent = edit.content || '';
+                              else if (edit.type === 'replace') {
+                                newContent = edit.target ? currentCode.replace(edit.target, edit.content || '') : (edit.content || '');
+                              } else if (edit.type === 'delete') {
+                                newContent = edit.target ? currentCode.replace(edit.target, '') : currentCode;
+                              } else if (edit.type === 'insert') {
+                                if (edit.target) {
+                                  const idx = currentCode.indexOf(edit.target);
+                                  newContent = idx !== -1 ? currentCode.substring(0, idx) + (edit.content || '') + currentCode.substring(idx) : currentCode + '\n' + (edit.content || '');
+                                } else {
+                                  newContent = currentCode + '\n' + (edit.content || '');
+                                }
+                              }
+                              if (newContent !== currentCode) { currentCode = newContent; codeChanged = true; }
+                            } else if (fs) {
+                              const fileObj = files.find(f => f.path === filePath) || (await fs.readFile(projectId, filePath));
+                              let otherContent = fileObj?.content || '';
+                              let newContent = otherContent;
+                              if (edit.type === 'write') newContent = edit.content || '';
+                              else if (edit.type === 'replace') newContent = edit.target ? otherContent.replace(edit.target, edit.content || '') : (edit.content || '');
+                              else if (edit.type === 'delete') newContent = edit.target ? otherContent.replace(edit.target, '') : otherContent;
+                              else if (edit.type === 'insert') {
+                                if (edit.target) {
+                                  const idx = otherContent.indexOf(edit.target);
+                                  newContent = idx !== -1 ? otherContent.substring(0, idx) + (edit.content || '') + otherContent.substring(idx) : otherContent + '\n' + (edit.content || '');
+                                } else {
+                                  newContent = otherContent + '\n' + (edit.content || '');
+                                }
+                              }
+                              if (newContent !== otherContent) await fs.writeFile(projectId, filePath, newContent);
+                            }
+                          }
+                          if (codeChanged) {
+                            setCode(currentCode);
+                            if (fs && projectId) await fs.writeFile(projectId, activeFile, currentCode);
+                          }
+                          if (fs && projectId) {
+                            const list = await fs.listFiles(projectId);
+                            setFiles(list);
+                          }
+                          toast.success("AI Agent edits applied to workspace!", { icon: '🤖' });
+                          setTimeout(() => compileRef.current?.(), 100);
+                        }}
+                        onExtractCode={(content) => {
+                          const fencedMatch = content.match(/```[\s]*([a-zA-Z0-9]*)\s*\r?\n([\s\S]*?)\r?\n[\s]*```/i);
+                          if (fencedMatch && fencedMatch[2] && fencedMatch[2].trim()) {
+                            const extracted = fencedMatch[2].trim();
+                            const isFullDoc = extracted.includes('\\documentclass');
+                            setCode(isFullDoc ? extracted : `${code}\n${extracted}`);
+                            toast.success(isFullDoc ? "Full document applied to editor!" : "Snippet inserted into editor!");
+                            return extracted;
+                          }
+                          const hasLatexMarkers = /\\(?:documentclass|begin|end|usepackage|section|cite|ref|include)/i.test(content);
+                          if (hasLatexMarkers) {
+                            const isFullDoc = content.trim().includes('\\documentclass');
+                            setCode(isFullDoc ? content.trim() : `${code}\n${content.trim()}`);
+                            toast.success(isFullDoc ? "Full document applied to editor!" : "LaTeX content inserted into editor!");
+                            return content;
+                          }
+                          return null;
+                        }}
+                        afterApply={() => {
+                          if (compileRef.current) setTimeout(() => compileRef.current?.(), 100);
+                        }}
+                      />
+                   </div>
+                </motion.main>
 
                 {/* RESIZER PDF */}
                 {!hidePdf && (

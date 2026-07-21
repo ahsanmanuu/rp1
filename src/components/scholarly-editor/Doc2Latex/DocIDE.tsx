@@ -21,6 +21,7 @@ import { detectBestEngine, type DiagnosticError, parseLog } from '@/lib/studio-c
 import { formatLatexCode, type EditorMood, EDITOR_MOODS } from '@/lib/studio-core/formatting-utils';
 import ConsolePanel from '../ConsolePanel';
 import StudioErrorBoundary from '../StudioErrorBoundary';
+import { AiChatPanel } from '../AiChatPanel';
 
 // Modular Components
 import { DocSidebar } from './DocSidebar';
@@ -83,6 +84,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
   const [tempTitle, setTempTitle] = useState('');
   const [editorMood, setEditorMood] = useState<EditorMood>('obsidian');
   const [loadingCode, setLoadingCode] = useState(false);
+  const [showAiChat, setShowAiChat] = useState(false);
 
   // -- Sync State --
   const [jumpTo, setJumpTo] = useState<{ percentage: number; timestamp: number } | null>(null);
@@ -968,6 +970,8 @@ export default function DocIDE({ projectId }: { projectId: string }) {
           projectId={projectId}
           isReadOnly={isOutOfCredits}
           onShare={shareProject}
+          showAiChat={showAiChat}
+          onToggleAiChat={() => setShowAiChat(prev => !prev)}
         />
 
          <div style={{ 
@@ -1047,7 +1051,8 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                       ))}
                   </div>
 
-                  <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: showAiChat ? 'row' : 'column', minWidth: 0 }}>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                     <EditorLoadingOverlay
                       visible={isSyncing}
                       label="LOADING LATEX MANUSCRIPT"
@@ -1260,8 +1265,71 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                          />
                       </div>
                     )}
-                 </div>
-               </motion.main>
+                  </div>
+                  <AiChatPanel
+                    isOpen={showAiChat}
+                    onClose={() => setShowAiChat(false)}
+                    projectId={projectId}
+                    storageKey={`doc2latex_chat_${projectId}`}
+                    apiEndpoint="/api/doc2latex/chat"
+                    buildContext={() => ({
+                      activeFile,
+                      fileContent: code,
+                      allFiles: files.map(f => ({ path: f.path, content: f.path === activeFile ? codeRef.current : f.content })),
+                    })}
+                    onApplyEdits={async (edits) => {
+                      let currentCode = code;
+                      let codeChanged = false;
+                      for (const edit of edits) {
+                        const filePath = edit.path;
+                        if (filePath === activeFile) {
+                          let newContent = currentCode;
+                          if (edit.type === 'write') newContent = edit.content || '';
+                          else if (edit.type === 'replace') {
+                            newContent = edit.target ? currentCode.replace(edit.target, edit.content || '') : (edit.content || '');
+                          } else if (edit.type === 'delete') {
+                            newContent = edit.target ? currentCode.replace(edit.target, '') : currentCode;
+                          } else if (edit.type === 'insert') {
+                            if (edit.target) {
+                              const idx = currentCode.indexOf(edit.target);
+                              newContent = idx !== -1 ? currentCode.substring(0, idx) + (edit.content || '') + currentCode.substring(idx) : currentCode + '\n' + (edit.content || '');
+                            } else {
+                              newContent = currentCode + '\n' + (edit.content || '');
+                            }
+                          }
+                          if (newContent !== currentCode) { currentCode = newContent; codeChanged = true; }
+                        } else if (fs) {
+                          const fileObj = files.find(f => f.path === filePath);
+                          let otherContent = fileObj?.content || '';
+                          let newContent = otherContent;
+                          if (edit.type === 'write') newContent = edit.content || '';
+                          else if (edit.type === 'replace') newContent = edit.target ? otherContent.replace(edit.target, edit.content || '') : (edit.content || '');
+                          else if (edit.type === 'delete') newContent = edit.target ? otherContent.replace(edit.target, '') : otherContent;
+                          else if (edit.type === 'insert') {
+                            if (edit.target) {
+                              const idx = otherContent.indexOf(edit.target);
+                              newContent = idx !== -1 ? otherContent.substring(0, idx) + (edit.content || '') + otherContent.substring(idx) : otherContent + '\n' + (edit.content || '');
+                            } else {
+                              newContent = otherContent + '\n' + (edit.content || '');
+                            }
+                          }
+                          if (newContent !== otherContent) await fs.writeFile(projectId, filePath, newContent);
+                        }
+                      }
+                      if (codeChanged) {
+                        setCode(currentCode);
+                        if (fs && projectId) await fs.writeFile(projectId, activeFile, currentCode);
+                      }
+                      if (fs && projectId) setFiles(await fs.listFiles(projectId));
+                      toast.success("AI Agent edits applied to workspace!", { icon: '🤖' });
+                      setTimeout(() => compileRef.current?.(), 100);
+                    }}
+                    afterApply={() => {
+                      if (compileRef.current) setTimeout(() => compileRef.current?.(), 100);
+                    }}
+                  />
+                </div>
+                </motion.main>
 
                {/* RESIZER PDF */}
                 <div 
