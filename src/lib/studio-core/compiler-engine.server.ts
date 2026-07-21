@@ -484,27 +484,81 @@ export async function runHardenedPipeline(
     // SAFETY: Ensure all file content values are strings (disk reads may return Buffers)
     finalNormalized.forEach(f => { if (typeof f.content !== 'string') f.content = String(f.content || ''); });
 
-    // ── MISSING FILE STUB CREATION ──────────────────────────────────────────
+    // ── MISSING FILE RECOVERY ────────────────────────────────────────────────
     // Scan the main .tex for \input{...} and \include{...} references to files
-    // that don't exist in the file list, and create empty stubs to prevent
-    // fatal LaTeX errors.
+    // that don't exist in the file list. First try to recover content from DB
+    // structuredContent, then from ProjectFile records. If all recovery fails,
+    // safely comment out the reference to avoid blank pages from empty stubs.
     const mainTex = finalNormalized.find(f => normalizePath(f.path) === normalizePath(cleanMain));
     if (mainTex && typeof mainTex.content === 'string') {
       const fileSet = new Set(finalNormalized.map(f => normalizePath(f.path)));
+      let structuredContentRecovery: Record<string, string> | null = null;
       const texRefs = mainTex.content.match(/\\(?:include|input)\s*\{([^}]+)\}/gi);
       if (texRefs) {
         for (const ref of texRefs) {
           const m = ref.match(/\\(?:include|input)\s*\{([^}]+)\}/);
           if (!m) continue;
           let target = m[1].trim();
-          // Try both with and without .tex extension
           const candidates = target.endsWith('.tex') ? [target] : [target + '.tex'];
           for (const cand of candidates) {
             const norm = normalizePath(cand);
             if (!fileSet.has(norm)) {
-              finalNormalized.push({ path: cand, content: '' });
-              fileSet.add(norm);
-              console.log(`[PIPELINE] Created empty stub for missing file: ${cand}`);
+              let recovered = false;
+              // Attempt 1: Recover from DB structuredContent.modularComponents
+              if (projectId && !structuredContentRecovery) {
+                try {
+                  const { prisma } = require('@/lib/prisma');
+                  const project = await prisma.project.findUnique({
+                    where: { id: projectId },
+                    select: { structuredContent: true }
+                  });
+                  if (project?.structuredContent) {
+                    const parsed = JSON.parse(project.structuredContent);
+                    if (parsed?.modularComponents && typeof parsed.modularComponents === 'object') {
+                      structuredContentRecovery = parsed.modularComponents;
+                    }
+                  }
+                } catch (scErr) {
+                  console.warn('[PIPELINE] structuredContent recovery error:', scErr);
+                }
+              }
+              if (structuredContentRecovery) {
+                const contentKey = Object.keys(structuredContentRecovery).find(k =>
+                  normalizePath(k) === norm || normalizePath(k) === normalizePath(target)
+                );
+                if (contentKey) {
+                  const recoveredContent = structuredContentRecovery[contentKey];
+                  finalNormalized.push({ path: cand, content: recoveredContent });
+                  fileSet.add(norm);
+                  recovered = true;
+                  console.log(`[PIPELINE] Recovered missing file from structuredContent: ${cand} (${recoveredContent.length}b)`);
+                }
+              }
+              // Attempt 2: Recover from ProjectFile records
+              if (!recovered && projectId) {
+                try {
+                  const { prisma } = require('@/lib/prisma');
+                  const dbFile = await prisma.projectFile.findFirst({
+                    where: { projectId, filename: cand }
+                  });
+                  if (dbFile?.content) {
+                    finalNormalized.push({ path: cand, content: dbFile.content });
+                    fileSet.add(norm);
+                    recovered = true;
+                    console.log(`[PIPELINE] Recovered missing file from ProjectFile: ${cand} (${dbFile.content.length}b)`);
+                  }
+                } catch (pfErr) {
+                  console.warn('[PIPELINE] ProjectFile recovery error:', pfErr);
+                }
+              }
+              // Attempt 3: Safe-disable the reference to prevent blank pages.
+              // Use \iffalse / \fi so surrounding inline text is preserved.
+              if (!recovered) {
+                mainTex.content = mainTex.content.replace(ref,
+                  `\\iffalse % DISABLED (file not found: ${cand})\n${ref}\n\\fi`
+                );
+                console.log(`[PIPELINE] Disabled missing file reference (no recovery): ${cand}`);
+              }
             }
           }
         }
@@ -1911,6 +1965,41 @@ export async function hardenedDiscovery(projectId: string | null, files: FilePay
 
   const projectDir = path.join(process.cwd(), 'public', 'uploads', 'projects', projectId);
 
+  // ── UNIVERSAL DB FILE RECOVERY: Load ALL project files from DB ──────────
+  // This ensures files saved in the database (including section files,
+  // metadata files, etc.) are available even if they weren't sent from the
+  // frontend session or found on disk.
+  try {
+    const { prisma } = require('@/lib/prisma');
+    const allDbFiles = await prisma.projectFile.findMany({
+      where: { projectId },
+      select: { filename: true, content: true, fileType: true }
+    });
+    if (allDbFiles && allDbFiles.length > 0) {
+      let addedCount = 0;
+      const sessionPaths = new Set(normalized.map(f => normalizePath(f.path)));
+      for (const dbFile of allDbFiles) {
+        if (!dbFile.filename || !dbFile.content) continue;
+        const normPath = normalizePath(dbFile.filename);
+        if (!sessionPaths.has(normPath) && !normalized.some(f => normalizePath(f.path) === normPath)) {
+          const ext = dbFile.fileType || (dbFile.filename.split('.').pop() || 'tex').toLowerCase();
+          const isBinary = /^(png|jpg|jpeg|webp|gif|pdf|eps|otf|ttf|woff|woff2|tfm|pfb|afm|heic|heif|tiff|tif|bmp|avif|svg)$/i.test(ext);
+          normalized.push({
+            path: dbFile.filename,
+            content: isBinary
+              ? `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${Buffer.from(dbFile.content).toString('base64')}`
+              : dbFile.content
+          });
+          addedCount++;
+        }
+      }
+      if (addedCount > 0) {
+        console.log(`[PIPELINE] Recovered ${addedCount} files from DB for project ${projectId}`);
+      }
+    }
+  } catch (dbRecErr) {
+    console.warn('[PIPELINE] DB file recovery encountered error (non-fatal):', dbRecErr);
+  }
 
   // --- UNIVERSAL TEMPLATE CLASS AUTO-PROVISIONING ---
   try {

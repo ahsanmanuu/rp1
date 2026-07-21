@@ -157,7 +157,10 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     const syncFromCloud = async (studioFs: StudioFS) => {
       setIsSyncing(true);
       try {
-        const res = await fetch(`/api/projects/${projectId}`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        const res = await fetch(`/api/projects/${projectId}`, { signal: controller.signal });
+        clearTimeout(timeoutId);
         if (!res.ok) throw new Error("Failed to sync from cloud");
         const data = await res.json();
         
@@ -297,7 +300,11 @@ export default function DocIDE({ projectId }: { projectId: string }) {
         await syncFromCloud(studioFs);
       }
     };
-    init();
+    init().catch(err => {
+      console.error("Init failed:", err);
+      setIsSyncing(false);
+      setLoadingCode(false);
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
@@ -370,6 +377,26 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       mon.editor.setTheme('scholarly-vibrant');
     }
   }, [editorMood]);
+
+  // Restore editor content after browser tab switch — browsers may GC the Monaco model
+  // when the tab is backgrounded. Detect blank editor and repopulate from codeRef.
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && editorRef.current) {
+        const savedCode = codeRef.current;
+        if (!savedCode) return;
+        try {
+          const model = editorRef.current.getModel();
+          const currentValue = model ? model.getValue() : '';
+          if (!currentValue && savedCode) {
+            editorRef.current.setValue(savedCode);
+          }
+        } catch {}
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
 
   // Safely update editor value without resetting cursor position
   useEffect(() => {
