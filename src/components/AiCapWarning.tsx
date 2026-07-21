@@ -127,7 +127,11 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
   useEffect(() => { setMounted(true); fetchStatus(); }, [fetchStatus]);
 
   useEffect(() => {
-    const handleCapTrigger = () => { fetchStatus(); };
+    const handleCapTrigger = () => {
+      dismissedSession.current = false;
+      hasBeenDismissed.current = false;
+      fetchStatus();
+    };
     window.addEventListener('ai-cap-triggered', handleCapTrigger);
     return () => { window.removeEventListener('ai-cap-triggered', handleCapTrigger); };
   }, [fetchStatus]);
