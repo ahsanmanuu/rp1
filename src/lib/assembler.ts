@@ -435,7 +435,7 @@ export class LatexAssembler {
 
         // Strip metadata duplicate content from front matter
         if (nodeIdx < 20) {
-            if (norm === normalizedTitle || (normalizedTitle.length > 20 && norm.includes(normalizedTitle))) return;
+            if (norm === normalizedTitle || (normalizedTitle.length > 10 && norm.includes(normalizedTitle)) || (norm.length > 5 && normalizedTitle.includes(norm))) return;
             if (normalizedAuthors.some(a => a.length > 8 && norm === a)) return;
             if (node.type === 'heading') {
                 const cleanLower = text.toLowerCase().replace(/[:.\-\s]*$/, '').trim();

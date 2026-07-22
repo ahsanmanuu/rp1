@@ -638,7 +638,7 @@ export class DeepDocumentParser {
       const lower = f.text.toLowerCase();
       const tagName = f.tagName;
 
-      if (/^\d+$/.test(f.text) || /colorlinks=|allcolors=|bookmarks=|\bhypersetup\{/i.test(lower) || f.text.length === 0) {
+      if (/^\s*\d{1,3}\s*$/.test(f.text) || /^\s*page\s+\d+(?:\s+of\s+\d+)?\s*$/i.test(f.text) || /colorlinks=|allcolors=|bookmarks=|\bhypersetup\{/i.test(lower) || f.text.length === 0) {
           if (tagName !== 'table' && tagName !== 'img' && !el.querySelector('img')) continue;
       }
 
@@ -940,9 +940,36 @@ export class DeepDocumentParser {
               result.abstract += text.replace(/^(?:abstract|summary)\s*[:.\u2013\u2014\u2212\-\—\–]*/i, '').trim() + " ";
           }
           else if (entry.role === 'keywords') {
-              const match = text.match(/(?:Keywords|Index Terms|Key\s*Words)\s*[:.\u2013\u2014\u2212\-\—\–]*\s*(.*)/i);
-              const keywordText = match?.[1] ? match[1] : text.replace(/^(?:Keywords|Index Terms|Key\s*Words)\s*[:.\u2013\u2014\u2212\-\—\–]*\s*/i, '');
-              if (keywordText) result.keywords.push(...keywordText.split(/[,;]/).map((k: string) => k.trim().replace(/\.$/, '')).filter(Boolean));
+              const match = text.match(/(?:Keywords|Index Terms|Key\s*Words)\s*[:.\u2013\u2014\u2212\-\—\–]*\s*(.*)/is);
+              const rawKeywordText = match?.[1] ? match[1] : text.replace(/^(?:Keywords|Index Terms|Key\s*Words)\s*[:.\u2013\u2014\u2212\-\—\–]*\s*/i, '');
+              
+              let keywordPart = rawKeywordText;
+              let remainingProse = '';
+              
+              const periodIdx = rawKeywordText.search(/\.\s+[A-Z]/);
+              if (periodIdx !== -1) {
+                keywordPart = rawKeywordText.substring(0, periodIdx).trim();
+                remainingProse = rawKeywordText.substring(periodIdx + 1).trim();
+              }
+              
+              const rawList = keywordPart.split(/[,;]/).map((k: string) => k.trim().replace(/\.$/, '')).filter(Boolean);
+              const validKeywords: string[] = [];
+              
+              for (let kIdx = 0; kIdx < rawList.length; kIdx++) {
+                const item = rawList[kIdx];
+                const wordCount = item.split(/\s+/).length;
+                if (wordCount <= 6) {
+                  validKeywords.push(item);
+                } else {
+                  remainingProse = rawList.slice(kIdx).join(', ') + (remainingProse ? ' ' + remainingProse : '');
+                  break;
+                }
+              }
+              
+              if (validKeywords.length > 0) result.keywords.push(...validKeywords);
+              if (remainingProse.length > 15) {
+                result.body.push({ type: 'paragraph', text: remainingProse });
+              }
           }
           else if (entry.role === 'author') {
               let authorText = text;
@@ -1422,6 +1449,13 @@ export class DeepDocumentParser {
     const f = this.featurize(targetEl);
     if (f.text.length > 200 || f.text.length < 3) return null;
     if (f.text.endsWith('.') && !/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-z][.\s]+)/i.test(f.text) && !(f.wordCount < 6 && f.isBold)) return null;
+
+    // Guard: Exclude Author/Affiliation metadata lines that start with number indices (e.g., "1 Designation of 1st Author...", "1 Department of CS...")
+    const isAuthorAffilText = /\b(?:designation|department|organization|university|faculty|institute|college|school|author|affiliation|prof\.|professor|lecturer|student)\b/i.test(f.text) ||
+                             /^\d+\s*(?:st|nd|rd|th)?\s*(?:author|designation|department|organization|university|faculty|institute|college|school)/i.test(f.text);
+    if (isAuthorAffilText && !/\b(?:introduction|methods|results|discussion|conclusion|references)\b/i.test(f.text)) {
+      return null;
+    }
 
     const normClean = f.text.toLowerCase()
       .replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-z][.\s]+)+\s*/i, '')
