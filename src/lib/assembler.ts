@@ -172,6 +172,7 @@ export class LatexAssembler {
 
     preamble.push(
       "\\usepackage{iftex,microtype}",
+      "\\ifdefined\\pdfpxdimen\\pdfpxdimen=1in/3000\\fi",
       "\\graphicspath{{./}{./assets/}{./images/}{./figures/}{../}{../assets/}{../images/}{./figures/}}",
       "\\DeclareGraphicsExtensions{.pdf,.eps,.png,.PNG,.jpg,.JPG,.jpeg,.JPEG,.tif,.tiff,.bmp,.gif,.webp,.avif,.svg,.ico,.heic,.HEIC,.heif,.HEIF}",
       "\\setkeys{Gin}{max width=\\linewidth,max height=0.7\\textheight,keepaspectratio}",
@@ -650,22 +651,14 @@ export class LatexAssembler {
         const rawText = node.text || "Untitled Section";
         const isStarred = (node as any).sectionStyle === 'starred';
         
-        // Strip auto-numbering prefixes universally (e.g. "1. ", "2.1. ", "A. ", "I. ", "Section 1. ")
-        // that LaTeX will automatically re-add, avoiding double-numbering in the compiled PDF.
+        // Comprehensive prefix stripping: removes "1. ", "1.1 ", "Section 1: ", "A. ", "I. ", "1.1.1 - "
+        // to prevent double-numbering in compiled PDFs across all templates.
         let finalText = rawText.trim();
+        const headingPrefix = /^(?:\s*(?:section|subsection|subsubsection|chapter|appendix|part)\s+)?(?:\[?\s*(?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*\s*\]?\.?[:.\-–—\s)]+)+/i;
         
-        // 1. Match numeric hierarchical prefixes: "1 ", "1. ", "2.1 ", "1.1.1. "
-        const numericPrefix = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\d+)(?:\.\d+)*\.?[.:\s)]+\s*/i;
-        
-        // 2. Match alphabetical/roman prefixes with punctuation: "A. ", "B) ", "I. ", "IV: "
-        const alphaRomanPrefix = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:[a-zA-Z](?:\.\d+)+|[ivxlcdm]{2,}|[a-zA-Z]|[ivxlcdm])\.?[.:)]+\s+/i;
-        
-        if (numericPrefix.test(finalText)) {
-          const cleanText = finalText.replace(numericPrefix, "").trim();
-          if (cleanText.length > 2) finalText = cleanText;
-        } else if (alphaRomanPrefix.test(finalText)) {
-          const cleanText = finalText.replace(alphaRomanPrefix, "").trim();
-          if (cleanText.length > 2) finalText = cleanText;
+        if (headingPrefix.test(finalText)) {
+          const cleanText = finalText.replace(headingPrefix, "").trim();
+          if (cleanText.length >= 2) finalText = cleanText;
         }
         
         // 🛡️ FORCED LEVEL-1: canonical academic section names always use \section

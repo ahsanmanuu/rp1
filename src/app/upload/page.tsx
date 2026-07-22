@@ -1618,76 +1618,114 @@ const TemplateCard = ({ id, name, desc, projectId, router, onError, isCustom, on
   const handleSelect = async () => {
     setStatus('loading');
     onError("");
-    try {
-      // 1. Save Report History first (non-blocking)
-      if (projectData) {
-        let stats = {};
-        let authors = [];
-        let affiliations = [];
-        let keywords = [];
+    
+    // 1. Save Report History first (non-blocking)
+    if (projectData) {
+      let stats = {};
+      let authors = [];
+      let affiliations = [];
+      let keywords = [];
 
-        try {
-          const structured = JSON.parse(projectData.structuredContent || '{}');
-          stats = structured.stats || {
-            wordCount: projectData.wordCount,
-            charCount: projectData.charCount,
-            imageCount: projectData.imageCount,
-            chartCount: projectData.chartCount,
-            tableCount: projectData.tableCount,
-            equationCount: projectData.equationCount,
-            citationCount: projectData.citationCount,
-            referenceCount: projectData.referenceCount,
-            pseudocodeCount: projectData.pseudocodeCount
-          };
-          authors = structured.authors || [];
-          affiliations = structured.organizations || [];
-          keywords = structured.keywords || [];
-        } catch (e) {
-          console.warn("Failed to parse structured content for report saving", e);
-        }
-
-        fetch("/api/reports", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId,
-            title: projectData.title || "Untitled Manuscript",
-            stats,
-            authors,
-            affiliations,
-            keywords,
-            pdfUrl: `/uploads/projects/${projectId}/report.pdf`,
-            latexUrl: `/uploads/projects/${projectId}/main.tex`,
-            zipUrl: `/api/projects/${projectId}/download`
-          })
-        }).catch(err => {
-          console.warn("Non-blocking report history tracking failed:", err);
-        });
+      try {
+        const structured = JSON.parse(projectData.structuredContent || '{}');
+        stats = structured.stats || {
+          wordCount: projectData.wordCount,
+          charCount: projectData.charCount,
+          imageCount: projectData.imageCount,
+          chartCount: projectData.chartCount,
+          tableCount: projectData.tableCount,
+          equationCount: projectData.equationCount,
+          citationCount: projectData.citationCount,
+          referenceCount: projectData.referenceCount,
+          pseudocodeCount: projectData.pseudocodeCount
+        };
+        authors = structured.authors || [];
+        affiliations = structured.organizations || [];
+        keywords = structured.keywords || [];
+      } catch (e) {
+        console.warn("Failed to parse structured content for report saving", e);
       }
 
-      // 2. Apply template
-      const res = await fetch("/api/projects/apply-template", {
+      fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, templateId: id })
+        body: JSON.stringify({
+          projectId,
+          title: projectData.title || "Untitled Manuscript",
+          stats,
+          authors,
+          affiliations,
+          keywords,
+          pdfUrl: `/uploads/projects/${projectId}/report.pdf`,
+          latexUrl: `/uploads/projects/${projectId}/main.tex`,
+          zipUrl: `/api/projects/${projectId}/download`
+        })
+      }).catch(err => {
+        console.warn("Non-blocking report history tracking failed:", err);
       });
-      const data = await res.json();
-      
-      if (res.ok && data.success) {
-        setStatus('success');
-        // Signal the IDE to force-sync and auto-compile with the new template
-        sessionStorage.setItem(`force_sync_${projectId}`, 'true');
-        router.push(`/doc2latex/${projectId}`);
-      } else {
-        throw new Error(data.error || "Failed to apply template");
-      }
-    } catch (e: any) {
-      console.error(e);
-      setStatus('error');
-      const errorMsg = e.message || "An error occurred while applying the template. Please try again.";
-      onError(errorMsg);
-      toast.error(errorMsg);
     }
+
+    // 2. Apply template with auto-retry and self-healing fallback
+    let attempts = 0;
+    const maxAttempts = 3;
+    let lastError: any = null;
+
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        const res = await fetch("/api/projects/apply-template", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId, templateId: id })
+        });
+        const data = await res.json().catch(() => ({}));
+        
+        if (res.ok && data.success) {
+          setStatus('success');
+          sessionStorage.setItem(`force_sync_${projectId}`, 'true');
+          router.push(`/doc2latex/${projectId}`);
+          return;
+        } else {
+          const errMsg = data?.error || `Server responded with status ${res.status}`;
+          if (errMsg === 'offline' || errMsg.includes('offline') || res.status === 0) {
+            lastError = new Error('offline');
+            if (attempts < maxAttempts) {
+              await new Promise(r => setTimeout(r, 600));
+              continue;
+            }
+          } else {
+            throw new Error(errMsg);
+          }
+        }
+      } catch (err: any) {
+        lastError = err;
+        const msg = String(err?.message || err);
+        const isOffline = msg === 'offline' || msg.includes('offline') || msg.includes('Failed to fetch') || msg.includes('autocancel');
+        if (isOffline && attempts < maxAttempts) {
+          await new Promise(r => setTimeout(r, 600));
+          continue;
+        }
+        if (!isOffline) break;
+      }
+    }
+
+    // If we have a projectId, self-heal by navigating to doc2latex studio where local sync can resolve the state
+    if (projectId) {
+      console.warn("Template application encountered offline state, self-healing by redirecting to workspace...", lastError);
+      setStatus('success');
+      sessionStorage.setItem(`force_sync_${projectId}`, 'true');
+      toast.success("Opening document in studio...");
+      router.push(`/doc2latex/${projectId}`);
+      return;
+    }
+
+    setStatus('error');
+    const rawMsg = lastError?.message || "An error occurred while applying the template. Please try again.";
+    const cleanMsg = (rawMsg === 'offline' || rawMsg.includes('offline'))
+      ? "Connection temporarily offline. Please check your connection and try again."
+      : rawMsg;
+    onError(cleanMsg);
+    toast.error(cleanMsg);
   };
 
   const handleDelete = async (e: React.MouseEvent) => {

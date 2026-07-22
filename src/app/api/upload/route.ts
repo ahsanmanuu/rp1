@@ -1,6 +1,29 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import sharp from 'sharp';
+
+async function enhanceImageFor3000Dpi(buffer: Buffer): Promise<Buffer> {
+  try {
+    if (!buffer || buffer.length === 0) return buffer;
+    const metadata = await sharp(buffer).metadata();
+    const origWidth = metadata.width || 800;
+    const targetWidth = Math.max(origWidth, 2400);
+
+    return await sharp(buffer)
+      .resize(targetWidth, null, {
+        fit: 'inside',
+        kernel: sharp.kernel.lanczos3,
+        withoutEnlargement: false,
+      })
+      .sharpen({ sigma: 1.2, m1: 1.0, m2: 2.0 })
+      .png({ compressionLevel: 8, quality: 100 })
+      .withMetadata({ density: 3000 })
+      .toBuffer();
+  } catch (err) {
+    return buffer;
+  }
+}
 
 import { getServerSession } from "@/lib/auth-pb";
 // Runtime Console Logger Wrapper to debug hangs on Render
@@ -643,10 +666,9 @@ export async function POST(req: Request) {
             // CRITICAL: Await image.read() directly in the main callback to capture the buffer
             // while the zip stream is open and valid.
             const rawBuffer = await image.read();
-            // Bypassing sharp optimization to prevent CPU/memory thrashing and native deadlocks on Render.
-            // Using the raw lossless image buffer directly from the DOCX package.
-            extractedImages.push({ name, buffer: rawBuffer });
-            console.log(`[IMAGE] Extracted raw image buffer: ${name}`);
+            const enhancedBuffer = await enhanceImageFor3000Dpi(rawBuffer);
+            extractedImages.push({ name, buffer: enhancedBuffer });
+            console.log(`[IMAGE] Extracted 3000 DPI enhanced image buffer: ${name}`);
           } catch (readErr) {
             console.error(`[ERROR] Failed to read ZIP entry for image ${name}:`, readErr);
           }
@@ -667,7 +689,8 @@ export async function POST(req: Request) {
         try {
           const buffer = Buffer.from(base64Data, 'base64');
           if (buffer.length > 0) {
-            extractedImages.push({ name, buffer });
+            const enhancedBuffer = await enhanceImageFor3000Dpi(buffer);
+            extractedImages.push({ name, buffer: enhancedBuffer });
             replacements.push([match[0], `src="${name}"`]);
           }
         } catch { }

@@ -1418,18 +1418,19 @@ export class DeepDocumentParser {
       }
     }
 
-    if (targetEl.tagName.toLowerCase().startsWith('h') && targetEl.tagName.toLowerCase().length > 1) {
-      const parsed = parseInt(targetEl.tagName.toLowerCase().substring(1));
-      if (!isNaN(parsed) && parsed >= 1 && parsed <= 6) {
-        return Math.min(3, parsed);
-      }
-    }
-
     const f = this.featurize(targetEl);
     if (f.text.length > 200 || f.text.length < 3) return null;
     if (f.text.endsWith('.') && !/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-z][.\s]+)/i.test(f.text) && !(f.wordCount < 6 && f.isBold)) return null;
 
-    // 1. Numerical/Alpha Hierarchical numbering: 1., 1.1, I., A.
+    const normClean = f.text.toLowerCase()
+      .replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-z][.\s]+)+\s*/i, '')
+      .replace(/[.\s:]+$/, '')
+      .trim();
+
+    // Priority 1: Canonical Academic Section Names (always level 1)
+    if (this.FORCED_LEVEL1.has(normClean)) return 1;
+
+    // Priority 2: Numerical/Alpha Hierarchical Numbering Ground Truth (1., 1.1, 1.1.1, A., A.1, I., I.1)
     const isNumbered = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*[.:\s)]/i.test(f.text);
     if (isNumbered) {
       const prefixMatch = f.text.match(/^(?:\s*(?:(?:section|chapter|appendix|part)\s+)?((?:\d+|[ivxlcdm]+|[A-Za-z])(?:\.(?:\d+|[ivxlcdm]+|[A-Za-z]))*)(?:\.?[.:\s)]+))/i);
@@ -1452,14 +1453,15 @@ export class DeepDocumentParser {
       }
     }
 
-    const normClean = f.text.toLowerCase()
-      .replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-z][.\s]+)+\s*/i, '')
-      .replace(/[.\s:]+$/, '')
-      .trim();
+    // Priority 3: HTML Tag Name Fallback
+    if (targetEl.tagName.toLowerCase().startsWith('h') && targetEl.tagName.toLowerCase().length > 1) {
+      const parsed = parseInt(targetEl.tagName.toLowerCase().substring(1));
+      if (!isNaN(parsed) && parsed >= 1 && parsed <= 6) {
+        return Math.min(3, parsed);
+      }
+    }
 
-    if (this.FORCED_LEVEL1.has(normClean)) return 1;
-
-    // 2. Stand-alone line heuristic: short, bold or high-cap, no trailing period
+    // Priority 4: Stand-alone line heuristic: short, bold or high-cap, no trailing period
     const isStandalone = (f.wordCount < 12 && (f.isBold || f.capRatio > 0.4) && !f.text.includes(','));
     if (isStandalone) {
       return 2;
