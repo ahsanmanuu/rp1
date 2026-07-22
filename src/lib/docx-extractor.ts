@@ -24,8 +24,8 @@ export function extractBibliography(zip: AdmZip): string {
       return types[type] || 'misc';
     };
 
-    Array.from(sources).forEach(src => {
-      const tag = src.getElementsByTagName('b:Tag')[0]?.textContent || `ref_${Math.random().toString(36).substring(7)}`;
+    Array.from(sources).forEach((src, idx) => {
+      const tag = src.getElementsByTagName('b:Tag')[0]?.textContent || `ref${idx + 1}`;
       const type = src.getElementsByTagName('b:SourceType')[0]?.textContent || "misc";
       const bibType = mapType(type);
       
@@ -56,6 +56,48 @@ export function extractBibliography(zip: AdmZip): string {
       if (bookTitle && bibType === 'inproceedings') bibtex += `  booktitle = {${bookTitle}},\n`;
       bibtex += `}\n\n`;
     });
+
+    if (bibtex) return bibtex;
+
+    // Fallback: Extract plain-text references from word/document.xml if sources.xml is missing or empty
+    const docXml = zip.readAsText('word/document.xml');
+    if (docXml) {
+      const docDom = new JSDOM(docXml, { contentType: 'text/xml' });
+      const paragraphs = Array.from(docDom.window.document.getElementsByTagName('w:p'));
+      let inRefs = false;
+      let refIdx = 1;
+
+      for (const p of paragraphs) {
+        const text = (p.textContent || '').trim();
+        if (!text) continue;
+        if (/^(?:\d+\.?\s*)?(?:REFERENCES|BIBLIOGRAPHY|WORKS CITED)\.?\s*$/i.test(text)) {
+          inRefs = true;
+          continue;
+        }
+        if (inRefs) {
+          const isHeader = /^(?:\d+\.?\s*)?(?:acknowledgments?|declarations?|appendix|funding)/i.test(text);
+          if (isHeader) {
+            inRefs = false;
+            break;
+          }
+          if (text.length > 15 && (/^\[?\d+\]?/.test(text) || /\b(19|20)\d{2}\b/.test(text))) {
+            const cleanText = text.replace(/^\[?\d+\]?[.:\s]*/, '').trim();
+            const yearMatch = cleanText.match(/\b(19|20)\d{2}\b/);
+            const year = yearMatch ? yearMatch[0] : '';
+            const titleMatch = cleanText.match(/["“]([^"”]+)["”]/) || cleanText.match(/([A-Z][^.]{10,80}\.)/);
+            const title = titleMatch ? titleMatch[1] : cleanText.substring(0, 60);
+
+            bibtex += `@article{ref${refIdx},\n`;
+            bibtex += `  author = {${cleanText.split(/[,.]/)[0] || 'Author'}},\n`;
+            bibtex += `  title = {${title}},\n`;
+            if (year) bibtex += `  year = {${year}},\n`;
+            bibtex += `  note = {${cleanText}}\n`;
+            bibtex += `}\n\n`;
+            refIdx++;
+          }
+        }
+      }
+    }
 
     return bibtex;
   } catch (e) {

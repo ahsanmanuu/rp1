@@ -147,6 +147,8 @@ export class LatexAssembler {
       "\\usepackage{booktabs,multirow,array,tabularx,adjustbox}",
       "\\usepackage{float,caption}",
       "\\usepackage{url,xurl}",
+      "\\emergencystretch=3em",
+      "\\righthyphenmin=2",
       "",
       "% --- UNIVERSAL SUBFIGURE FALLBACK ---",
       "\\catcode`\\@=11",
@@ -180,24 +182,16 @@ export class LatexAssembler {
       "    \\IfFileExists{#1}{%",
       "      \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{#1}%",
       "    }{%",
-      "      \\IfFileExists{#1.png}{%",
-      "        \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{#1.png}%",
+      "      \\IfFileExists{assets/#1}{%",
+      "        \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{assets/#1}%",
       "      }{%",
-      "        \\IfFileExists{#1.jpg}{%",
-      "          \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{#1.jpg}%",
+      "        \\IfFileExists{figures/#1}{%",
+      "          \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{figures/#1}%",
       "        }{%",
-      "          \\IfFileExists{assets/#1}{%",
-      "            \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{assets/#1}%",
+      "          \\IfFileExists{images/#1}{%",
+      "            \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{images/#1}%",
       "          }{%",
-      "            \\IfFileExists{assets/#1.png}{%",
-      "              \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{assets/#1.png}%",
-      "            }{%",
-      "              \\IfFileExists{assets/#1.jpg}{%",
-      "                \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{assets/#1.jpg}%",
-      "              }{%",
-      "                \\framebox(\\linewidth,100pt){Missing Image: \\detokenize{#1}}%",
-      "              }%",
-      "            }%",
+      "            \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{#1}%",
       "          }%",
       "        }%",
       "      }%",
@@ -572,9 +566,26 @@ export class LatexAssembler {
 
     // --- 6. BIBLIOGRAPHY ---
     if (doc.references.length > 0) {
-      const bibItems = doc.references.map((ref, idx) => {
+      const bibItems: string[] = [];
+      const seenKeys = new Set<string>();
+
+      doc.references.forEach((ref, idx) => {
         const cleanRef = ref.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '');
-        return `\\bibitem{ref${idx + 1}} ${LatexAssembler.escape(cleanRef, mathBlocks, { skipCitations: true, isBibItem: true })}`;
+        const escapedRef = LatexAssembler.escape(cleanRef, mathBlocks, { skipCitations: true, isBibItem: true });
+        const primaryKey = `ref${idx + 1}`;
+        bibItems.push(`\\bibitem{${primaryKey}} ${escapedRef}`);
+        seenKeys.add(primaryKey);
+
+        // Generate author-year alias key if reference contains author & year (e.g. Smith2020)
+        const authorMatch = cleanRef.match(/^([A-Z][a-zA-Z\u00C0-\u017F\-']+)/);
+        const yearMatch = cleanRef.match(/\b(19|20)\d{2}\b/);
+        if (authorMatch && yearMatch) {
+          const aliasKey = `${authorMatch[1]}${yearMatch[0]}`;
+          if (!seenKeys.has(aliasKey)) {
+            bibItems.push(`\\bibitem{${aliasKey}} ${escapedRef}`);
+            seenKeys.add(aliasKey);
+          }
+        }
       });
       const bibPrefix = isNature ? "\\renewcommand{\\refname}{References}\n" : "";
       const bibContent = `\n${bibPrefix}\\begin{thebibliography}{99}\n${bibItems.join('\n')}\n\\end{thebibliography}`;
@@ -987,18 +998,14 @@ export class LatexAssembler {
     const caption = LatexAssembler.escapeText(cleanedCaption.length > 1 ? cleanedCaption : `Data Table`, mathBlocks);
     const labelKey = `tab:${caption.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20)}`;
 
-    // Build column spec for tabular (use p{} for long text, c for short)
-    const tabSpec = colMaxLen.map(len => len > 20 ? `p{${Math.max(2, Math.round(8 / totalGridCols))}cm}` : (len > 10 ? 'l' : 'c')).join('|');
-    const fullTabSpec = `|${tabSpec}|`;
-
-    const useTabularx = totalGridCols > 3 || spec.includes('X');
-    // For two-column layouts, wide tables span both columns using table* and \textwidth
-    const twoColWide = (node as any).twoColumn === true && (totalGridCols > 3 || spec.includes('X'));
+    // Force tabularx line-wrapping for all multi-column or text-bearing tables to prevent right-margin overflow
+    const useTabularx = true;
+    const twoColWide = (node as any).twoColumn === true && (totalGridCols > 2 || colMaxLen.some(l => l > 30));
     const tableEnv = twoColWide ? 'table*' : 'table';
     const tablePlacement = twoColWide ? '[t]' : '[H]';
-    const tabularEnv = useTabularx ? 'tabularx' : 'tabular';
-    const widthParam = useTabularx ? (twoColWide ? '{\\textwidth}' : '{\\linewidth}') : '';
-    const activeSpec = useTabularx ? fullSpec : fullTabSpec;
+    const tabularEnv = 'tabularx';
+    const widthParam = twoColWide ? '{\\textwidth}' : '{\\linewidth}';
+    const activeSpec = fullSpec;
 
     return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n\\caption{${caption}}\n\\label{${labelKey}}\n\\renewcommand{\\arraystretch}{1.3}\n\\begin{adjustbox}{max width=${twoColWide ? '\\textwidth' : '\\linewidth'}}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}\n\\end{adjustbox}\n\\end{${tableEnv}}\n`;
   }

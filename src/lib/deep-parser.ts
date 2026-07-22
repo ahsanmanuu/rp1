@@ -428,6 +428,7 @@ export class DeepDocumentParser {
     const allSignificantRaw = Array.from(doc.querySelectorAll('p, h1, h2, h3, h4, h5, h6, table, img, figure, ul, ol, pre, blockquote, div')) as Element[];
     // Fix Figure/Table Duplication: Filter out elements that are nested inside semantic block elements that are processed as single units
     const allSignificant = allSignificantRaw.filter(el => {
+      const tag = el.tagName.toLowerCase();
       let parent = el.parentElement;
       while (parent) {
         const parentTag = parent.tagName.toLowerCase();
@@ -438,19 +439,18 @@ export class DeepDocumentParser {
       }
       
       // Discard generic divs if they contain block-level children (keeps block children instead)
-      if (el.tagName.toLowerCase() === 'div') {
+      if (tag === 'div') {
         const hasBlockChildren = el.querySelector('p, h1, h2, h3, h4, h5, h6, table, img, figure, ul, ol, pre, blockquote') !== null;
         if (hasBlockChildren) return false;
       }
       
-      // Deduplicate img tags if their parent block element is already in allSignificantRaw
-      if (el.tagName.toLowerCase() === 'img') {
-        let p = el.parentElement;
-        while (p) {
-          if (['p', 'div', 'figure'].includes(p.tagName.toLowerCase())) {
-            if (allSignificantRaw.includes(p)) return false;
-          }
-          p = p.parentElement;
+      // For p elements containing an image: if p has NO prose text (just image/caption), discard p in favor of img
+      if (tag === 'p' && el.querySelector('img') !== null) {
+        const textWithoutImg = (el.textContent || '').replace(/CHARTIMGX\w+XEND/g, '').trim();
+        const isCaption = /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\s*[\d.]+/i.test(textWithoutImg);
+        if (!isCaption && textWithoutImg.length < 5) {
+          // Empty paragraph containing an image -> discard p so the img element itself is processed cleanly
+          return false;
         }
       }
 
