@@ -367,7 +367,7 @@ export class DeepDocumentParser {
         if (n.type === 'figure-group') {
           return sum + (n.images ? n.images.length : 0);
         }
-        if (n.type === 'figure' || n.type === 'image') {
+        if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') {
           return sum + (n.images ? n.images.length : 1);
         }
         return sum;
@@ -534,7 +534,7 @@ export class DeepDocumentParser {
       if (n.type === 'figure-group') {
         return sum + (n.images ? n.images.length : 0);
       }
-      if (n.type === 'figure' || n.type === 'image') {
+      if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') {
         return sum + (n.images ? n.images.length : 1);
       }
       return sum;

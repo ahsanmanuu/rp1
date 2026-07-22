@@ -54,7 +54,7 @@ export const ProjectStats: React.FC<ProjectStatsProps> = ({ stats, metadata }) =
           if (n.type === 'table')     bTable++;
           if (n.type === 'chart')     bChart++;
           if (n.type === 'algorithm') bPseudo++;
-          if (n.type === 'figure')    bFig++;
+          if (n.type === 'figure' || n.type === 'image') bFig++;
           if (n.type === 'figure-group' && n.images) bFig += n.images.length;
 
           if (n.type === 'equation') {

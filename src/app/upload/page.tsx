@@ -962,7 +962,7 @@ function UploadContent() {
                       if (n.type === 'equation')  bodyEquationCount++;
                       if (n.type === 'chart')     bodyChartCount++;
                       if (n.type === 'algorithm') bodyPseudoCount++;
-                      if (n.type === 'figure')    bodyFigureCount++;
+                      if (n.type === 'figure' || n.type === 'image') bodyFigureCount++;
                       if (n.type === 'figure-group' && n.images) bodyFigureCount += n.images.length;
                     });
 
@@ -990,8 +990,7 @@ function UploadContent() {
                       wordCount:       projectData.wordCount       || s.wordCount       || 0,
                       charCount:       projectData.charCount       || s.charCount       || 0,
                       // Images: DB file list is most accurate (actual saved assets)
-                      imageCount:      (projectData.files?.filter((f: any) => f.fileType === 'image' && !/rf_chart/i.test(f.filename)).length)
-                                       || bodyFigureCount || s.imageCount || 0,
+                      imageCount:      Math.max(bodyFigureCount, (projectData.files?.filter((f: any) => f.fileType === 'image' || /^rf_/i.test(f.filename)).length || 0), s.imageCount || 0, projectData.imageCount || 0),
                       chartCount:      bodyChartCount      || s.chartCount      || 0,
                       tableCount:      bodyTableCount      || s.tableCount      || 0,
                       equationCount:   bodyEquationCount   || s.equationCount   || 0,
