@@ -328,7 +328,7 @@ function UploadContent() {
             continue;
           }
           if (networkErr?.message === "NETWORK_DROP") {
-            throw new Error("Network connection dropped. Retried 3 times without success. Please check your connection and try again.");
+            throw new Error("Connection timed out while uploading. Please check your internet connection or try uploading again.");
           }
           throw networkErr;
         }

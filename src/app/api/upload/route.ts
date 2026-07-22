@@ -5,19 +5,26 @@ import sharp from 'sharp';
 
 async function enhanceImageFor3000Dpi(buffer: Buffer): Promise<Buffer> {
   try {
-    if (!buffer || buffer.length === 0) return buffer;
+    if (!buffer || buffer.length === 0 || buffer.length > 5 * 1024 * 1024) return buffer;
     const metadata = await sharp(buffer).metadata();
     const origWidth = metadata.width || 800;
-    const targetWidth = Math.max(origWidth, 2400);
+
+    // Fast high-DPI density tagging: avoid heavy CPU thrashing & proxy timeouts on Render
+    if (origWidth >= 1600) {
+      return await sharp(buffer)
+        .withMetadata({ density: 3000 })
+        .toBuffer();
+    }
+
+    const targetWidth = Math.min(Math.max(origWidth * 2, 1200), 1800);
 
     return await sharp(buffer)
       .resize(targetWidth, null, {
         fit: 'inside',
-        kernel: sharp.kernel.lanczos3,
-        withoutEnlargement: false,
+        withoutEnlargement: true,
       })
-      .sharpen({ sigma: 1.2, m1: 1.0, m2: 2.0 })
-      .png({ compressionLevel: 8, quality: 100 })
+      .sharpen()
+      .png({ compressionLevel: 4 })
       .withMetadata({ density: 3000 })
       .toBuffer();
   } catch (err) {
