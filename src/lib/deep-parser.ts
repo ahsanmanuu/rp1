@@ -752,9 +752,10 @@ export class DeepDocumentParser {
           nextRole = 'algorithm';
       }
       else if (tagName.startsWith('h') || this.detectHeading(el, f.text) !== null) {
+          const detectedLvl = this.detectHeading(el, f.text);
           const isNumberedHeading = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*[.:\s)]/i.test(f.text);
           const isStandardSectionName = /^(?:[\d\.]+\s*)?(?:introduction|related work|background|methodology|conclusion|abstract|acknowledgments|references|overview|implementation|proposed|experimental|results|discussion|system)/i.test(f.text);
-          const isSectionHeading = isNumberedHeading || isStandardSectionName;
+          const isSectionHeading = detectedLvl !== null || isNumberedHeading || isStandardSectionName || tagName.startsWith('h');
 
           if (isSectionHeading) {
               nextRole = 'section';

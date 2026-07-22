@@ -405,10 +405,11 @@ export class LatexAssembler {
                   const prevText = (prev.text || '').trim();
                   const currText = (curr.text || '').trim();
                   if (prevText.length === 0 || currText.length === 0) return false;
-                  if (prevText.endsWith('.') || prevText.endsWith('?') || prevText.endsWith('!')) return false;
-                  if (prevText.endsWith(',') || prevText.endsWith(';') || prevText.endsWith(':')) return true;
-                  if (/^[a-z(]/.test(currText)) return true;
-                  if (prevText.length < 80 && currText.length < 80) return true;
+                  // If previous paragraph ends with sentence-ending punctuation or colon/semicolon, DO NOT merge!
+                  if (/[.?!:;]$/.test(prevText)) return false;
+                  // Merge only if previous text ends with comma or hyphen, or current text starts with lowercase letter
+                  if (/[,–\-]$/.test(prevText)) return true;
+                  if (/^[a-z]/.test(currText) && !/[.?!:;]$/.test(prevText)) return true;
                   return false;
               };
               if (shouldMerge(last, n)) {
