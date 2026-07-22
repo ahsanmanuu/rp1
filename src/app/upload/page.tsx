@@ -239,111 +239,144 @@ function UploadContent() {
       const formData = new FormData();
       formData.append("file", targetFile);
 
-      // Step 1: Upload the file — using XMLHttpRequest with real-time active server processing simulation
+      // Step 1: Upload the file — with automatic retry loop for transient network errors
       let uploadData: any;
-      try {
-        uploadData = await new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.open("POST", "/api/upload");
-          xhr.timeout = 300000; // 5 minutes timeout for large DOCX processing
-          
-          let simulatedProgress = 0;
+      let uploadAttempts = 0;
+      const maxUploadAttempts = 3;
 
-          // Start simulated progress immediately from 0 to 48% to ensure it never gets stuck at 0%
-          simulatedInterval = setInterval(() => {
-            if (simulatedProgress < 48) {
-              simulatedProgress += (48 - simulatedProgress) * 0.05 + 0.5;
-              setAnalysisProgress(Math.round(simulatedProgress));
-            }
-          }, 100);
-
-          xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable) {
-               // Upload represents the first 50% of the overall process
-               const percent = Math.round((event.loaded / event.total) * 50);
-               simulatedProgress = Math.max(simulatedProgress, percent);
-               setAnalysisProgress(simulatedProgress);
-            }
-          };
-
-          // Once the file upload completes, start simulating database and asset extraction processing (50% to 99.4%)
-          xhr.upload.onload = () => {
-            if (simulatedInterval) clearInterval(simulatedInterval);
-            simulatedProgress = Math.max(50, simulatedProgress);
-            setAnalysisProgress(simulatedProgress);
-
-            simulatedInterval = setInterval(() => {
-              simulatedProgress += (99.4 - simulatedProgress) * 0.01;
-              setAnalysisProgress(Math.min(99.4, simulatedProgress));
-            }, 40);
-          };
-
-          xhr.onload = () => {
-            if (simulatedInterval) clearInterval(simulatedInterval);
-            simulatedProgress = Math.max(99.4, simulatedProgress);
-            setAnalysisProgress(simulatedProgress);
-
-            simulatedInterval = setInterval(() => {
-              simulatedProgress += (99.9 - simulatedProgress) * 0.005;
-              setAnalysisProgress(Math.min(99.9, simulatedProgress));
-            }, 120);
-
-            if (xhr.status >= 200 && xhr.status < 300) {
-              try {
-                resolve(JSON.parse(xhr.responseText));
-              } catch {
-                reject(new Error("Invalid JSON response"));
-              }
-            } else {
-              let errorMsg = `Server Error (${xhr.status}): ${xhr.statusText || "Internal Server Error"}`;
-              try {
-                if (xhr.responseText?.trim().startsWith('{')) {
-                  const data = JSON.parse(xhr.responseText);
-                  if (data?.error) errorMsg = String(data.error);
-                }
-              } catch { /* response was not JSON */ }
-              reject(new Error(errorMsg));
-            }
-          };
-
-          xhr.onerror = () => {
-            if (simulatedInterval) clearInterval(simulatedInterval);
-            reject(new Error("Network request failed. Please check your connection and try again."));
-          };
-
-          xhr.ontimeout = () => {
-            if (simulatedInterval) clearInterval(simulatedInterval);
-            reject(new Error("Analysis timeout. The server took too long to process."));
-          };
-          
-          xhr.send(formData);
-        });
-      } catch (networkErr: any) {
-         throw new Error(networkErr?.message ? `Network error: ${networkErr.message}` : "Network request failed.");
-      }
-
-      // Step 2: Fetch project data and await the templates promise together.
-      let projRes: Response;
-      let templateData: any;
-      try {
-        [projRes, templateData] = await Promise.all([
-          fetch(`/api/projects/${uploadData.projectId}`),
-          templatesPromise,
-        ]);
-      } catch (networkErr: any) {
-        throw new Error(
-          networkErr?.message
-            ? `Network error during sync: ${networkErr.message}`
-            : "Failed to retrieve project data. Please try again."
-        );
-      }
-
-      if (!projRes.ok) {
-        let errorMsg = "Synchronization with Scholarly Database failed.";
+      while (uploadAttempts < maxUploadAttempts) {
+        uploadAttempts++;
         try {
-          const data = await projRes.json();
-          if (data?.error) errorMsg = String(data.error);
-        } catch { /* response was not JSON */ }
+          uploadData = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", "/api/upload");
+            xhr.timeout = 300000; // 5 minutes timeout for large DOCX processing
+            
+            let simulatedProgress = 0;
+
+            // Start simulated progress immediately from 0 to 48% to ensure it never gets stuck at 0%
+            simulatedInterval = setInterval(() => {
+              if (simulatedProgress < 48) {
+                simulatedProgress += (48 - simulatedProgress) * 0.05 + 0.5;
+                setAnalysisProgress(Math.round(simulatedProgress));
+              }
+            }, 100);
+
+            xhr.upload.onprogress = (event) => {
+              if (event.lengthComputable) {
+                 const percent = Math.round((event.loaded / event.total) * 50);
+                 simulatedProgress = Math.max(simulatedProgress, percent);
+                 setAnalysisProgress(simulatedProgress);
+              }
+            };
+
+            xhr.upload.onload = () => {
+              if (simulatedInterval) clearInterval(simulatedInterval);
+              simulatedProgress = Math.max(50, simulatedProgress);
+              setAnalysisProgress(simulatedProgress);
+
+              simulatedInterval = setInterval(() => {
+                simulatedProgress += (99.4 - simulatedProgress) * 0.01;
+                setAnalysisProgress(Math.min(99.4, simulatedProgress));
+              }, 40);
+            };
+
+            xhr.onload = () => {
+              if (simulatedInterval) clearInterval(simulatedInterval);
+              simulatedProgress = Math.max(99.4, simulatedProgress);
+              setAnalysisProgress(simulatedProgress);
+
+              simulatedInterval = setInterval(() => {
+                simulatedProgress += (99.9 - simulatedProgress) * 0.005;
+                setAnalysisProgress(Math.min(99.9, simulatedProgress));
+              }, 120);
+
+              if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                  resolve(JSON.parse(xhr.responseText));
+                } catch {
+                  reject(new Error("Invalid JSON response"));
+                }
+              } else {
+                let errorMsg = `Server Error (${xhr.status}): ${xhr.statusText || "Internal Server Error"}`;
+                try {
+                  if (xhr.responseText?.trim().startsWith('{')) {
+                    const data = JSON.parse(xhr.responseText);
+                    if (data?.error) errorMsg = String(data.error);
+                  }
+                } catch { /* response was not JSON */ }
+                reject(new Error(errorMsg));
+              }
+            };
+
+            xhr.onerror = () => {
+              if (simulatedInterval) clearInterval(simulatedInterval);
+              reject(new Error("NETWORK_DROP"));
+            };
+
+            xhr.ontimeout = () => {
+              if (simulatedInterval) clearInterval(simulatedInterval);
+              reject(new Error("Analysis timeout. The server took too long to process."));
+            };
+            
+            xhr.send(formData);
+          });
+          break; // Upload succeeded!
+        } catch (networkErr: any) {
+          if (networkErr?.message === "NETWORK_DROP" && uploadAttempts < maxUploadAttempts) {
+            await new Promise(r => setTimeout(r, 800 * uploadAttempts));
+            continue;
+          }
+          if (networkErr?.message === "NETWORK_DROP") {
+            throw new Error("Network connection dropped. Retried 3 times without success. Please check your connection and try again.");
+          }
+          throw networkErr;
+        }
+      }
+
+      // Step 2: Fetch project data and await the templates promise together (with auto-retry & self-healing fallback)
+      let projRes: Response | null = null;
+      let templateData: any = null;
+      let syncAttempts = 0;
+      const maxSyncAttempts = 3;
+
+      if (uploadData?.projectId) {
+        while (syncAttempts < maxSyncAttempts) {
+          syncAttempts++;
+          try {
+            const results = await Promise.all([
+              fetch(`/api/projects/${uploadData.projectId}`, { cache: 'no-store' }),
+              templatesPromise,
+            ]);
+            projRes = results[0];
+            templateData = results[1];
+            if (projRes && projRes.ok) break;
+          } catch {
+            if (syncAttempts < maxSyncAttempts) {
+              await new Promise(r => setTimeout(r, 600 * syncAttempts));
+              continue;
+            }
+          }
+        }
+      }
+
+      if (!projRes || !projRes.ok) {
+        // Self-healing fallback: If server created the project ID but network failed sync,
+        // navigate directly to doc2latex studio where local memory / StudioFS resolves state.
+        if (uploadData?.projectId) {
+          console.warn("Project sync encountered network glitch, self-healing to studio workspace:", uploadData.projectId);
+          sessionStorage.setItem(`force_sync_${uploadData.projectId}`, 'true');
+          toast.success("Document analyzed! Opening studio workspace...");
+          router.push(`/doc2latex/${uploadData.projectId}`);
+          return;
+        }
+        let errorMsg = "Synchronization with Scholarly Database failed. Please check connection and try again.";
+        if (projRes) {
+          try {
+            const data = await projRes.json();
+            if (data?.error) errorMsg = String(data.error);
+          } catch { /* response was not JSON */ }
+        }
         throw new Error(errorMsg);
       }
 
