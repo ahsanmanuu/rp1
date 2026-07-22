@@ -43,6 +43,31 @@ export async function POST(req: NextRequest) {
         }
       }
     }
+
+    if (!authData) {
+      // Self-healing attempt: If initial auth failed with 400,
+      // check if PocketBase has a user account with an un-normalized email (e.g. mixed case or trailing spaces)
+      if (lastAuthErr?.status === 400) {
+        try {
+          const { pbAdmin } = await import("@/lib/pb");
+          const admPb = await pbAdmin();
+          const allUsers = await admPb.collection("users").getFullList({ requestKey: null });
+          const matchedUser = allUsers.find(
+            (u: any) => u.email && u.email.trim().toLowerCase() === cleanEmail
+          );
+          if (matchedUser && matchedUser.email !== cleanEmail) {
+            console.log(`[AUTH pb-login] Self-healing user ${matchedUser.id}: normalizing email from "${matchedUser.email}" to "${cleanEmail}"`);
+            await admPb.collection("users").update(matchedUser.id, { email: cleanEmail });
+            // Retry authWithPassword with newly normalized email
+            authData = await pb.collection("users").authWithPassword(cleanEmail, password);
+            lastAuthErr = null;
+          }
+        } catch (healErr: any) {
+          console.warn("[AUTH pb-login] Email self-healing attempt failed:", healErr.message);
+        }
+      }
+    }
+
     if (!authData) {
       throw lastAuthErr || new Error("Authentication failed after retry");
     }

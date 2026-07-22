@@ -8,12 +8,13 @@ export async function POST(req: Request) {
     if (!email) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
     }
+    const cleanEmail = String(email).trim().toLowerCase();
 
     // Check if user exists in PocketBase
     const pb = createPb();
     let user: any = null;
     try {
-      user = await pb.collection("users").getFirstListItem(`email = "${email}"`, { requestKey: "recovery_check" });
+      user = await pb.collection("users").getFirstListItem(`email = "${cleanEmail}"`, { requestKey: "recovery_check" });
     } catch {}
 
     if (!user) {
@@ -62,10 +63,11 @@ export async function PUT(req: Request) {
     if (!email || !token || !password) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
+    const cleanEmail = String(email).trim().toLowerCase();
 
     const { prisma } = await import("@/lib/prisma");
     const verificationToken = await prisma.verificationToken.findFirst({
-      where: { identifier: email, token },
+      where: { identifier: cleanEmail, token },
     });
 
     if (!verificationToken) {
@@ -81,7 +83,7 @@ export async function PUT(req: Request) {
     const pb = createPb();
     let user: any = null;
     try {
-      user = await pb.collection("users").getFirstListItem(`email = "${email}"`, { requestKey: "recovery_update" });
+      user = await pb.collection("users").getFirstListItem(`email = "${cleanEmail}"`, { requestKey: "recovery_update" });
     } catch {}
 
     if (user) {

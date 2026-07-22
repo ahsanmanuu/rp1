@@ -13,6 +13,7 @@ export async function POST(req: NextRequest) {
     if (!email || !password) {
       return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
     }
+    const cleanEmail = String(email).trim().toLowerCase();
 
     const admPb = await pbAdmin();
     // Ensure PB users collection has all required fields before creating
@@ -21,8 +22,8 @@ export async function POST(req: NextRequest) {
       await ensurePbUserCollectionFields();
     } catch {}
     const existing = await admPb.collection("users").getFullList({
-      filter: `email = "${email}"`,
-      requestKey: `recover_check_${email}`,
+      filter: `email = "${cleanEmail}"`,
+      requestKey: `recover_check_${cleanEmail}`,
     });
 
     if (existing.length > 0) {
@@ -47,10 +48,10 @@ export async function POST(req: NextRequest) {
     }
 
     const created = await admPb.collection("users").create({
-      email,
+      email: cleanEmail,
       password,
       passwordConfirm: password,
-      name: name || email.split("@")[0],
+      name: name || cleanEmail.split("@")[0],
       emailVisibility: true,
       verified: true,
       points: 50,

@@ -16,11 +16,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const cleanEmail = email.trim().toLowerCase();
+
     // Authenticate via PocketBase to verify credentials and get user ID
     const pb = createPb();
     let userId: string;
     try {
-      const authData = await pb.collection("users").authWithPassword(email, password);
+      const authData = await pb.collection("users").authWithPassword(cleanEmail, password);
       userId = authData.record.id;
     } catch {
       return NextResponse.json(
