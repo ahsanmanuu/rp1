@@ -127,7 +127,7 @@ export default function Sidebar() {
             )}
           </Link>
           <button 
-            onClick={() => signOut({ callbackUrl: '/' })}
+            onClick={() => signOut({ callbackUrl: '/login' })}
             className="text-secondary hover:text-rose-600 transition-colors"
           >
             <LogOut size={20} />

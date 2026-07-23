@@ -66,7 +66,7 @@ export default function Navbar() {
               </div>
               <Link href="/history" className="btn btn-secondary">History</Link>
               <Link href="/profile" className="btn btn-secondary" style={{ padding: '0.4rem', borderRadius: '50%' }}>👤</Link>
-              <button onClick={() => signOut({ callbackUrl: '/' })} className="btn btn-secondary">Logout</button>
+              <button onClick={() => signOut({ callbackUrl: '/login' })} className="btn btn-secondary">Logout</button>
             </div>
           ) : (
             <div className="flex items-center" style={{ gap: '1rem' }}>

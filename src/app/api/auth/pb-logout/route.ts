@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { clearAuthCookie } from "@/lib/auth-pb";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 
@@ -12,7 +11,7 @@ export async function POST() {
       // Delete session from Prisma (PB adapter)
       await prisma.userSession.deleteMany({
         where: { sessionToken: token },
-      });
+      }).catch(() => null);
 
       // Delete session from PocketBase directly
       try {
@@ -41,7 +40,20 @@ export async function POST() {
   }
 
   const response = NextResponse.json({ success: true });
-  response.headers.append("Set-Cookie", "pb_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT");
-  response.headers.append("Set-Cookie", "admin_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT");
+  response.cookies.set("pb_token", "", {
+    path: "/",
+    expires: new Date(0),
+    maxAge: 0,
+    httpOnly: true,
+    sameSite: "lax",
+  });
+  response.cookies.set("admin_session", "", {
+    path: "/",
+    expires: new Date(0),
+    maxAge: 0,
+    httpOnly: true,
+    sameSite: "lax",
+  });
+
   return response;
 }

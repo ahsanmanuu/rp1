@@ -194,11 +194,22 @@ export function useSession(options?: { required?: boolean; onUnauthenticated?: (
 export async function signOut(options?: { callbackUrl?: string }) {
   if (typeof window !== "undefined") {
     (window as any).__latexy_signOutInProgress = true;
-    localStorage.removeItem("auth-token");
+    try {
+      localStorage.removeItem("auth-token");
+      document.cookie = "pb_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      document.cookie = "admin_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    } catch {}
   }
   try {
-    await fetch("/api/auth/pb-logout", { method: "POST", signal: AbortSignal.timeout(10000) });
-  } catch { }
+    await fetch("/api/auth/pb-logout", {
+      method: "POST",
+      headers: { "Cache-Control": "no-cache, no-store, must-revalidate" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (err) {
+    console.error("[signOut] Error calling pb-logout API:", err);
+  }
   if (typeof window !== "undefined") {
     window.location.href = options?.callbackUrl || "/login";
   }

@@ -175,7 +175,7 @@ export const ScholarlyNavbar = () => {
                   Dashboard
                 </Link>
                 <button
-                  onClick={() => signOut({ callbackUrl: "/" })}
+                  onClick={() => signOut({ callbackUrl: "/login" })}
                   className="px-5 py-2.5 rounded-xl text-sm font-bold transition-all"
                   style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#ef4444'; (e.currentTarget as HTMLElement).style.borderColor = '#ef4444'; }}
@@ -247,7 +247,7 @@ export const ScholarlyNavbar = () => {
                 <>
                   <Link href="/dashboard" className="text-center py-3 rounded-2xl text-sm font-bold text-white"
                     style={{ background: 'var(--accent-primary)' }}>Dashboard</Link>
-                  <button onClick={() => signOut({ callbackUrl: "/" })}
+                  <button onClick={() => signOut({ callbackUrl: "/login" })}
                     className="py-3 rounded-2xl text-sm font-bold text-red-500"
                     style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
                     Sign Out
