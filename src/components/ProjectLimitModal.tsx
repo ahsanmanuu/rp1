@@ -36,9 +36,9 @@ const PLAN_COLORS = [
 
 /** Format duration into a human-readable string */
 function formatDuration(months: number): string {
-  if (months === 1) return "/ month";
-  if (months === 12) return "/ year";
-  return `/ ${months} months`;
+  if (months === 1) return "/mo";
+  if (months === 12) return "/yr";
+  return `/${months}m`;
 }
 
 export default function ProjectLimitModal({
@@ -63,20 +63,20 @@ export default function ProjectLimitModal({
         } else {
           // Fallback to defaults if DB returns empty
           setPlans([
-            { planId: "premium_1m", name: "Premium Monthly", description: "1 Month Premium — Full AI review, advanced LaTeX, priority support.", priceINR: 250, durationMonths: 1, pointsExchange: 250 },
-            { planId: "premium_3m", name: "Premium Quarterly", description: "3 Months Premium — Best value for semester projects.", priceINR: 600, durationMonths: 3, pointsExchange: 500 },
-            { planId: "premium_6m", name: "Premium Biannual", description: "6 Months Premium — Save 17% vs monthly plan.", priceINR: 1000, durationMonths: 6, pointsExchange: 1000 },
-            { planId: "premium_12m", name: "Premium Annual", description: "12 Months Premium — Maximum savings & full research access.", priceINR: 1800, durationMonths: 12, pointsExchange: 2500 },
+            { planId: "premium_1m", name: "Monthly", description: "Full AI & LaTeX tools.", priceINR: 250, durationMonths: 1, pointsExchange: 250 },
+            { planId: "premium_3m", name: "Quarterly", description: "Best for semester projects.", priceINR: 600, durationMonths: 3, pointsExchange: 500 },
+            { planId: "premium_6m", name: "Biannual", description: "Save 17% vs monthly.", priceINR: 1000, durationMonths: 6, pointsExchange: 1000 },
+            { planId: "premium_12m", name: "Annual", description: "Maximum savings & access.", priceINR: 1800, durationMonths: 12, pointsExchange: 2500 },
           ]);
         }
       })
       .catch(() => {
         // Silently fall back to defaults on network error
         setPlans([
-          { planId: "premium_1m", name: "Premium Monthly", description: "1 Month Premium — Full AI review, advanced LaTeX, priority support.", priceINR: 250, durationMonths: 1, pointsExchange: 250 },
-          { planId: "premium_3m", name: "Premium Quarterly", description: "3 Months Premium — Best value for semester projects.", priceINR: 600, durationMonths: 3, pointsExchange: 500 },
-          { planId: "premium_6m", name: "Premium Biannual", description: "6 Months Premium — Save 17% vs monthly plan.", priceINR: 1000, durationMonths: 6, pointsExchange: 1000 },
-          { planId: "premium_12m", name: "Premium Annual", description: "12 Months Premium — Maximum savings & full research access.", priceINR: 1800, durationMonths: 12, pointsExchange: 2500 },
+          { planId: "premium_1m", name: "Monthly", description: "Full AI & LaTeX tools.", priceINR: 250, durationMonths: 1, pointsExchange: 250 },
+          { planId: "premium_3m", name: "Quarterly", description: "Best for semester projects.", priceINR: 600, durationMonths: 3, pointsExchange: 500 },
+          { planId: "premium_6m", name: "Biannual", description: "Save 17% vs monthly.", priceINR: 1000, durationMonths: 6, pointsExchange: 1000 },
+          { planId: "premium_12m", name: "Annual", description: "Maximum savings & access.", priceINR: 1800, durationMonths: 12, pointsExchange: 2500 },
         ]);
       })
       .finally(() => setLoadingPlans(false));
@@ -107,28 +107,28 @@ export default function ProjectLimitModal({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: "1.25rem",
+          padding: "0.75rem",
           background: "rgba(5, 7, 15, 0.82)",
-          backdropFilter: "blur(20px) saturate(160%)",
+          backdropFilter: "blur(18px) saturate(150%)",
           fontFamily: "var(--font-headline, system-ui, sans-serif)",
           overflowY: "auto",
         }}
       >
         <motion.div
-          initial={{ opacity: 0, scale: 0.94, y: 16 }}
+          initial={{ opacity: 0, scale: 0.95, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.94, y: 16 }}
-          transition={{ type: "spring", stiffness: 320, damping: 25 }}
+          exit={{ opacity: 0, scale: 0.95, y: 12 }}
+          transition={{ type: "spring", stiffness: 350, damping: 28 }}
           style={{
             background: "var(--bg-primary, #0c101d)",
             border: "1px solid var(--border, rgba(255, 255, 255, 0.12))",
-            borderRadius: "28px",
-            maxWidth: "960px",
+            borderRadius: "20px",
+            maxWidth: "680px",
             width: "100%",
-            boxShadow: "0 30px 70px -15px rgba(0, 0, 0, 0.7), 0 0 40px var(--accent-glow, rgba(0, 163, 149, 0.15))",
-            maxHeight: "90vh",
+            boxShadow: "0 20px 50px -10px rgba(0, 0, 0, 0.7), 0 0 30px var(--accent-glow, rgba(0, 163, 149, 0.15))",
+            maxHeight: "92vh",
             overflowY: "auto",
-            padding: "2.25rem",
+            padding: "1.25rem 1.5rem",
             position: "relative",
             color: "var(--text-primary, #f9fafb)",
           }}
@@ -137,13 +137,13 @@ export default function ProjectLimitModal({
           <div
             style={{
               position: "absolute",
-              top: "-80px",
+              top: "-60px",
               left: "50%",
               transform: "translateX(-50%)",
-              width: "420px",
-              height: "180px",
+              width: "300px",
+              height: "120px",
               background: "radial-gradient(circle, var(--accent-glow, rgba(0, 163, 149, 0.25)), transparent 70%)",
-              filter: "blur(30px)",
+              filter: "blur(25px)",
               pointerEvents: "none",
             }}
           />
@@ -154,10 +154,10 @@ export default function ProjectLimitModal({
               onClick={onClose}
               style={{
                 position: "absolute",
-                top: "1.25rem",
-                right: "1.25rem",
-                width: "36px",
-                height: "36px",
+                top: "1rem",
+                right: "1rem",
+                width: "28px",
+                height: "28px",
                 borderRadius: "50%",
                 background: "var(--bg-tertiary, rgba(255,255,255,0.06))",
                 border: "1px solid var(--border, rgba(255,255,255,0.1))",
@@ -178,90 +178,70 @@ export default function ProjectLimitModal({
                 e.currentTarget.style.background = "var(--bg-tertiary, rgba(255,255,255,0.06))";
               }}
             >
-              <X size={18} />
+              <X size={15} />
             </button>
           )}
 
           {/* Header Section */}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginBottom: "2rem", zIndex: 2, position: "relative" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginBottom: "1.25rem", zIndex: 2, position: "relative" }}>
             
-            {/* Warning Icon Badge */}
-            <div style={{
-              width: "56px",
-              height: "56px",
-              borderRadius: "18px",
-              background: "linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(245, 158, 11, 0.15))",
-              border: "1px solid rgba(239, 68, 68, 0.35)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#ef4444",
-              marginBottom: "1rem",
-              boxShadow: "0 0 25px rgba(239, 68, 68, 0.2)",
-            }}>
-              <AlertCircle size={28} />
+            {/* Header Icon + Title side-by-side */}
+            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.35rem" }}>
+              <div style={{
+                width: "36px",
+                height: "36px",
+                borderRadius: "12px",
+                background: "linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(245, 158, 11, 0.15))",
+                border: "1px solid rgba(239, 68, 68, 0.35)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#ef4444",
+                boxShadow: "0 0 15px rgba(239, 68, 68, 0.2)",
+              }}>
+                <AlertCircle size={20} />
+              </div>
+              <h2 style={{
+                fontSize: "1.3rem",
+                fontWeight: 800,
+                margin: 0,
+                letterSpacing: "-0.02em",
+                color: "var(--text-primary, #ffffff)",
+                fontFamily: "var(--font-headline, system-ui)",
+              }}>
+                Project Limit Reached
+              </h2>
             </div>
-
-            <div style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.4rem",
-              padding: "0.25rem 0.75rem",
-              borderRadius: "99px",
-              background: "rgba(239, 68, 68, 0.1)",
-              border: "1px solid rgba(239, 68, 68, 0.25)",
-              color: "#f87171",
-              fontSize: "0.68rem",
-              fontWeight: 800,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              marginBottom: "0.6rem",
-            }}>
-              <Sparkles size={12} />
-              <span>Project Storage Capped</span>
-            </div>
-
-            <h2 style={{
-              fontSize: "1.85rem",
-              fontWeight: 800,
-              margin: "0 0 0.5rem",
-              letterSpacing: "-0.03em",
-              color: "var(--text-primary, #ffffff)",
-              fontFamily: "var(--font-headline, system-ui)",
-            }}>
-              Project Limit Reached
-            </h2>
 
             <p style={{
               color: "var(--text-secondary, #9ca3af)",
-              fontSize: "0.92rem",
-              margin: "0 0 1.25rem",
-              maxWidth: "580px",
-              lineHeight: 1.55,
+              fontSize: "0.8rem",
+              margin: "0 0 0.85rem",
+              maxWidth: "480px",
+              lineHeight: 1.4,
               fontFamily: "var(--font-body, system-ui)",
             }}>
-              Free membership is restricted to {max} projects across all studio tools.
-              Upgrade to Premium for unlimited project storage, priority compilations, and full AI access.
+              Free membership is restricted to {max} projects. Upgrade to Premium for unlimited project storage and full AI tools.
             </p>
 
-            {/* Quota Progress Pill */}
+            {/* Quota Progress Pill (Compact) */}
             <div style={{
               width: "100%",
-              maxWidth: "360px",
+              maxWidth: "280px",
               background: "var(--bg-secondary, rgba(255,255,255,0.03))",
               border: "1px solid var(--border, rgba(255,255,255,0.08))",
-              borderRadius: "14px",
-              padding: "0.75rem 1rem",
+              borderRadius: "10px",
+              padding: "0.4rem 0.75rem",
               display: "flex",
               flexDirection: "column",
-              gap: "0.4rem",
+              gap: "0.25rem",
             }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", fontWeight: 700, color: "var(--text-secondary, #9ca3af)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.65rem", fontWeight: 700, color: "var(--text-secondary, #9ca3af)" }}>
                 <span>Storage Quota</span>
                 <span style={{ color: "#ef4444", fontWeight: 800 }}>{currentCount} / {max} Projects Used</span>
               </div>
-              <div style={{ width: "100%", height: "6px", background: "rgba(255,255,255,0.06)", borderRadius: "6px", overflow: "hidden" }}>
-                <div style={{ width: `${percentUsed}%`, height: "100%", background: "linear-gradient(90deg, #f59e0b, #ef4444)", borderRadius: "6px" }} />
+              <div style={{ width: "100%", height: "4px", background: "rgba(255,255,255,0.06)", borderRadius: "4px", overflow: "hidden" }}>
+                <div style={{ width: `${percentUsed}%`, height: "100%", background: "linear-gradient(90deg, #f59e0b, #ef4444)", borderRadius: "4px" }} />
               </div>
             </div>
           </div>
@@ -269,27 +249,27 @@ export default function ProjectLimitModal({
           {/* Membership Plans Grid */}
           <div style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-            gap: "1.25rem",
-            marginBottom: "2.25rem",
+            gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+            gap: "0.85rem",
+            marginBottom: "1.25rem",
             position: "relative",
             zIndex: 2,
           }}>
             {loadingPlans ? (
-              <div style={{ gridColumn: "1/-1", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.6rem", color: "var(--text-secondary, #6b7280)", padding: "3rem" }}>
-                <Loader2 size={22} style={{ animation: "spin 1s linear infinite" }} />
-                <span style={{ fontSize: "0.9rem", fontWeight: 600 }}>Loading membership options...</span>
+              <div style={{ gridColumn: "1/-1", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", color: "var(--text-secondary, #6b7280)", padding: "2rem" }}>
+                <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
+                <span style={{ fontSize: "0.8rem", fontWeight: 600 }}>Loading plans...</span>
               </div>
             ) : (
               plans.map((plan, idx) => {
                 const Icon = PLAN_ICONS[idx % PLAN_ICONS.length];
                 const color = PLAN_COLORS[idx % PLAN_COLORS.length];
-                const isRecommended = plan.durationMonths === 3 || (plans.length <= 3 && idx === 1); // Highlight quarterly or middle plan
+                const isRecommended = plan.durationMonths === 3 || (plans.length <= 3 && idx === 1);
 
                 return (
                   <motion.div
                     key={plan.planId}
-                    whileHover={{ y: -4, transition: { duration: 0.2 } }}
+                    whileHover={{ y: -3, transition: { duration: 0.15 } }}
                     style={{
                       background: isRecommended
                         ? "linear-gradient(165deg, var(--bg-secondary, rgba(255,255,255,0.06)), rgba(0, 163, 149, 0.08))"
@@ -297,13 +277,13 @@ export default function ProjectLimitModal({
                       border: isRecommended
                         ? "1px solid var(--accent-primary, #00a395)"
                         : "1px solid var(--border, rgba(255,255,255,0.08))",
-                      borderRadius: "20px",
-                      padding: "1.5rem",
+                      borderRadius: "14px",
+                      padding: "0.85rem 0.75rem",
                       display: "flex",
                       flexDirection: "column",
                       position: "relative",
                       boxShadow: isRecommended
-                        ? "0 10px 30px -10px var(--accent-glow, rgba(0,163,149,0.3))"
+                        ? "0 6px 20px -8px var(--accent-glow, rgba(0,163,149,0.3))"
                         : "none",
                     }}
                   >
@@ -311,62 +291,68 @@ export default function ProjectLimitModal({
                     {isRecommended && (
                       <div style={{
                         position: "absolute",
-                        top: "-12px",
+                        top: "-10px",
                         left: "50%",
                         transform: "translateX(-50%)",
                         background: "var(--accent-primary, #00a395)",
                         color: "#ffffff",
-                        fontSize: "0.62rem",
+                        fontSize: "0.55rem",
                         fontWeight: 900,
-                        letterSpacing: "0.08em",
+                        letterSpacing: "0.06em",
                         textTransform: "uppercase",
-                        padding: "0.2rem 0.75rem",
+                        padding: "0.15rem 0.5rem",
                         borderRadius: "99px",
-                        boxShadow: "0 4px 12px var(--accent-glow, rgba(0,163,149,0.4))",
+                        boxShadow: "0 2px 8px var(--accent-glow, rgba(0,163,149,0.4))",
+                        whiteSpace: "nowrap",
                       }}>
                         BEST VALUE
                       </div>
                     )}
 
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.75rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.5rem" }}>
                       <div style={{
-                        width: "32px",
-                        height: "32px",
-                        borderRadius: "10px",
+                        width: "24px",
+                        height: "24px",
+                        borderRadius: "7px",
                         background: `color-mix(in srgb, ${color} 15%, transparent)`,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         color: color,
+                        flexShrink: 0,
                       }}>
-                        <Icon size={18} />
+                        <Icon size={14} />
                       </div>
-                      <h4 style={{ fontWeight: 800, fontSize: "0.95rem", margin: 0, color: "var(--text-primary, #ffffff)" }}>
+                      <h4 style={{ fontWeight: 800, fontSize: "0.8rem", margin: 0, color: "var(--text-primary, #ffffff)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {plan.name}
                       </h4>
                     </div>
 
                     <p style={{
-                      fontSize: "0.78rem",
+                      fontSize: "0.68rem",
                       color: "var(--text-secondary, #9ca3af)",
-                      margin: "0 0 1.25rem",
+                      margin: "0 0 0.6rem",
                       flex: 1,
-                      lineHeight: 1.45,
+                      lineHeight: 1.3,
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
                     }}>
-                      {plan.description || `${plan.durationMonths}-month premium access with unlimited projects.`}
+                      {plan.description || `${plan.durationMonths}-month premium access.`}
                     </p>
 
-                    <div style={{ marginBottom: "1.25rem" }}>
-                      <div style={{ fontSize: "1.6rem", fontWeight: 900, color: "var(--text-primary, #ffffff)", letterSpacing: "-0.02em" }}>
+                    <div style={{ marginBottom: "0.65rem" }}>
+                      <div style={{ fontSize: "1.15rem", fontWeight: 900, color: "var(--text-primary, #ffffff)", letterSpacing: "-0.02em" }}>
                         ₹{plan.priceINR.toLocaleString("en-IN")}
-                        <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text-secondary, #9ca3af)", marginLeft: "4px" }}>
+                        <span style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--text-secondary, #9ca3af)", marginLeft: "2px" }}>
                           {formatDuration(plan.durationMonths)}
                         </span>
                       </div>
                       {plan.pointsExchange > 0 && (
-                        <div style={{ fontSize: "0.68rem", color: "var(--accent-primary, #00a395)", fontWeight: 700, marginTop: "2px", display: "flex", alignItems: "center", gap: "4px" }}>
-                          <CheckCircle2 size={12} />
-                          Includes {plan.pointsExchange} AI Credit Points
+                        <div style={{ fontSize: "0.6rem", color: "var(--accent-primary, #00a395)", fontWeight: 700, marginTop: "1px", display: "flex", alignItems: "center", gap: "3px" }}>
+                          <CheckCircle2 size={10} />
+                          +{plan.pointsExchange} pts
                         </div>
                       )}
                     </div>
@@ -375,8 +361,8 @@ export default function ProjectLimitModal({
                       onClick={() => handleUpgrade(plan.planId)}
                       style={{
                         width: "100%",
-                        padding: "0.75rem",
-                        borderRadius: "12px",
+                        padding: "0.45rem 0.5rem",
+                        borderRadius: "8px",
                         background: isRecommended
                           ? "var(--accent-primary, #00a395)"
                           : "var(--bg-tertiary, rgba(255,255,255,0.06))",
@@ -385,15 +371,15 @@ export default function ProjectLimitModal({
                           ? "none"
                           : "1px solid var(--border, rgba(255,255,255,0.1))",
                         fontWeight: 800,
-                        fontSize: "0.82rem",
+                        fontSize: "0.72rem",
                         cursor: "pointer",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        gap: "0.4rem",
+                        gap: "0.3rem",
                         transition: "all 0.2s ease",
                         boxShadow: isRecommended
-                          ? "0 4px 15px var(--accent-glow, rgba(0,163,149,0.3))"
+                          ? "0 3px 10px var(--accent-glow, rgba(0,163,149,0.3))"
                           : "none",
                       }}
                       onMouseEnter={(e) => {
@@ -415,8 +401,8 @@ export default function ProjectLimitModal({
                         }
                       }}
                     >
-                      <span>Upgrade Plan</span>
-                      <ArrowRight size={14} />
+                      <span>Upgrade</span>
+                      <ArrowRight size={12} />
                     </button>
                   </motion.div>
                 );
@@ -425,21 +411,21 @@ export default function ProjectLimitModal({
           </div>
 
           {/* Footer Navigation */}
-          <div style={{ display: "flex", gap: "1rem", justifyContent: "center", zIndex: 2, position: "relative" }}>
+          <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", zIndex: 2, position: "relative" }}>
             <button
               onClick={handleGoToDashboard}
               style={{
-                padding: "0.7rem 1.75rem",
-                borderRadius: "12px",
+                padding: "0.45rem 1.25rem",
+                borderRadius: "10px",
                 background: "var(--bg-secondary, rgba(255,255,255,0.04))",
                 border: "1px solid var(--border, rgba(255,255,255,0.1))",
                 color: "var(--text-primary, #ffffff)",
                 fontWeight: 700,
-                fontSize: "0.85rem",
+                fontSize: "0.78rem",
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
-                gap: "0.5rem",
+                gap: "0.4rem",
                 transition: "all 0.2s ease",
               }}
               onMouseEnter={(e) => {
@@ -451,7 +437,7 @@ export default function ProjectLimitModal({
                 e.currentTarget.style.borderColor = "var(--border, rgba(255,255,255,0.1))";
               }}
             >
-              <LayoutDashboard size={16} />
+              <LayoutDashboard size={14} />
               <span>Back to Dashboard</span>
             </button>
           </div>
