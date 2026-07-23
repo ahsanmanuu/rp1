@@ -23,7 +23,7 @@
 
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { extractCodeBlock, parseDiagram, guessIconFromContext, organizeDiagramLayout, adaptConnectionsToContext, rescueCorruptedJson } from "../lib/diagramParsers";
+import { extractCodeBlock, parseDiagram, guessIconFromContext, organizeDiagramLayout, adaptConnectionsToContext, rescueCorruptedJson, enrichNodeIcons } from "../lib/diagramParsers";
 import type { DiagramNode, DiagramConnection, NodeColor, NodeType, ConnType, Arrowhead } from '@/lib/diagramTypes';
 import toast from 'react-hot-toast';
 
@@ -462,7 +462,7 @@ export function useDiagramAgent({
                   }
                 });
 
-                finalNodes = [...updatedNodes, ...newNodesList];
+                finalNodes = enrichNodeIcons([...updatedNodes, ...newNodesList]);
 
                 // Merge connections with remapped IDs to preserve full connectivity
                 const newConnsMap = new Map<string, DiagramConnection>();

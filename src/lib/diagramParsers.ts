@@ -497,6 +497,39 @@ export function extractCodeBlock(text: string): { code: string; engine: string |
   return { code: code.trim(), engine: engine ? engine.trim() : null };
 }
 
+export function getSmartIcon(title: string = '', description: string = '', type: string = ''): string {
+  const text = `${title} ${description} ${type}`.toLowerCase();
+
+  if (/auth|login|security|jwt|password|token|permission|oauth|crypto|lock|session/i.test(text)) return 'lock';
+  if (/db|database|postgres|mongo|redis|sql|store|storage|repository|cache/i.test(text)) return 'database';
+  if (/cloud|aws|azure|gcp|s3|cdn|hosting|serverless|lambda/i.test(text)) return 'cloud';
+  if (/user|client|customer|actor|person|admin|member|profile|role/i.test(text)) return 'person';
+  if (/api|gateway|service|microservice|rest|graphql|http|endpoint|route/i.test(text)) return 'api';
+  if (/pay|payment|stripe|billing|card|checkout|price|invoice|cash|recharge/i.test(text)) return 'payments';
+  if (/mail|email|notify|notification|sms|alert|message|push/i.test(text)) return 'mail';
+  if (/queue|kafka|rabbitmq|pubsub|event|stream|broker|mq/i.test(text)) return 'sync_alt';
+  if (/monitor|metric|stat|log|telemetry|analytics|dashboard|track|audit/i.test(text)) return 'monitoring';
+  if (/mobile|app|phone|ios|android/i.test(text)) return 'smartphone';
+  if (/web|browser|frontend|ui|page|website/i.test(text)) return 'language';
+  if (/build|ci\/cd|pipeline|deploy|github|gitlab|docker|container/i.test(text)) return 'build';
+  if (/settings|config|option|param|preference/i.test(text)) return 'settings';
+  if (/network|wifi|dns|server|host|router|switch/i.test(text)) return 'dns';
+
+  return '';
+}
+
+export function enrichNodeIcons(nodes: DiagramNode[]): DiagramNode[] {
+  return nodes.map(node => {
+    if (!node.icon || node.icon === 'settings' || node.icon === 'help' || node.icon === 'change_history') {
+      const smartIcon = getSmartIcon(node.title, node.description, node.type);
+      if (smartIcon) {
+        return { ...node, icon: smartIcon };
+      }
+    }
+    return node;
+  });
+}
+
 /**
  * Smart, context-aware auto-layout engine to beautifully organize nodes
  * dynamically based on their diagram/chart families and connection topology.
@@ -504,8 +537,10 @@ export function extractCodeBlock(text: string): { code: string; engine: string |
 export function organizeDiagramLayout(nodes: DiagramNode[], connections: DiagramConnection[]): DiagramNode[] {
   if (nodes.length === 0) return [];
 
+  const enrichedNodes = enrichNodeIcons(nodes);
+
   // Identify dominant node types to determine diagram family
-  const types = nodes.map(n => n.type);
+  const types = enrichedNodes.map(n => n.type);
   const typeCounts = types.reduce((acc, t) => { acc[t] = (acc[t] || 0) + 1; return acc; }, {} as Record<string, number>);
 
   const isSwimlane = (typeCounts['Swimlane'] || 0) > 0;
@@ -516,7 +551,7 @@ export function organizeDiagramLayout(nodes: DiagramNode[], connections: Diagram
   const isCircuit = (typeCounts['CircuitResistor'] || 0) > 0 || (typeCounts['CircuitCapacitor'] || 0) > 0 || (typeCounts['CircuitGround'] || 0) > 0 || (typeCounts['CircuitSource'] || 0) > 0;
   const isUmlOrErd = (typeCounts['UMLClass'] || 0) > 0 || (typeCounts['EREntity'] || 0) > 0;
 
-  const arranged = nodes.map(n => ({ ...n }));
+  const arranged = enrichedNodes.map(n => ({ ...n }));
 
   if (isSwimlane) {
     const lanes = arranged.filter(n => n.type === 'Swimlane');

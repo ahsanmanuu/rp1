@@ -75,8 +75,8 @@ function getDynamicColor(savedColor: string | undefined, nodeColor: NodeColor, c
 }
 
 const TYPE_ICON: Record<NodeType, string> = {
-  Process: 'settings',
-  Decision: 'help',
+  Process: 'schema',
+  Decision: 'alt_route',
   Database: 'database',
   Cloud: 'cloud',
   People: 'person',
@@ -84,7 +84,7 @@ const TYPE_ICON: Record<NodeType, string> = {
   Technical: 'dns',
   Computer: 'computer',
   Oval: 'radio_button_unchecked',
-  Diamond: 'change_history',
+  Diamond: 'diamond',
   Parallelogram: 'label_important',
   Document: 'description',
   Hexagon: 'hexagon',
@@ -95,16 +95,16 @@ const TYPE_ICON: Record<NodeType, string> = {
   UMLClass: 'domain',
   EREntity: 'table_rows',
   CircuitResistor: 'legend_toggle',
-  CircuitCapacitor: 'commit',
+  CircuitCapacitor: 'tune',
   CircuitGround: 'vertical_align_bottom',
-  CircuitSource: 'control_point',
+  CircuitSource: 'bolt',
   VennCircle: 'adjust',
   BarSegment: 'bar_chart',
   PieWedge: 'pie_chart',
   LinePoint: 'multiline_chart',
   ScatterPoint: 'bubble_chart',
   HistogramBar: 'align_horizontal_left',
-  DFDProcess: 'change_history',
+  DFDProcess: 'account_tree',
   DFDDataStore: 'reorder',
   DFDExternalEntity: 'domain',
 };
@@ -2864,16 +2864,39 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                       className="conn-del transition-all"
                     />
                     {/* Connection label */}
-                    {conn.label && (
-                      <g style={{ pointerEvents: 'all' }} onClick={e => {
-                        e.stopPropagation();
-                        setSelectedConnId(conn.id);
-                        setSelectedNode(null);
-                      }}>
-                        <rect x={((fromPort.x + toPort.x) / 2) - 30} y={((fromPort.y + toPort.y) / 2) - 10} width={60} height={20} rx={4} fill={isLight ? '#ffffff' : '#1c2b3c'} stroke={isSelectedConn ? '#8b5cf6' : 'rgba(255,255,255,0.1)'} strokeWidth={1} />
-                        <text x={(fromPort.x + toPort.x) / 2} y={((fromPort.y + toPort.y) / 2) + 4} textAnchor="middle" fill={LIGHT_CANVASES.has(canvasBg) ? '#1e293b' : '#c6c6cb'} fontSize={10} fontFamily="sans-serif">{conn.label}</text>
-                      </g>
-                    )}
+                    {conn.label && (() => {
+                      const labelWidth = Math.max(54, (conn.label.length * 6.2) + 16);
+                      const midX = (fromPort.x + toPort.x) / 2;
+                      const midY = (fromPort.y + toPort.y) / 2;
+                      return (
+                        <g style={{ pointerEvents: 'all' }} onClick={e => {
+                          e.stopPropagation();
+                          setSelectedConnId(conn.id);
+                          setSelectedNode(null);
+                        }}>
+                          <rect
+                            x={midX - labelWidth / 2}
+                            y={midY - 11}
+                            width={labelWidth}
+                            height={22}
+                            rx={11}
+                            fill={isLight ? 'rgba(248, 250, 252, 0.94)' : 'rgba(15, 23, 42, 0.94)'}
+                            stroke={isSelectedConn ? '#8b5cf6' : (isLight ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.15)')}
+                            strokeWidth={isSelectedConn ? 1.5 : 1}
+                            style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.1))' }}
+                          />
+                          <text
+                            x={midX}
+                            y={midY + 3.5}
+                            textAnchor="middle"
+                            fill={isLight ? '#1e293b' : '#e2e8f0'}
+                            fontSize={10}
+                            fontWeight={500}
+                            fontFamily="sans-serif"
+                          >{conn.label}</text>
+                        </g>
+                      );
+                    })()}
 
                     {/* Midpoint delete badge */}
                     {!isExporting && (() => {

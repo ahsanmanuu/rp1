@@ -538,7 +538,8 @@ GENERAL LAYOUT & CONNECTIONS INTEGRITY:
 2. FULLY CONNECTED OFFSET NODES: For offset or non-aligned nodes, use "Curved" or "Elbow" connection types with explicit forward/backward arrow directions so offset nodes have smooth, sweeping, elegant connections among them.
 3. MANDATORY NODE CAPTIONS: Every node MUST have a descriptive 'title' AND a clear, informative 'description' (caption/sub-label) explaining its role or attributes in the system.
 4. TARGETED COMPONENT EDITING: When the user asks to edit, modify, recolor, rename, delete, or style a specific component in the existing diagram, set "mode": "patch". Use the EXACT ID or title of the existing node as listed in Current Nodes above so the target component is edited in-place without generating duplicate nodes or severing existing connections.
-5. SEMANTIC COLOR HARMONY: Group associated nodes using similar colors (e.g. blue for clients/frontends, violet for backend microservices, green for databases, rose for security/auth, amber for queues). Space them out cleanly to prevent visual overlap!`;
+5. SEMANTIC COLOR HARMONY: Group associated nodes using similar colors (e.g. blue for clients/frontends, violet for backend microservices, green for databases, rose for security/auth, amber for queues). Space them out cleanly to prevent visual overlap!
+6. RELEVANT NODES & ACCURATE ICONS: Only create essential, highly relevant architectural nodes requested by the user. Do NOT create filler or dummy nodes. Always assign precise, domain-accurate Material ligature icons matching each component's function (e.g. 'lock' for authentication/security, 'database' or 'storage' for DBs/caches, 'cloud' for hosting, 'payments' for billing, 'mail' or 'notifications' for messaging, 'monitoring' for logging/metrics, 'api' or 'dns' for backend gateways).`;
   },
   async parseResponse(raw) {
     const json = extractJsonBlock(raw);
