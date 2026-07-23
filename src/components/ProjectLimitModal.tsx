@@ -66,15 +66,17 @@ export default function ProjectLimitModal({
             { planId: "premium_1m", name: "Premium Monthly", description: "1 Month Premium — Full AI review, advanced LaTeX, priority support.", priceINR: 250, durationMonths: 1, pointsExchange: 250 },
             { planId: "premium_3m", name: "Premium Quarterly", description: "3 Months Premium — Best value for semester projects.", priceINR: 600, durationMonths: 3, pointsExchange: 500 },
             { planId: "premium_6m", name: "Premium Biannual", description: "6 Months Premium — Save 17% vs monthly plan.", priceINR: 1000, durationMonths: 6, pointsExchange: 1000 },
+            { planId: "premium_12m", name: "Premium Annual", description: "12 Months Premium — Maximum savings & full research access.", priceINR: 1800, durationMonths: 12, pointsExchange: 2500 },
           ]);
         }
       })
       .catch(() => {
         // Silently fall back to defaults on network error
         setPlans([
-          { planId: "premium_1m", name: "Premium Monthly", description: "Unlimited projects + full AI tools.", priceINR: 250, durationMonths: 1, pointsExchange: 250 },
-          { planId: "premium_3m", name: "Premium Quarterly", description: "Best for semester projects.", priceINR: 600, durationMonths: 3, pointsExchange: 500 },
-          { planId: "premium_6m", name: "Premium Biannual", description: "Save 17% vs monthly.", priceINR: 1000, durationMonths: 6, pointsExchange: 1000 },
+          { planId: "premium_1m", name: "Premium Monthly", description: "1 Month Premium — Full AI review, advanced LaTeX, priority support.", priceINR: 250, durationMonths: 1, pointsExchange: 250 },
+          { planId: "premium_3m", name: "Premium Quarterly", description: "3 Months Premium — Best value for semester projects.", priceINR: 600, durationMonths: 3, pointsExchange: 500 },
+          { planId: "premium_6m", name: "Premium Biannual", description: "6 Months Premium — Save 17% vs monthly plan.", priceINR: 1000, durationMonths: 6, pointsExchange: 1000 },
+          { planId: "premium_12m", name: "Premium Annual", description: "12 Months Premium — Maximum savings & full research access.", priceINR: 1800, durationMonths: 12, pointsExchange: 2500 },
         ]);
       })
       .finally(() => setLoadingPlans(false));
@@ -124,10 +126,11 @@ export default function ProjectLimitModal({
             maxWidth: "960px",
             width: "100%",
             boxShadow: "0 30px 70px -15px rgba(0, 0, 0, 0.7), 0 0 40px var(--accent-glow, rgba(0, 163, 149, 0.15))",
+            maxHeight: "90vh",
+            overflowY: "auto",
             padding: "2.25rem",
             position: "relative",
             color: "var(--text-primary, #f9fafb)",
-            overflow: "hidden",
           }}
         >
           {/* Top Ambient Glow */}
@@ -278,10 +281,10 @@ export default function ProjectLimitModal({
                 <span style={{ fontSize: "0.9rem", fontWeight: 600 }}>Loading membership options...</span>
               </div>
             ) : (
-              plans.slice(0, 3).map((plan, idx) => {
+              plans.map((plan, idx) => {
                 const Icon = PLAN_ICONS[idx % PLAN_ICONS.length];
                 const color = PLAN_COLORS[idx % PLAN_COLORS.length];
-                const isRecommended = idx === 1; // Highlight middle quarterly plan as popular
+                const isRecommended = plan.durationMonths === 3 || (plans.length <= 3 && idx === 1); // Highlight quarterly or middle plan
 
                 return (
                   <motion.div
