@@ -749,7 +749,7 @@ function DiagramStudio() {
       return;
     }
     debouncedSave(nodes, connections);
-  }, [chatMessages, projectId, nodes, connections, debouncedSave]);
+  }, [chatMessages, projectId, debouncedSave]);
 
   // ── Fetch Recent Diagram Projects ────────────────────────────────────────────
   useEffect(() => {
@@ -1295,28 +1295,47 @@ function DiagramStudio() {
     const scale = zoom / 100;
     if (draggingId && dragOffset && typeof dragOffset === 'object') {
       const targetIds = multiSelect.selectedIds.has(draggingId) ? Array.from(multiSelect.selectedIds) : [draggingId];
-      setNodes(prev => prev.map(n => {
-        if (targetIds.includes(n.id)) {
-          const offsets = (dragOffset as Record<string, {x:number, y:number}>)[n.id];
-          if (!offsets) return n;
-          const nx = Math.round((e.clientX / scale - offsets.x) / 10) * 10;
-          const ny = Math.round((e.clientY / scale - offsets.y) / 10) * 10;
-          return { ...n, x: Math.max(0, nx), y: Math.max(0, ny) };
-        }
-        return n;
-      }));
+      setNodes(prev => {
+        let changed = false;
+        const next = prev.map(n => {
+          if (targetIds.includes(n.id)) {
+            const offsets = (dragOffset as Record<string, {x:number, y:number}>)[n.id];
+            if (!offsets) return n;
+            const nx = Math.max(0, Math.round((e.clientX / scale - offsets.x) / 10) * 10);
+            const ny = Math.max(0, Math.round((e.clientY / scale - offsets.y) / 10) * 10);
+            if (n.x !== nx || n.y !== ny) {
+              changed = true;
+              return { ...n, x: nx, y: ny };
+            }
+          }
+          return n;
+        });
+        return changed ? next : prev;
+      });
     } else if (resizingId && resizeHandle) {
       const dx = (e.clientX - (dragOffset as any).x) / scale;
       const dy = (e.clientY - (dragOffset as any).y) / scale;
-      setNodes(prev => prev.map(n => {
-        if (n.id !== resizingId) return n;
-        let { x, y, w, h } = resizeStartSize;
-        if (resizeHandle.includes('right')) w = Math.max(80, w + dx);
-        if (resizeHandle.includes('bottom')) h = Math.max(60, h + dy);
-        if (resizeHandle.includes('left')) { const newW = Math.max(80, w - dx); x = x + (w - newW); w = newW; }
-        if (resizeHandle.includes('top')) { const newH = Math.max(60, h - dy); y = y + (h - newH); h = newH; }
-        return { ...n, x, y, width: w, height: h };
-      }));
+      setNodes(prev => {
+        let changed = false;
+        const next = prev.map(n => {
+          if (n.id !== resizingId) return n;
+          let { x, y, w, h } = resizeStartSize;
+          if (resizeHandle.includes('right')) w = Math.max(80, w + dx);
+          if (resizeHandle.includes('bottom')) h = Math.max(60, h + dy);
+          if (resizeHandle.includes('left')) { const newW = Math.max(80, w - dx); x = x + (w - newW); w = newW; }
+          if (resizeHandle.includes('top')) { const newH = Math.max(60, h - dy); y = y + (h - newH); h = newH; }
+          const rx = Math.round(x);
+          const ry = Math.round(y);
+          const rw = Math.round(w);
+          const rh = Math.round(h);
+          if (n.x !== rx || n.y !== ry || n.width !== rw || n.height !== rh) {
+            changed = true;
+            return { ...n, x: rx, y: ry, width: rw, height: rh };
+          }
+          return n;
+        });
+        return changed ? next : prev;
+      });
     } else if (isPanning) {
       setPanOffset({ x: panOffset.x + (e.clientX - panStart.x), y: panOffset.y + (e.clientY - panStart.y) });
       setPanStart({ x: e.clientX, y: e.clientY });
