@@ -707,6 +707,7 @@ export function organizeDiagramLayout(nodes: DiagramNode[], connections: Diagram
     return arranged;
   }
 
+  // Build adjacency list and calculate in-degrees with cycle safety
   const adj: Record<string, string[]> = {};
   const inDegree: Record<string, number> = {};
 
@@ -716,51 +717,81 @@ export function organizeDiagramLayout(nodes: DiagramNode[], connections: Diagram
   });
 
   connections.forEach(c => {
-    if (adj[c.from] && adj[c.to] !== undefined) {
+    if (adj[c.from] && inDegree[c.to] !== undefined) {
       adj[c.from].push(c.to);
-      inDegree[c.to]++;
+      inDegree[c.to] = (inDegree[c.to] || 0) + 1;
     }
   });
 
+  // Calculate topological levels using BFS with max-depth tracking and cycle prevention
   const levels: Record<string, number> = {};
-  const queue: string[] = [];
+  const rootNodes = arranged.filter(n => (inDegree[n.id] || 0) === 0);
 
-  arranged.forEach(n => {
-    if (inDegree[n.id] === 0) {
-      levels[n.id] = 0;
-      queue.push(n.id);
-    }
+  // If no root node (all in a cycle), pick the first node as root
+  const queue: Array<{ id: string; lvl: number }> = (rootNodes.length > 0 ? rootNodes : [arranged[0]]).map(n => ({ id: n.id, lvl: 0 }));
+  const visited = new Set<string>();
+
+  queue.forEach(item => {
+    levels[item.id] = 0;
+    visited.add(item.id);
   });
 
   while (queue.length > 0) {
-    const curr = queue.shift()!;
-    const currLevel = levels[curr] || 0;
+    const { id: curr, lvl } = queue.shift()!;
+    const neighbors = adj[curr] || [];
 
-    for (const neighbor of adj[curr]) {
-      const oldLevel = levels[neighbor] ?? -1;
-      if (currLevel + 1 > oldLevel) {
-        levels[neighbor] = currLevel + 1;
-        queue.push(neighbor);
+    for (const target of neighbors) {
+      const nextLvl = Math.max(levels[target] || 0, lvl + 1);
+      levels[target] = nextLvl;
+      if (!visited.has(target)) {
+        visited.add(target);
+        queue.push({ id: target, lvl: nextLvl });
       }
     }
   }
 
-  const levelGroups: Record<number, string[]> = {};
+  // Handle any remaining unvisited nodes
+  arranged.forEach((n, idx) => {
+    if (levels[n.id] === undefined) {
+      levels[n.id] = Math.floor(idx / 3);
+    }
+  });
+
+  // Group nodes by level (rank)
+  const levelGroups: Record<number, DiagramNode[]> = {};
   arranged.forEach(n => {
     const lvl = levels[n.id] ?? 0;
     if (!levelGroups[lvl]) levelGroups[lvl] = [];
-    levelGroups[lvl].push(n.id);
+    levelGroups[lvl].push(n);
   });
 
-  Object.keys(levelGroups).forEach((lvlStr) => {
-    const lvl = parseInt(lvlStr, 10);
-    const nodeIds = levelGroups[lvl];
-    nodeIds.forEach((id, idx) => {
-      const node = arranged.find(n => n.id === id);
-      if (node) {
-        node.x = 100 + lvl * 300;
-        node.y = 100 + idx * 180;
-      }
+  // Layout parameters
+  const NODE_W = 240;
+  const NODE_H = 110;
+  const GAP_X = 80;
+  const GAP_Y = 100;
+  const START_X = 100;
+  const START_Y = 100;
+
+  // Calculate max row width across all levels to center every row
+  let maxRowWidth = 0;
+  Object.values(levelGroups).forEach(group => {
+    const rowW = group.length * NODE_W + (group.length - 1) * GAP_X;
+    if (rowW > maxRowWidth) maxRowWidth = rowW;
+  });
+
+  // Apply centered Top-Down (TD) layout coordinates
+  const sortedLevels = Object.keys(levelGroups).map(Number).sort((a, b) => a - b);
+  sortedLevels.forEach(lvl => {
+    const group = levelGroups[lvl];
+    const rowW = group.length * NODE_W + (group.length - 1) * GAP_X;
+    const offsetX = (maxRowWidth - rowW) / 2;
+
+    group.forEach((node, colIdx) => {
+      node.x = Math.round(START_X + offsetX + colIdx * (NODE_W + GAP_X));
+      node.y = Math.round(START_Y + lvl * (NODE_H + GAP_Y));
+      node.width = NODE_W;
+      node.height = NODE_H;
     });
   });
 

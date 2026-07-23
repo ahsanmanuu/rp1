@@ -2925,9 +2925,9 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                     />
                     {/* Connection label */}
                     {conn.label && (() => {
-                      const labelWidth = Math.max(54, (conn.label.length * 6.2) + 16);
+                      const labelWidth = Math.max(54, (conn.label.length * 6.5) + 16);
                       const midX = (fromPort.x + toPort.x) / 2;
-                      const midY = (fromPort.y + toPort.y) / 2;
+                      const midY = (fromPort.y + toPort.y) / 2 - 18; // Offset above line to avoid obscuring arrows/data flow
                       return (
                         <g style={{ pointerEvents: 'all' }} onClick={e => {
                           e.stopPropagation();
@@ -2940,18 +2940,18 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                             width={labelWidth}
                             height={22}
                             rx={11}
-                            fill={isLight ? 'rgba(248, 250, 252, 0.94)' : 'rgba(15, 23, 42, 0.94)'}
-                            stroke={isSelectedConn ? '#8b5cf6' : (isLight ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.15)')}
+                            fill={isLight ? 'rgba(248, 250, 252, 0.96)' : 'rgba(15, 23, 42, 0.96)'}
+                            stroke={isSelectedConn ? '#8b5cf6' : (isLight ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.18)')}
                             strokeWidth={isSelectedConn ? 1.5 : 1}
-                            style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.1))' }}
+                            style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))' }}
                           />
                           <text
                             x={midX}
                             y={midY + 3.5}
                             textAnchor="middle"
-                            fill={isLight ? '#1e293b' : '#e2e8f0'}
+                            fill={isLight ? '#0f172a' : '#f8fafc'}
                             fontSize={10}
-                            fontWeight={500}
+                            fontWeight={600}
                             fontFamily="sans-serif"
                           >{conn.label}</text>
                         </g>
@@ -4180,6 +4180,18 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                       <span className="block font-black text-[10px] text-[#c6c6cb] uppercase tracking-wider mb-2">Connection Style</span>
                       <div className="rounded-xl p-3 border border-white/8 space-y-4" style={{ background: cardBg }}>
                         
+                        {/* Connection Caption / Label */}
+                        <div>
+                          <div className="text-[10px] text-white/50 font-bold uppercase tracking-wider mb-1">Caption / Label</div>
+                          <input
+                            type="text"
+                            value={selectedConn.label || ''}
+                            onChange={e => updateConnection(selectedConn.id, { label: e.target.value })}
+                            placeholder="e.g. HTTP POST, Data Flow..."
+                            className="w-full bg-[#0f172a] border border-white/10 rounded-lg px-2.5 py-1.5 text-white text-xs focus:ring-1 focus:ring-violet-500 outline-none placeholder-white/30"
+                          />
+                        </div>
+
                         {/* Line Type */}
                         <div>
                           <div className="text-[10px] text-white/50 font-bold uppercase tracking-wider mb-1">Line Type</div>

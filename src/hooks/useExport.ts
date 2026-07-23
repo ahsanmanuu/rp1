@@ -152,24 +152,22 @@ export function useExport({
       };
 
       let dataUrl: string;
+      const renderOptions = {
+        backgroundColor: bg,
+        pixelRatio: opts.resolution || 2,
+        width: Math.round(bw),
+        height: Math.round(bh),
+        filter: filterFn as any,
+        style: exportStyle,
+        skipFonts: true,
+        fontEmbedCSS: '',
+        cacheBust: false,
+      };
+
       try {
-        dataUrl = await toPng(stage, {
-          backgroundColor: bg,
-          pixelRatio: opts.resolution || 2,
-          width: Math.round(bw),
-          height: Math.round(bh),
-          filter: filterFn as any,
-          style: exportStyle,
-        });
+        dataUrl = await toPng(stage, renderOptions);
       } catch {
-        dataUrl = await toPng(stage, {
-          backgroundColor: bg || '#051424',
-          pixelRatio: 1,
-          width: Math.round(bw),
-          height: Math.round(bh),
-          filter: filterFn as any,
-          style: exportStyle,
-        });
+        dataUrl = await toPng(stage, { ...renderOptions, pixelRatio: 1 });
       }
 
       const a = document.createElement('a');
@@ -230,26 +228,23 @@ export function useExport({
       };
 
       let dataUrl: string;
+      const renderOptions = {
+        backgroundColor: bg,
+        pixelRatio: opts.resolution || 2,
+        width: Math.round(bw),
+        height: Math.round(bh),
+        quality: 0.95,
+        filter: filterFn as any,
+        style: exportStyle,
+        skipFonts: true,
+        fontEmbedCSS: '',
+        cacheBust: false,
+      };
+
       try {
-        dataUrl = await toJpeg(stage, {
-          backgroundColor: bg,
-          pixelRatio: opts.resolution || 2,
-          width: Math.round(bw),
-          height: Math.round(bh),
-          quality: 0.95,
-          filter: filterFn as any,
-          style: exportStyle,
-        });
+        dataUrl = await toJpeg(stage, renderOptions);
       } catch {
-        dataUrl = await toJpeg(stage, {
-          backgroundColor: bg,
-          pixelRatio: 1,
-          width: Math.round(bw),
-          height: Math.round(bh),
-          quality: 0.95,
-          filter: filterFn as any,
-          style: exportStyle,
-        });
+        dataUrl = await toJpeg(stage, { ...renderOptions, pixelRatio: 1 });
       }
 
       const a = document.createElement('a');
@@ -307,22 +302,21 @@ export function useExport({
       };
 
       let dataUrl: string;
+      const renderOptions = {
+        pixelRatio: 1,
+        width: Math.round(bw),
+        height: Math.round(bh),
+        filter: filterFn as any,
+        style: exportStyle,
+        skipFonts: true,
+        fontEmbedCSS: '',
+        cacheBust: false,
+      };
+
       try {
-        dataUrl = await toSvg(stage, {
-          pixelRatio: 1,
-          width: Math.round(bw),
-          height: Math.round(bh),
-          filter: filterFn as any,
-          style: exportStyle,
-        });
+        dataUrl = await toSvg(stage, renderOptions);
       } catch {
-        dataUrl = await toSvg(stage, {
-          pixelRatio: 1,
-          width: Math.round(bw),
-          height: Math.round(bh),
-          filter: filterFn as any,
-          style: exportStyle,
-        });
+        dataUrl = await toSvg(stage, renderOptions);
       }
 
       const a = document.createElement('a');
