@@ -1911,7 +1911,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
 
   return (
     <div
-      className={`flex h-screen font-sans overflow-hidden select-none ${isLight ? 'theme-light text-slate-900' : 'theme-dark text-[#d4e4fa]'}`}
+      className={`fixed inset-0 flex flex-col font-sans overflow-hidden select-none ${isLight ? 'theme-light text-slate-900' : 'theme-dark text-[#d4e4fa]'}`}
       style={{ background: isLight ? '#f3f4f6' : '#051424' }}
       onMouseMove={onCanvasMouseMove}
       onMouseUp={onCanvasMouseUp}
@@ -1928,8 +1928,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
           TOP HEADER
       ══════════════════════════════════════════════════════════════════════ */}
       <header
-        className="glass rim fixed top-0 w-full h-[70px] border-b flex justify-between items-center px-3 md:px-6 z-50 gap-2"
-        style={{ borderColor: isLight ? 'var(--editor-border)' : 'rgba(69,71,75,0.25)' }}
+        className={`fixed top-0 w-full h-14 flex justify-between items-center px-4 md:px-6 z-50 backdrop-blur-md border-b transition-colors ${isLight ? 'bg-white/80 border-slate-200' : 'bg-[#051424]/80 border-white/5'}`}
       >
         {/* Left: brand + nav — flex-1 allows shrink, min-w-0 prevents overflow */}
         <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -1983,17 +1982,8 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
 
           <div className="h-5 w-px bg-white/10" />
 
-          {/* Recent Projects Dropdown & New Button */}
+          {/* Recent Projects Dropdown */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={createNewDiagram}
-              disabled={creating}
-              className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer bg-violet-600 hover:bg-violet-500 text-white border border-violet-400/40 shadow-sm disabled:opacity-50"
-              title="Create a new diagram (Ctrl+N)"
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: 15 }}>add</span>
-              <span>New Diagram</span>
-            </button>
 
             <div className="relative" ref={recentMenuRef}>
               <button
@@ -2225,7 +2215,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                 className="w-7 h-7 rounded-md hover:bg-white/10 text-white/70 hover:text-white flex items-center justify-center transition-colors border-none bg-transparent cursor-pointer" title="Zoom Out">
                 <span className="material-symbols-outlined text-[16px]">remove</span>
               </button>
-              <span className="text-[12px] font-medium text-white w-10 text-center font-mono cursor-default select-none">{zoom}%</span>
+              <span className="text-[12px] font-medium text-white w-10 text-center font-mono cursor-default select-none">{Math.round(zoom)}%</span>
               <button onClick={() => setZoom(z => Math.min(200, z + 10))}
                 className="w-7 h-7 rounded-md hover:bg-white/10 text-white/70 hover:text-white flex items-center justify-center transition-colors border-none bg-transparent cursor-pointer" title="Zoom In">
                 <span className="material-symbols-outlined text-[16px]">add</span>
@@ -2439,12 +2429,8 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
 
           <div className="h-5 w-px bg-white/10 flex-shrink-0" />
 
-          {/* Right nav: Return links — icon-only on small screens, text on large */}
+          {/* Right nav: Return links */}
           <div className="flex items-center gap-1 flex-shrink-0">
-            <Link href="/" className="px-2 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 bg-[#1c2b3c] text-[#c6c6cb] border border-white/8 hover:text-white hover:border-white/20 cursor-pointer" title="Return to Home">
-              <span className="material-symbols-outlined" style={{ fontSize: 15 }}>home</span>
-              <span className="hidden xl:inline">Home</span>
-            </Link>
             <Link href="/dashboard" className="px-2 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 bg-[#1c2b3c] text-[#c6c6cb] border border-white/8 hover:text-white hover:border-white/20 cursor-pointer" title="Return to Dashboard">
               <span className="material-symbols-outlined" style={{ fontSize: 15 }}>dashboard</span>
               <span className="hidden xl:inline">Dashboard</span>
@@ -4690,7 +4676,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
           className="fixed w-[200px] h-[180px] bg-black/50 border border-white/10 rounded-xl overflow-hidden shadow-2xl z-40 hidden lg:block backdrop-blur-md select-none"
           style={{
             left: minimapPos?.x ?? (windowSize.width / 2 - 100),
-            top: minimapPos?.y ?? (windowSize.height / 2 - 90),
+            top: minimapPos?.y ?? (windowSize.height - 210),
           }}
         >
           {/* Header Drag Handle */}
