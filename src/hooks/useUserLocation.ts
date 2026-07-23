@@ -87,9 +87,9 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
     try {
       const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 60000,
+          enableHighAccuracy: false,
+          timeout: 3000,
+          maximumAge: 120000,
         });
       });
 
@@ -158,7 +158,9 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
 
     fetchLocation(true);
 
-    updateBrowserLocation();
+    const geoTimer = setTimeout(() => {
+      if (mountedRef.current) updateBrowserLocation();
+    }, 1500);
 
     pollRef.current = setInterval(() => {
       fetchLocation(true);

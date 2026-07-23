@@ -249,9 +249,10 @@ export default function DashboardPage() {
     return finalPriceINR;
   };
 
-  const loadCurrency = useCallback(async (countryCode: string) => {
+  const loadCurrency = useCallback(async (countryCode?: string) => {
     try {
-      const res = await fetch(`/api/currency/convert?country=${countryCode}`);
+      const url = countryCode ? `/api/currency/convert?country=${countryCode}` : '/api/currency/convert';
+      const res = await fetch(url);
       if (!res.ok) {
         console.warn("Failed to load converted currency prices:", res.statusText);
         return;
@@ -266,39 +267,8 @@ export default function DashboardPage() {
   }, []);
 
   const loadCurrencyAndGeo = useCallback(async () => {
-    const freeIpController = new AbortController();
-    const freeIpTimeoutId = setTimeout(() => freeIpController.abort(), 3000);
-    try {
-      const geoRes = await fetch("https://freeipapi.com/api/json", { signal: freeIpController.signal });
-      const geoData = await geoRes.json();
-      if (geoData && geoData.countryCode) {
-        await loadCurrency(geoData.countryCode);
-        clearTimeout(freeIpTimeoutId);
-        return;
-      }
-    } catch (e) {
-      console.warn("freeipapi failed, trying ipapi.co...", e);
-    } finally {
-      clearTimeout(freeIpTimeoutId);
-    }
-
-    const ipapiController = new AbortController();
-    const ipapiTimeoutId = setTimeout(() => ipapiController.abort(), 3000);
-    try {
-      const geoRes = await fetch("https://ipapi.co/json/", { signal: ipapiController.signal });
-      const geoData = await geoRes.json();
-      if (geoData && geoData.country_code) {
-        await loadCurrency(geoData.country_code);
-        clearTimeout(ipapiTimeoutId);
-        return;
-      }
-    } catch (e) {
-      console.warn("ipapi.co failed, defaulting to US...", e);
-    } finally {
-      clearTimeout(ipapiTimeoutId);
-    }
-
-    await loadCurrency("US");
+    // Fast path: fetch local currency converter API instantly (<10ms) without 6s third-party delays
+    await loadCurrency();
   }, [loadCurrency]);
 
   const _handleRechargePoints = async (planId: string) => {

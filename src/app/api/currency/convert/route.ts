@@ -76,7 +76,12 @@ async function getExchangeRatesFromINR(): Promise<Record<string, number>> {
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const country = (searchParams.get("country") || "US").toUpperCase();
+  const paramCountry = searchParams.get("country");
+  const headerCountry =
+    req.headers.get("cf-ipcountry") ||
+    req.headers.get("x-vercel-ip-country") ||
+    req.headers.get("x-country");
+  const country = (paramCountry || headerCountry || "US").toUpperCase();
 
   try {
     const rates = await getExchangeRatesFromINR();

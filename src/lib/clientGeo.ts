@@ -26,32 +26,49 @@ function getCacheKey(req: NextRequest): string {
   return `geo:${ip}`;
 }
 
-async function fetchGeoInfo(ip: string | null, userAgent: string | null): Promise<ClientGeoInfo> {
-  let location: string | null = null;
-  let country: string | null = null;
-  let resolvedIp = ip;
+async function fetchGeoInfo(ip: string | null, userAgent: string | null, headerCountry?: string | null, headerCity?: string | null): Promise<ClientGeoInfo> {
+  let location: string | null = headerCity || null;
+  let country: string | null = headerCountry || null;
+  let resolvedIp = ip || "127.0.0.1";
 
-  if (ip && ip !== "127.0.0.1" && ip !== "::1" && ip !== "localhost") {
-    try {
-      const geoUrl = `http://ip-api.com/json/${ip}?fields=query,country,countryCode,regionName,city`;
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000);
+  if (!ip || ip === "127.0.0.1" || ip === "::1" || ip === "localhost") {
+    return {
+      ipAddress: "127.0.0.1",
+      location: location || "Localhost",
+      country: country || "US",
+      userAgent,
+    };
+  }
 
-      const geoRes = await fetch(geoUrl, { signal: controller.signal });
-      clearTimeout(timeout);
+  // If Cloudflare / Vercel headers already provided country, return immediately
+  if (country) {
+    return {
+      ipAddress: resolvedIp,
+      location: location || country,
+      country,
+      userAgent,
+    };
+  }
 
-      if (geoRes.ok) {
-        const geoData = await geoRes.json();
-        if (geoData && geoData.query) {
-          resolvedIp = geoData.query;
-          const parts = [geoData.city, geoData.regionName, geoData.country].filter(Boolean);
-          location = parts.length > 0 ? parts.join(", ") : null;
-          country = geoData.countryCode || null;
-        }
+  try {
+    const geoUrl = `http://ip-api.com/json/${ip}?fields=query,country,countryCode,regionName,city`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 800); // 800ms fast cap
+
+    const geoRes = await fetch(geoUrl, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (geoRes.ok) {
+      const geoData = await geoRes.json();
+      if (geoData && geoData.query) {
+        resolvedIp = geoData.query;
+        const parts = [geoData.city, geoData.regionName, geoData.country].filter(Boolean);
+        location = parts.length > 0 ? parts.join(", ") : null;
+        country = geoData.countryCode || null;
       }
-    } catch {
-      // Geolocation is best-effort; don't fail
     }
+  } catch {
+    // Geolocation is best-effort; don't fail or delay
   }
 
   return {
@@ -79,11 +96,18 @@ export async function getClientGeoInfo(req: NextRequest): Promise<ClientGeoInfo>
     req.headers.get("x-client-ip") ||
     null;
 
-  if (!ip || ip === "127.0.0.1" || ip === "::1" || ip === "localhost") {
-    ip = null;
-  }
+  const headerCountry =
+    req.headers.get("cf-ipcountry") ||
+    req.headers.get("x-vercel-ip-country") ||
+    req.headers.get("x-country") ||
+    null;
 
-  const geoInfo = await fetchGeoInfo(ip, userAgent);
+  const headerCity =
+    req.headers.get("cf-ipcity") ||
+    req.headers.get("x-vercel-ip-city") ||
+    null;
+
+  const geoInfo = await fetchGeoInfo(ip, userAgent, headerCountry, headerCity);
 
   geoCache.set(cacheKey, {
     data: geoInfo,

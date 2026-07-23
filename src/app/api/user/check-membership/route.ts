@@ -88,7 +88,7 @@ export async function GET(_req: NextRequest) {
   const userId = (session.user as any).id;
 
   try {
-    await ensureStatusFieldsInPb();
+    ensureStatusFieldsInPb().catch(() => {});
     await syncUserMembershipChain(userId);
 
     const user = await prisma.user.findUnique({
