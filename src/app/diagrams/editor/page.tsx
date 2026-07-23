@@ -2162,252 +2162,250 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
           </div>
           </div>
 
-          <div className="h-5 w-px bg-white/10 hidden lg:block" />
+          <div className="h-5 w-px bg-white/10" />
 
-          <nav className="hidden md:flex gap-1 text-xs font-semibold flex-shrink-0">
+          <nav className="flex items-center gap-1.5 text-xs font-semibold flex-shrink-0">
             {/* Undo / Redo */}
             <div className="flex items-center bg-white/5 rounded-lg overflow-hidden mr-1">
               <button disabled={!canUndo} onClick={() => undo(nodes, connections)} title="Undo (Ctrl+Z)"
-                className="text-[#c6c6cb] hover:bg-white/10 hover:text-white disabled:opacity-30 transition-colors px-2.5 py-1.5 flex items-center justify-center">
-                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>undo</span>
+                className="text-[#c6c6cb] hover:bg-white/10 hover:text-white disabled:opacity-30 transition-colors px-2 py-1 flex items-center justify-center cursor-pointer border-none bg-transparent">
+                <span className="material-symbols-outlined" style={{ fontSize: 15 }}>undo</span>
               </button>
               <button disabled={!canRedo} onClick={() => redo(nodes, connections)} title="Redo (Ctrl+Y)"
-                className="text-[#c6c6cb] hover:bg-white/10 hover:text-white disabled:opacity-30 transition-colors px-2.5 py-1.5 flex items-center justify-center">
-                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>redo</span>
-            </button>
+                className="text-[#c6c6cb] hover:bg-white/10 hover:text-white disabled:opacity-30 transition-colors px-2 py-1 flex items-center justify-center cursor-pointer border-none bg-transparent">
+                <span className="material-symbols-outlined" style={{ fontSize: 15 }}>redo</span>
+              </button>
+            </div>
+
             <button onClick={() => setTool(isHand ? 'select' : 'hand')}
-              className={`px-2 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${isHand ? 'bg-violet-500/20 text-violet-300 border border-violet-500/50 shadow-[0_0_15px_rgba(139,92,246,0.2)]' : 'bg-[#1c2b3c] text-[#c6c6cb] border border-white/8 hover:text-white hover:border-white/20'}`}
+              className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer ${isHand ? 'bg-violet-500/20 text-violet-300 border border-violet-500/50 shadow-[0_0_15px_rgba(139,92,246,0.2)]' : 'bg-[#1c2b3c] text-[#c6c6cb] border border-white/8 hover:text-white hover:border-white/20'}`}
               title="Drag to pan canvas"
             >
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>pan_tool</span>
-              <span className="hidden xl:inline">{isHand ? 'Pan Active' : 'Hand'}</span>
+              <span className="material-symbols-outlined" style={{ fontSize: 15 }}>pan_tool</span>
+              <span className="hidden sm:inline">{isHand ? 'Pan Active' : 'Hand'}</span>
             </button>
-          </div>
 
-          <button onClick={() => setShowMinimap(v => !v)}
-            className={`px-2 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${showMinimap ? 'bg-violet-500/20 text-violet-300 border border-violet-500/50 shadow-[0_0_15px_rgba(139,92,246,0.2)]' : 'bg-[#1c2b3c] text-[#c6c6cb] border border-white/8 hover:text-white hover:border-white/20'}`}
-            title="Toggle Minimap View"
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>map</span>
-            <span className="hidden xl:inline">Minimap</span>
-          </button>
-
-          <div className="h-5 w-px bg-white/10" />
-
-          {/* Zoom indicator */}
-          <div className="flex items-center gap-1">
-            <button onClick={() => setZoom(z => Math.max(30, z - 10))}
-              className="w-7 h-7 rounded hover:bg-white/8 text-[#c6c6cb] hover:text-white flex items-center justify-center transition-colors">
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>remove</span>
-            </button>
-            <span className="text-[11px] font-bold text-white w-10 text-center">{zoom}%</span>
-            <button onClick={() => setZoom(z => Math.min(200, z + 10))}
-              className="w-7 h-7 rounded hover:bg-white/8 text-[#c6c6cb] hover:text-white flex items-center justify-center transition-colors">
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span>
-            </button>
-            
-          {/* Mode Segmented Control */}
-          <div className="flex items-center bg-white/5 rounded-lg border border-white/8 p-0.5 ml-2 mr-1 select-none">
-            <button
-              onClick={() => setEditorMode('Visual Edit')}
-              className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all border-none cursor-pointer ${
-                editorMode === 'Visual Edit'
-                  ? 'bg-violet-500 text-white shadow-md shadow-violet-500/20'
-                  : 'text-[#c6c6cb] hover:text-white bg-transparent'
-              }`}
+            <button onClick={() => setShowMinimap(v => !v)}
+              className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer ${showMinimap ? 'bg-violet-500/20 text-violet-300 border border-violet-500/50 shadow-[0_0_15px_rgba(139,92,246,0.2)]' : 'bg-[#1c2b3c] text-[#c6c6cb] border border-white/8 hover:text-white hover:border-white/20'}`}
+              title="Toggle Minimap View"
             >
-              Visual
-            </button>
-            <button
-              onClick={() => setEditorMode('Code')}
-              className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all border-none cursor-pointer ${
-                editorMode === 'Code'
-                  ? 'bg-violet-500 text-white shadow-md shadow-violet-500/20'
-                  : 'text-[#c6c6cb] hover:text-white bg-transparent'
-              }`}
-            >
-              Code
-            </button>
-          </div>
-
-          <button
-            onClick={() => saveToServer(nodes, connections, undefined, true)}
-            disabled={saving}
-            className="px-3 py-1.5 rounded-lg hover:bg-white/8 transition-colors text-[#c6c6cb] hover:text-white border border-white/10 bg-white/5 cursor-pointer flex items-center gap-1.5 disabled:opacity-50 text-xs font-semibold"
-            title="Save diagram to cloud and history (Ctrl+S)"
-          >
-            <span className="material-symbols-outlined text-amber-400" style={{ fontSize: 16 }}>cloud_upload</span>
-            <span className="hidden lg:inline">Save to History</span>
-          </button>
-
-          {/* Export Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setExportMenuOpen(v => !v)}
-              className="px-4 py-1.5 rounded-full text-xs font-semibold flex items-center gap-2 text-[#d4e4fa] border transition-all cursor-pointer hover:bg-white/8 hover:text-white"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.12)' }}
-            >
-              <span className="material-symbols-outlined text-sm" style={{ fontSize: 16 }}>download</span>
-              Export
-              <span className="material-symbols-outlined text-[10px] text-white/50" style={{ fontSize: 12 }}>expand_more</span>
+              <span className="material-symbols-outlined" style={{ fontSize: 15 }}>map</span>
+              <span className="hidden sm:inline">Minimap</span>
             </button>
 
-            {exportMenuOpen && (
-              <div
-                className="glass rim absolute right-0 top-full mt-3 border border-white/10 rounded-2xl shadow-2xl z-50 p-2 w-64 popover-entry"
-                style={{ background: 'rgba(9,19,32,0.95)', backdropFilter: 'blur(20px)' }}
-              >
-                {/* Image Section */}
-                <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-violet-400">Raster Image</div>
-                <button
-                  onClick={() => {
-                    setExportDialog({ isOpen: true, format: 'png', options: defaultExportOptions });
-                    setExportMenuOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-violet-500/10 text-white flex flex-col transition-all border-none cursor-pointer bg-transparent group"
-                >
-                  <div className="flex gap-2.5 items-center">
-                    <span className="material-symbols-outlined text-violet-400 group-hover:scale-110 transition-transform" style={{ fontSize: 18 }}>image</span>
-                    <span className="text-xs font-semibold">Export as PNG</span>
-                  </div>
-                  <span className="text-[9px] text-[#8b9bb4] pl-7 group-hover:text-white/70 transition-colors">HD image with optional transparency</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setExportDialog({ isOpen: true, format: 'jpeg', options: defaultExportOptions });
-                    setExportMenuOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-violet-500/10 text-white flex flex-col transition-all border-none cursor-pointer bg-transparent group"
-                >
-                  <div className="flex gap-2.5 items-center">
-                    <span className="material-symbols-outlined text-violet-400 group-hover:scale-110 transition-transform" style={{ fontSize: 18 }}>photo</span>
-                    <span className="text-xs font-semibold">Export as JPEG</span>
-                  </div>
-                  <span className="text-[9px] text-[#8b9bb4] pl-7 group-hover:text-white/70 transition-colors">Compressed premium high-quality image</span>
-                </button>
+            <div className="h-4 w-px bg-white/10" />
 
-                <div className="h-px bg-white/8 my-1.5" />
-
-                {/* Vector Section */}
-                <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-blue-400">Vector & Docs</div>
-                <button
-                  onClick={() => {
-                    setExportDialog({ isOpen: true, format: 'svg', options: defaultExportOptions });
-                    setExportMenuOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-blue-500/10 text-white flex flex-col transition-all border-none cursor-pointer bg-transparent group"
-                >
-                  <div className="flex gap-2.5 items-center">
-                    <span className="material-symbols-outlined text-blue-400 group-hover:scale-110 transition-transform" style={{ fontSize: 18 }}>category</span>
-                    <span className="text-xs font-semibold">Export as SVG</span>
-                  </div>
-                  <span className="text-[9px] text-[#8b9bb4] pl-7 group-hover:text-white/70 transition-colors">Infinite resolution vector format</span>
-                </button>
-
-                <div className="h-px bg-white/8 my-1.5" />
-
-                {/* Code & Backup Section */}
-                <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-emerald-400">Code & Backup</div>
-                <button
-                  onClick={() => {
-                    exportMermaid();
-                    setExportMenuOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-emerald-500/10 text-white flex flex-col transition-all border-none cursor-pointer bg-transparent group"
-                >
-                  <div className="flex gap-2.5 items-center">
-                    <span className="material-symbols-outlined text-emerald-400 group-hover:scale-110 transition-transform" style={{ fontSize: 18 }}>code</span>
-                    <span className="text-xs font-semibold">Export Mermaid</span>
-                  </div>
-                  <span className="text-[9px] text-[#8b9bb4] pl-7 group-hover:text-white/70 transition-colors">Markdown file with raw Mermaid code</span>
-                </button>
-                <button
-                  onClick={() => {
-                    exportJSON();
-                    setExportMenuOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-emerald-500/10 text-white flex flex-col transition-all border-none cursor-pointer bg-transparent group"
-                >
-                  <div className="flex gap-2.5 items-center">
-                    <span className="material-symbols-outlined text-emerald-400 group-hover:scale-110 transition-transform" style={{ fontSize: 18 }}>data_object</span>
-                    <span className="text-xs font-semibold">Export JSON Backup</span>
-                  </div>
-                  <span className="text-[9px] text-[#8b9bb4] pl-7 group-hover:text-white/70 transition-colors">Full studio backup file (nodes + links)</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          <button onClick={handleShare}
-            className="px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 text-blue-200 border transition-all cursor-pointer"
-            style={{ background: 'rgba(59,130,246,0.10)', borderColor: 'rgba(59,130,246,0.30)' }}>
-            {copied ? '✓' : <span className="material-symbols-outlined" style={{ fontSize: 14 }}>share</span>}
-            <span className="hidden xl:inline">{copied ? 'Copied' : 'Share'}</span>
-          </button>
-          </div>
-
-          <div className="h-5 w-px bg-white/10" />
-
-          {/* Canvas Background Picker */}
-          <div className="relative">
-            <button
-              onClick={() => setBgPickerOpen(v => !v)}
-              title="Canvas Background"
-              className="w-8 h-8 rounded-lg hover:bg-white/8 text-[#c6c6cb] hover:text-white flex items-center justify-center transition-colors"
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: 19 }}>wallpaper</span>
-            </button>
-            {bgPickerOpen && (
-              <div
-                className="glass rim absolute right-0 top-full mt-2 border border-white/10 rounded-2xl shadow-2xl z-50 p-3 w-64 popover-entry"
-              >
-                <div className="text-[10px] font-black uppercase tracking-widest text-[#c6c6cb] mb-3 px-1">Canvas Background</div>
-                <div className="grid grid-cols-3 gap-2">
-                  {([
-                    { id: 'dots',      label: 'Dots',      icon: 'grain',          preview: 'radial-gradient(rgba(255,255,255,0.3) 2px, transparent 2px)', bg: '#051424', size: '12px 12px' },
-                    { id: 'grid',      label: 'Grid',      icon: 'grid_on',        preview: 'linear-gradient(rgba(255,255,255,0.18) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.18) 1px,transparent 1px)', bg: '#051424', size: '16px 16px' },
-                    { id: 'lines',     label: 'Lines',     icon: 'format_line_spacing', preview: 'linear-gradient(rgba(255,255,255,0.18) 1px,transparent 1px)', bg: '#051424', size: '100% 14px' },
-                    { id: 'plain',     label: 'Plain',     icon: 'square',         preview: 'none', bg: '#051424', size: 'auto' },
-                    { id: 'white',     label: 'White',     icon: 'light_mode',     preview: 'none', bg: '#f8faff', size: 'auto' },
-                    { id: 'blueprint', label: 'Blueprint', icon: 'architecture',    preview: 'linear-gradient(rgba(100,160,255,0.28) 1px,transparent 1px),linear-gradient(90deg,rgba(100,160,255,0.28) 1px,transparent 1px)', bg: '#0a1e3c', size: '20px 20px' },
-                  ] as { id: CanvasBg; label: string; icon: string; preview: string; bg: string; size: string }[]).map(opt => (
-                    <button
-                      key={opt.id}
-                      onClick={() => { setCanvasBg(opt.id); setBgPickerOpen(false); }}
-                      className={`flex flex-col items-center gap-1.5 rounded-xl border transition-all p-2 ${
-                        canvasBg === opt.id
-                          ? 'border-violet-400 shadow-md'
-                          : 'border-white/8 hover:border-white/20'
-                      }`}
-                      style={{ background: canvasBg === opt.id ? 'rgba(139,92,246,0.15)' : cardBg }}
-                      title={opt.label}
-                    >
-                      {/* Mini preview */}
-                      <div
-                        className="w-full rounded-lg border border-white/10 overflow-hidden"
-                        style={{
-                          height: 36,
-                          backgroundColor: opt.bg,
-                          backgroundImage: opt.preview,
-                          backgroundSize: opt.size,
-                        }}
-                      />
-                      <span className="text-[10px] font-semibold text-[#c6c6cb]">{opt.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="h-5 w-px bg-white/10" />
-
-          {connectingFrom && (
-            <div className="flex items-center text-xs text-white/70 animate-pulse bg-violet-500/20 px-3 py-1.5 rounded-full border border-violet-500/30 font-semibold" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
-              Connecting from <strong className="ml-1">{nodes.find(n => n.id === connectingFrom.nodeId)?.title}</strong> … click or drag to target node
-              <button onClick={() => setConnectingFrom(null)} className="ml-2 text-white/50 hover:text-white transition-colors" title="Cancel connection">✕</button>
+            {/* Zoom indicator */}
+            <div className="flex items-center gap-0.5">
+              <button onClick={() => setZoom(z => Math.max(30, z - 10))}
+                className="w-6 h-6 rounded hover:bg-white/8 text-[#c6c6cb] hover:text-white flex items-center justify-center transition-colors border-none bg-transparent cursor-pointer">
+                <span className="material-symbols-outlined" style={{ fontSize: 15 }}>remove</span>
+              </button>
+              <span className="text-[11px] font-bold text-white w-9 text-center">{zoom}%</span>
+              <button onClick={() => setZoom(z => Math.min(200, z + 10))}
+                className="w-6 h-6 rounded hover:bg-white/8 text-[#c6c6cb] hover:text-white flex items-center justify-center transition-colors border-none bg-transparent cursor-pointer">
+                <span className="material-symbols-outlined" style={{ fontSize: 15 }}>add</span>
+              </button>
             </div>
-          )}
+
+            {/* Mode Segmented Control */}
+            <div className="flex items-center bg-white/5 rounded-lg border border-white/8 p-0.5 select-none">
+              <button
+                onClick={() => setEditorMode('Visual Edit')}
+                className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all border-none cursor-pointer ${
+                  editorMode === 'Visual Edit'
+                    ? 'bg-violet-500 text-white shadow-md shadow-violet-500/20'
+                    : 'text-[#c6c6cb] hover:text-white bg-transparent'
+                }`}
+              >
+                Visual
+              </button>
+              <button
+                onClick={() => setEditorMode('Code')}
+                className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all border-none cursor-pointer ${
+                  editorMode === 'Code'
+                    ? 'bg-violet-500 text-white shadow-md shadow-violet-500/20'
+                    : 'text-[#c6c6cb] hover:text-white bg-transparent'
+                }`}
+              >
+                Code
+              </button>
+            </div>
+
+            <button
+              onClick={() => saveToServer(nodes, connections, undefined, true)}
+              disabled={saving}
+              className="px-2.5 py-1 rounded-lg hover:bg-white/8 transition-colors text-[#c6c6cb] hover:text-white border border-white/10 bg-white/5 cursor-pointer flex items-center gap-1 disabled:opacity-50 text-xs font-semibold"
+              title="Save diagram to cloud and history (Ctrl+S)"
+            >
+              <span className="material-symbols-outlined text-amber-400" style={{ fontSize: 15 }}>cloud_upload</span>
+              <span className="hidden sm:inline">Save</span>
+            </button>
+
+            {/* Export Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setExportMenuOpen(v => !v)}
+                className="px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 text-violet-200 border transition-all cursor-pointer hover:bg-violet-500/20 hover:text-white"
+                style={{ background: 'rgba(139,92,246,0.15)', borderColor: 'rgba(139,92,246,0.35)' }}
+              >
+                <span className="material-symbols-outlined text-sm" style={{ fontSize: 15 }}>download</span>
+                Export
+                <span className="material-symbols-outlined text-[10px] text-white/50" style={{ fontSize: 12 }}>expand_more</span>
+              </button>
+
+              {exportMenuOpen && (
+                <div
+                  className="glass rim absolute right-0 top-full mt-3 border border-white/10 rounded-2xl shadow-2xl z-50 p-2 w-64 popover-entry"
+                  style={{ background: 'rgba(9,19,32,0.96)', backdropFilter: 'blur(20px)' }}
+                >
+                  <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-violet-400">Raster Image</div>
+                  <button
+                    onClick={() => {
+                      setExportDialog({ isOpen: true, format: 'png', options: defaultExportOptions });
+                      setExportMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-violet-500/10 text-white flex flex-col transition-all border-none cursor-pointer bg-transparent group"
+                  >
+                    <div className="flex gap-2.5 items-center">
+                      <span className="material-symbols-outlined text-violet-400 group-hover:scale-110 transition-transform" style={{ fontSize: 18 }}>image</span>
+                      <span className="text-xs font-semibold">Export as PNG</span>
+                    </div>
+                    <span className="text-[9px] text-[#8b9bb4] pl-7 group-hover:text-white/70 transition-colors">HD image with optional transparency</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setExportDialog({ isOpen: true, format: 'jpeg', options: defaultExportOptions });
+                      setExportMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-violet-500/10 text-white flex flex-col transition-all border-none cursor-pointer bg-transparent group"
+                  >
+                    <div className="flex gap-2.5 items-center">
+                      <span className="material-symbols-outlined text-violet-400 group-hover:scale-110 transition-transform" style={{ fontSize: 18 }}>photo</span>
+                      <span className="text-xs font-semibold">Export as JPEG</span>
+                    </div>
+                    <span className="text-[9px] text-[#8b9bb4] pl-7 group-hover:text-white/70 transition-colors">Compressed premium high-quality image</span>
+                  </button>
+
+                  <div className="h-px bg-white/8 my-1.5" />
+
+                  <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-blue-400">Vector & Docs</div>
+                  <button
+                    onClick={() => {
+                      setExportDialog({ isOpen: true, format: 'svg', options: defaultExportOptions });
+                      setExportMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-blue-500/10 text-white flex flex-col transition-all border-none cursor-pointer bg-transparent group"
+                  >
+                    <div className="flex gap-2.5 items-center">
+                      <span className="material-symbols-outlined text-blue-400 group-hover:scale-110 transition-transform" style={{ fontSize: 18 }}>category</span>
+                      <span className="text-xs font-semibold">Export as SVG</span>
+                    </div>
+                    <span className="text-[9px] text-[#8b9bb4] pl-7 group-hover:text-white/70 transition-colors">Infinite resolution vector format</span>
+                  </button>
+
+                  <div className="h-px bg-white/8 my-1.5" />
+
+                  <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-emerald-400">Code & Backup</div>
+                  <button
+                    onClick={() => {
+                      exportMermaid();
+                      setExportMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-emerald-500/10 text-white flex flex-col transition-all border-none cursor-pointer bg-transparent group"
+                  >
+                    <div className="flex gap-2.5 items-center">
+                      <span className="material-symbols-outlined text-emerald-400 group-hover:scale-110 transition-transform" style={{ fontSize: 18 }}>code</span>
+                      <span className="text-xs font-semibold">Export Mermaid</span>
+                    </div>
+                    <span className="text-[9px] text-[#8b9bb4] pl-7 group-hover:text-white/70 transition-colors">Markdown file with raw Mermaid code</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      exportJSON();
+                      setExportMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-emerald-500/10 text-white flex flex-col transition-all border-none cursor-pointer bg-transparent group"
+                  >
+                    <div className="flex gap-2.5 items-center">
+                      <span className="material-symbols-outlined text-emerald-400 group-hover:scale-110 transition-transform" style={{ fontSize: 18 }}>data_object</span>
+                      <span className="text-xs font-semibold">Export JSON Backup</span>
+                    </div>
+                    <span className="text-[9px] text-[#8b9bb4] pl-7 group-hover:text-white/70 transition-colors">Full studio backup file (nodes + links)</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Share Button */}
+            <button onClick={handleShare}
+              className="px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 text-blue-200 border transition-all cursor-pointer hover:bg-blue-500/20 hover:text-white"
+              style={{ background: 'rgba(59,130,246,0.15)', borderColor: 'rgba(59,130,246,0.35)' }}>
+              {copied ? '✓' : <span className="material-symbols-outlined" style={{ fontSize: 15 }}>share</span>}
+              <span className="inline">{copied ? 'Copied' : 'Share'}</span>
+            </button>
+
+            <div className="h-4 w-px bg-white/10" />
+
+            {/* Canvas Background Grid Picker */}
+            <div className="relative">
+              <button
+                onClick={() => setBgPickerOpen(v => !v)}
+                title="Canvas Background Grid Style"
+                className="px-2 py-1 rounded-lg hover:bg-white/8 text-[#c6c6cb] hover:text-white flex items-center gap-1 transition-colors border border-white/10 bg-white/5 cursor-pointer text-xs font-semibold"
+              >
+                <span className="material-symbols-outlined text-emerald-400" style={{ fontSize: 16 }}>grid_on</span>
+                <span className="capitalize hidden sm:inline">{canvasBg}</span>
+                <span className="material-symbols-outlined text-[10px] text-white/50" style={{ fontSize: 12 }}>expand_more</span>
+              </button>
+              {bgPickerOpen && (
+                <div
+                  className="glass rim absolute right-0 top-full mt-2 border border-white/10 rounded-2xl shadow-2xl z-50 p-3 w-64 popover-entry"
+                  style={{ background: 'rgba(9,19,32,0.96)', backdropFilter: 'blur(20px)' }}
+                >
+                  <div className="text-[10px] font-black uppercase tracking-widest text-[#c6c6cb] mb-3 px-1">Canvas Background Grid</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      { id: 'dots',      label: 'Dots',      icon: 'grain',          preview: 'radial-gradient(rgba(255,255,255,0.3) 2px, transparent 2px)', bg: '#051424', size: '12px 12px' },
+                      { id: 'grid',      label: 'Grid',      icon: 'grid_on',        preview: 'linear-gradient(rgba(255,255,255,0.18) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.18) 1px,transparent 1px)', bg: '#051424', size: '16px 16px' },
+                      { id: 'lines',     label: 'Lines',     icon: 'format_line_spacing', preview: 'linear-gradient(rgba(255,255,255,0.18) 1px,transparent 1px)', bg: '#051424', size: '100% 14px' },
+                      { id: 'plain',     label: 'Plain',     icon: 'square',         preview: 'none', bg: '#051424', size: 'auto' },
+                      { id: 'white',     label: 'White',     icon: 'light_mode',     preview: 'none', bg: '#f8faff', size: 'auto' },
+                      { id: 'blueprint', label: 'Blueprint', icon: 'architecture',    preview: 'linear-gradient(rgba(100,160,255,0.28) 1px,transparent 1px),linear-gradient(90deg,rgba(100,160,255,0.28) 1px,transparent 1px)', bg: '#0a1e3c', size: '20px 20px' },
+                    ] as { id: CanvasBg; label: string; icon: string; preview: string; bg: string; size: string }[]).map(opt => (
+                      <button
+                        key={opt.id}
+                        onClick={() => { setCanvasBg(opt.id); setBgPickerOpen(false); }}
+                        className={`flex flex-col items-center gap-1.5 rounded-xl border transition-all p-2 cursor-pointer ${
+                          canvasBg === opt.id
+                            ? 'border-violet-400 shadow-md bg-violet-500/20'
+                            : 'border-white/8 hover:border-white/20 bg-transparent'
+                        }`}
+                        title={opt.label}
+                      >
+                        <div
+                          className="w-full rounded-lg border border-white/10 overflow-hidden"
+                          style={{
+                            height: 36,
+                            backgroundColor: opt.bg,
+                            backgroundImage: opt.preview,
+                            backgroundSize: opt.size,
+                          }}
+                        />
+                        <span className="text-[10px] font-semibold text-[#c6c6cb]">{opt.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {connectingFrom && (
+              <div className="flex items-center text-xs text-white/70 animate-pulse bg-violet-500/20 px-3 py-1.5 rounded-full border border-violet-500/30 font-semibold" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
+                Connecting from <strong className="ml-1">{nodes.find(n => n.id === connectingFrom.nodeId)?.title}</strong> … click or drag to target node
+                <button onClick={() => setConnectingFrom(null)} className="ml-2 text-white/50 hover:text-white transition-colors cursor-pointer border-none bg-transparent" title="Cancel connection">✕</button>
+              </div>
+            )}
           </nav>
 
 
