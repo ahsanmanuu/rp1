@@ -194,8 +194,6 @@ export function useExport({
           width: Math.round(bw),
           height: Math.round(bh),
           filter: filterFn as any,
-          skipFonts: true,
-          fontEmbedCSS: '',
           cacheBust: false,
         };
 
@@ -276,8 +274,6 @@ export function useExport({
           height: Math.round(bh),
           quality: 0.95,
           filter: filterFn as any,
-          skipFonts: true,
-          fontEmbedCSS: '',
           cacheBust: false,
         };
 
@@ -352,8 +348,6 @@ export function useExport({
           width: Math.round(bw),
           height: Math.round(bh),
           filter: filterFn as any,
-          skipFonts: true,
-          fontEmbedCSS: '',
           cacheBust: false,
         };
 
