@@ -126,33 +126,49 @@ export function useExport({
 
     try {
       const bounds = getNodeBounds();
-      const w = bounds ? bounds.maxX - bounds.minX + opts.padding * 2 : 2400;
-      const h = bounds ? bounds.maxY - bounds.minY + opts.padding * 2 : 1600;
-      const tx = bounds ? -(bounds.minX - opts.padding) : 0;
-      const ty = bounds ? -(bounds.minY - opts.padding) : 0;
-      const bgColors: Record<string, string> = { white: '#f8faff', blueprint: '#0a1e3c', grid: '#051424' };
+      const pad = opts.padding || 60;
+      const bw = bounds ? bounds.maxX - bounds.minX + pad * 2 : 1200;
+      const bh = bounds ? bounds.maxY - bounds.minY + pad * 2 : 800;
+      const tx = bounds ? -(bounds.minX - pad) : 0;
+      const ty = bounds ? -(bounds.minY - pad) : 0;
+      const bgColors: Record<string, string> = { white: '#f8faff', blueprint: '#0a1e3c', grid: '#051424', transparent: 'transparent' };
       const bg = opts.background === 'current' ? undefined : bgColors[opts.background];
+
+      const exportStyle: Record<string, string> = {
+        transform: `translate(${tx}px, ${ty}px) scale(1)`,
+        transformOrigin: '0 0',
+        width: `${Math.round(bw)}px`,
+        height: `${Math.round(bh)}px`,
+      };
+
+      const filterFn = (node: HTMLElement) => {
+        if (node.classList && (
+          node.classList.contains('diagram-controls') ||
+          node.classList.contains('popover-entry')
+        )) {
+          return false;
+        }
+        return true;
+      };
 
       let dataUrl: string;
       try {
-        dataUrl = await withInlinedStyles(async () => {
-          return toPng(stage, {
-            backgroundColor: bg,
-            pixelRatio: opts.resolution,
-            width: Math.round(w),
-            height: Math.round(h),
-            fetchRequestInit: { cache: 'force-cache' },
-            style: { transform: `translate(${tx}px, ${ty}px) scale(${zoom / 100})` },
-          });
+        dataUrl = await toPng(stage, {
+          backgroundColor: bg,
+          pixelRatio: opts.resolution || 2,
+          width: Math.round(bw),
+          height: Math.round(bh),
+          filter: filterFn as any,
+          style: exportStyle,
         });
       } catch {
-        // Fallback without inlined styles if CSS rules traversal is blocked by CORS
         dataUrl = await toPng(stage, {
           backgroundColor: bg || '#051424',
-          pixelRatio: opts.resolution,
-          width: Math.round(w),
-          height: Math.round(h),
-          style: { transform: `translate(${tx}px, ${ty}px) scale(${zoom / 100})` },
+          pixelRatio: 1,
+          width: Math.round(bw),
+          height: Math.round(bh),
+          filter: filterFn as any,
+          style: exportStyle,
         });
       }
 
@@ -163,11 +179,11 @@ export function useExport({
       toast.success("PNG exported successfully!", { id: toastId });
     } catch (err: any) {
       console.error('Failed to export PNG', err);
-      toast.error("Export failed: " + (err?.message || "Render timeout"), { id: toastId });
+      toast.error("Export failed: " + (err?.message || "Render error"), { id: toastId });
     } finally {
       setIsExporting(false);
     }
-  }, [getStageElement, getNodeBounds, zoom, multiSelect, setSelectedNode, setSelectedConnId]);
+  }, [getStageElement, getNodeBounds, multiSelect, setSelectedNode, setSelectedConnId]);
 
   const doExportJPEG = useCallback(async (opts: ExportOptions) => {
     const stage = getStageElement();
@@ -187,35 +203,52 @@ export function useExport({
 
     try {
       const bounds = getNodeBounds();
-      const w = bounds ? bounds.maxX - bounds.minX + opts.padding * 2 : 2400;
-      const h = bounds ? bounds.maxY - bounds.minY + opts.padding * 2 : 1600;
-      const tx = bounds ? -(bounds.minX - opts.padding) : 0;
-      const ty = bounds ? -(bounds.minY - opts.padding) : 0;
+      const pad = opts.padding || 60;
+      const bw = bounds ? bounds.maxX - bounds.minX + pad * 2 : 1200;
+      const bh = bounds ? bounds.maxY - bounds.minY + pad * 2 : 800;
+      const tx = bounds ? -(bounds.minX - pad) : 0;
+      const ty = bounds ? -(bounds.minY - pad) : 0;
       const bgColors: Record<string, string> = { white: '#f8faff', blueprint: '#0a1e3c', grid: '#051424' };
-      let bg = opts.background === 'current' ? undefined : bgColors[opts.background];
+      let bg = opts.background === 'current' ? '#051424' : bgColors[opts.background] || '#051424';
       if (opts.background === 'transparent') bg = '#ffffff';
+
+      const exportStyle: Record<string, string> = {
+        transform: `translate(${tx}px, ${ty}px) scale(1)`,
+        transformOrigin: '0 0',
+        width: `${Math.round(bw)}px`,
+        height: `${Math.round(bh)}px`,
+      };
+
+      const filterFn = (node: HTMLElement) => {
+        if (node.classList && (
+          node.classList.contains('diagram-controls') ||
+          node.classList.contains('popover-entry')
+        )) {
+          return false;
+        }
+        return true;
+      };
 
       let dataUrl: string;
       try {
-        dataUrl = await withInlinedStyles(async () => {
-          return toJpeg(stage, {
-            backgroundColor: bg || '#051424',
-            pixelRatio: opts.resolution,
-            width: Math.round(w),
-            height: Math.round(h),
-            quality: 0.95,
-            fetchRequestInit: { cache: 'force-cache' },
-            style: { transform: `translate(${tx}px, ${ty}px) scale(${zoom / 100})` },
-          });
+        dataUrl = await toJpeg(stage, {
+          backgroundColor: bg,
+          pixelRatio: opts.resolution || 2,
+          width: Math.round(bw),
+          height: Math.round(bh),
+          quality: 0.95,
+          filter: filterFn as any,
+          style: exportStyle,
         });
       } catch {
         dataUrl = await toJpeg(stage, {
-          backgroundColor: bg || '#051424',
-          pixelRatio: opts.resolution,
-          width: Math.round(w),
-          height: Math.round(h),
+          backgroundColor: bg,
+          pixelRatio: 1,
+          width: Math.round(bw),
+          height: Math.round(bh),
           quality: 0.95,
-          style: { transform: `translate(${tx}px, ${ty}px) scale(${zoom / 100})` },
+          filter: filterFn as any,
+          style: exportStyle,
         });
       }
 
@@ -226,11 +259,11 @@ export function useExport({
       toast.success("JPEG exported successfully!", { id: toastId });
     } catch (err: any) {
       console.error('Failed to export JPEG', err);
-      toast.error("Export failed: " + (err?.message || "Render timeout"), { id: toastId });
+      toast.error("Export failed: " + (err?.message || "Render error"), { id: toastId });
     } finally {
       setIsExporting(false);
     }
-  }, [getStageElement, getNodeBounds, zoom, multiSelect, setSelectedNode, setSelectedConnId]);
+  }, [getStageElement, getNodeBounds, multiSelect, setSelectedNode, setSelectedConnId]);
 
   const doExportSVG = useCallback(async (opts: ExportOptions) => {
     const stage = getStageElement();
@@ -250,28 +283,45 @@ export function useExport({
 
     try {
       const bounds = getNodeBounds();
-      const w = bounds ? bounds.maxX - bounds.minX + opts.padding * 2 : 2400;
-      const h = bounds ? bounds.maxY - bounds.minY + opts.padding * 2 : 1600;
-      const tx = bounds ? -(bounds.minX - opts.padding) : 0;
-      const ty = bounds ? -(bounds.minY - opts.padding) : 0;
+      const pad = opts.padding || 60;
+      const bw = bounds ? bounds.maxX - bounds.minX + pad * 2 : 1200;
+      const bh = bounds ? bounds.maxY - bounds.minY + pad * 2 : 800;
+      const tx = bounds ? -(bounds.minX - pad) : 0;
+      const ty = bounds ? -(bounds.minY - pad) : 0;
+
+      const exportStyle: Record<string, string> = {
+        transform: `translate(${tx}px, ${ty}px) scale(1)`,
+        transformOrigin: '0 0',
+        width: `${Math.round(bw)}px`,
+        height: `${Math.round(bh)}px`,
+      };
+
+      const filterFn = (node: HTMLElement) => {
+        if (node.classList && (
+          node.classList.contains('diagram-controls') ||
+          node.classList.contains('popover-entry')
+        )) {
+          return false;
+        }
+        return true;
+      };
 
       let dataUrl: string;
       try {
-        dataUrl = await withInlinedStyles(async () => {
-          return toSvg(stage, {
-            pixelRatio: 1,
-            width: Math.round(w),
-            height: Math.round(h),
-            fetchRequestInit: { cache: 'force-cache' },
-            style: { transform: `translate(${tx}px, ${ty}px) scale(${zoom / 100})` },
-          });
+        dataUrl = await toSvg(stage, {
+          pixelRatio: 1,
+          width: Math.round(bw),
+          height: Math.round(bh),
+          filter: filterFn as any,
+          style: exportStyle,
         });
       } catch {
         dataUrl = await toSvg(stage, {
           pixelRatio: 1,
-          width: Math.round(w),
-          height: Math.round(h),
-          style: { transform: `translate(${tx}px, ${ty}px) scale(${zoom / 100})` },
+          width: Math.round(bw),
+          height: Math.round(bh),
+          filter: filterFn as any,
+          style: exportStyle,
         });
       }
 
@@ -282,11 +332,11 @@ export function useExport({
       toast.success("SVG vector exported successfully!", { id: toastId });
     } catch (err: any) {
       console.error('Failed to export SVG', err);
-      toast.error("SVG export failed: " + (err?.message || "Render timeout"), { id: toastId });
+      toast.error("SVG export failed: " + (err?.message || "Render error"), { id: toastId });
     } finally {
       setIsExporting(false);
     }
-  }, [getStageElement, getNodeBounds, zoom, multiSelect, setSelectedNode, setSelectedConnId]);
+  }, [getStageElement, getNodeBounds, multiSelect, setSelectedNode, setSelectedConnId]);
 
   const exportMermaid = useCallback(() => {
     try {
