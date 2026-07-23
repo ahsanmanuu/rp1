@@ -17,7 +17,7 @@ import { useExport } from '@/hooks/useExport';
 import { useCanvasTool } from '@/hooks/useCanvasTool';
 import { parseMermaidRegex } from '@/lib/diagramParsers';
 import { DIAGRAM_TEMPLATES, DiagramTemplate } from '@/lib/diagramTemplates';
-import type { NodeColor, NodeType, ConnType, Arrowhead, DiagramNode, DiagramConnection, EditorMode } from '@/lib/diagramTypes';
+import type { NodeColor, NodeType, ConnType, Arrowhead, DiagramNode, DiagramConnection, EditorMode, PortSide } from '@/lib/diagramTypes';
 import ProjectLimitModal from '@/components/ProjectLimitModal';
 import { useProjectLimit } from '@/hooks/useProjectLimit';
 import ThemeSwitcher from '@/components/scholarly-editor/ThemeSwitcher';
@@ -139,6 +139,54 @@ function mermaidToNodes(code: string): { nodes: DiagramNode[]; connections: Diag
 
 // ─── SVG Connection path builder ───────────────────────────────────────────────
 
+// ─── Precision 16 Connection Ports Definition ────────────────────────────────────
+
+const ALL_PORTS: { id: PortSide; label: string; xPct: number; yPct: number }[] = [
+  { id: 't',  label: 'Top Center',       xPct: 0.5,  yPct: 0 },
+  { id: 't1', label: 'Top Left 25%',     xPct: 0.25, yPct: 0 },
+  { id: 't2', label: 'Top Right 75%',    xPct: 0.75, yPct: 0 },
+  { id: 'tr', label: 'Top Right Corner', xPct: 1,    yPct: 0 },
+  { id: 'r1', label: 'Right Top 25%',    xPct: 1,    yPct: 0.25 },
+  { id: 'r',  label: 'Right Center',     xPct: 1,    yPct: 0.5 },
+  { id: 'r2', label: 'Right Bottom 75%', xPct: 1,    yPct: 0.75 },
+  { id: 'br', label: 'Bottom Right',     xPct: 1,    yPct: 1 },
+  { id: 'b2', label: 'Bottom Right 75%', xPct: 0.75, yPct: 1 },
+  { id: 'b',  label: 'Bottom Center',    xPct: 0.5,  yPct: 1 },
+  { id: 'b1', label: 'Bottom Left 25%',  xPct: 0.25, yPct: 1 },
+  { id: 'bl', label: 'Bottom Left',      xPct: 0,    yPct: 1 },
+  { id: 'l2', label: 'Left Bottom 75%',  xPct: 0,    yPct: 0.75 },
+  { id: 'l',  label: 'Left Center',      xPct: 0,    yPct: 0.5 },
+  { id: 'l1', label: 'Left Top 25%',     xPct: 0,    yPct: 0.25 },
+  { id: 'tl', label: 'Top Left Corner',  xPct: 0,    yPct: 0 },
+];
+
+function getNodePortCoords(node: DiagramNode, p?: PortSide) {
+  const x = node.x;
+  const y = node.y;
+  const w = node.width;
+  const h = node.height;
+
+  switch (p) {
+    case 't':  return { x: x + w / 2, y: y, dir: 'T' };
+    case 'b':  return { x: x + w / 2, y: y + h, dir: 'B' };
+    case 'l':  return { x: x, y: y + h / 2, dir: 'L' };
+    case 'r':  return { x: x + w, y: y + h / 2, dir: 'R' };
+    case 'tl': return { x: x, y: y, dir: 'T' };
+    case 'tr': return { x: x + w, y: y, dir: 'T' };
+    case 'bl': return { x: x, y: y + h, dir: 'B' };
+    case 'br': return { x: x + w, y: y + h, dir: 'B' };
+    case 't1': return { x: x + w * 0.25, y: y, dir: 'T' };
+    case 't2': return { x: x + w * 0.75, y: y, dir: 'T' };
+    case 'b1': return { x: x + w * 0.25, y: y + h, dir: 'B' };
+    case 'b2': return { x: x + w * 0.75, y: y + h, dir: 'B' };
+    case 'l1': return { x: x, y: y + h * 0.25, dir: 'L' };
+    case 'l2': return { x: x, y: y + h * 0.75, dir: 'L' };
+    case 'r1': return { x: x + w, y: y + h * 0.25, dir: 'R' };
+    case 'r2': return { x: x + w, y: y + h * 0.75, dir: 'R' };
+    default:   return { x: x + w / 2, y: y + h / 2, dir: 'C' };
+  }
+}
+
 function getBestPorts(from: DiagramNode, to: DiagramNode) {
   if (from.id === to.id) {
     return {
@@ -147,66 +195,13 @@ function getBestPorts(from: DiagramNode, to: DiagramNode) {
     };
   }
 
-  // Calculate offsets to determine dominant relative direction
-  const isRight = to.x >= from.x + from.width - 20;
-  const isLeft = to.x + to.width <= from.x + 20;
-  const isBelow = to.y >= from.y + from.height - 20;
-  const isAbove = to.y + to.height <= from.y + 20;
+  const portIds: PortSide[] = ['t', 'r', 'b', 'l', 'tl', 'tr', 'bl', 'br', 't1', 't2', 'b1', 'b2', 'l1', 'l2', 'r1', 'r2'];
+  const fromPorts = portIds.map(p => ({ ...getNodePortCoords(from, p), portId: p }));
+  const toPorts = portIds.map(p => ({ ...getNodePortCoords(to, p), portId: p }));
 
-  // Ports list for the source node
-  const rightPort  = { x: from.x + from.width, y: from.y + from.height / 2, dir: 'R' };
-  const leftPort   = { x: from.x, y: from.y + from.height / 2, dir: 'L' };
-  const bottomPort = { x: from.x + from.width / 2, y: from.y + from.height, dir: 'B' };
-  const topPort    = { x: from.x + from.width / 2, y: from.y, dir: 'T' };
-
-  // Ports list for the target node
-  const toRightPort  = { x: to.x + to.width, y: to.y + to.height / 2, dir: 'R' };
-  const toLeftPort   = { x: to.x, y: to.y + to.height / 2, dir: 'L' };
-  const toBottomPort = { x: to.x + to.width / 2, y: to.y + to.height, dir: 'B' };
-  const toTopPort    = { x: to.x + to.width / 2, y: to.y, dir: 'T' };
-
-  // 1. Clean horizontal & vertical layouts
-  if (isRight && !isBelow && !isAbove) {
-    return { fromPort: rightPort, toPort: toLeftPort };
-  }
-  if (isLeft && !isBelow && !isAbove) {
-    return { fromPort: leftPort, toPort: toRightPort };
-  }
-  if (isBelow && !isRight && !isLeft) {
-    return { fromPort: bottomPort, toPort: toTopPort };
-  }
-  if (isAbove && !isRight && !isLeft) {
-    return { fromPort: topPort, toPort: toBottomPort };
-  }
-
-  // 2. Diagonal layouts: choose the dominant axis to keep the connection straight and clean
-  if (isRight && isBelow) {
-    const dx = to.x - (from.x + from.width);
-    const dy = to.y - (from.y + from.height);
-    return dx > dy ? { fromPort: rightPort, toPort: toLeftPort } : { fromPort: bottomPort, toPort: toTopPort };
-  }
-  if (isRight && isAbove) {
-    const dx = to.x - (from.x + from.width);
-    const dy = from.y - (to.y + to.height);
-    return dx > dy ? { fromPort: rightPort, toPort: toLeftPort } : { fromPort: topPort, toPort: toBottomPort };
-  }
-  if (isLeft && isBelow) {
-    const dx = from.x - (to.x + to.width);
-    const dy = to.y - (from.y + from.height);
-    return dx > dy ? { fromPort: leftPort, toPort: toRightPort } : { fromPort: bottomPort, toPort: toTopPort };
-  }
-  if (isLeft && isAbove) {
-    const dx = from.x - (to.x + to.width);
-    const dy = from.y - (to.y + to.height);
-    return dx > dy ? { fromPort: leftPort, toPort: toRightPort } : { fromPort: topPort, toPort: toBottomPort };
-  }
-
-  // 3. Fallback: Euclidean minimum distance
-  const fromPorts = [rightPort, leftPort, bottomPort, topPort];
-  const toPorts = [toRightPort, toLeftPort, toBottomPort, toTopPort];
   let minDistance = Infinity;
-  let bestFrom = rightPort;
-  let bestTo = toLeftPort;
+  let bestFrom = fromPorts[1]; // default 'r'
+  let bestTo = toPorts[3];   // default 'l'
 
   for (const fp of fromPorts) {
     for (const tp of toPorts) {
@@ -259,8 +254,8 @@ function buildPath(
   type: ConnType,
   offset: number = 0,
   smartRouting: boolean = true,
-  explicitFromPort?: 't'|'r'|'b'|'l',
-  explicitToPort?: 't'|'r'|'b'|'l',
+  explicitFromPort?: PortSide,
+  explicitToPort?: PortSide,
   offsetY: number = 0
 ): string {
   if (from.id === to.id) {
@@ -272,29 +267,17 @@ function buildPath(
 
   let fx: number, fy: number, tx: number, ty: number, fromDir: string, toDir: string;
 
-  if (smartRouting) {
+  if (explicitFromPort || explicitToPort || !smartRouting) {
+    const fp = getNodePortCoords(from, explicitFromPort);
+    const tp = getNodePortCoords(to, explicitToPort);
+    fx = fp.x; fy = fp.y; fromDir = fp.dir;
+    tx = tp.x; ty = tp.y; toDir = tp.dir;
+    if (fromDir === 'C') fromDir = Math.abs(tx - fx) > Math.abs(ty - fy) ? (tx > fx ? 'R' : 'L') : (ty > fy ? 'B' : 'T');
+    if (toDir === 'C') toDir = Math.abs(fx - tx) > Math.abs(fy - ty) ? (fx > tx ? 'R' : 'L') : (fy > ty ? 'B' : 'T');
+  } else {
     const { fromPort, toPort } = getBestPorts(from, to);
     fx = fromPort.x; fy = fromPort.y; fromDir = fromPort.dir;
     tx = toPort.x; ty = toPort.y; toDir = toPort.dir;
-  } else {
-    const getPortCoords = (node: DiagramNode, p?: 't'|'r'|'b'|'l') => {
-      if (p === 't') return { x: node.x + node.width / 2, y: node.y, dir: 'T' };
-      if (p === 'b') return { x: node.x + node.width / 2, y: node.y + node.height, dir: 'B' };
-      if (p === 'l') return { x: node.x, y: node.y + node.height / 2, dir: 'L' };
-      if (p === 'r') return { x: node.x + node.width, y: node.y + node.height / 2, dir: 'R' };
-      return { x: node.x + node.width / 2, y: node.y + node.height / 2, dir: 'C' };
-    };
-    const fp = getPortCoords(from, explicitFromPort);
-    const tp = getPortCoords(to, explicitToPort);
-    fx = fp.x; fy = fp.y; fromDir = fp.dir;
-    tx = tp.x; ty = tp.y; toDir = tp.dir;
-    
-    if (fromDir === 'C') {
-      fromDir = Math.abs(tx - fx) > Math.abs(ty - fy) ? (tx > fx ? 'R' : 'L') : (ty > fy ? 'B' : 'T');
-    }
-    if (toDir === 'C') {
-      toDir = Math.abs(fx - tx) > Math.abs(fy - ty) ? (fx > tx ? 'R' : 'L') : (fy > ty ? 'B' : 'T');
-    }
   }
 
   if (type === 'Straight') {
@@ -555,7 +538,7 @@ function DiagramStudio() {
   const [selectedNode, setSelectedNode]   = useState<string | null>(null);
   const [draggingId, setDraggingId]       = useState<string | null>(null);
   const [dragOffset, setDragOffset]       = useState<{ x: number, y: number } | Record<string, { x: number, y: number }>>({ x: 0, y: 0 });
-  const [connectingFrom, setConnectingFrom] = useState<{ nodeId: string, portId: 't'|'r'|'b'|'l' } | null>(null);
+  const [connectingFrom, setConnectingFrom] = useState<{ nodeId: string, portId: PortSide } | null>(null);
   const [zoom, setZoom]                   = useState(100);
   const [panOffset, setPanOffset]         = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning]         = useState(false);
@@ -3550,43 +3533,57 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                     </>
                   )}
 
-                  {/* Invisible Connection Edge Strips */}
-                  {[
-                    { id: 't', cls: 'top-[-10px] left-[10px] right-[10px] h-[15px]' },
-                    { id: 'r', cls: 'right-[-10px] top-[10px] bottom-[10px] w-[15px]' },
-                    { id: 'b', cls: 'bottom-[-10px] left-[10px] right-[10px] h-[15px]' },
-                    { id: 'l', cls: 'left-[-10px] top-[10px] bottom-[10px] w-[15px]' }
-                  ].map(port => (
-                    <div
-                      key={port.id}
-                      className={`absolute ${port.cls} cursor-crosshair z-30 bg-transparent transition-colors ${connectingFrom?.nodeId ? 'bg-violet-400/20' : ''}`}
-                      title={connectingFrom?.nodeId ? "Connect to here" : "Connect from here"}
-                      onMouseDown={e => { e.stopPropagation(); onPortClick(e, node.id, port.id as 't'|'r'|'b'|'l'); }}
-                      onMouseUp={e => {
-                        if (connectingFrom && connectingFrom.nodeId !== node.id) {
+                  {/* Visible Interactive Precision 16 Connection Ports */}
+                  {ALL_PORTS.map(port => {
+                    const isTargetingThisPort = connectingFrom && connectingFrom.nodeId !== node.id;
+                    const isSourcePort = connectingFrom && connectingFrom.nodeId === node.id && connectingFrom.portId === port.id;
+
+                    return (
+                      <div
+                        key={port.id}
+                        style={{
+                          left: `${port.xPct * 100}%`,
+                          top: `${port.yPct * 100}%`,
+                          transform: 'translate(-50%, -50%)',
+                        }}
+                        className={`absolute w-3 h-3 rounded-full cursor-crosshair z-40 transition-all border-2 ${
+                          isSourcePort
+                            ? 'bg-emerald-400 border-white scale-150 ring-4 ring-emerald-400/40 shadow-lg'
+                            : isTargetingThisPort
+                            ? 'bg-violet-400 border-white scale-125 ring-2 ring-violet-400/50 shadow-md animate-pulse'
+                            : 'bg-violet-500 border-white opacity-0 group-hover:opacity-100 hover:scale-150 hover:bg-cyan-400 hover:ring-2 hover:ring-cyan-300 shadow'
+                        }`}
+                        title={connectingFrom?.nodeId ? `Connect to ${port.label}` : `Connect from ${port.label}`}
+                        onMouseDown={e => {
                           e.stopPropagation();
-                          pushHistory(nodes, connections);
-                          const newConn: DiagramConnection = {
-                            id: `conn_${Date.now()}`,
-                            from: connectingFrom.nodeId,
-                            to: node.id,
-                            fromPort: connectingFrom.portId,
-                            toPort: port.id as 't'|'r'|'b'|'l',
-                            type: activeConnType,
-                            arrowhead: activeArrow,
-                            lineStyle: activeLineStyle,
-                            arrowDirection: activeArrowDirection,
-                          };
-                          setConnections(prev => {
-                            const next = [...prev, newConn];
-                            debouncedSave(nodes, next);
-                            return next;
-                          });
-                          setConnectingFrom(null);
-                        }
-                      }}
-                    />
-                  ))}
+                          setConnectingFrom({ nodeId: node.id, portId: port.id });
+                        }}
+                        onMouseUp={e => {
+                          if (connectingFrom && connectingFrom.nodeId !== node.id) {
+                            e.stopPropagation();
+                            pushHistory(nodes, connections);
+                            const newConn: DiagramConnection = {
+                              id: `conn_${Date.now()}`,
+                              from: connectingFrom.nodeId,
+                              to: node.id,
+                              fromPort: connectingFrom.portId,
+                              toPort: port.id,
+                              type: activeConnType,
+                              arrowhead: activeArrow,
+                              lineStyle: activeLineStyle,
+                              arrowDirection: activeArrowDirection,
+                            };
+                            setConnections(prev => {
+                              const next = [...prev, newConn];
+                              debouncedSave(nodes, next);
+                              return next;
+                            });
+                            setConnectingFrom(null);
+                          }
+                        }}
+                      />
+                    );
+                  })}
 
                   {/* Resize handles when selected */}
                   {isSelected && (
@@ -3627,13 +3624,20 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
           {codeFreeMode && (selectedNode || selectedConnId) && (
             <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-3 py-2 rounded-2xl border border-white/10 shadow-2xl"
               style={{ background: 'rgba(12,24,40,0.95)' }}>
-              {/* Color palette */}
+              {/* Color palette & custom fill picker */}
               <div className="flex items-center gap-1">
                 {(Object.entries(DARK_COLOR_MAP) as [NodeColor, typeof DARK_COLOR_MAP[NodeColor]][]).map(([c, v]) => (
                   <button key={c} onClick={() => { if (selectedNode) updateNode(selectedNode, { color: c, customFill: undefined }); }}
                     className="w-5 h-5 rounded-full border-2 transition-transform hover:scale-125"
-                    style={{ background: v.bg, borderColor: v.border }} title={c} />
+                    style={{ background: v.bg, borderColor: v.border }} title={`${c} tint`} />
                 ))}
+                <input
+                  type="color"
+                  value={selected?.customFill || '#3b82f6'}
+                  onChange={e => { if (selectedNode) updateNode(selectedNode, { customFill: e.target.value }); }}
+                  className="w-5 h-5 cursor-pointer rounded-full p-0 border-2 border-white hover:scale-125 transition-transform"
+                  title="Custom Fill Color"
+                />
               </div>
               <div className="w-px h-6 bg-white/10" />
               {/* Font size */}
@@ -3845,20 +3849,61 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
               {selected && (
                 <div className="space-y-3">
                   <div>
-                    <span className="block font-black text-[10px] text-[#c6c6cb] uppercase tracking-wider mb-2">Fill Color</span>
-                    <div className="flex gap-1.5 flex-wrap items-center">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="block font-black text-[10px] text-[#c6c6cb] uppercase tracking-wider">Fill Color</span>
+                      {selected.customFill && (
+                        <button
+                          onClick={() => updateNode(selected.id, { customFill: undefined })}
+                          className="text-[9px] text-violet-400 hover:text-violet-300 transition-colors font-bold"
+                        >
+                          Reset to Theme
+                        </button>
+                      )}
+                    </div>
+                    {/* Theme Tint Swatches */}
+                    <div className="text-[9px] text-[#8b9bb4] mb-1 font-semibold">Theme Tints:</div>
+                    <div className="flex gap-1.5 flex-wrap items-center mb-2.5">
                       {(Object.entries(DARK_COLOR_MAP) as [NodeColor, typeof DARK_COLOR_MAP[NodeColor]][]).map(([c, v]) => (
                         <button key={c} onClick={() => updateNode(selected.id, { color: c, customFill: undefined })}
-                          title={c.charAt(0).toUpperCase() + c.slice(1)}
-                          className={`w-7 h-7 rounded-full border-2 transition-all ${selected.color === c && !selected.customFill ? 'ring-2 ring-white scale-110' : 'hover:scale-110'}`}
+                          title={`${c.charAt(0).toUpperCase() + c.slice(1)} Tint`}
+                          className={`w-6 h-6 rounded-full border-2 transition-all ${selected.color === c && !selected.customFill ? 'ring-2 ring-white scale-110' : 'hover:scale-110'}`}
                           style={{ background: v.bg, borderColor: v.border, boxShadow: selected.color === c && !selected.customFill ? `0 0 12px ${v.glow}` : 'none' }} />
                       ))}
-                      <div className="flex flex-col items-center justify-center relative group">
-                        <input type="color" value={selected.customFill || '#ffffff'}
+                    </div>
+                    {/* Solid Fills & Custom Colors */}
+                    <div className="text-[9px] text-[#8b9bb4] mb-1 font-semibold">Solid & Custom Fills:</div>
+                    <div className="flex gap-1.5 flex-wrap items-center">
+                      {[
+                        { color: '#2563eb', label: 'Solid Blue' },
+                        { color: '#7c3aed', label: 'Solid Violet' },
+                        { color: '#16a34a', label: 'Solid Green' },
+                        { color: '#d97706', label: 'Solid Amber' },
+                        { color: '#e11d48', label: 'Solid Rose' },
+                        { color: '#4f46e5', label: 'Solid Indigo' },
+                        { color: '#1e293b', label: 'Solid Dark' },
+                        { color: '#ffffff', label: 'Solid White' },
+                        { color: 'transparent', label: 'Transparent' },
+                      ].map(preset => (
+                        <button
+                          key={preset.color}
+                          onClick={() => updateNode(selected.id, { customFill: preset.color })}
+                          title={preset.label}
+                          className={`w-6 h-6 rounded-full border-2 transition-all ${selected.customFill === preset.color ? 'ring-2 ring-white scale-110' : 'hover:scale-110'}`}
+                          style={{
+                            background: preset.color === 'transparent' ? 'repeating-conic-gradient(#334155 0% 25%, #0f172a 0% 50%) 50% / 8px 8px' : preset.color,
+                            borderColor: preset.color === '#ffffff' ? '#cbd5e1' : '#64748b'
+                          }}
+                        />
+                      ))}
+                      <div className="flex items-center gap-1.5 relative">
+                        <input
+                          type="color"
+                          value={selected.customFill || '#3b82f6'}
                           onChange={e => updateNode(selected.id, { customFill: e.target.value })}
-                          className={`w-7 h-7 cursor-pointer rounded-full p-0 border-2 ${selected.customFill ? 'ring-2 ring-white scale-110' : 'hover:scale-110'}`}
-                          style={{ background: selected.customFill || 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)', borderColor: selected.customFill || '#64748b' }}
-                          title="Custom Fill Color" />
+                          className={`w-6 h-6 cursor-pointer rounded-full p-0 border-2 ${selected.customFill && !['#2563eb','#7c3aed','#16a34a','#d97706','#e11d48','#4f46e5','#1e293b','#ffffff','transparent'].includes(selected.customFill) ? 'ring-2 ring-white scale-110' : 'hover:scale-110'}`}
+                          style={{ background: selected.customFill || 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)', borderColor: '#ffffff' }}
+                          title="Custom Color Picker"
+                        />
                       </div>
                     </div>
                   </div>

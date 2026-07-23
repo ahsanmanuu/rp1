@@ -5,7 +5,7 @@ export type Arrowhead = 'Arrow' | 'Dot' | 'Diamond' | "Crow's Foot";
 export type EditorMode = 'Code' | 'Visual Edit';
 export type DiagramEngine = 'Mermaid' | 'PlantUML' | 'GraphViz' | 'D2' | 'Excalidraw';
 export type NodeVariant = 'icon' | 'text' | 'shape';
-export type PortSide = 't' | 'r' | 'b' | 'l';
+export type PortSide = 't' | 'r' | 'b' | 'l' | 'tl' | 'tr' | 'bl' | 'br' | 't1' | 't2' | 'b1' | 'b2' | 'l1' | 'l2' | 'r1' | 'r2';
 
 export interface TextStyle {
   color?: string;
