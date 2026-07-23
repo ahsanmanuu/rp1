@@ -57,8 +57,13 @@ export async function GET(req: NextRequest) {
     return response;
   }
 
-  const pb = await getAuthPb();
-  let record = pb.authStore.record;
+  let pb;
+  try {
+    pb = await getAuthPb();
+  } catch (err) {
+    console.warn("[PB-Session API] getAuthPb failed, falling back to DB record");
+  }
+  let record = pb?.authStore?.record;
 
   // Heal/Restore session record from database if PocketBase failed to connect or refresh
   if (!record && sessionRecord.user) {

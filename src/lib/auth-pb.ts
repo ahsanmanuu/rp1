@@ -31,9 +31,13 @@ export async function getAuthPb() {
 
 /** Get the currently authenticated user ID from the cookie, or null. */
 export async function getUserId(): Promise<string | null> {
-  const pb = await getAuthPb();
-  if (!pb.authStore.isValid) return null;
-  return pb.authStore.record?.id || null;
+  try {
+    const pb = await getAuthPb();
+    if (!pb.authStore.isValid) return null;
+    return pb.authStore.record?.id || null;
+  } catch (err) {
+    return null;
+  }
 }
 
 /** Set the auth cookie on the response (call after successful login). */
@@ -79,15 +83,22 @@ export async function getServerSession(): Promise<PbServerSession | null> {
   const token = cookieStore.get(TOKEN_COOKIE)?.value;
   if (!token) return null;
 
-  const pb = await getAuthPb();
-  if (!pb.authStore.isValid || !pb.authStore.record) return null;
+  let pb;
+  try {
+    pb = await getAuthPb();
+  } catch (err) {
+    console.warn("[AUTH] getAuthPb failed in getServerSession, falling back to DB lookup");
+  }
+
+  if (pb && (!pb.authStore.isValid || !pb.authStore.record)) return null;
 
   // Validate session exists in DB
   let sessionRecord = null;
   let dbError = false;
   try {
     sessionRecord = await prisma.userSession.findUnique({
-      where: { sessionToken: token }
+      where: { sessionToken: token },
+      include: { user: true }
     });
   } catch (dbErr) {
     console.error("[AUTH] Database session validation query failed:", dbErr);
@@ -104,12 +115,29 @@ export async function getServerSession(): Promise<PbServerSession | null> {
     return null;
   }
 
-  const record = pb.authStore.record;
+  let record = pb?.authStore?.record;
+  
+  if (!record && sessionRecord?.user) {
+    const dbUser = sessionRecord.user;
+    record = {
+      id: dbUser.id,
+      email: dbUser.email,
+      name: dbUser.name || dbUser.email.split("@")[0] || "",
+      avatar: dbUser.avatar,
+      theme: dbUser.theme || "dark",
+      points: dbUser.points ?? 50,
+      membership: dbUser.membership || "free",
+      role: dbUser.role || "user",
+    } as any;
+  }
+
+  if (!record) return null;
+
   const user: PbSessionUser = {
     id: record.id,
     email: record.email || "",
     name: record.name || record.email?.split("@")[0] || "",
-    image: record.avatar ? pb.files.getUrl(record, record.avatar) : null,
+    image: record.avatar && pb ? pb.files.getUrl(record, record.avatar) : null,
     points: record.points ?? 50,
     theme: record.theme || "dark",
     membership: record.membership || "free",
