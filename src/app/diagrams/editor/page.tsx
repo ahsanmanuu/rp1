@@ -2220,15 +2220,15 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
             <div className="h-4 w-px bg-white/10" />
 
             {/* Zoom indicator */}
-            <div className="flex items-center gap-0.5">
+            <div className="flex items-center gap-1 bg-white/5 rounded-lg p-0.5 border border-white/10 shadow-inner">
               <button onClick={() => setZoom(z => Math.max(30, z - 10))}
-                className="w-6 h-6 rounded hover:bg-white/8 text-[#c6c6cb] hover:text-white flex items-center justify-center transition-colors border-none bg-transparent cursor-pointer">
-                <span className="material-symbols-outlined" style={{ fontSize: 15 }}>remove</span>
+                className="w-7 h-7 rounded-md hover:bg-white/10 text-white/70 hover:text-white flex items-center justify-center transition-colors border-none bg-transparent cursor-pointer" title="Zoom Out">
+                <span className="material-symbols-outlined text-[16px]">remove</span>
               </button>
-              <span className="text-[11px] font-bold text-white w-9 text-center">{zoom}%</span>
+              <span className="text-[12px] font-medium text-white w-10 text-center font-mono cursor-default select-none">{zoom}%</span>
               <button onClick={() => setZoom(z => Math.min(200, z + 10))}
-                className="w-6 h-6 rounded hover:bg-white/8 text-[#c6c6cb] hover:text-white flex items-center justify-center transition-colors border-none bg-transparent cursor-pointer">
-                <span className="material-symbols-outlined" style={{ fontSize: 15 }}>add</span>
+                className="w-7 h-7 rounded-md hover:bg-white/10 text-white/70 hover:text-white flex items-center justify-center transition-colors border-none bg-transparent cursor-pointer" title="Zoom In">
+                <span className="material-symbols-outlined text-[16px]">add</span>
               </button>
             </div>
 
@@ -4689,8 +4689,8 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
         <div 
           className="fixed w-[200px] h-[180px] bg-black/50 border border-white/10 rounded-xl overflow-hidden shadow-2xl z-40 hidden lg:block backdrop-blur-md select-none"
           style={{
-            left: minimapPos?.x ?? 280,
-            top: minimapPos?.y ?? (windowSize.height - 200),
+            left: minimapPos?.x ?? (windowSize.width / 2 - 100),
+            top: minimapPos?.y ?? (windowSize.height / 2 - 90),
           }}
         >
           {/* Header Drag Handle */}
@@ -4706,8 +4706,9 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
               <span className="text-[9px] font-bold text-white/60 uppercase tracking-wider">Minimap</span>
             </div>
             <button 
-              onClick={() => setShowMinimap(false)}
-              className="text-white/40 hover:text-white hover:bg-white/10 w-5 h-5 rounded flex items-center justify-center transition-all cursor-pointer border-none bg-transparent"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); setShowMinimap(false); }}
+              className="text-white/40 hover:text-white hover:bg-rose-500/80 w-5 h-5 rounded flex items-center justify-center transition-all cursor-pointer border-none bg-transparent z-50"
               title="Close Minimap"
             >
               <span className="material-symbols-outlined text-[13px]">close</span>
