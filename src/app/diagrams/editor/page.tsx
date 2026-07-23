@@ -568,6 +568,7 @@ function DiagramStudio() {
   });
 
   // ── Eraser-like Feature State ─────────────────────────────────────────────────
+  const [showShareModal, setShowShareModal]     = useState(false);
   const [showTemplates, setShowTemplates]       = useState(false);
   const [showShortcuts, setShowShortcuts]       = useState(false);
   const [showMinimap, setShowMinimap]           = useState(true);
@@ -1662,6 +1663,7 @@ function DiagramStudio() {
   const handleShare = useCallback(() => {
     try {
       navigator.clipboard.writeText(window.location.href);
+      toast.success("Diagram share link copied to clipboard!");
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -1673,9 +1675,11 @@ function DiagramStudio() {
       ta.select();
       document.execCommand('copy');
       document.body.removeChild(ta);
+      toast.success("Diagram share link copied to clipboard!");
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
+    setShowShareModal(true);
   }, []);
 
   // ── AI Chat ───────────────────────────────────────────────────────────────────
@@ -2252,7 +2256,6 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
               <div
                 className="glass rim absolute right-0 top-full mt-3 border border-white/10 rounded-2xl shadow-2xl z-50 p-2 w-64 popover-entry"
                 style={{ background: 'rgba(9,19,32,0.95)', backdropFilter: 'blur(20px)' }}
-                onMouseLeave={() => setExportMenuOpen(false)}
               >
                 {/* Image Section */}
                 <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-violet-400">Raster Image</div>
@@ -2357,7 +2360,6 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
             {bgPickerOpen && (
               <div
                 className="glass rim absolute right-0 top-full mt-2 border border-white/10 rounded-2xl shadow-2xl z-50 p-3 w-64 popover-entry"
-                onMouseLeave={() => setBgPickerOpen(false)}
               >
                 <div className="text-[10px] font-black uppercase tracking-widest text-[#c6c6cb] mb-3 px-1">Canvas Background</div>
                 <div className="grid grid-cols-3 gap-2">
@@ -2804,7 +2806,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
           )}
 
           {/* Zoomable & pannable stage */}
-          <div data-stage style={{
+          <div data-stage className={`canvas-${canvasBg} transition-colors`} style={{
             transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom / 100})`,
             transformOrigin: '0 0',
             position: 'relative',
@@ -4896,6 +4898,120 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                 >
                   <span className="material-symbols-outlined text-sm" style={{ fontSize: 16 }}>download</span>
                   Generate Download
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Share Dialog Modal ──────────────────────────────────────────────── */}
+      {showShareModal && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 animate-fade-in"
+          style={{ background: 'rgba(5,15,28,0.80)', backdropFilter: 'blur(12px)' }}
+          onClick={() => setShowShareModal(false)}
+        >
+          <div
+            className="glass rim w-full max-w-[460px] rounded-3xl shadow-[0_24px_64px_rgba(0,0,0,0.6)] border border-white/10 scale-in-bounce overflow-hidden"
+            style={{ background: 'linear-gradient(135deg, #0d1e33 0%, #061121 100%)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="h-1.5 w-full bg-gradient-to-r from-blue-500 via-violet-500 to-emerald-400" />
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 bg-blue-500/15 border border-blue-500/30">
+                    <span className="material-symbols-outlined text-blue-400 text-xl">share</span>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-white tracking-tight">Share Diagram & Architecture</h3>
+                    <p className="text-[10px] text-white/40 font-semibold uppercase tracking-wider mt-0.5">Collaborate or embed into your project</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowShareModal(false)} className="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 text-white/50 hover:text-white flex items-center justify-center transition-all border-none bg-transparent cursor-pointer">
+                  <span className="material-symbols-outlined text-sm">close</span>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-[#8b9bb4] block mb-1.5">Shareable Direct Link</label>
+                  <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl p-1.5">
+                    <input
+                      type="text"
+                      readOnly
+                      value={typeof window !== 'undefined' ? window.location.href : ''}
+                      className="w-full bg-transparent text-xs text-white/90 px-2 outline-none font-mono"
+                    />
+                    <button
+                      onClick={() => {
+                        if (typeof window !== 'undefined') {
+                          navigator.clipboard.writeText(window.location.href);
+                          toast.success("Diagram link copied to clipboard!");
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer border-none"
+                    >
+                      <span className="material-symbols-outlined text-xs" style={{ fontSize: 14 }}>content_copy</span> Copy
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-[#8b9bb4] block mb-1.5">HTML Embed Code (iframe)</label>
+                  <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl p-1.5">
+                    <input
+                      type="text"
+                      readOnly
+                      value={`<iframe src="${typeof window !== 'undefined' ? window.location.href : ''}" width="100%" height="600" frameborder="0"></iframe>`}
+                      className="w-full bg-transparent text-xs text-white/70 px-2 outline-none font-mono truncate"
+                    />
+                    <button
+                      onClick={() => {
+                        if (typeof window !== 'undefined') {
+                          navigator.clipboard.writeText(`<iframe src="${window.location.href}" width="100%" height="600" frameborder="0"></iframe>`);
+                          toast.success("Embed iframe code copied to clipboard!");
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer border-none"
+                    >
+                      <span className="material-symbols-outlined text-xs" style={{ fontSize: 14 }}>code</span> Embed
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-[#8b9bb4] block mb-2">Quick Export Shortcuts</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => { setShowShareModal(false); setExportDialog({ isOpen: true, format: 'png', options: defaultExportOptions }); }}
+                      className="py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-white text-xs font-bold flex flex-col items-center gap-1 cursor-pointer transition-all"
+                    >
+                      <span className="material-symbols-outlined text-violet-400 text-lg">image</span> PNG Image
+                    </button>
+                    <button
+                      onClick={() => { setShowShareModal(false); setExportDialog({ isOpen: true, format: 'svg', options: defaultExportOptions }); }}
+                      className="py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-white text-xs font-bold flex flex-col items-center gap-1 cursor-pointer transition-all"
+                    >
+                      <span className="material-symbols-outlined text-blue-400 text-lg">category</span> SVG Vector
+                    </button>
+                    <button
+                      onClick={() => { setShowShareModal(false); exportJSON(); }}
+                      className="py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-white text-xs font-bold flex flex-col items-center gap-1 cursor-pointer transition-all"
+                    >
+                      <span className="material-symbols-outlined text-emerald-400 text-lg">data_object</span> JSON Backup
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-5 border-t border-white/5 mt-5">
+                <button
+                  onClick={() => setShowShareModal(false)}
+                  className="px-5 py-2 rounded-xl text-xs font-black bg-white/10 text-white hover:bg-white/20 transition-all cursor-pointer border-none"
+                >
+                  Done
                 </button>
               </div>
             </div>

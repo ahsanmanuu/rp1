@@ -171,15 +171,11 @@ export function useExport({
       const bh = bounds ? bounds.maxY - bounds.minY + pad * 2 : 800;
       const tx = bounds ? -(bounds.minX - pad) : 0;
       const ty = bounds ? -(bounds.minY - pad) : 0;
+      const origTransform = stage.style.transform;
+      const origOrigin = stage.style.transformOrigin;
+
       const bgColors: Record<string, string> = { white: '#f8faff', blueprint: '#0a1e3c', grid: '#051424', transparent: 'transparent' };
       const bg = opts.background === 'current' ? undefined : bgColors[opts.background];
-
-      const exportStyle: Record<string, string> = {
-        transform: `translate(${tx}px, ${ty}px) scale(1)`,
-        transformOrigin: '0 0',
-        width: `${Math.round(bw)}px`,
-        height: `${Math.round(bh)}px`,
-      };
 
       const filterFn = (node: HTMLElement) => {
         if (node.classList && (
@@ -191,27 +187,34 @@ export function useExport({
         return true;
       };
 
-      let dataUrl: string;
-      const renderOptions = {
-        backgroundColor: bg,
-        pixelRatio: opts.resolution || 2,
-        width: Math.round(bw),
-        height: Math.round(bh),
-        filter: filterFn as any,
-        style: exportStyle,
-        skipFonts: true,
-        fontEmbedCSS: '',
-        cacheBust: false,
-      };
-
       try {
-        dataUrl = await toPng(stage, renderOptions);
-      } catch {
-        dataUrl = await toPng(stage, { ...renderOptions, pixelRatio: 1 });
-      }
+        stage.style.transform = `translate(${tx}px, ${ty}px) scale(1)`;
+        stage.style.transformOrigin = '0 0';
 
-      downloadDataUrl(dataUrl, `diagram_${Date.now()}.png`);
-      toast.success("PNG exported successfully!", { id: toastId });
+        let dataUrl: string;
+        const renderOptions = {
+          backgroundColor: bg,
+          pixelRatio: opts.resolution || 2,
+          width: Math.round(bw),
+          height: Math.round(bh),
+          filter: filterFn as any,
+          skipFonts: true,
+          fontEmbedCSS: '',
+          cacheBust: false,
+        };
+
+        try {
+          dataUrl = await toPng(stage, renderOptions);
+        } catch {
+          dataUrl = await toPng(stage, { ...renderOptions, pixelRatio: 1 });
+        }
+
+        downloadDataUrl(dataUrl, `diagram_${Date.now()}.png`);
+        toast.success("PNG exported successfully!", { id: toastId });
+      } finally {
+        stage.style.transform = origTransform;
+        stage.style.transformOrigin = origOrigin;
+      }
     } catch (err: any) {
       console.error('Failed to export PNG', err);
       toast.error("Export failed: " + (err?.message || "Render error"), { id: toastId });
@@ -243,16 +246,12 @@ export function useExport({
       const bh = bounds ? bounds.maxY - bounds.minY + pad * 2 : 800;
       const tx = bounds ? -(bounds.minX - pad) : 0;
       const ty = bounds ? -(bounds.minY - pad) : 0;
+      const origTransform = stage.style.transform;
+      const origOrigin = stage.style.transformOrigin;
+
       const bgColors: Record<string, string> = { white: '#f8faff', blueprint: '#0a1e3c', grid: '#051424' };
       let bg = opts.background === 'current' ? '#051424' : bgColors[opts.background] || '#051424';
       if (opts.background === 'transparent') bg = '#ffffff';
-
-      const exportStyle: Record<string, string> = {
-        transform: `translate(${tx}px, ${ty}px) scale(1)`,
-        transformOrigin: '0 0',
-        width: `${Math.round(bw)}px`,
-        height: `${Math.round(bh)}px`,
-      };
 
       const filterFn = (node: HTMLElement) => {
         if (node.classList && (
@@ -264,28 +263,35 @@ export function useExport({
         return true;
       };
 
-      let dataUrl: string;
-      const renderOptions = {
-        backgroundColor: bg,
-        pixelRatio: opts.resolution || 2,
-        width: Math.round(bw),
-        height: Math.round(bh),
-        quality: 0.95,
-        filter: filterFn as any,
-        style: exportStyle,
-        skipFonts: true,
-        fontEmbedCSS: '',
-        cacheBust: false,
-      };
-
       try {
-        dataUrl = await toJpeg(stage, renderOptions);
-      } catch {
-        dataUrl = await toJpeg(stage, { ...renderOptions, pixelRatio: 1 });
-      }
+        stage.style.transform = `translate(${tx}px, ${ty}px) scale(1)`;
+        stage.style.transformOrigin = '0 0';
 
-      downloadDataUrl(dataUrl, `diagram_${Date.now()}.jpg`);
-      toast.success("JPEG exported successfully!", { id: toastId });
+        let dataUrl: string;
+        const renderOptions = {
+          backgroundColor: bg,
+          pixelRatio: opts.resolution || 2,
+          width: Math.round(bw),
+          height: Math.round(bh),
+          quality: 0.95,
+          filter: filterFn as any,
+          skipFonts: true,
+          fontEmbedCSS: '',
+          cacheBust: false,
+        };
+
+        try {
+          dataUrl = await toJpeg(stage, renderOptions);
+        } catch {
+          dataUrl = await toJpeg(stage, { ...renderOptions, pixelRatio: 1 });
+        }
+
+        downloadDataUrl(dataUrl, `diagram_${Date.now()}.jpg`);
+        toast.success("JPEG exported successfully!", { id: toastId });
+      } finally {
+        stage.style.transform = origTransform;
+        stage.style.transformOrigin = origOrigin;
+      }
     } catch (err: any) {
       console.error('Failed to export JPEG', err);
       toast.error("Export failed: " + (err?.message || "Render error"), { id: toastId });
@@ -317,13 +323,8 @@ export function useExport({
       const bh = bounds ? bounds.maxY - bounds.minY + pad * 2 : 800;
       const tx = bounds ? -(bounds.minX - pad) : 0;
       const ty = bounds ? -(bounds.minY - pad) : 0;
-
-      const exportStyle: Record<string, string> = {
-        transform: `translate(${tx}px, ${ty}px) scale(1)`,
-        transformOrigin: '0 0',
-        width: `${Math.round(bw)}px`,
-        height: `${Math.round(bh)}px`,
-      };
+      const origTransform = stage.style.transform;
+      const origOrigin = stage.style.transformOrigin;
 
       const filterFn = (node: HTMLElement) => {
         if (node.classList && (
@@ -335,26 +336,33 @@ export function useExport({
         return true;
       };
 
-      let dataUrl: string;
-      const renderOptions = {
-        pixelRatio: 1,
-        width: Math.round(bw),
-        height: Math.round(bh),
-        filter: filterFn as any,
-        style: exportStyle,
-        skipFonts: true,
-        fontEmbedCSS: '',
-        cacheBust: false,
-      };
-
       try {
-        dataUrl = await toSvg(stage, renderOptions);
-      } catch {
-        dataUrl = await toSvg(stage, renderOptions);
-      }
+        stage.style.transform = `translate(${tx}px, ${ty}px) scale(1)`;
+        stage.style.transformOrigin = '0 0';
 
-      downloadDataUrl(dataUrl, `diagram_${Date.now()}.svg`);
-      toast.success("SVG vector exported successfully!", { id: toastId });
+        let dataUrl: string;
+        const renderOptions = {
+          pixelRatio: 1,
+          width: Math.round(bw),
+          height: Math.round(bh),
+          filter: filterFn as any,
+          skipFonts: true,
+          fontEmbedCSS: '',
+          cacheBust: false,
+        };
+
+        try {
+          dataUrl = await toSvg(stage, renderOptions);
+        } catch {
+          dataUrl = await toSvg(stage, renderOptions);
+        }
+
+        downloadDataUrl(dataUrl, `diagram_${Date.now()}.svg`);
+        toast.success("SVG vector exported successfully!", { id: toastId });
+      } finally {
+        stage.style.transform = origTransform;
+        stage.style.transformOrigin = origOrigin;
+      }
     } catch (err: any) {
       console.error('Failed to export SVG', err);
       toast.error("SVG export failed: " + (err?.message || "Render error"), { id: toastId });
