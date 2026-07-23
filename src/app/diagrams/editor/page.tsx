@@ -4844,11 +4844,12 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                 {(exportDialog.format === 'png' || exportDialog.format === 'jpeg') && (
                   <div>
                     <label className="text-[10px] font-black uppercase tracking-widest text-[#8b9bb4] block mb-2">Resolution Scale</label>
-                    <div className="grid grid-cols-3 gap-1.5">
+                    <div className="grid grid-cols-2 gap-1.5">
                       {([
-                        { id: 1, label: '1x', desc: 'Web (Standard)' },
+                        { id: 1, label: '1x', desc: 'Web' },
                         { id: 2, label: '2x', desc: 'HD / Print' },
                         { id: 3, label: '3x', desc: 'Ultra HD' },
+                        { id: 4, label: '4x', desc: '300 PPI Print' },
                       ] as const).map(r => {
                         const isActive = exportDialog.options.resolution === r.id;
                         return (

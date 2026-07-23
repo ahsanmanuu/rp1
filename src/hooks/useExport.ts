@@ -8,7 +8,7 @@ export type ExportFormat = 'png' | 'svg' | 'jpeg';
 
 export interface ExportOptions {
   background: 'transparent' | 'white' | 'blueprint' | 'grid' | 'current';
-  resolution: 1 | 2 | 3;
+  resolution: number;
   padding: number;
 }
 
@@ -82,19 +82,11 @@ async function withInlinedStyles<T>(fn: () => Promise<T>): Promise<T> {
 
 import toast from 'react-hot-toast';
 
-function downloadDataUrl(dataUrl: string, filename: string) {
+async function downloadDataUrl(dataUrl: string, filename: string) {
   try {
     if (dataUrl.startsWith('data:')) {
-      const parts = dataUrl.split(',');
-      const mimeMatch = parts[0].match(/:(.*?);/);
-      const mime = mimeMatch ? mimeMatch[1] : 'image/png';
-      const bstr = atob(parts[1]);
-      let n = bstr.length;
-      const u8arr = new Uint8Array(n);
-      while (n--) {
-        u8arr[n] = bstr.charCodeAt(n);
-      }
-      const blob = new Blob([u8arr], { type: mime });
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -173,6 +165,7 @@ export function useExport({
       const ty = bounds ? -(bounds.minY - pad) : 0;
       const origTransform = stage.style.transform;
       const origOrigin = stage.style.transformOrigin;
+      const origClassName = stage.className;
 
       const bgColors: Record<string, string> = { white: '#f8faff', blueprint: '#0a1e3c', grid: '#051424', transparent: 'transparent' };
       const bg = opts.background === 'current' ? undefined : bgColors[opts.background];
@@ -190,6 +183,9 @@ export function useExport({
       try {
         stage.style.transform = `translate(${tx}px, ${ty}px) scale(1)`;
         stage.style.transformOrigin = '0 0';
+        if (opts.background !== 'current') {
+          stage.className = stage.className.replace(/canvas-(dots|grid|lines|blueprint)/g, '');
+        }
 
         let dataUrl: string;
         const renderOptions = {
@@ -214,6 +210,7 @@ export function useExport({
       } finally {
         stage.style.transform = origTransform;
         stage.style.transformOrigin = origOrigin;
+        stage.className = origClassName;
       }
     } catch (err: any) {
       console.error('Failed to export PNG', err);
@@ -248,6 +245,7 @@ export function useExport({
       const ty = bounds ? -(bounds.minY - pad) : 0;
       const origTransform = stage.style.transform;
       const origOrigin = stage.style.transformOrigin;
+      const origClassName = stage.className;
 
       const bgColors: Record<string, string> = { white: '#f8faff', blueprint: '#0a1e3c', grid: '#051424' };
       let bg = opts.background === 'current' ? '#051424' : bgColors[opts.background] || '#051424';
@@ -266,6 +264,9 @@ export function useExport({
       try {
         stage.style.transform = `translate(${tx}px, ${ty}px) scale(1)`;
         stage.style.transformOrigin = '0 0';
+        if (opts.background !== 'current') {
+          stage.className = stage.className.replace(/canvas-(dots|grid|lines|blueprint)/g, '');
+        }
 
         let dataUrl: string;
         const renderOptions = {
@@ -291,6 +292,7 @@ export function useExport({
       } finally {
         stage.style.transform = origTransform;
         stage.style.transformOrigin = origOrigin;
+        stage.className = origClassName;
       }
     } catch (err: any) {
       console.error('Failed to export JPEG', err);
@@ -325,6 +327,7 @@ export function useExport({
       const ty = bounds ? -(bounds.minY - pad) : 0;
       const origTransform = stage.style.transform;
       const origOrigin = stage.style.transformOrigin;
+      const origClassName = stage.className;
 
       const filterFn = (node: HTMLElement) => {
         if (node.classList && (
@@ -339,6 +342,9 @@ export function useExport({
       try {
         stage.style.transform = `translate(${tx}px, ${ty}px) scale(1)`;
         stage.style.transformOrigin = '0 0';
+        if (opts.background !== 'current') {
+          stage.className = stage.className.replace(/canvas-(dots|grid|lines|blueprint)/g, '');
+        }
 
         let dataUrl: string;
         const renderOptions = {
@@ -362,6 +368,7 @@ export function useExport({
       } finally {
         stage.style.transform = origTransform;
         stage.style.transformOrigin = origOrigin;
+        stage.className = origClassName;
       }
     } catch (err: any) {
       console.error('Failed to export SVG', err);
