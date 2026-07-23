@@ -58,6 +58,6 @@ export function usePbRealtime<T = any>(
     };
   // Only re-subscribe when the collection, filter, or enabled flag actually changes.
   // onEvent intentionally omitted — it is captured via onEventRef above.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [collection, options?.filter, options?.enabled]);
 }

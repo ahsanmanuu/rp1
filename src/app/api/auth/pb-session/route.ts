@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
     id: record.id,
     email: record.email,
     name: record.name || record.email?.split("@")[0] || "",
-    image: record.avatar ? pb.files.getUrl(record, record.avatar) : null,
+    image: record.avatar ? pb?.files?.getUrl(record, record.avatar) : null,
     theme: record.theme || "dark",
     points: record.points ?? 50,
     membership: record.membership || "free",

@@ -56,7 +56,7 @@ export function useLayoutSync(isAdmin: boolean = false) {
         setToken(session.token);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [isAdmin]);
 
   // 1. Fetch layout settings

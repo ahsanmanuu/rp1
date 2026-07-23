@@ -223,7 +223,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
       }
     };
     init();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [projectId]);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
@@ -468,26 +468,12 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
     try {
       await fs.writeFile(projectId, activeFile, codeRef.current);
       const payloadMeta = await fs.listFiles(projectId);
-      
-      const formData = new FormData();
-      formData.append('engine', engine);
-      formData.append('mainFile', rootFile);
-      if (projectId) formData.append('projectId', projectId);
-      
+      const payloadFiles = [];
       for (let i = 0; i < payloadMeta.length; i++) {
         const fMeta = payloadMeta[i];
         const f = await fs.readFile(projectId, fMeta.path);
         if (!f) continue;
-        
-        formData.append(`files[${i}][path]`, f.path);
-        if (f.content.startsWith('data:')) {
-           const res = await fetch(f.content);
-           const blob = await res.blob();
-           formData.append(`files[${i}][content]`, blob, f.path);
-        } else {
-           formData.append(`files[${i}][content]`, f.content);
-        }
-        f.content = ''; // GC hint
+        payloadFiles.push({ path: f.path, content: f.content });
       }
 
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -495,7 +481,13 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
       }
       const response = await fetch('/api/latex-studio/compile', {
         method: 'POST',
-        body: formData
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          engine: engine,
+          mainFile: rootFile,
+          projectId: projectId || null,
+          files: payloadFiles
+        })
       });
 
       let result;

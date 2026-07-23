@@ -815,6 +815,14 @@ export function autoHealLatex(latex: string): string {
         "\\providecommand{\\corres}[1]{}",
         "\\providecommand{\\presentaddress}[1]{}",
         "\\providecommand{\\articletype}[1]{}",
+        "\\providecommand{\\onlineid}[1]{}",
+        "\\providecommand{\\vgtccategory}[1]{}",
+        "\\providecommand{\\vgtcinsertpkg}{}",
+        "\\providecommand{\\teaser}[1]{}",
+        "\\providecommand{\\authorfooter}[1]{}",
+        "\\providecommand{\\shortauthortitle}[1]{}",
+        "\\providecommand{\\IEEEauthorblockA}[1]{#1}",
+        "\\providecommand{\\IEEEauthorblockN}[1]{#1}",
         "\\@ifundefined{set@color}{\\providecommand{\\set@color}{}}{}",
         "\\@ifundefined{reset@color}{\\providecommand{\\reset@color}{}}{}",
         "\\providecommand{\\letterspace}[1]{#1}",
@@ -888,6 +896,12 @@ export function autoHealLatex(latex: string): string {
 
     let patchedPre = patchedPreamble;
     let patchedB = healed;
+
+    // NUCLEAR 38.4: Smart Bibliography Degradation
+    if (!hasPackage(patchedPre, "natbib") && !hasPackage(patchedPre, "biblatex")) {
+        patchedB = patchedB.replace(/\\citep\s*\{/g, "\\cite{");
+        patchedB = patchedB.replace(/\\citet\s*\{/g, "\\cite{");
+    }
 
     // NUCLEAR 38.3: SURGICAL UNIVERSAL SCALING (Rotation & Context Aware)
     // Targets tabular structures exclusively to avoid "outer par mode" errors from float wrapping

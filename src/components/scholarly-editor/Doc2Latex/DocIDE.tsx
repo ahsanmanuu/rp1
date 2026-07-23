@@ -305,7 +305,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       setIsSyncing(false);
       setLoadingCode(false);
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [projectId]);
 
   useEffect(() => {
@@ -1327,7 +1327,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                           if (newContent !== currentCode) { currentCode = newContent; codeChanged = true; }
                         } else if (fs) {
                           const fileObj = files.find(f => f.path === filePath);
-                          let otherContent = fileObj?.content || '';
+                          const otherContent = fileObj?.content || '';
                           let newContent = otherContent;
                           if (edit.type === 'write') newContent = edit.content || '';
                           else if (edit.type === 'replace') newContent = edit.target ? otherContent.replace(edit.target, edit.content || '') : (edit.content || '');

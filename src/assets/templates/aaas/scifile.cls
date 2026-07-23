@@ -12,4 +12,4 @@
     {\large \@author \par}
   \end{center}
 }
-\newenvironment{abstract}{ \bfseries Abstract: \normalfont }{}
+\renewenvironment{abstract}{ \bfseries Abstract: \normalfont }{}

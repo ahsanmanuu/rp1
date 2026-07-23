@@ -316,7 +316,7 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
     };
 
     init();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [initialProjectId]);
 
   const saveFile = useCallback(async (path: string, content: string) => {
@@ -999,7 +999,7 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
       } else {
         if (fs && projectId) {
           const fileObj = files.find(f => f.path === filePath) || await fs.readFile(projectId, filePath);
-          let otherContent = fileObj?.content || '';
+          const otherContent = fileObj?.content || '';
           let newContent = otherContent;
           if (edit.type === 'write') {
             newContent = edit.content || '';

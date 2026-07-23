@@ -522,7 +522,7 @@ export function useDiagramAgent({
                       for (const edit of finalParsed.edits) {
                         const filePath = edit.path;
                         const fileObj = await fs.readFile(activeProjId, filePath);
-                        let otherContent = fileObj?.content || '';
+                        const otherContent = fileObj?.content || '';
                         let newContent = otherContent;
                         if (edit.type === 'write') {
                           newContent = edit.content || '';

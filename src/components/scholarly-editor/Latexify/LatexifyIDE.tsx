@@ -301,7 +301,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
       setLoadingCode(false);
     };
     init().catch((err) => console.debug("Init error (non-blocking):", err));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [projectId]);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
@@ -1632,7 +1632,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                               if (newContent !== currentCode) { currentCode = newContent; codeChanged = true; }
                             } else if (fs) {
                               const fileObj = files.find(f => f.path === filePath) || (await fs.readFile(projectId, filePath));
-                              let otherContent = fileObj?.content || '';
+                              const otherContent = fileObj?.content || '';
                               let newContent = otherContent;
                               if (edit.type === 'write') newContent = edit.content || '';
                               else if (edit.type === 'replace') newContent = edit.target ? otherContent.replace(edit.target, edit.content || '') : (edit.content || '');

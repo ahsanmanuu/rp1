@@ -498,7 +498,7 @@ export async function runHardenedPipeline(
         for (const ref of texRefs) {
           const m = ref.match(/\\(?:include|input)\s*\{([^}]+)\}/);
           if (!m) continue;
-          let target = m[1].trim();
+          const target = m[1].trim();
           const candidates = target.endsWith('.tex') ? [target] : [target + '.tex'];
           for (const cand of candidates) {
             const norm = normalizePath(cand);

@@ -166,9 +166,14 @@ export function preprocessLatex(
     allFixes.push(...result.fixes);
   }
 
-  // 4. Ensure cleveref comes after hyperref
+  // 4. Ensure cleveref comes after hyperref and amsmath
   if (CLEVEREF_LIKE.test(content) && HYPERREF_LIKE.test(content)) {
     const result = moveAfter(content, CLEVEREF_LIKE, HYPERREF_LIKE, 'cleveref');
+    content = result.content;
+    allFixes.push(...result.fixes);
+  }
+  if (CLEVEREF_LIKE.test(content) && AMSMATH_LIKE.test(content)) {
+    const result = moveAfter(content, CLEVEREF_LIKE, AMSMATH_LIKE, 'cleveref');
     content = result.content;
     allFixes.push(...result.fixes);
   }

@@ -39,6 +39,7 @@ export async function migrateToTemplate(
   templateData: TemplateData,
   templateId: string
 ): Promise<MigratedProject> {
+  const auditLog: string[] = ["LaTeX Migration Audit Report", "============================", ""];
   const zip = await JSZip.loadAsync(zipBuffer);
   
   // 1. Full Project Intake
@@ -119,12 +120,29 @@ export async function migrateToTemplate(
   ];
   
   // Clean Preamble
-  let pRes = { body: userPreamble, extracted: [] as string[] };
+  let pResBody = userPreamble;
   for (const cmd of scrubList) {
     if (cmd === 'usepackage' || cmd === 'documentclass') continue;
-    pRes = extractAndRemoveCommand(pRes.body, cmd);
+    const res = extractAndRemoveCommand(pResBody, cmd);
+    pResBody = res.body;
+    if (res.extracted.length > 0) {
+      auditLog.push(`- Scrubbed from Preamble: \\${cmd} (${res.extracted.length} instances)`);
+    }
   }
-  userPreamble = pRes.body.replace(/\\documentclass[\s\S]*?\{[^}]*\}/gi, '% [Scrubbed documentclass]');
+  // Add Universal Fallbacks for common legacy macros (Nuclear 35.0)
+  const universalFallbacks = `
+% --- UNIVERSAL FALLBACKS ---
+\\providecommand{\\authororcid}[2]{#1}
+\\providecommand{\\subref}[1]{\\ref{#1}}
+\\providecommand{\\theoremstyle}[1]{}
+\\providecommand{\\subjclass}[2][]{}
+\\providecommand{\\curraddr}[1]{}
+\\providecommand{\\dedicatory}[1]{}
+\\ifx\\subfigure\\undefined
+  \\newenvironment{subfigure}[2][]{}{}
+\\fi
+`;
+  userPreamble = universalFallbacks + pResBody.replace(/\\documentclass[\s\S]*?\{[^}]*\}/gi, '% [Scrubbed documentclass]');
 
   let userBody = (docStart !== -1 && docEnd !== -1) 
     ? userMainTex.substring(docStart + beginLength, docEnd) 
@@ -132,11 +150,15 @@ export async function migrateToTemplate(
   userBody = userBody.trim();
 
   // Scrub Body
-  let bRes = { body: userBody, extracted: [] as string[] };
+  let bResBody = userBody;
   for (const cmd of scrubList) {
-    bRes = extractAndRemoveCommand(bRes.body, cmd);
+    const res = extractAndRemoveCommand(bResBody, cmd);
+    bResBody = res.body;
+    if (res.extracted.length > 0) {
+      auditLog.push(`- Scrubbed from Body: \\${cmd} (${res.extracted.length} instances)`);
+    }
   }
-  userBody = bRes.body
+  userBody = bResBody
     .replace(/\\documentclass[\s\S]*?\{[^}]*\}/gi, '% [Scrubbed documentclass]')
     .replace(/\\begin\s*\{\s*document\s*\}/gi, '% [Scrubbed begin{document}]')
     .replace(/\\end\s*\{\s*document\s*\}/gi, '% [Scrubbed end{document}]')
@@ -195,21 +217,18 @@ ${userPreamble}
       const isElsevier = templateId.includes('elsevier') || templateContent.includes('elsarticle');
       
       if (isElsevier) {
-        const fmStart = templatePre.indexOf('\\begin{frontmatter}');
-        const fmEnd = templatePre.indexOf('\\end{frontmatter}');
-        if (fmStart !== -1 && fmEnd !== -1) {
-          templatePre = templatePre.substring(0, fmStart) + injectedMeta + templatePre.substring(fmEnd + 17);
-        } else {
-          templatePre = templatePre.replace('\\begin{document}', `\n${injectedMeta}\n\\begin{document}`);
-        }
+        // Remove native frontmatter to prevent duplication, since injectedMeta provides a fresh one
+        templatePre = templatePre.replace(/\\begin\{frontmatter\}[\s\S]*?\\end\{frontmatter\}/gi, '');
+        templateBody = templateBody.replace(/\\begin\{frontmatter\}[\s\S]*?\\end\{frontmatter\}/gi, '');
+        templatePre = templatePre.replace('\\begin{document}', `\\begin{document}\n${injectedMeta}\n`);
       } else if (isACM) {
-        // ACM expects abstract/keywords BEFORE maketitle
-        templatePre = templatePre.replace('\\begin{document}', `\n${injectedMeta}\n\\begin{document}`);
+        // ACM expects abstract/keywords BEFORE maketitle, but AFTER begin{document}
+        templatePre = templatePre.replace('\\begin{document}', `\\begin{document}\n${injectedMeta}\n`);
       } else if (isIEEE) {
-        // IEEE expects abstract/keywords in a specific block or before maketitle
-        templatePre = templatePre.replace('\\begin{document}', `\n${injectedMeta}\n\\begin{document}`);
+        // IEEE expects abstract/keywords after begin{document}
+        templatePre = templatePre.replace('\\begin{document}', `\\begin{document}\n${injectedMeta}\n`);
       } else {
-        templatePre = templatePre.replace('\\begin{document}', `\n${injectedMeta}\n\\begin{document}`);
+        templatePre = templatePre.replace('\\begin{document}', `\\begin{document}\n${injectedMeta}\n`);
       }
 
       // IV. BODY FUSION & REDUNDANCY FILTER
@@ -217,6 +236,11 @@ ${userPreamble}
       if (userBody.toLowerCase().includes('\\section{introduction}')) {
           templateBody = templateBody.replace(/\\section\{Introduction\}[\s\S]*?(?=\\section)/i, '');
       }
+
+      // Strip \maketitle and \begin{abstract} blocks from userBody to prevent duplicates
+      userBody = userBody
+        .replace(/\\maketitle(?![a-zA-Z])/gi, '')
+        .replace(/\\begin\{abstract\}[\s\S]*?\\end\{abstract\}/gi, '');
 
       const makeTitleIdx = templateBody.indexOf('\\maketitle');
       const introIdx = templateBody.search(/\\section\{/i);
@@ -344,6 +368,11 @@ ${userPreamble}
   Object.keys(fileMap).forEach(path => {
     resultFiles.push({ path: `MIGRATION FILES/${path}`, content: fileMap[path], isBinary: false });
   });
+
+  // C. AUDIT REPORT
+  auditLog.push("");
+  auditLog.push("Migration completed successfully.");
+  resultFiles.push({ path: 'migration_report.txt', content: auditLog.join('\n'), isBinary: false });
 
   return { files: resultFiles, mainFile: 'main.tex' };
 }
