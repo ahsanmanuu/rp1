@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPb } from '@/lib/pb';
 
 interface Announcement {
@@ -17,14 +17,14 @@ export default function BroadcastBanner() {
   const [mounted, setMounted] = useState(false);
 
   // Helper function to dismiss an announcement in state and localStorage
-  const dismissAnnouncement = (id: string) => {
+  const dismissAnnouncement = useCallback((id: string) => {
     setDismissedIds(prev => {
       if (prev.includes(id)) return prev;
       const updated = [...prev, id];
       localStorage.setItem('dismissed-announcements', JSON.stringify(updated));
       return updated;
     });
-  };
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -65,11 +65,13 @@ export default function BroadcastBanner() {
     fetchAnnouncements();
 
     const pb = createPb();
+    let unsubAnnouncements: (() => void) | null = null;
 
-    // Subscribe to announcements in real-time
-    pb.collection('announcements').subscribe('*', (e) => {
-      console.log('[PB Realtime Broadcast] Announcement event:', e.action, e.record);
+    // Subscribe to announcements in real-time — store unsub ref for cleanup
+    pb.collection('announcements').subscribe('*', () => {
       fetchAnnouncements();
+    }).then(unsub => {
+      unsubAnnouncements = unsub;
     }).catch(err => {
       console.warn('[PB Realtime Broadcast] Failed to subscribe to announcements, falling back to polling:', err);
     });
@@ -79,7 +81,11 @@ export default function BroadcastBanner() {
 
     return () => {
       clearInterval(interval);
-      pb.collection('announcements').unsubscribe('*').catch(() => {});
+      if (unsubAnnouncements) {
+        unsubAnnouncements();
+      } else {
+        pb.collection('announcements').unsubscribe('*').catch(() => {});
+      }
     };
   }, []);
 
@@ -93,7 +99,6 @@ export default function BroadcastBanner() {
     if (!current?.id) return;
 
     const timer = setTimeout(() => {
-      console.log(`[BroadcastBanner] Auto-hiding seen announcement: ${current.id}`);
       dismissAnnouncement(current.id);
       setCurrentIndex(prev => {
         const remainingCount = activeAnnouncements.length - 1;
@@ -107,18 +112,14 @@ export default function BroadcastBanner() {
 
   // Dynamically set CSS variables for banner height to prevent overlap with fixed headers/sidebars
   useEffect(() => {
-    console.log("[BroadcastBanner] activeAnnouncements:", activeAnnouncements.length, "mounted:", mounted);
     if (activeAnnouncements.length > 0 && mounted) {
-      console.log("[BroadcastBanner] Adding class has-broadcast-banner and setting --broadcast-banner-height to 44px");
       document.documentElement.style.setProperty('--broadcast-banner-height', '44px');
       document.documentElement.classList.add('has-broadcast-banner');
     } else {
-      console.log("[BroadcastBanner] Removing class has-broadcast-banner and resetting --broadcast-banner-height to 0px");
       document.documentElement.style.setProperty('--broadcast-banner-height', '0px');
       document.documentElement.classList.remove('has-broadcast-banner');
     }
     return () => {
-      console.log("[BroadcastBanner] Cleanup: removing class and style property");
       document.documentElement.style.removeProperty('--broadcast-banner-height');
       document.documentElement.classList.remove('has-broadcast-banner');
     };
