@@ -221,6 +221,37 @@ function getBestPorts(from: DiagramNode, to: DiagramNode) {
   return { fromPort: bestFrom, toPort: bestTo };
 }
 
+function smoothCornerPath(pts: { x: number; y: number }[], radius: number = 12): string {
+  if (pts.length < 2) return '';
+  if (pts.length === 2) return `M ${pts[0].x} ${pts[0].y} L ${pts[1].x} ${pts[1].y}`;
+
+  let path = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const prev = pts[i - 1];
+    const curr = pts[i];
+    const next = pts[i + 1];
+
+    const dPrev = Math.hypot(curr.x - prev.x, curr.y - prev.y);
+    const dNext = Math.hypot(next.x - curr.x, next.y - curr.y);
+    const r = Math.min(radius, dPrev / 2, dNext / 2);
+
+    if (r < 2) {
+      path += ` L ${curr.x} ${curr.y}`;
+      continue;
+    }
+
+    const startX = curr.x - (r * (curr.x - prev.x)) / dPrev;
+    const startY = curr.y - (r * (curr.y - prev.y)) / dPrev;
+    const endX = curr.x + (r * (next.x - curr.x)) / dNext;
+    const endY = curr.y + (r * (next.y - curr.y)) / dNext;
+
+    path += ` L ${startX} ${startY} Q ${curr.x} ${curr.y} ${endX} ${endY}`;
+  }
+  const last = pts[pts.length - 1];
+  path += ` L ${last.x} ${last.y}`;
+  return path;
+}
+
 function buildPath(
   from: DiagramNode,
   to: DiagramNode,
@@ -238,14 +269,13 @@ function buildPath(
     return `M ${x} ${y1} C ${x + 40} ${y1 - 20}, ${x + 40} ${y2 + 20}, ${x} ${y2}`;
   }
 
-  let fx, fy, tx, ty, fromDir, toDir;
+  let fx: number, fy: number, tx: number, ty: number, fromDir: string, toDir: string;
 
   if (smartRouting) {
     const { fromPort, toPort } = getBestPorts(from, to);
     fx = fromPort.x; fy = fromPort.y; fromDir = fromPort.dir;
     tx = toPort.x; ty = toPort.y; toDir = toPort.dir;
   } else {
-    // Free routing: use explicit ports if provided, otherwise default to center calculation
     const getPortCoords = (node: DiagramNode, p?: 't'|'r'|'b'|'l') => {
       if (p === 't') return { x: node.x + node.width / 2, y: node.y, dir: 'T' };
       if (p === 'b') return { x: node.x + node.width / 2, y: node.y + node.height, dir: 'B' };
@@ -258,7 +288,6 @@ function buildPath(
     fx = fp.x; fy = fp.y; fromDir = fp.dir;
     tx = tp.x; ty = tp.y; toDir = tp.dir;
     
-    // If no explicit ports, infer direction from centers
     if (fromDir === 'C') {
       fromDir = Math.abs(tx - fx) > Math.abs(ty - fy) ? (tx > fx ? 'R' : 'L') : (ty > fy ? 'B' : 'T');
     }
@@ -267,55 +296,45 @@ function buildPath(
     }
   }
 
-  const ratio = Math.max(0.1, Math.min(0.9, 0.5 + (offset / 100)));
-  const dx = tx - fx;
-  const dy = ty - fy;
-  const len = Math.sqrt(dx * dx + dy * dy) || 1;
-  // Perpendicular unit vector
-  const ux = -dy / len;
-  const uy = dx / len;
-  const perpDist = (offsetY || 0);
-  const mx = fx + dx * ratio + ux * perpDist;
-  const my = fy + dy * ratio + uy * perpDist;
-
   if (type === 'Straight') {
     return `M ${fx} ${fy} L ${tx} ${ty}`;
   }
   if (type === 'Curved') {
+    const dist = Math.hypot(tx - fx, ty - fy);
+    const CURVE_OFFSET = Math.min(Math.max(dist * 0.35, 50), 180) + offset;
     let cx1 = fx, cy1 = fy;
     let cx2 = tx, cy2 = ty;
-    const CURVE_OFFSET = 60 + offset; // Adjust curve height based on offset slider
+
     if (fromDir === 'R') cx1 += CURVE_OFFSET;
-    if (fromDir === 'L') cx1 -= CURVE_OFFSET;
-    if (fromDir === 'B') cy1 += CURVE_OFFSET;
-    if (fromDir === 'T') cy1 -= CURVE_OFFSET;
-    
+    else if (fromDir === 'L') cx1 -= CURVE_OFFSET;
+    else if (fromDir === 'B') cy1 += CURVE_OFFSET;
+    else if (fromDir === 'T') cy1 -= CURVE_OFFSET;
+    else cx1 += (tx > fx ? 1 : -1) * CURVE_OFFSET * 0.5;
+
     if (toDir === 'R') cx2 += CURVE_OFFSET;
-    if (toDir === 'L') cx2 -= CURVE_OFFSET;
-    if (toDir === 'B') cy2 += CURVE_OFFSET;
-    if (toDir === 'T') cy2 -= CURVE_OFFSET;
+    else if (toDir === 'L') cx2 -= CURVE_OFFSET;
+    else if (toDir === 'B') cy2 += CURVE_OFFSET;
+    else if (toDir === 'T') cy2 -= CURVE_OFFSET;
+    else cx2 += (fx > tx ? 1 : -1) * CURVE_OFFSET * 0.5;
     
     return `M ${fx} ${fy} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${tx} ${ty}`;
   }
+
   if (type === 'Orthogonal' || type === 'Elbow') {
-    // Safe clearance margin
     const margin = 24;
 
-    // Helper to check if a vertical line segment intersects a node
     const intersectsNode = (x: number, y1: number, y2: number, node: DiagramNode) => {
       const minY = Math.min(y1, y2);
       const maxY = Math.max(y1, y2);
       return x >= node.x && x <= node.x + node.width && minY <= node.y + node.height && maxY >= node.y;
     };
 
-    // Helper to check if a horizontal line segment intersects a node
     const intersectsNodeH = (y: number, x1: number, x2: number, node: DiagramNode) => {
       const minX = Math.min(x1, x2);
       const maxX = Math.max(x1, x2);
       return y >= node.y && y <= node.y + node.height && minX <= node.x + node.width && maxX >= node.x;
     };
 
-    // Exiting points
     let x1 = fx;
     let y1 = fy;
     if (fromDir === 'R') x1 = from.x + from.width + margin;
@@ -323,7 +342,6 @@ function buildPath(
     else if (fromDir === 'B') y1 = from.y + from.height + margin;
     else if (fromDir === 'T') y1 = from.y - margin;
 
-    // Entering points
     let x2 = tx;
     let y2 = ty;
     if (toDir === 'R') x2 = to.x + to.width + margin;
@@ -331,36 +349,36 @@ function buildPath(
     else if (toDir === 'B') y2 = to.y + to.height + margin;
     else if (toDir === 'T') y2 = to.y - margin;
 
-    const path: string[] = [`M ${fx} ${fy}`];
+    const points: { x: number; y: number }[] = [{ x: fx, y: fy }];
     if (x1 !== fx || y1 !== fy) {
-      path.push(`L ${x1} ${y1}`);
+      points.push({ x: x1, y: y1 });
     }
 
     const isFromH = fromDir === 'R' || fromDir === 'L';
     if (isFromH) {
       const x_mid = (x1 + x2) / 2;
       if (!intersectsNode(x_mid, y1, y2, from) && !intersectsNode(x_mid, y1, y2, to)) {
-        path.push(`H ${x_mid}`, `V ${y2}`, `H ${tx}`);
-        if (y2 !== ty) path.push(`V ${ty}`);
-        return path.join(' ');
+        points.push({ x: x_mid, y: y1 }, { x: x_mid, y: y2 }, { x: tx, y: y2 });
+        if (y2 !== ty) points.push({ x: tx, y: ty });
+        return smoothCornerPath(points, 12);
       }
     } else {
       const y_mid = (y1 + y2) / 2;
       if (!intersectsNodeH(y_mid, x1, x2, from) && !intersectsNodeH(y_mid, x1, x2, to)) {
-        path.push(`V ${y_mid}`, `H ${x2}`, `V ${ty}`);
-        if (x2 !== tx) path.push(`H ${tx}`);
-        return path.join(' ');
+        points.push({ x: x1, y: y_mid }, { x: x2, y: y_mid }, { x: x2, y: ty });
+        if (x2 !== tx) points.push({ x: tx, y: ty });
+        return smoothCornerPath(points, 12);
       }
     }
 
-    // Bypass routing
+    // Bypass routing for offset nodes
     const y_above = Math.min(from.y, to.y) - margin;
     const y_below = Math.max(from.y + from.height, to.y + to.height) + margin;
     const y_safe = Math.abs(y1 - y_above) < Math.abs(y1 - y_below) ? y_above : y_below;
 
-    path.push(`V ${y_safe}`, `H ${x2}`, `V ${ty}`);
-    if (x2 !== tx) path.push(`H ${tx}`);
-    return path.join(' ');
+    points.push({ x: x1, y: y_safe }, { x: x2, y: y_safe }, { x: x2, y: ty });
+    if (x2 !== tx) points.push({ x: tx, y: ty });
+    return smoothCornerPath(points, 12);
   }
   return `M ${fx} ${fy} L ${tx} ${ty}`;
 }
@@ -3340,9 +3358,9 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                       )}
                     </div>
                   ) : isText || (useSvgShape && !isUMLClass && !isEREntity && !isSwimlane) ? (
-                    <div className="w-full h-full flex items-center justify-center p-6 text-center">
+                    <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center pointer-events-none">
                       <span
-                        className={`font-bold outline-none max-w-full ${isLight && !isText ? 'text-slate-800' : 'text-white'}`}
+                        className={`font-bold outline-none max-w-full pointer-events-auto ${isLight && !isText ? 'text-slate-800' : 'text-white'}`}
                         contentEditable
                         suppressContentEditableWarning
                         onBlur={e => updateNode(node.id, { title: (e.target as HTMLElement).innerText.trim() || node.title, titleStyle: { ...(node.titleStyle || {}), color: node.titleStyle?.color || col.text } })}
@@ -3351,7 +3369,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                         style={{
                           cursor: 'text',
                           color: getDynamicColor(node.titleStyle?.color, node.color, canvasBg),
-                          fontSize: node.titleStyle?.fontSize ? `${node.titleStyle.fontSize}px` : (isText ? '18px' : '14px'),
+                          fontSize: node.titleStyle?.fontSize ? `${node.titleStyle.fontSize}px` : (isText ? '18px' : '13px'),
                           fontFamily: node.titleStyle?.fontFamily,
                           fontWeight: node.titleStyle?.fontWeight,
                           fontStyle: node.titleStyle?.fontStyle,
@@ -3360,6 +3378,21 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                           zIndex: 10
                         }}
                       >{node.title}</span>
+                      {node.description && !isText && (
+                        <span
+                          className="text-[10px] opacity-85 mt-1 line-clamp-2 max-w-[92%] font-medium leading-tight select-text pointer-events-auto outline-none"
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={e => updateNode(node.id, { description: (e.target as HTMLElement).innerText.trim() })}
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={e => e.stopPropagation()}
+                          style={{
+                            cursor: 'text',
+                            color: getDynamicColor(node.descriptionStyle?.color, node.color, canvasBg),
+                            fontSize: node.descriptionStyle?.fontSize ? `${node.descriptionStyle.fontSize}px` : '10px',
+                          }}
+                        >{node.description}</span>
+                      )}
                       {isSelected && !isText && (
                         <button
                           onMouseDown={e => e.stopPropagation()}

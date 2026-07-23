@@ -418,13 +418,39 @@ export function useDiagramAgent({
                 });
 
                 const incomingMap = new Map<string, DiagramNode>(sanitizedNodes.map((n: DiagramNode) => [n.id, n] as [string, DiagramNode]));
+                const idRemapTable = new Map<string, string>(); // incomingId -> existingId
+
                 const updatedNodes = currentNodes
                   .filter(n => !deleteIds.has(n.id))
                   .map(existing => {
-                    const incoming = incomingMap.get(existing.id);
+                    // Try exact ID match first
+                    let incoming = incomingMap.get(existing.id);
+                    let matchedKey = existing.id;
+
+                    // If exact ID not found, try title match (case-insensitive)
+                    if (!incoming) {
+                      const normExistingTitle = existing.title.trim().toLowerCase();
+                      for (const [incId, incNode] of Array.from(incomingMap.entries())) {
+                        const normIncTitle = incNode.title.trim().toLowerCase();
+                        if (normIncTitle === normExistingTitle && normExistingTitle.length > 1) {
+                          incoming = incNode;
+                          matchedKey = incId;
+                          break;
+                        }
+                      }
+                    }
+
                     if (incoming) {
-                      incomingMap.delete(existing.id);
-                      return { ...incoming, _animating: true };
+                      incomingMap.delete(matchedKey);
+                      idRemapTable.set(incoming.id, existing.id);
+                      return {
+                        ...existing,
+                        ...incoming,
+                        id: existing.id, // Preserve authoritative existing ID
+                        x: typeof incoming.x === 'number' && incoming.x > 0 ? incoming.x : existing.x,
+                        y: typeof incoming.y === 'number' && incoming.y > 0 ? incoming.y : existing.y,
+                        _animating: true
+                      };
                     }
                     return existing;
                   });
@@ -438,8 +464,14 @@ export function useDiagramAgent({
 
                 finalNodes = [...updatedNodes, ...newNodesList];
 
-                // Merge connections
-                const newConnsMap = new Map<string, DiagramConnection>(sanitizedConns.map((c: DiagramConnection) => [`${c.from}->${c.to}`, c] as [string, DiagramConnection]));
+                // Merge connections with remapped IDs to preserve full connectivity
+                const newConnsMap = new Map<string, DiagramConnection>();
+                sanitizedConns.forEach((c: DiagramConnection) => {
+                  const fromId = idRemapTable.get(c.from) || c.from;
+                  const toId = idRemapTable.get(c.to) || c.to;
+                  newConnsMap.set(`${fromId}->${toId}`, { ...c, from: fromId, to: toId });
+                });
+
                 const mergedConns = currentConns
                   .filter(c => !deleteIds.has(c.from) && !deleteIds.has(c.to))
                   .map(existing => {

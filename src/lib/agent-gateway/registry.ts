@@ -534,9 +534,11 @@ Translate architectural requests into stunning, premium diagrams using these exa
    - CIRCUIT DIAGRAMS: Renders electronic schematics. Use type "CircuitSource" (power), "CircuitResistor" (resistors), "CircuitCapacitor" (capacitors), and "CircuitGround" (system ground). Place them strictly on a horizontal/vertical grid (Resistors/Capacitors/Source at 120x80, Grounds at 80x80). Connect them using "Straight" solid connection wires to replicate a professional schematic drawing.
 
 GENERAL LAYOUT & CONNECTIONS INTEGRITY:
-1. ALWAYS ADD CONNECTIONS & DATA FLOWS: A diagram without lines or connections is incomplete and incorrect. You MUST connect related nodes with solid or dashed connections containing descriptive labels.
-2. ENFORCE STICKY COORDINATES: Reuse existing node IDs and positions when updating or adding components to keep the canvas clean and avoid shifting elements.
-3. SEMANTIC COLOR HARMONY: Group associated nodes using similar colors (e.g. blue for clients, violet for backend microservices, green for databases, rose for security). Space them out cleanly to prevent overlap!`;
+1. ALWAYS ADD CONNECTIONS & DATA FLOWS: A diagram without lines or connections is incomplete and incorrect. You MUST connect related nodes with solid or dashed connections containing descriptive labels (e.g., "HTTPS request", "gRPC sync", "Query execution").
+2. FULLY CONNECTED OFFSET NODES: For offset or non-aligned nodes, use "Curved" or "Elbow" connection types with explicit forward/backward arrow directions so offset nodes have smooth, sweeping, elegant connections among them.
+3. MANDATORY NODE CAPTIONS: Every node MUST have a descriptive `title` AND a clear, informative `description` (caption/sub-label) explaining its role or attributes in the system.
+4. TARGETED COMPONENT EDITING: When the user asks to edit, modify, recolor, rename, delete, or style a specific component in the existing diagram, set `"mode": "patch"`. Use the EXACT `id` or title of the existing node as listed in `Current Nodes` above so the target component is edited in-place without generating duplicate nodes or severing existing connections.
+5. SEMANTIC COLOR HARMONY: Group associated nodes using similar colors (e.g. blue for clients/frontends, violet for backend microservices, green for databases, rose for security/auth, amber for queues). Space them out cleanly to prevent visual overlap!`;
   },
   async parseResponse(raw) {
     const json = extractJsonBlock(raw);
