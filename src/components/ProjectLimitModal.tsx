@@ -108,7 +108,7 @@ export default function ProjectLimitModal({
           alignItems: "center",
           justifyContent: "center",
           padding: "0.75rem",
-          background: "rgba(5, 7, 15, 0.82)",
+          background: "rgba(5, 7, 15, 0.75)",
           backdropFilter: "blur(18px) saturate(150%)",
           fontFamily: "var(--font-headline, system-ui, sans-serif)",
           overflowY: "auto",
@@ -120,17 +120,17 @@ export default function ProjectLimitModal({
           exit={{ opacity: 0, scale: 0.95, y: 12 }}
           transition={{ type: "spring", stiffness: 350, damping: 28 }}
           style={{
-            background: "var(--bg-primary, #0c101d)",
-            border: "1px solid var(--border, rgba(255, 255, 255, 0.12))",
+            background: "var(--bg-primary, #ffffff)",
+            border: "1px solid var(--border, rgba(148, 163, 184, 0.25))",
             borderRadius: "20px",
             maxWidth: "680px",
             width: "100%",
-            boxShadow: "0 20px 50px -10px rgba(0, 0, 0, 0.7), 0 0 30px var(--accent-glow, rgba(0, 163, 149, 0.15))",
+            boxShadow: "0 20px 50px -10px rgba(0, 0, 0, 0.35), 0 0 30px var(--accent-glow, rgba(0, 163, 149, 0.15))",
             maxHeight: "92vh",
             overflowY: "auto",
             padding: "1.25rem 1.5rem",
             position: "relative",
-            color: "var(--text-primary, #f9fafb)",
+            color: "var(--text-primary, #0f172a)",
           }}
         >
           {/* Top Ambient Glow */}
@@ -142,7 +142,7 @@ export default function ProjectLimitModal({
               transform: "translateX(-50%)",
               width: "300px",
               height: "120px",
-              background: "radial-gradient(circle, var(--accent-glow, rgba(0, 163, 149, 0.25)), transparent 70%)",
+              background: "radial-gradient(circle, var(--accent-glow, rgba(0, 163, 149, 0.2)), transparent 70%)",
               filter: "blur(25px)",
               pointerEvents: "none",
             }}
@@ -159,9 +159,9 @@ export default function ProjectLimitModal({
                 width: "28px",
                 height: "28px",
                 borderRadius: "50%",
-                background: "var(--bg-tertiary, rgba(255,255,255,0.06))",
-                border: "1px solid var(--border, rgba(255,255,255,0.1))",
-                color: "var(--text-secondary, #9ca3af)",
+                background: "var(--bg-tertiary, rgba(148, 163, 184, 0.12))",
+                border: "1px solid var(--border, rgba(148, 163, 184, 0.25))",
+                color: "var(--text-secondary, #64748b)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -170,12 +170,12 @@ export default function ProjectLimitModal({
                 zIndex: 10,
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.color = "var(--text-primary, #ffffff)";
-                e.currentTarget.style.background = "rgba(255,255,255,0.12)";
+                e.currentTarget.style.color = "var(--text-primary, #0f172a)";
+                e.currentTarget.style.background = "var(--bg-tertiary, rgba(148, 163, 184, 0.25))";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.color = "var(--text-secondary, #9ca3af)";
-                e.currentTarget.style.background = "var(--bg-tertiary, rgba(255,255,255,0.06))";
+                e.currentTarget.style.color = "var(--text-secondary, #64748b)";
+                e.currentTarget.style.background = "var(--bg-tertiary, rgba(148, 163, 184, 0.12))";
               }}
             >
               <X size={15} />
@@ -191,13 +191,13 @@ export default function ProjectLimitModal({
                 width: "36px",
                 height: "36px",
                 borderRadius: "12px",
-                background: "linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(245, 158, 11, 0.15))",
+                background: "rgba(239, 68, 68, 0.12)",
                 border: "1px solid rgba(239, 68, 68, 0.35)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: "#ef4444",
-                boxShadow: "0 0 15px rgba(239, 68, 68, 0.2)",
+                color: "#dc2626",
+                boxShadow: "0 0 15px rgba(239, 68, 68, 0.15)",
               }}>
                 <AlertCircle size={20} />
               </div>
@@ -206,7 +206,7 @@ export default function ProjectLimitModal({
                 fontWeight: 800,
                 margin: 0,
                 letterSpacing: "-0.02em",
-                color: "var(--text-primary, #ffffff)",
+                color: "var(--text-primary, #0f172a)",
                 fontFamily: "var(--font-headline, system-ui)",
               }}>
                 Project Limit Reached
@@ -214,7 +214,7 @@ export default function ProjectLimitModal({
             </div>
 
             <p style={{
-              color: "var(--text-secondary, #9ca3af)",
+              color: "var(--text-secondary, #64748b)",
               fontSize: "0.8rem",
               margin: "0 0 0.85rem",
               maxWidth: "480px",
@@ -228,20 +228,20 @@ export default function ProjectLimitModal({
             <div style={{
               width: "100%",
               maxWidth: "280px",
-              background: "var(--bg-secondary, rgba(255,255,255,0.03))",
-              border: "1px solid var(--border, rgba(255,255,255,0.08))",
+              background: "var(--bg-secondary, rgba(148, 163, 184, 0.08))",
+              border: "1px solid var(--border, rgba(148, 163, 184, 0.2))",
               borderRadius: "10px",
               padding: "0.4rem 0.75rem",
               display: "flex",
               flexDirection: "column",
               gap: "0.25rem",
             }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.65rem", fontWeight: 700, color: "var(--text-secondary, #9ca3af)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.65rem", fontWeight: 700, color: "var(--text-secondary, #64748b)" }}>
                 <span>Storage Quota</span>
-                <span style={{ color: "#ef4444", fontWeight: 800 }}>{currentCount} / {max} Projects Used</span>
+                <span style={{ color: "#dc2626", fontWeight: 800 }}>{currentCount} / {max} Projects Used</span>
               </div>
-              <div style={{ width: "100%", height: "4px", background: "rgba(255,255,255,0.06)", borderRadius: "4px", overflow: "hidden" }}>
-                <div style={{ width: `${percentUsed}%`, height: "100%", background: "linear-gradient(90deg, #f59e0b, #ef4444)", borderRadius: "4px" }} />
+              <div style={{ width: "100%", height: "4px", background: "rgba(148, 163, 184, 0.2)", borderRadius: "4px", overflow: "hidden" }}>
+                <div style={{ width: `${percentUsed}%`, height: "100%", background: "linear-gradient(90deg, #f59e0b, #dc2626)", borderRadius: "4px" }} />
               </div>
             </div>
           </div>
@@ -256,7 +256,7 @@ export default function ProjectLimitModal({
             zIndex: 2,
           }}>
             {loadingPlans ? (
-              <div style={{ gridColumn: "1/-1", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", color: "var(--text-secondary, #6b7280)", padding: "2rem" }}>
+              <div style={{ gridColumn: "1/-1", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", color: "var(--text-secondary, #64748b)", padding: "2rem" }}>
                 <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
                 <span style={{ fontSize: "0.8rem", fontWeight: 600 }}>Loading plans...</span>
               </div>
@@ -272,11 +272,11 @@ export default function ProjectLimitModal({
                     whileHover={{ y: -3, transition: { duration: 0.15 } }}
                     style={{
                       background: isRecommended
-                        ? "linear-gradient(165deg, var(--bg-secondary, rgba(255,255,255,0.06)), rgba(0, 163, 149, 0.08))"
-                        : "var(--bg-secondary, rgba(255,255,255,0.03))",
+                        ? "color-mix(in srgb, var(--accent-primary, #00a395) 8%, var(--bg-secondary, rgba(148, 163, 184, 0.08)))"
+                        : "var(--bg-secondary, rgba(148, 163, 184, 0.06))",
                       border: isRecommended
-                        ? "1px solid var(--accent-primary, #00a395)"
-                        : "1px solid var(--border, rgba(255,255,255,0.08))",
+                        ? "1.5px solid var(--accent-primary, #00a395)"
+                        : "1px solid var(--border, rgba(148, 163, 184, 0.25))",
                       borderRadius: "14px",
                       padding: "0.85rem 0.75rem",
                       display: "flex",
@@ -284,7 +284,7 @@ export default function ProjectLimitModal({
                       position: "relative",
                       boxShadow: isRecommended
                         ? "0 6px 20px -8px var(--accent-glow, rgba(0,163,149,0.3))"
-                        : "none",
+                        : "0 2px 8px rgba(0,0,0,0.04)",
                     }}
                   >
                     {/* Highlight Badge */}
@@ -314,7 +314,7 @@ export default function ProjectLimitModal({
                         width: "24px",
                         height: "24px",
                         borderRadius: "7px",
-                        background: `color-mix(in srgb, ${color} 15%, transparent)`,
+                        background: `color-mix(in srgb, ${color} 18%, transparent)`,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -323,14 +323,14 @@ export default function ProjectLimitModal({
                       }}>
                         <Icon size={14} />
                       </div>
-                      <h4 style={{ fontWeight: 800, fontSize: "0.8rem", margin: 0, color: "var(--text-primary, #ffffff)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <h4 style={{ fontWeight: 800, fontSize: "0.8rem", margin: 0, color: "var(--text-primary, #0f172a)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {plan.name}
                       </h4>
                     </div>
 
                     <p style={{
                       fontSize: "0.68rem",
-                      color: "var(--text-secondary, #9ca3af)",
+                      color: "var(--text-secondary, #64748b)",
                       margin: "0 0 0.6rem",
                       flex: 1,
                       lineHeight: 1.3,
@@ -343,9 +343,9 @@ export default function ProjectLimitModal({
                     </p>
 
                     <div style={{ marginBottom: "0.65rem" }}>
-                      <div style={{ fontSize: "1.15rem", fontWeight: 900, color: "var(--text-primary, #ffffff)", letterSpacing: "-0.02em" }}>
+                      <div style={{ fontSize: "1.15rem", fontWeight: 900, color: "var(--text-primary, #0f172a)", letterSpacing: "-0.02em" }}>
                         ₹{plan.priceINR.toLocaleString("en-IN")}
-                        <span style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--text-secondary, #9ca3af)", marginLeft: "2px" }}>
+                        <span style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--text-secondary, #64748b)", marginLeft: "2px" }}>
                           {formatDuration(plan.durationMonths)}
                         </span>
                       </div>
@@ -363,13 +363,9 @@ export default function ProjectLimitModal({
                         width: "100%",
                         padding: "0.45rem 0.5rem",
                         borderRadius: "8px",
-                        background: isRecommended
-                          ? "var(--accent-primary, #00a395)"
-                          : "var(--bg-tertiary, rgba(255,255,255,0.06))",
+                        background: "var(--accent-primary, #00a395)",
                         color: "#ffffff",
-                        border: isRecommended
-                          ? "none"
-                          : "1px solid var(--border, rgba(255,255,255,0.1))",
+                        border: "none",
                         fontWeight: 800,
                         fontSize: "0.72rem",
                         cursor: "pointer",
@@ -378,27 +374,15 @@ export default function ProjectLimitModal({
                         justifyContent: "center",
                         gap: "0.3rem",
                         transition: "all 0.2s ease",
-                        boxShadow: isRecommended
-                          ? "0 3px 10px var(--accent-glow, rgba(0,163,149,0.3))"
-                          : "none",
+                        boxShadow: "0 2px 8px var(--accent-glow, rgba(0,163,149,0.25))",
                       }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.transform = "translateY(-1px)";
-                        if (!isRecommended) {
-                          e.currentTarget.style.borderColor = "var(--accent-primary, #00a395)";
-                          e.currentTarget.style.color = "var(--accent-primary, #00a395)";
-                        } else {
-                          e.currentTarget.style.opacity = "0.92";
-                        }
+                        e.currentTarget.style.opacity = "0.92";
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.transform = "translateY(0)";
-                        if (!isRecommended) {
-                          e.currentTarget.style.borderColor = "var(--border, rgba(255,255,255,0.1))";
-                          e.currentTarget.style.color = "#ffffff";
-                        } else {
-                          e.currentTarget.style.opacity = "1";
-                        }
+                        e.currentTarget.style.opacity = "1";
                       }}
                     >
                       <span>Upgrade</span>
@@ -417,9 +401,9 @@ export default function ProjectLimitModal({
               style={{
                 padding: "0.45rem 1.25rem",
                 borderRadius: "10px",
-                background: "var(--bg-secondary, rgba(255,255,255,0.04))",
-                border: "1px solid var(--border, rgba(255,255,255,0.1))",
-                color: "var(--text-primary, #ffffff)",
+                background: "var(--bg-tertiary, rgba(148, 163, 184, 0.1))",
+                border: "1px solid var(--border, rgba(148, 163, 184, 0.25))",
+                color: "var(--text-primary, #0f172a)",
                 fontWeight: 700,
                 fontSize: "0.78rem",
                 cursor: "pointer",
@@ -429,12 +413,12 @@ export default function ProjectLimitModal({
                 transition: "all 0.2s ease",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = "rgba(255,255,255,0.08)";
-                e.currentTarget.style.borderColor = "rgba(255,255,255,0.2)";
+                e.currentTarget.style.background = "var(--bg-tertiary, rgba(148, 163, 184, 0.2))";
+                e.currentTarget.style.borderColor = "var(--border, rgba(148, 163, 184, 0.4))";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = "var(--bg-secondary, rgba(255,255,255,0.04))";
-                e.currentTarget.style.borderColor = "var(--border, rgba(255,255,255,0.1))";
+                e.currentTarget.style.background = "var(--bg-tertiary, rgba(148, 163, 184, 0.1))";
+                e.currentTarget.style.borderColor = "var(--border, rgba(148, 163, 184, 0.25))";
               }}
             >
               <LayoutDashboard size={14} />
