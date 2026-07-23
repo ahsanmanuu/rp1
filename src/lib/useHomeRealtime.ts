@@ -145,8 +145,11 @@ async function fetchAllCollections(): Promise<HomeData> {
     if (json.success && json.data) {
       return mergeWithFallback(json.data);
     }
-  } catch (err) {
-    console.warn('[useHomeRealtime] Fetch failed:', err);
+  } catch (err: any) {
+    const msg = err?.name === 'TimeoutError' || err?.name === 'AbortError'
+      ? 'Request timed out'
+      : (err?.message || String(err));
+    console.warn('[useHomeRealtime] Fetch failed:', msg);
   }
   return mergeWithFallback({ ...INITIAL_DATA });
 }

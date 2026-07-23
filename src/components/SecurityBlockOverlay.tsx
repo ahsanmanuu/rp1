@@ -62,8 +62,11 @@ export default function SecurityBlockOverlay() {
             sessionStorage.setItem('latexify-geo-recorded', 'true');
           }
         }
-      } catch (e) {
-        console.warn('[Geolocation capturing] Failed in background:', e);
+      } catch (e: any) {
+        const msg = e?.name === 'TimeoutError' || e?.name === 'AbortError'
+          ? 'Geolocation request timed out'
+          : (e?.message || String(e));
+        console.warn('[Geolocation capturing] Failed in background:', msg);
       }
     };
 

@@ -98,7 +98,10 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
       }
     } catch (err: any) {
       // Network timeout or connection drop — DO NOT clear session!
-      console.warn("[PB Session Provider] Fetch failed with network/timeout error:", err?.message || err);
+      const msg = err?.name === 'TimeoutError' || err?.name === 'AbortError'
+        ? 'Request timed out'
+        : (err?.message || String(err));
+      console.warn("[PB Session Provider] Fetch failed with network/timeout error:", msg);
     } finally {
       isFetching.current = false;
     }

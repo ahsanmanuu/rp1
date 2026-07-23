@@ -146,7 +146,10 @@ export async function authFromToken(token: string): Promise<PocketBase> {
         if (err?.status === 401) {
           console.log('[PB System] Token is invalid or expired (401)');
         } else {
-          console.warn('[PB System] authRefresh failed for token:', err?.message || err);
+          const msg = err?.name === 'TimeoutError' || err?.name === 'AbortError'
+            ? 'Request timed out'
+            : (err?.message || String(err));
+          console.warn('[PB System] authRefresh failed for token:', msg);
         }
         throw err;
       } finally {

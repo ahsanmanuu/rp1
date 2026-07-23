@@ -91,11 +91,12 @@ export function usePbRealtime<T = any>(options: PbRealtimeOptions<T>) {
       setError(null);
       return items;
     } catch (err: any) {
-      const msg = err?.message || '';
-      if (msg.includes('aborted') || msg.includes('autocancelled') || msg.includes('autocancel') || msg === 'offline') {
+      const isTimeout = err?.name === 'TimeoutError' || err?.name === 'AbortError';
+      const msg = isTimeout ? 'Request timed out' : (err?.message || String(err));
+      if (msg.includes('aborted') || msg.includes('autocancelled') || msg.includes('autocancel') || msg === 'offline' || isTimeout) {
         return [];
       }
-      console.error(`[usePbRealtime] Fetch error for ${collection}:`, err);
+      console.error(`[usePbRealtime] Fetch error for ${collection}:`, msg);
       setError(msg || `Failed to fetch ${collection}`);
       return [];
     } finally {
