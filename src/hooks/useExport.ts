@@ -82,6 +82,47 @@ async function withInlinedStyles<T>(fn: () => Promise<T>): Promise<T> {
 
 import toast from 'react-hot-toast';
 
+function downloadDataUrl(dataUrl: string, filename: string) {
+  try {
+    if (dataUrl.startsWith('data:')) {
+      const parts = dataUrl.split(',');
+      const mimeMatch = parts[0].match(/:(.*?);/);
+      const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+      const bstr = atob(parts[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      const blob = new Blob([u8arr], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        if (document.body.contains(a)) document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 1000);
+    } else {
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        if (document.body.contains(a)) document.body.removeChild(a);
+      }, 1000);
+    }
+  } catch (e) {
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = filename;
+    a.click();
+  }
+}
+
 export function useExport({
   canvasRef, nodes, connections, zoom, mermaidCode,
   multiSelect, setSelectedNode, setSelectedConnId,
@@ -123,7 +164,6 @@ export function useExport({
       setSelectedConnId(null);
       multiSelect.clearSelect();
     });
-
     try {
       const bounds = getNodeBounds();
       const pad = opts.padding || 60;
@@ -170,10 +210,7 @@ export function useExport({
         dataUrl = await toPng(stage, { ...renderOptions, pixelRatio: 1 });
       }
 
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = `diagram_${Date.now()}.png`;
-      a.click();
+      downloadDataUrl(dataUrl, `diagram_${Date.now()}.png`);
       toast.success("PNG exported successfully!", { id: toastId });
     } catch (err: any) {
       console.error('Failed to export PNG', err);
@@ -247,10 +284,7 @@ export function useExport({
         dataUrl = await toJpeg(stage, { ...renderOptions, pixelRatio: 1 });
       }
 
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = `diagram_${Date.now()}.jpg`;
-      a.click();
+      downloadDataUrl(dataUrl, `diagram_${Date.now()}.jpg`);
       toast.success("JPEG exported successfully!", { id: toastId });
     } catch (err: any) {
       console.error('Failed to export JPEG', err);
@@ -319,10 +353,7 @@ export function useExport({
         dataUrl = await toSvg(stage, renderOptions);
       }
 
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = `diagram_${Date.now()}.svg`;
-      a.click();
+      downloadDataUrl(dataUrl, `diagram_${Date.now()}.svg`);
       toast.success("SVG vector exported successfully!", { id: toastId });
     } catch (err: any) {
       console.error('Failed to export SVG', err);

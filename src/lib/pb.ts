@@ -346,10 +346,8 @@ export async function pbAdmin(): Promise<PocketBase> {
     // Save token to disk for caching across hot-reloads
     if (typeof window === 'undefined') {
       try {
-        const fs = require('fs');
-        const path = require('path');
-        const pbDataDir = process.env.PB_DATA_DIR || path.join(process.cwd(), 'pb_data');
-        const tokenPath = path.join(pbDataDir, 'admin_token.json');
+        const os = require('os');
+        const tokenPath = path.join(os.tmpdir(), 'rp1_admin_token.json');
         fs.mkdirSync(path.dirname(tokenPath), { recursive: true });
         fs.writeFileSync(tokenPath, JSON.stringify({
           token: pb.authStore.token,

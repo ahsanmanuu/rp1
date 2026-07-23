@@ -305,65 +305,27 @@ function buildPath(
   }
 
   if (type === 'Orthogonal' || type === 'Elbow') {
-    const margin = 24;
-
-    const intersectsNode = (x: number, y1: number, y2: number, node: DiagramNode) => {
-      const minY = Math.min(y1, y2);
-      const maxY = Math.max(y1, y2);
-      return x >= node.x && x <= node.x + node.width && minY <= node.y + node.height && maxY >= node.y;
-    };
-
-    const intersectsNodeH = (y: number, x1: number, x2: number, node: DiagramNode) => {
-      const minX = Math.min(x1, x2);
-      const maxX = Math.max(x1, x2);
-      return y >= node.y && y <= node.y + node.height && minX <= node.x + node.width && maxX >= node.x;
-    };
-
-    let x1 = fx;
-    let y1 = fy;
-    if (fromDir === 'R') x1 = from.x + from.width + margin;
-    else if (fromDir === 'L') x1 = from.x - margin;
-    else if (fromDir === 'B') y1 = from.y + from.height + margin;
-    else if (fromDir === 'T') y1 = from.y - margin;
-
-    let x2 = tx;
-    let y2 = ty;
-    if (toDir === 'R') x2 = to.x + to.width + margin;
-    else if (toDir === 'L') x2 = to.x - margin;
-    else if (toDir === 'B') y2 = to.y + to.height + margin;
-    else if (toDir === 'T') y2 = to.y - margin;
-
     const points: { x: number; y: number }[] = [{ x: fx, y: fy }];
-    if (x1 !== fx || y1 !== fy) {
-      points.push({ x: x1, y: y1 });
-    }
 
     const isFromH = fromDir === 'R' || fromDir === 'L';
-    if (isFromH) {
-      const x_mid = (x1 + x2) / 2;
-      if (!intersectsNode(x_mid, y1, y2, from) && !intersectsNode(x_mid, y1, y2, to)) {
-        points.push({ x: x_mid, y: y1 }, { x: x_mid, y: y2 }, { x: tx, y: y2 });
-        if (y2 !== ty) points.push({ x: tx, y: ty });
-        return smoothCornerPath(points, 12);
-      }
+    const isToH = toDir === 'R' || toDir === 'L';
+
+    if (isFromH && !isToH) {
+      points.push({ x: tx, y: fy });
+    } else if (!isFromH && isToH) {
+      points.push({ x: fx, y: ty });
+    } else if (isFromH && isToH) {
+      const midX = (fx + tx) / 2 + offset;
+      points.push({ x: midX, y: fy }, { x: midX, y: ty });
     } else {
-      const y_mid = (y1 + y2) / 2;
-      if (!intersectsNodeH(y_mid, x1, x2, from) && !intersectsNodeH(y_mid, x1, x2, to)) {
-        points.push({ x: x1, y: y_mid }, { x: x2, y: y_mid }, { x: x2, y: ty });
-        if (x2 !== tx) points.push({ x: tx, y: ty });
-        return smoothCornerPath(points, 12);
-      }
+      const midY = (fy + ty) / 2 + (offsetY || offset);
+      points.push({ x: fx, y: midY }, { x: tx, y: midY });
     }
+    points.push({ x: tx, y: ty });
 
-    // Bypass routing for offset nodes
-    const y_above = Math.min(from.y, to.y) - margin;
-    const y_below = Math.max(from.y + from.height, to.y + to.height) + margin;
-    const y_safe = Math.abs(y1 - y_above) < Math.abs(y1 - y_below) ? y_above : y_below;
-
-    points.push({ x: x1, y: y_safe }, { x: x2, y: y_safe }, { x: x2, y: ty });
-    if (x2 !== tx) points.push({ x: tx, y: ty });
-    return smoothCornerPath(points, 12);
+    return smoothCornerPath(points, 8);
   }
+
   return `M ${fx} ${fy} L ${tx} ${ty}`;
 }
 
@@ -1386,9 +1348,6 @@ function DiagramStudio() {
       connDragRaf.current = null;
       if (draggingConnHandle.end === 'mid') {
         debouncedSave(nodes, connections);
-      } else {
-        // dropped on canvas -> delete connection
-        deleteConnection(draggingConnHandle.connId);
       }
       setDraggingConnHandle(null);
     }
@@ -3578,8 +3537,24 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
                           setConnectingFrom({ nodeId: node.id, portId: port.id });
                         }}
                         onMouseUp={e => {
+                          e.stopPropagation();
+                          if (draggingConnHandle && draggingConnHandle.end !== 'mid') {
+                            pushHistory(nodes, connections);
+                            setConnections(prev => prev.map(c => {
+                              if (c.id === draggingConnHandle.connId) {
+                                if (draggingConnHandle.end === 'from') {
+                                  return { ...c, from: node.id, fromPort: port.id };
+                                } else {
+                                  return { ...c, to: node.id, toPort: port.id };
+                                }
+                              }
+                              return c;
+                            }));
+                            setDraggingConnHandle(null);
+                            return;
+                          }
+
                           if (connectingFrom && connectingFrom.nodeId !== node.id) {
-                            e.stopPropagation();
                             pushHistory(nodes, connections);
                             const newConn: DiagramConnection = {
                               id: `conn_${Date.now()}`,
