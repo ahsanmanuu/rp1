@@ -21,6 +21,7 @@ import type { NodeColor, NodeType, ConnType, Arrowhead, DiagramNode, DiagramConn
 import ProjectLimitModal from '@/components/ProjectLimitModal';
 import { useProjectLimit } from '@/hooks/useProjectLimit';
 import ThemeSwitcher from '@/components/scholarly-editor/ThemeSwitcher';
+import toast from 'react-hot-toast';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -704,7 +705,8 @@ function DiagramStudio() {
   const saveToServer = useCallback(async (
     updatedNodes: DiagramNode[],
     updatedConns: DiagramConnection[],
-    title?: string
+    title?: string,
+    showToast: boolean = false
   ) => {
     if (!projectId) return;
     setSaving(true);
@@ -726,6 +728,9 @@ function DiagramStudio() {
         }),
       });
       setSaveStatus('saved');
+      if (showToast) {
+        toast.success("Saved to History & Cloud!");
+      }
 
       // Mark project completed
       await fetch('/api/projects/complete', {
@@ -736,6 +741,9 @@ function DiagramStudio() {
     } catch (err) {
       console.error('[DiagramSave]', err);
       setSaveStatus('unsaved');
+      if (showToast) {
+        toast.error("Failed to save diagram");
+      }
     } finally {
       setSaving(false);
     }
@@ -809,26 +817,30 @@ function DiagramStudio() {
 
   const aiLoading = agentStatus === 'connecting' || agentStatus === 'streaming' || agentStatus === 'applying';
 
-  // Auto-create a diagram project when logged in but no ID in the URL
+  const isNewParam = searchParams.get('new') === 'true';
+
+  // Auto-create a diagram project when logged in, no ID in the URL, or new=true parameter
   useEffect(() => {
-    if (!session || projectId) return;
-    fetch('/api/diagrams', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: 'Untitled Diagram' }),
-    })
-      .then(r => r.json())
-      .then(data => {
-        if (data.error === 'LIMIT_REACHED') {
-          setShowLimitModal(true);
-          return;
-        }
-        if (data.projectId) {
-          router.replace(`/diagrams/editor?id=${data.projectId}`);
-        }
+    if (!session) return;
+    if (isNewParam || !projectId) {
+      fetch('/api/diagrams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Untitled Diagram' }),
       })
-      .catch(console.error);
-  }, [session, projectId, router]);
+        .then(r => r.json())
+        .then(data => {
+          if (data.error === 'LIMIT_REACHED') {
+            setShowLimitModal(true);
+            return;
+          }
+          if (data.projectId) {
+            router.replace(`/diagrams/editor?id=${data.projectId}`);
+          }
+        })
+        .catch(console.error);
+    }
+  }, [session, projectId, isNewParam, router]);
 
   // Load from server on mount
   useEffect(() => {
@@ -1793,6 +1805,31 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
     sendMessage(text, image || undefined, fullHistory);
   }, [chatInput, chatImage, aiLoading, sendMessage, applyTemplateStaggered, chatMessages]);
 
+  const createNewDiagram = useCallback(() => {
+    setCreating(true);
+    fetch('/api/diagrams', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Untitled Diagram' }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.error === 'LIMIT_REACHED') {
+          setShowLimitModal(true);
+          return;
+        }
+        if (data.projectId) {
+          toast.success("New diagram created!");
+          router.push(`/diagrams/editor?id=${data.projectId}`);
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        toast.error("Failed to create diagram");
+      })
+      .finally(() => setCreating(false));
+  }, [router]);
+
   // ── Keyboard shortcuts ────────────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1827,9 +1864,13 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
         e.preventDefault();
         redo(nodes, connections);
       }
+      if (cmdOrCtrl && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        createNewDiagram();
+      }
       if (cmdOrCtrl && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        saveToServer(nodes, connections);
+        saveToServer(nodes, connections, undefined, true);
       }
       if (cmdOrCtrl && e.key.toLowerCase() === 'a') {
         e.preventDefault();
@@ -1953,21 +1994,32 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
 
           <div className="h-5 w-px bg-white/10" />
 
-          {/* Recent Projects Dropdown */}
-          <div className="relative" ref={recentMenuRef}>
+          {/* Recent Projects Dropdown & New Button */}
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setRecentMenuOpen(v => !v)}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
-                recentMenuOpen
-                  ? 'bg-violet-500/20 text-violet-300 border-violet-500/50'
-                  : 'bg-[#1c2b3c] text-[#c6c6cb] border-white/8 hover:text-white hover:border-white/20'
-              }`}
-              title="Open a recent diagram project"
+              onClick={createNewDiagram}
+              disabled={creating}
+              className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer bg-violet-600 hover:bg-violet-500 text-white border border-violet-400/40 shadow-sm disabled:opacity-50"
+              title="Create a new diagram (Ctrl+N)"
             >
-              <span className="material-symbols-outlined" style={{ fontSize: 15 }}>history</span>
-              Recent
-              <span className="material-symbols-outlined transition-transform" style={{ fontSize: 12, transform: recentMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>expand_more</span>
+              <span className="material-symbols-outlined" style={{ fontSize: 15 }}>add</span>
+              <span>New Diagram</span>
             </button>
+
+            <div className="relative" ref={recentMenuRef}>
+              <button
+                onClick={() => setRecentMenuOpen(v => !v)}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                  recentMenuOpen
+                    ? 'bg-violet-500/20 text-violet-300 border-violet-500/50'
+                    : 'bg-[#1c2b3c] text-[#c6c6cb] border-white/8 hover:text-white hover:border-white/20'
+                }`}
+                title="Open a recent diagram project"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 15 }}>history</span>
+                Recent
+                <span className="material-symbols-outlined transition-transform" style={{ fontSize: 12, transform: recentMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>expand_more</span>
+              </button>
 
             {recentMenuOpen && (
               <div
@@ -2143,6 +2195,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
               </div>
             )}
           </div>
+          </div>
 
           <div className="h-5 w-px bg-white/10 hidden lg:block" />
 
@@ -2212,9 +2265,14 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
             </button>
           </div>
 
-          <button onClick={() => saveToServer(nodes, connections)} disabled={saving}
-            className="p-2 rounded-lg hover:bg-white/8 transition-colors text-[#c6c6cb] hover:text-white border-none bg-transparent cursor-pointer" title="Save Now">
-            <span className="material-symbols-outlined" style={{ fontSize: 19 }}>cloud_upload</span>
+          <button
+            onClick={() => saveToServer(nodes, connections, undefined, true)}
+            disabled={saving}
+            className="px-3 py-1.5 rounded-lg hover:bg-white/8 transition-colors text-[#c6c6cb] hover:text-white border border-white/10 bg-white/5 cursor-pointer flex items-center gap-1.5 disabled:opacity-50 text-xs font-semibold"
+            title="Save diagram to cloud and history (Ctrl+S)"
+          >
+            <span className="material-symbols-outlined text-amber-400" style={{ fontSize: 16 }}>cloud_upload</span>
+            <span className="hidden lg:inline">Save to History</span>
           </button>
 
           {/* Export Dropdown */}

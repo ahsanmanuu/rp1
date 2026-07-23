@@ -174,14 +174,23 @@ function HistoryContent() {
              </div>
              <p className="text-secondary font-medium">Manage and review your scholarly manuscripts and archives.</p>
           </motion.div>
-          <Link
-            href="/archive"
-            className="flex items-center gap-2 px-4 py-2 bg-surface-container-low rounded-xl text-sm font-bold text-secondary hover:text-primary hover:bg-surface-container transition-all border border-outline/10"
-          >
-            <Archive size={16} />
-            Archive
-            <ExternalLink size={12} />
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/diagrams/editor?new=true"
+              className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 text-amber-600 rounded-xl text-sm font-bold hover:bg-amber-500/20 transition-all border border-amber-500/20"
+            >
+              <LayoutPanelLeft size={16} />
+              New Diagram
+            </Link>
+            <Link
+              href="/archive"
+              className="flex items-center gap-2 px-4 py-2 bg-surface-container-low rounded-xl text-sm font-bold text-secondary hover:text-primary hover:bg-surface-container transition-all border border-outline/10"
+            >
+              <Archive size={16} />
+              Archive
+              <ExternalLink size={12} />
+            </Link>
+          </div>
         </header>
 
         {/* Global Toolbar */}
@@ -279,7 +288,7 @@ function HistoryContent() {
                         <div className="flex items-center gap-1.5" title="References"><BookOpen size={14} className="text-primary/70"/> {p.stats?.references || 0}</div>
                      </div>
                      <Link 
-                        href={p.isLocal ? `/latex-studio/${p.id}` : (p.type === 'REVIEWER' ? `/reviewer/studio` : `/editor/${p.id}`)}
+                        href={p.isLocal ? `/latex-studio/${p.id}` : p.type === 'DIAGRAM' ? `/diagrams/editor?id=${p.id}` : p.type === 'DOC2LATEX' ? `/doc2latex/${p.id}` : p.type === 'REVIEWER' ? `/reviewer/studio` : `/editor/${p.id}`}
                         onClick={(e) => e.stopPropagation()}
                         className="h-10 px-6 bg-surface-container-low text-secondary rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-on-background hover:text-white transition-all shadow-sm group/btn"
                      >

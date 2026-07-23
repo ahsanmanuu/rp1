@@ -54,7 +54,24 @@ export default function DiagramsPage() {
             AI-powered layout, real-time collaboration, and export-ready output —
             all in a single, stunning canvas.
           </p>
-          
+          <div className="flex flex-wrap justify-center gap-4">
+            <Link
+              href="/diagrams/editor?new=true"
+              className="px-8 py-4 rounded-2xl text-sm font-bold flex items-center gap-3 text-white shadow-xl hover:scale-105 transition-all"
+              style={{ background: 'linear-gradient(135deg, #6b38d4 0%, #8b5cf6 100%)', boxShadow: '0 10px 30px rgba(107,56,212,0.3)' }}
+            >
+              <PenTool size={18} />
+              Create New Diagram
+              <ArrowRight size={16} />
+            </Link>
+            <Link
+              href="/diagrams/editor"
+              className="px-8 py-4 rounded-2xl text-sm font-bold flex items-center gap-3 border hover:bg-white/5 transition-all"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              Open Diagram Editor
+            </Link>
+          </div>
         </div>
       </section>
 
