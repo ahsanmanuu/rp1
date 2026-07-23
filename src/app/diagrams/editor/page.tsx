@@ -529,7 +529,9 @@ function DiagramStudio() {
   // ── Recent Projects State ────────────────────────────────────────────────────
   const [recentProjects, setRecentProjects] = useState<Array<{ id: string; title: string; updatedAt: string; nodeCount: number }>>([]);
   const [recentMenuOpen, setRecentMenuOpen] = useState(false);
-  const recentMenuRef = useRef<HTMLDivElement>(null);
+  const recentMenuRef    = useRef<HTMLDivElement>(null);
+  const exportMenuRef    = useRef<HTMLDivElement>(null);
+  const bgPickerRef      = useRef<HTMLDivElement>(null);
 
   // ── Project Title State ─────────────────────────────────────────────────────
   const [projectTitle, setProjectTitle]       = useState('Untitled Diagram');
@@ -744,6 +746,28 @@ function DiagramStudio() {
     if (recentMenuOpen) document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [recentMenuOpen]);
+
+  // Close Export menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    if (exportMenuOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [exportMenuOpen, setExportMenuOpen]);
+
+  // Close BgPicker on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (bgPickerRef.current && !bgPickerRef.current.contains(e.target as Node)) {
+        setBgPickerOpen(false);
+      }
+    };
+    if (bgPickerOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [bgPickerOpen]);
 
   // ── Connect Streaming Agent Hook ──────────────────────────────────────────────
   const { sendMessage, stopStreaming, status: agentStatus, streamingText } = useDiagramAgent({
@@ -1904,11 +1928,11 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
           TOP HEADER
       ══════════════════════════════════════════════════════════════════════ */}
       <header
-        className="glass rim fixed top-0 w-full h-[70px] border-b flex justify-between items-center px-3 md:px-6 z-50 overflow-hidden gap-2"
+        className="glass rim fixed top-0 w-full h-[70px] border-b flex justify-between items-center px-3 md:px-6 z-50 gap-2"
         style={{ borderColor: isLight ? 'var(--editor-border)' : 'rgba(69,71,75,0.25)' }}
       >
         {/* Left: brand + nav — flex-1 allows shrink, min-w-0 prevents overflow */}
-        <div className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
           {/* App Brand + Project Title */}
           <div className="flex items-center gap-2.5">
             <span className="material-symbols-outlined text-amber-400 flex-shrink-0" style={{ fontSize: 22 }}>schema</span>
@@ -2243,7 +2267,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
             </button>
 
             {/* Export Dropdown */}
-            <div className="relative">
+            <div className="relative" ref={exportMenuRef}>
               <button
                 onClick={() => setExportMenuOpen(v => !v)}
                 className="px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 text-violet-200 border transition-all cursor-pointer hover:bg-violet-500/20 hover:text-white"
@@ -2256,7 +2280,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
 
               {exportMenuOpen && (
                 <div
-                  className="glass rim absolute right-0 top-full mt-3 border border-white/10 rounded-2xl shadow-2xl z-50 p-2 w-64 popover-entry"
+                  className="glass rim absolute right-0 top-full mt-3 border border-white/10 rounded-2xl shadow-2xl z-[200] p-2 w-64 popover-entry"
                   style={{ background: 'rgba(9,19,32,0.96)', backdropFilter: 'blur(20px)' }}
                 >
                   <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-violet-400">Raster Image</div>
@@ -2348,7 +2372,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
             <div className="h-4 w-px bg-white/10" />
 
             {/* Canvas Background Grid Picker */}
-            <div className="relative">
+            <div className="relative" ref={bgPickerRef}>
               <button
                 onClick={() => setBgPickerOpen(v => !v)}
                 title="Canvas Background Grid Style"
@@ -2360,7 +2384,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
               </button>
               {bgPickerOpen && (
                 <div
-                  className="glass rim absolute right-0 top-full mt-2 border border-white/10 rounded-2xl shadow-2xl z-50 p-3 w-64 popover-entry"
+                  className="glass rim absolute right-0 top-full mt-2 border border-white/10 rounded-2xl shadow-2xl z-[200] p-3 w-64 popover-entry"
                   style={{ background: 'rgba(9,19,32,0.96)', backdropFilter: 'blur(20px)' }}
                 >
                   <div className="text-[10px] font-black uppercase tracking-widest text-[#c6c6cb] mb-3 px-1">Canvas Background Grid</div>
