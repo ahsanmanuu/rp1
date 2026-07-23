@@ -638,6 +638,15 @@ export function useDiagramAgent({
           if (fallbackData.error?.includes('AI_CAP_REACHED') || fallbackData.error?.includes('AI_CAP_RULE_BLOCKED')) {
             throw new Error('AI_CAP_BLOCKED');
           }
+          // Surface Unauthorized / session-expired as a friendly user message
+          if (
+            fallbackData.error === 'Unauthorized' ||
+            fallbackData.error?.toLowerCase().includes('unauthorized') ||
+            fallbackData.error?.toLowerCase().includes('not authenticated') ||
+            fallbackData.error?.toLowerCase().includes('session expired')
+          ) {
+            throw new Error('AI_UNAUTHORIZED');
+          }
           throw new Error(fallbackData.error || 'Fallback failed');
         }
       } catch (fallbackErr: any) {
@@ -664,6 +673,15 @@ export function useDiagramAgent({
             const fallbackDate = new Date(Date.now() + 86400000).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
             onError(`AI_CAP_BLOCKED:You have consumed all tokens. Token will be renewed on ${fallbackDate}. You can continue to work without AI agent.`);
           }
+          return;
+        }
+        // Session expired or user not logged in — show a friendly popup
+        if (fallbackErr.message === 'AI_UNAUTHORIZED') {
+          setStatus('error');
+          toast.error(
+            '🔒 Your session has expired or you are not signed in. Please refresh the page and log in again to use the AI assistant.',
+            { duration: 6000, id: 'ai-unauthorized' }
+          );
           return;
         }
         console.error('[useDiagramAgent] Both streaming and fallback failed:', fallbackErr);
