@@ -73,7 +73,10 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
       if (res.ok) {
         const json = await res.json();
         if (json.user) {
-          setData(json);
+          setData(prev => {
+            if (prev && JSON.stringify(prev) === JSON.stringify(json)) return prev;
+            return json;
+          });
           setStatus("authenticated");
           sessionTokenRef.current = json.token || null;
           // Store token in localStorage for PB real-time subscription

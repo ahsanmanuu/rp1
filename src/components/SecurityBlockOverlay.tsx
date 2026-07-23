@@ -88,7 +88,6 @@ export default function SecurityBlockOverlay() {
       if (diff <= 0) {
         setBlocked(false);
         setBlockedUntil(null);
-        window.location.reload();
         return;
       }
 

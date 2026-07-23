@@ -717,7 +717,7 @@ export default function DashboardPage() {
     }
   }, [status, session, router]);
 
-  const isSessionLoading = status === "loading" || !session;
+  const isSessionLoading = status === "loading" && !session;
 
   return (
     <>

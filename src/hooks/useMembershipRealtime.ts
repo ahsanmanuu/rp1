@@ -80,7 +80,7 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
     fetchRef.current = async (isBackground = false) => {
       if (!mountedRef.current) return;
 
-      if (!isBackground) {
+      if (!isBackground && !prevPlanRef.current) {
         setState(prev => ({ ...prev, loading: true, error: null }));
       }
 
@@ -102,35 +102,30 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
             isStale: false,
           });
 
-          const currentPlan = (data as MembershipData).membership;
-          if (prevPlanRef.current !== null && prevPlanRef.current !== currentPlan) {
-            onMembershipChangeRef.current?.(prevPlanRef.current, currentPlan);
+          const newPlan = data.membership || 'free';
+          if (prevPlanRef.current && prevPlanRef.current !== newPlan) {
+            onMembershipChangeRef.current?.(prevPlanRef.current, newPlan);
           }
-          prevPlanRef.current = currentPlan;
+          prevPlanRef.current = newPlan;
         } else {
-          setState({
-            data: null,
-            loading: false,
-            error: data?.error || 'Unknown error loading membership',
-            isStale: true,
-          });
-          onErrorRef.current?.(data?.error || 'Unknown error');
+          throw new Error(data.error || 'Check membership returned unsuccessful status');
         }
       } catch (err: any) {
         if (!mountedRef.current) return;
-        const msg = err?.message || 'Failed to fetch membership';
+        const msg = err.message || 'Failed to sync membership';
+        console.warn('[MembershipRealtime] Sync error:', msg);
+        onErrorRef.current?.(msg);
         setState(prev => ({
-          data: prev.data,
+          ...prev,
           loading: false,
           error: msg,
-          isStale: true,
+          data: prev.data || FALLBACK_MEMBERSHIP,
         }));
-        onErrorRef.current?.(msg);
       }
     };
 
     refetchRef.current = () => {
-      fetchRef.current?.(false);
+      fetchRef.current?.(true);
     };
   }
 

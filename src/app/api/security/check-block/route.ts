@@ -54,7 +54,9 @@ export async function POST(req: NextRequest) {
   if (!session?.user) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
 
   try {
-    const { ipAddress, location } = await req.json();
+    const text = await req.text();
+    const body = text ? JSON.parse(text) : {};
+    const { ipAddress, location } = body;
     const userId = (session.user as any).id;
     const userAgent = req.headers.get("user-agent") || "Unknown";
 
@@ -64,6 +66,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    console.warn("[Check-Block POST] Exception logging activity:", error.message);
+    return NextResponse.json({ success: true, logged: false });
   }
 }
