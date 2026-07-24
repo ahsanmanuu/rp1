@@ -152,12 +152,15 @@ export async function migrateToTemplate(
   // "already defined" conflicts when source and target classes define the same theorem env.
   let scrubbedPreamble = pResBody.replace(/\\documentclass[\s\S]*?\{[^}]*\}/gi, '% [Scrubbed documentclass]');
   // Match \newtheorem{name}... in all its forms and wrap each in a guard
+  // Handle all 4 valid forms of \newtheorem:
+  //   \newtheorem{env}{Label}
+  //   \newtheorem{env}{Label}[numberedwithin]
+  //   \newtheorem{env}[shared]{Label}
+  //   \newtheorem{env}[shared]{Label}[numberedwithin]
   scrubbedPreamble = scrubbedPreamble.replace(
-    /\\newtheorem\s*\{([^}]+)\}((?:\s*\[[^\]]*\])?)((?:\s*\{[^}]*\})?)/g,
-    (_match, name, optBefore, labelAfter) => {
-      // Only guard if it's a real environment declaration (has a label or shared counter)
-      const label = labelAfter ? labelAfter.trim() : `{${name[0].toUpperCase() + name.slice(1)}}`;
-      return `\\ifx\\${name}\\undefined\\newtheorem{${name}}${optBefore}${label}\\fi`;
+    /\\newtheorem\s*\{([^}]+)\}((?:\s*\[[^\]]*\])?)(?=\s*\{)(\ *\{[^}]*\})((?:\s*\[[^\]]*\])?)/g,
+    (_match, name, optBefore, label, optAfter) => {
+      return `\\ifx\\${name}\\undefined\\newtheorem{${name}}${optBefore}${label}${optAfter}\\fi`;
     }
   );
   userPreamble = universalFallbacks + scrubbedPreamble;
@@ -226,63 +229,61 @@ ${userPreamble}
 
       // III. METADATA FUSION
       const injectedMeta = injectUniversalMetadata(templateContent, templateId, scholarlyMeta);
-      
-      // DEEP SCRUBBING: Remove ALL template placeholders to prevent duplicates
-      const scrubCmds = ['title', 'author', 'email', 'affiliation', 'abstract', 'keywords', 'thanks', 'institute'];
-      let tRes = { body: templatePre, extracted: [] as string[] };
-      let tbRes = { body: templateBody, extracted: [] as string[] };
-      scrubCmds.forEach(cmd => {
-        tRes = extractAndRemoveCommand(tRes.body, cmd);
-        tbRes = extractAndRemoveCommand(tbRes.body, cmd);
-      });
-      templatePre = tRes.body;
-      templateBody = tbRes.body
-        .replace(/\\begin\{abstract\}[\s\S]*?\\end\{abstract\}/gi, '')
-        .replace(/\\begin\{keyword\}[\s\S]*?\\end\{keyword\}/gi, '')
-        .replace(/\\begin\{IEEEkeywords\}[\s\S]*?\\end\{IEEEkeywords\}/gi, '');
 
-      // ENVIRONMENT SEQUENCING: Target Specific Structural Optimization
+      // ENVIRONMENT DETECTION
       const isACM = templateId.includes('acm') || templateContent.includes('acmart');
       const isIEEE = templateId.includes('ieee') || templateContent.includes('IEEEtran');
       const isElsevier = templateId.includes('elsevier') || templateContent.includes('elsarticle');
-      
+
+      // PREAMBLE SCRUBBING: Remove only placeholder metadata from preamble
+      // (templateBody is replaced wholesale below — no need to scrub it)
+      const scrubCmds = ['title', 'author', 'email', 'affiliation', 'abstract', 'keywords', 'thanks', 'institute'];
+      let tRes = { body: templatePre, extracted: [] as string[] };
+      scrubCmds.forEach(cmd => {
+        tRes = extractAndRemoveCommand(tRes.body, cmd);
+      });
+      templatePre = tRes.body;
+
+      // For Elsevier: remove native frontmatter placeholder (injectedMeta supplies a fresh one)
       if (isElsevier) {
-        // Remove native frontmatter to prevent duplication, since injectedMeta provides a fresh one
-        templatePre = templatePre.replace(/\\begin\{frontmatter\}[\s\S]*?\\end\{frontmatter\}/gi, '');
         templateBody = templateBody.replace(/\\begin\{frontmatter\}[\s\S]*?\\end\{frontmatter\}/gi, '');
-        templatePre = templatePre.replace('\\begin{document}', `\\begin{document}\n${injectedMeta}\n`);
-      } else if (isACM) {
-        // ACM expects abstract/keywords BEFORE maketitle, but AFTER begin{document}
-        templatePre = templatePre.replace('\\begin{document}', `\\begin{document}\n${injectedMeta}\n`);
-      } else if (isIEEE) {
-        // IEEE expects abstract/keywords after begin{document}
-        templatePre = templatePre.replace('\\begin{document}', `\\begin{document}\n${injectedMeta}\n`);
-      } else {
-        templatePre = templatePre.replace('\\begin{document}', `\\begin{document}\n${injectedMeta}\n`);
       }
 
-      // IV. BODY FUSION & REDUNDANCY FILTER
-      // Detect if user text already has a \section{Introduction} to avoid duplicates
-      if (userBody.toLowerCase().includes('\\section{introduction}')) {
-          templateBody = templateBody.replace(/\\section\{Introduction\}[\s\S]*?(?=\\section)/i, '');
-      }
+      // IV. UNIVERSAL BODY FUSION
+      // Instead of merging around a \maketitle anchor (which differs per template),
+      // we completely replace the template body's placeholder section with:
+      //   [injectedMeta] — real metadata in the target-template's exact format
+      //   [userBody]     — user's actual academic content, scrubbed of source metadata
+      //   [footerStr]    — bibliography commands + \end{document} from template skeleton
+      //
+      // injectProfessionalMetadata() already generates the correct structure
+      // (frontmatter for Elsevier, \maketitle sequence for IEEE/LNCS/Standard, etc.)
+      // so this approach is bias-free across all template types.
 
-      // Strip \maketitle and \begin{abstract} blocks from userBody to prevent duplicates
+      // Defensive second-pass: strip any residual \maketitle / abstract from userBody
       userBody = userBody
         .replace(/\\maketitle(?![a-zA-Z])/gi, '')
         .replace(/\\begin\{abstract\}[\s\S]*?\\end\{abstract\}/gi, '');
 
-      const makeTitleIdx = templateBody.indexOf('\\maketitle');
-      const introIdx = templateBody.search(/\\section\{/i);
-      const endIdx = templateBody.lastIndexOf('\\end{document}');
-      
-      if (endIdx !== -1) {
-          const footerStr = templateBody.substring(endIdx);
-          let headerEnd = 0;
-          if (makeTitleIdx !== -1) headerEnd = makeTitleIdx + 10;
-          else if (introIdx !== -1) headerEnd = introIdx;
-          templateBody = templateBody.substring(0, headerEnd) + "\n" + userBody + "\n" + footerStr;
+      // Extract the bibliographic footer from the skeleton
+      // (any \bibliographystyle / \bibliography / \printbibliography + \end{document})
+      const endDocIdx = templateBody.lastIndexOf('\\end{document}');
+      let footerStr = '\\end{document}';
+      if (endDocIdx !== -1) {
+        const beforeEnd = templateBody.substring(0, endDocIdx);
+        const bibPatterns = ['\\bibliographystyle', '\\bibliography{', '\\printbibliography', '\\addbibresource'];
+        let footerStart = endDocIdx;
+        for (const pat of bibPatterns) {
+          const patIdx = beforeEnd.lastIndexOf(pat);
+          if (patIdx !== -1 && patIdx < footerStart) {
+            footerStart = patIdx;
+          }
+        }
+        footerStr = templateBody.substring(footerStart);
       }
+
+      // Assemble: real metadata (target format) + user content + bibliography footer
+      templateBody = '\n' + injectedMeta + '\n' + userBody + '\n' + footerStr;
 
       // V. BIBLIOGRAPHY REMAPPING
       const hasInlineBib = userBody.includes('\\begin{thebibliography}');
