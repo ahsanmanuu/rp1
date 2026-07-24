@@ -2,7 +2,7 @@ import JSZip from 'jszip';
 import { 
   extractProfessionalMetadata, 
   injectUniversalMetadata, 
-  autoHealLatex,
+  applyFinalSanitizationSieve,
   extractAndRemoveCommand
 } from './latex';
 
@@ -118,6 +118,12 @@ export async function migrateToTemplate(
     'pacs', 'MSC', 'KWD', 'DOI', 'acmConference', 'acmBooktitle', 'acmPrice', 'acmISBN', 
     'acmDOI', 'setcopyright', 'journal', 'address', 'cortext', 'fntext'
   ];
+
+  // Body-level structural commands that must be scrubbed to prevent duplicate titles/metadata
+  const bodyScrubList = [
+    'maketitle', 'thanks', 'date', 'curraddr', 'subjclass', 'dedicatory',
+    'address', 'cortext', 'fntext'
+  ];
   
   // Clean Preamble
   let pResBody = userPreamble;
@@ -142,7 +148,19 @@ export async function migrateToTemplate(
   \\newenvironment{subfigure}[2][]{}{}
 \\fi
 `;
-  userPreamble = universalFallbacks + pResBody.replace(/\\documentclass[\s\S]*?\{[^}]*\}/gi, '% [Scrubbed documentclass]');
+  // Wrap ALL \newtheorem definitions in \ifx...\undefined guards to prevent
+  // "already defined" conflicts when source and target classes define the same theorem env.
+  let scrubbedPreamble = pResBody.replace(/\\documentclass[\s\S]*?\{[^}]*\}/gi, '% [Scrubbed documentclass]');
+  // Match \newtheorem{name}... in all its forms and wrap each in a guard
+  scrubbedPreamble = scrubbedPreamble.replace(
+    /\\newtheorem\s*\{([^}]+)\}((?:\s*\[[^\]]*\])?)((?:\s*\{[^}]*\})?)/g,
+    (_match, name, optBefore, labelAfter) => {
+      // Only guard if it's a real environment declaration (has a label or shared counter)
+      const label = labelAfter ? labelAfter.trim() : `{${name[0].toUpperCase() + name.slice(1)}}`;
+      return `\\ifx\\${name}\\undefined\\newtheorem{${name}}${optBefore}${label}\\fi`;
+    }
+  );
+  userPreamble = universalFallbacks + scrubbedPreamble;
 
   let userBody = (docStart !== -1 && docEnd !== -1) 
     ? userMainTex.substring(docStart + beginLength, docEnd) 
@@ -158,6 +176,12 @@ export async function migrateToTemplate(
       auditLog.push(`- Scrubbed from Body: \\${cmd} (${res.extracted.length} instances)`);
     }
   }
+  // Scrub body-structural commands that would cause duplicate metadata
+  for (const cmd of bodyScrubList) {
+    const res = extractAndRemoveCommand(bResBody, cmd);
+    bResBody = res.body;
+  }
+
   userBody = bResBody
     .replace(/\\documentclass[\s\S]*?\{[^}]*\}/gi, '% [Scrubbed documentclass]')
     .replace(/\\begin\s*\{\s*document\s*\}/gi, '% [Scrubbed begin{document}]')
@@ -165,7 +189,13 @@ export async function migrateToTemplate(
     .replace(/\\begin\s*\{\s*abstract\s*\}[\s\S]*?\\end\s*\{\s*abstract\s*\}/gi, '% [Migrated] Abstract moved')
     .replace(/\\begin\s*\{\s*keyword\s*\}[\s\S]*?\\end\s*\{\s*keyword\s*\}/gi, '% [Migrated] Keywords moved')
     .replace(/\\begin\s*\{\s*IEEEkeywords\s*\}[\s\S]*?\\end\s*\{\s*IEEEkeywords\s*\}/gi, '% [Migrated] Keywords moved')
-    .replace(/\\maketitle(?![a-zA-Z])/gi, '% [Migrated] maketitle moved');
+    // Remove all remaining maketitle/body-structural occurrences
+    .replace(/\\maketitle(?![a-zA-Z])/gi, '')
+    .replace(/\\thanks\s*\{[^}]*\}/gi, '')
+    .replace(/\\date\s*\{[^}]*\}/gi, '')
+    .replace(/\\curraddr\s*\{[^}]*\}/gi, '')
+    .replace(/\\dedicatory\s*\{[^}]*\}/gi, '')
+    .replace(/\\subjclass\s*(?:\[[^\]]*\])?\s*\{[^}]*\}/gi, '');
 
   // 3. TARGET SKELETON GESTATION
   const templateContent = templateData.content || '';
@@ -296,7 +326,10 @@ ${userPreamble}
   }
 
   finalMainTex = normalizeBibReferences(finalMainTex, bibFiles);
-  finalMainTex = autoHealLatex(finalMainTex);
+  // NOTE: We do NOT call autoHealLatex here — it is designed for Latexify/DocIDE workflows
+  // and aggressively restructures document layout, which would corrupt the migrated template.
+  // We only apply the safe sanitization sieve (unicode fixes, pkg deduplication, etc.).
+  finalMainTex = applyFinalSanitizationSieve(finalMainTex);
 
   // 4. PACKAGING: PARTITIONED WORKSPACE & ASSET PROMOTION
   const resultFiles: { 
