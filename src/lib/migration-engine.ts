@@ -135,7 +135,7 @@ export async function migrateToTemplate(
       auditLog.push(`- Scrubbed from Preamble: \\${cmd} (${res.extracted.length} instances)`);
     }
   }
-  // Add Universal Fallbacks for common legacy macros (Nuclear 35.0)
+  // Add Universal Fallbacks for common legacy macros across all major publisher classes (VGTC, ACM, IEEE, Elsevier, Springer, RevTeX, JFM)
   const universalFallbacks = `
 % --- UNIVERSAL FALLBACKS ---
 \\catcode\`\\@=11
@@ -145,6 +145,70 @@ export async function migrateToTemplate(
 \\providecommand{\\subjclass}[2][]{}
 \\providecommand{\\curraddr}[1]{}
 \\providecommand{\\dedicatory}[1]{}
+
+% VGTC (IEEE VIS / TVCG / VR / ISMAR) Fallbacks
+\\providecommand{\\onlineid}[1]{}
+\\providecommand{\\vgtccategory}[1]{}
+\\providecommand{\\authorfooter}[1]{}
+\\providecommand{\\teaser}[1]{#1}
+\\providecommand{\\firstsection}[1]{\\section{#1}}
+\\providecommand{\\subfigsCaption}[1]{\\caption{#1}}
+\\providecommand{\\iflabelexists}[2]{#2}
+\\providecommand{\\preprinttext}[1]{}
+\\providecommand{\\ieeedoi}[1]{}
+\\providecommand{\\manuscriptnotetxt}[1]{}
+\\providecommand{\\nocopyrightspace}{}
+
+% ACMart Fallbacks
+\\providecommand{\\acmConference}[4]{}
+\\providecommand{\\acmBooktitle}[1]{}
+\\providecommand{\\acmPrice}[1]{}
+\\providecommand{\\acmISBN}[1]{}
+\\providecommand{\\acmDOI}[1]{}
+\\providecommand{\\setcopyright}[1]{}
+\\providecommand{\\acmJournal}[1]{}
+\\providecommand{\\acmVolume}[1]{}
+\\providecommand{\\acmNumber}[1]{}
+\\providecommand{\\acmArticle}[1]{}
+\\providecommand{\\acmYear}[1]{}
+\\providecommand{\\acmMonth}[1]{}
+\\providecommand{\\authorsaddresses}[1]{}
+
+% Elsevier Fallbacks
+\\providecommand{\\corref}[1]{}
+\\providecommand{\\cortext}[2][]{}
+\\providecommand{\\fnref}[1]{}
+\\providecommand{\\fntext}[2][]{}
+\\providecommand{\\ead}[2][]{}
+\\providecommand{\\sep}{, }
+
+% IEEEtran Fallbacks
+\\providecommand{\\IEEEauthorblockN}[1]{#1}
+\\providecommand{\\IEEEauthorblockA}[1]{#1}
+\\providecommand{\\IEEEpeerreviewmaketitle}{\\maketitle}
+\\providecommand{\\IEEEpubid}[1]{}
+\\providecommand{\\IEEEpubidmailingonly}[1]{}
+\\providecommand{\\IEEEspecialpapernotice}[1]{}
+
+% Springer / LLNCS Fallbacks
+\\providecommand{\\institute}[1]{}
+\\providecommand{\\inst}[1]{}
+\\providecommand{\\titlerunning}[1]{}
+\\providecommand{\\authorrunning}[1]{}
+\\providecommand{\\tocauthor}[1]{}
+\\providecommand{\\toctitle}[1]{}
+
+% RevTeX / APS / AIP Fallbacks
+\\providecommand{\\collaboration}[1]{}
+\\providecommand{\\homepage}[1]{}
+\\providecommand{\\altaffiliation}[1]{}
+\\providecommand{\\pacs}[1]{}
+
+% General Structural Fallbacks
+\\providecommand{\\acknowledgments}[1]{}
+\\providecommand{\\acknowledgements}[1]{}
+\\providecommand{\\suppmaterial}[1]{}
+
 \\@ifundefined{subfigure}{
   \\newenvironment{subfigure}[2][]{}{}
 }{}
@@ -161,6 +225,13 @@ export async function migrateToTemplate(
 }{}
 \\catcode\`\\@=12
 `;
+
+  // Scrub usepackage calls for documentclass names to prevent "File '.sty' not found" crashes
+  const knownClassNames = ['jfm', 'vgtc', 'IEEEtran', 'acmart', 'elsarticle', 'llncs', 'revtex4', 'revtex4-1', 'revtex4-2', 'svjour3', 'amsart', 'article', 'report', 'book', 'mdpi', 'nature', 'wlscirep', 'aip', 'aps'];
+  for (const clsName of knownClassNames) {
+    pResBody = pResBody.replace(new RegExp(`\\\\usepackage(?:\\s*\\[[^\\]]*\\])?\\s*\\{${clsName}\\}`, 'gi'), `% [Scrubbed class package: ${clsName}]`);
+  }
+
   // Wrap ALL \newtheorem definitions in \@ifundefined guards to prevent
   // "already defined" conflicts when source and target classes define the same theorem env.
   let scrubbedPreamble = pResBody.replace(/\\documentclass[\s\S]*?\{[^}]*\}/gi, '% [Scrubbed documentclass]');
