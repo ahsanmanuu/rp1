@@ -138,29 +138,39 @@ export async function migrateToTemplate(
   // Add Universal Fallbacks for common legacy macros (Nuclear 35.0)
   const universalFallbacks = `
 % --- UNIVERSAL FALLBACKS ---
+\\catcode\`\\@=11
 \\providecommand{\\authororcid}[2]{#1}
 \\providecommand{\\subref}[1]{\\ref{#1}}
 \\providecommand{\\theoremstyle}[1]{}
 \\providecommand{\\subjclass}[2][]{}
 \\providecommand{\\curraddr}[1]{}
 \\providecommand{\\dedicatory}[1]{}
-\\ifx\\subfigure\\undefined
+\\@ifundefined{subfigure}{
   \\newenvironment{subfigure}[2][]{}{}
-\\fi
+}{}
+\\@ifundefined{newtheorem*}{
+  \\@ifundefined{proof}{
+    \\RequirePackage{amsthm}
+  }{
+    \\let\\savedproof\\proof
+    \\let\\savedendproof\\endproof
+    \\let\\proof\\relax
+    \\let\\endproof\\relax
+    \\RequirePackage{amsthm}
+  }
+}{}
+\\catcode\`\\@=12
 `;
-  // Wrap ALL \newtheorem definitions in \ifx...\undefined guards to prevent
+  // Wrap ALL \newtheorem definitions in \@ifundefined guards to prevent
   // "already defined" conflicts when source and target classes define the same theorem env.
   let scrubbedPreamble = pResBody.replace(/\\documentclass[\s\S]*?\{[^}]*\}/gi, '% [Scrubbed documentclass]');
-  // Match \newtheorem{name}... in all its forms and wrap each in a guard
-  // Handle all 4 valid forms of \newtheorem:
-  //   \newtheorem{env}{Label}
-  //   \newtheorem{env}{Label}[numberedwithin]
-  //   \newtheorem{env}[shared]{Label}
-  //   \newtheorem{env}[shared]{Label}[numberedwithin]
+  // Match \newtheorem and \newtheorem* in all forms and wrap each in a guard
   scrubbedPreamble = scrubbedPreamble.replace(
-    /\\newtheorem\s*\{([^}]+)\}((?:\s*\[[^\]]*\])?)(?=\s*\{)(\ *\{[^}]*\})((?:\s*\[[^\]]*\])?)/g,
-    (_match, name, optBefore, label, optAfter) => {
-      return `\\ifx\\${name}\\undefined\\newtheorem{${name}}${optBefore}${label}${optAfter}\\fi`;
+    /\\newtheorem\*?\s*\{([^}]+)\}((?:\s*\[[^\]]*\])?)(?=\s*\{)(\ *\{[^}]*\})((?:\s*\[[^\]]*\])?)/g,
+    (match, name, optBefore, label, optAfter) => {
+      const isStarred = match.startsWith('\\newtheorem*');
+      const cmdName = isStarred ? '\\newtheorem*' : '\\newtheorem';
+      return `\\makeatletter\\@ifundefined{${name}}{${cmdName}{${name}}${optBefore}${label}${optAfter}}{}\\makeatother`;
     }
   );
   userPreamble = universalFallbacks + scrubbedPreamble;
@@ -235,14 +245,13 @@ ${userPreamble}
       const isIEEE = templateId.includes('ieee') || templateContent.includes('IEEEtran');
       const isElsevier = templateId.includes('elsevier') || templateContent.includes('elsarticle');
 
-      // PREAMBLE SCRUBBING: Remove only placeholder metadata from preamble
-      // (templateBody is replaced wholesale below — no need to scrub it)
+      // PREAMBLE SCRUBBING: Remove only placeholder metadata and residual maketitle from preamble
       const scrubCmds = ['title', 'author', 'email', 'affiliation', 'abstract', 'keywords', 'thanks', 'institute'];
       let tRes = { body: templatePre, extracted: [] as string[] };
       scrubCmds.forEach(cmd => {
         tRes = extractAndRemoveCommand(tRes.body, cmd);
       });
-      templatePre = tRes.body;
+      templatePre = tRes.body.replace(/\\maketitle(?![a-zA-Z])/gi, '');
 
       // For Elsevier: remove native frontmatter placeholder (injectedMeta supplies a fresh one)
       if (isElsevier) {

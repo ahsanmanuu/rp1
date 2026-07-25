@@ -257,6 +257,14 @@ export function applyFinalSanitizationSieve(content: string): string {
     }
   }
 
+  // Auto-inject authblk for standard documents using \affil or \author[...]
+  const supportsNativeAffil = docClass.includes('ieee') || docClass.includes('elsarticle') || docClass.includes('acm') || docClass.includes('sn-jnl') || docClass.includes('wlscirep') || docClass.includes('llncs');
+  if (!supportsNativeAffil && (cleanBody.includes('\\affil') || preamble.includes('\\affil') || cleanBody.includes('\\author['))) {
+    if (!preamble.includes('{authblk}')) {
+      preamble = preamble.trimEnd() + '\n\\usepackage{authblk}\n';
+    }
+  }
+
   // Inject universal subfigure fallback
   if (!preamble.includes('UNIVERSAL SUBFIGURE FALLBACK')) {
     const subfigureFallback = `
