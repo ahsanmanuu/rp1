@@ -776,19 +776,42 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
     return ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'heic', 'heif', 'tiff', 'tif', 'bmp', 'avif', 'eps', 'pdf'].includes(ext);
   };
 
+  const saveFile = async (path: string, content: string) => {
+    setFiles(prev => prev.map(f => f.path === path ? { ...f, content } : f));
+    if (fs) {
+      await fs.writeFile(projectId, path, content);
+    }
+  };
+
   const switchTab = async (path: string) => {
     if (path === activeFile) return;
-    if (fs && !isImage(activeFile)) await fs.writeFile(projectId, activeFile, code);
+    
+    // Save current active file code to memory and IndexedDB before switching
+    if (!isImage(activeFile)) {
+      const currentCode = code;
+      setFiles(prev => prev.map(f => f.path === activeFile ? { ...f, content: currentCode } : f));
+      if (fs) {
+        await fs.writeFile(projectId, activeFile, currentCode);
+      }
+    }
+
     setLoadingCode(true);
     setActiveFile(path);
     if (!openTabs.includes(path)) setOpenTabs(t => [...t, path]);
-    const file = files.find(f => f.path === path);
-    if (file) {
-      setCode(file.content);
-      setLoadingCode(false);
-    } else {
-      setLoadingCode(false);
+
+    // Read target file content from IndexedDB or latest files state
+    let targetContent = '';
+    if (fs) {
+      const readFile = await fs.readFile(projectId, path);
+      if (readFile) targetContent = readFile.content;
     }
+    if (!targetContent) {
+      const fileInState = files.find(f => f.path === path);
+      if (fileInState) targetContent = fileInState.content;
+    }
+
+    setCode(targetContent);
+    setLoadingCode(false);
   };
 
   if (!mounted) return null;
@@ -1261,10 +1284,11 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
                            isSelfChange.current = true;
                            const val = v || '';
                            setCode(val);
+                           setFiles(prev => prev.map(f => f.path === activeFile ? { ...f, content: val } : f));
                            if (saveTimer.current) clearTimeout(saveTimer.current);
                            saveTimer.current = setTimeout(() => {
                              saveFile(activeFile, val);
-                           }, 1000);
+                           }, 500);
                          }}
                          onMount={(ed, mon) => { 
                            editorRef.current = ed; 

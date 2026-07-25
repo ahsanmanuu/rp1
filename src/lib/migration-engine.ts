@@ -276,6 +276,14 @@ function expandSubTexFiles(content: string, fileMap: Record<string, string>, dep
     .replace(/\\pagebreak(?![a-zA-Z])/gi, '% [Scrubbed pagebreak]')
     .replace(/\\maketitle(?![a-zA-Z])/gi, '% [Scrubbed maketitle]');
 
+  // Clean userPreamble of raw un-commented text lines that would spill onto Page 1 before title
+  userPreamble = userPreamble.split('\n').map(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return line;
+    if (trimmed.startsWith('%') || trimmed.startsWith('\\')) return line;
+    return `% [Scrubbed non-declaration preamble line]: ${line}`;
+  }).join('\n');
+
   userPreamble = universalFallbacks + scrubbedPreamble;
 
   let rawUserBody = (docStart !== -1 && docEnd !== -1) 
@@ -459,6 +467,14 @@ ${userPreamble}
       } else if (hasInlineBib) {
         // Remove native template bibliography commands if the user has inline thebibliography
         templateBody = templateBody.replace(/\\bibliographystyle\{[^}]*\}/gi, '').replace(/\\bibliography\{[^}]*\}/gi, '');
+      } else {
+        // Universal Bibliography Guarantee: Ensure a clean, compliant \begin{thebibliography} block is present
+        // so the References / Bibliography heading ALWAYS appears on the generated PDF
+        const tBibStyleMatch = templateContent.match(/\\bibliographystyle\{([^}]*)\}/);
+        const bibStyle = tBibStyleMatch ? tBibStyleMatch[1].trim() : (isElsevier ? 'elsarticle-num' : 'plain');
+        const fallbackBib = `\n\\bibliographystyle{${bibStyle}}\n\\begin{thebibliography}{99}\n\\bibitem{ref1} Author Name, \\textit{Title of Paper}, Journal/Conference, 2025.\n\\end{thebibliography}\n`;
+        templateBody = templateBody.replace(/\\bibliographystyle\{[^}]*\}/gi, '').replace(/\\bibliography\{[^}]*\}/gi, '');
+        templateBody = templateBody.replace('\\end{document}', `${fallbackBib}\\end{document}`);
       }
 
       finalMainTex = templatePre + "\n" + templateBody;
