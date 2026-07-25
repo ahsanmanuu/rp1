@@ -386,6 +386,7 @@ ${userPreamble}
       if (isElsevier) {
         templateBody = templateBody.replace(/\\begin\{frontmatter\}[\s\S]*?\\end\{frontmatter\}/gi, '');
       }
+      templateBody = templateBody.replace(/\\begin\{frontmatter\}|\\end\{frontmatter\}/gi, '');
 
       // IV. UNIVERSAL BODY FUSION
       // Instead of merging around a \maketitle anchor (which differs per template),
@@ -398,10 +399,11 @@ ${userPreamble}
       // (frontmatter for Elsevier, \maketitle sequence for IEEE/LNCS/Standard, etc.)
       // so this approach is bias-free across all template types.
 
-      // Defensive second-pass: strip any residual \maketitle / abstract from userBody
+      // Defensive second-pass: strip any residual \maketitle / abstract / frontmatter from userBody
       userBody = userBody
         .replace(/\\maketitle(?![a-zA-Z])/gi, '')
-        .replace(/\\begin\{abstract\}[\s\S]*?\\end\{abstract\}/gi, '');
+        .replace(/\\begin\{abstract\}[\s\S]*?\\end\{abstract\}/gi, '')
+        .replace(/\\begin\{frontmatter\}|\\end\{frontmatter\}/gi, '');
 
       // Extract the bibliographic footer from the skeleton
       // (any \bibliographystyle / \bibliography / \printbibliography + \end{document})

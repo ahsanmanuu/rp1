@@ -795,10 +795,6 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
 
   return (
     <StudioErrorBoundary>
-      <EditorLoadingOverlay 
-        visible={compiling || initializing} 
-        label={initializing ? "LOADING EDITOR WORKSPACE" : "COMPILING LATEX DOCUMENT"} 
-      />
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-primary)', color: 'var(--text-primary)', overflow: 'hidden', fontFamily: 'var(--font-body)' }}>
       
       {/* EMERALD GLASS HEADER */}
@@ -1153,6 +1149,10 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
                </div>
 
                <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }}>
+                  <EditorLoadingOverlay 
+                    visible={compiling || initializing} 
+                    label={initializing ? "LOADING EDITOR WORKSPACE" : "COMPILING LATEX DOCUMENT"} 
+                  />
                   {isImage(activeFile) ? (
                     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', padding: '2rem' }}>
                        <div style={{ position: 'relative', maxWidth: '100%', maxHeight: '100%', boxShadow: '0 0 50px rgba(0,0,0,0.5)', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
