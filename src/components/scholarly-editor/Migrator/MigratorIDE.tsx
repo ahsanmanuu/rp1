@@ -355,6 +355,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
   useEffect(() => { codeRef.current = code; }, [code]);
 
   const saveFile = useCallback(async (filePath: string, fileContent: string) => {
+    setFiles(prev => prev.map(f => f.path === filePath ? { ...f, content: fileContent } : f));
     if (!fs || !projectId) return;
     await fs.writeFile(projectId, filePath, fileContent);
     // Cloud sync to DB so server compilation and backups always have user's custom typed code
@@ -776,12 +777,6 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
     return ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'heic', 'heif', 'tiff', 'tif', 'bmp', 'avif', 'eps', 'pdf'].includes(ext);
   };
 
-  const saveFile = async (path: string, content: string) => {
-    setFiles(prev => prev.map(f => f.path === path ? { ...f, content } : f));
-    if (fs) {
-      await fs.writeFile(projectId, path, content);
-    }
-  };
 
   const switchTab = async (path: string) => {
     if (path === activeFile) return;
