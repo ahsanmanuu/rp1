@@ -11,6 +11,7 @@ export interface PbRealtimeOptions<T = any> {
   filter?: string;
   sort?: string;
   expand?: string;
+  fields?: string;
   batchSize?: number;
   enabled?: boolean;
   onEvent?: (event: PbRealtimeEvent, record: T, records: T[]) => void;
@@ -36,6 +37,7 @@ export function usePbRealtime<T = any>(options: PbRealtimeOptions<T>) {
     filter,
     sort = '-created',
     expand,
+    fields,
     batchSize = 100,
     enabled = true,
     onEvent,
@@ -65,7 +67,7 @@ export function usePbRealtime<T = any>(options: PbRealtimeOptions<T>) {
 
   const fetchRecords = useCallback(async () => {
     try {
-      const params = toParams({ sort, filter, expand, batchSize, page: 1 });
+      const params = toParams({ sort, filter, expand, fields, batchSize, page: 1 });
       const res = await fetch(`/api/data/${collection}?${params}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -102,7 +104,7 @@ export function usePbRealtime<T = any>(options: PbRealtimeOptions<T>) {
     } finally {
       setLoading(false);
     }
-  }, [collection, filter, sort, expand, batchSize]);
+  }, [collection, filter, sort, expand, fields, batchSize]);
 
   useEffect(() => {
     if (!enabled) {
@@ -179,6 +181,7 @@ export function usePbRealtimeReports(userId?: string) {
     userId,
     filter: userId ? `userId = "${userId}"` : undefined,
     sort: '-created',
+    fields: 'id,userId,projectId,title,statsJson,authorsJson,affiliationsJson,keywordsJson,status,pdfUrl,latexUrl,zipUrl,created,updated',
     subscribeRealtime: !!userId,
     subscribeFilter: userId ? `userId = "${userId}"` : undefined,
     mapRecord: (r: any) => ({
@@ -216,6 +219,7 @@ export function usePbRealtimeProjects(userId?: string, projectType?: string) {
     userId,
     filter: filterStr,
     sort: '-updated',
+    fields: 'id,userId,title,projectType,status,wordCount,charCount,imageCount,chartCount,tableCount,equationCount,citationCount,referenceCount,pseudocodeCount,updated,created',
     subscribeRealtime: !!userId,
     subscribeFilter: filterStr,
     mapRecord: (r: any) => ({
@@ -233,9 +237,9 @@ export function usePbRealtimeProjects(userId?: string, projectType?: string) {
       citationCount: r.citationCount || 0,
       referenceCount: r.referenceCount || 0,
       pseudocodeCount: r.pseudocodeCount || 0,
-      latexContent: r.latexContent || '',
-      content: r.content || '',
-      structuredContent: typeof r.structuredContent === 'string' ? r.structuredContent : JSON.stringify(r.structuredContent || {}),
+      latexContent: '',
+      content: '',
+      structuredContent: '{}',
       date: r.updated || r.updatedAt,
       createdAt: r.created,
       updatedAt: r.updated,

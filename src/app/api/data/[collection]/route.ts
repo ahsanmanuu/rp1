@@ -10,9 +10,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ coll
   const batchSize = parseInt(searchParams.get('batchSize') || '100', 10);
   const page = parseInt(searchParams.get('page') || '1', 10);
 
+  const fields = searchParams.get('fields') || undefined;
+
   const opts: Record<string, any> = { sort, $autoCancel: false };
   if (filter) opts.filter = filter;
   if (expand) opts.expand = expand;
+  if (fields) opts.fields = fields;
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
