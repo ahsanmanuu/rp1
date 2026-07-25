@@ -9,17 +9,13 @@ export function securityHeaders(requestId: string): Record<string, string> {
     "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
     // Prevent MIME sniffing (stops polyglot payload attacks).
     "X-Content-Type-Options": "nosniff",
-    // Disallow framing of API responses (clickjacking protection).
-    "X-Frame-Options": "DENY",
+    // Allow framing within same origin (enables web app previews and studio embeds)
+    "X-Frame-Options": "SAMEORIGIN",
     // Tight referrer leakage control.
     "Referrer-Policy": "strict-origin-when-cross-origin",
-    // Disable powerful browser features not used by the API surface.
+    // Disable unused browser hardware APIs while permitting standard web functionality
     "Permissions-Policy":
       "camera=(), microphone=(), geolocation=(), interest-cohort=(), browsing-topics=(), usb=(), payment=()",
-    // Isolate the browsing context from cross-origin documents.
-    "Cross-Origin-Opener-Policy": "same-origin",
-    // Prevent other origins from embedding API responses as subresources.
-    "Cross-Origin-Resource-Policy": "cross-origin",
     // Standard application CSP policy: permits scripts, styles, images, fonts, and websockets
     "Content-Security-Policy":
       "default-src 'self' https: http: data: blob: 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https: http:; font-src 'self' data: https:; connect-src 'self' https: http: wss: ws:;",
