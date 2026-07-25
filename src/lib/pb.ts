@@ -200,7 +200,7 @@ export async function authFromToken(token: string): Promise<PocketBase> {
 let _adminPb: PocketBase | null = null;
 let _adminAuthPromise: Promise<PocketBase> | null = null;
 let _adminPbFailureAt: number | null = null;
-const ADMIN_PB_FAILURE_TTL = 30_000; // 30 seconds — cache "PB is down" state
+const ADMIN_PB_FAILURE_TTL = 3_000; // 3 seconds — short transient failure cache
 
 /** Force-clear the cached admin client so the next pbAdmin() call re-authenticates. */
 export function clearAdminCache() {
@@ -298,9 +298,14 @@ export async function pbAdmin(): Promise<PocketBase> {
     }
   }
 
-  // If a recent auth attempt failed, don't retry for a while
+  // If a recent auth attempt failed, check if PB is now online before throwing
   if (_adminPbFailureAt && Date.now() - _adminPbFailureAt < ADMIN_PB_FAILURE_TTL) {
-    throw new Error('PocketBase is unreachable (cached)');
+    const online = await isPocketBaseReachable();
+    if (online) {
+      _adminPbFailureAt = null;
+    } else {
+      throw new Error('PocketBase is unreachable (cached)');
+    }
   }
 
   // Deduplicate concurrent auth requests

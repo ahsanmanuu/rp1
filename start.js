@@ -62,7 +62,7 @@ loadDotEnv();
 process.env.NODE_ENV = process.env.NODE_ENV || 'production';
 
 // ============================================================
-// Auto-download PocketBase binary if missing (Render deploy)
+// Auto-download PocketBase binary if missing (Render deploy / VPS deploy)
 // ============================================================
 async function ensurePocketBaseBinary() {
   const isWindows = process.platform === 'win32';
@@ -85,7 +85,18 @@ async function ensurePocketBaseBinary() {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const buffer = Buffer.from(await resp.arrayBuffer());
     fs.writeFileSync(zipPath, buffer);
-    execSync(`unzip -o "${zipPath}" && chmod +x pocketbase && rm "${zipPath}"`, { stdio: 'inherit' });
+    
+    try {
+      execSync(`unzip -o "${zipPath}" && chmod +x pocketbase && rm -f "${zipPath}"`, { stdio: 'inherit' });
+    } catch (unzipErr) {
+      log(`System unzip failed (${unzipErr.message}). Falling back to adm-zip JS module...`);
+      const { default: AdmZip } = await import('adm-zip');
+      const zip = new AdmZip(zipPath);
+      zip.extractAllTo(process.cwd(), true);
+      fs.chmodSync(pbBinary, 0o755);
+      try { if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath); } catch {}
+    }
+
     log('PocketBase downloaded and extracted successfully.');
     return pbBinary;
   } catch (err) {
@@ -99,17 +110,11 @@ async function ensurePocketBaseBinary() {
 // Start PocketBase as a child process
 // ============================================================
 async function startPocketBase() {
-  // NOTE: The old database corruption check (checking for the custom
-  // admin_users table before setup-pb.js runs) was removed because it
-  // deleted the database on EVERY fresh deployment — admin_users is a
-  // custom collection created by setup-pb.js, not a PB system table,
-  // so it doesn't exist yet when this check runs.
-
   const pbBinary = await ensurePocketBaseBinary();
+  const pbUrl = process.env.POCKETBASE_URL || 'http://127.0.0.1:8090';
+
   if (!pbBinary) {
-    const pbUrl = process.env.POCKETBASE_URL || 'http://127.0.0.1:8090';
     log(`No PocketBase binary available. Ensure PocketBase is running externally at ${pbUrl}`);
-    // Background check: log when PB becomes available
     const hcInterval = setInterval(async () => {
       try {
         const resp = await fetch(pbUrl + '/api/health', { signal: AbortSignal.timeout(3000) });
@@ -123,23 +128,28 @@ async function startPocketBase() {
     return;
   }
 
+  // Pre-flight check: is PB already running at target URL?
+  try {
+    const checkResp = await fetch(pbUrl + '/api/health', { signal: AbortSignal.timeout(2000) });
+    if (checkResp.ok) {
+      log(`PocketBase is already running and reachable at ${pbUrl}`);
+      return;
+    }
+  } catch {}
+
   const isWindows = process.platform === 'win32';
-  const pbUrl = process.env.POCKETBASE_URL || 'http://127.0.0.1:8090';
 
-  return new Promise((resolve, reject) => {
-
-    // Use PB_DATA_DIR env var if set (Render persistent disk), otherwise default to ./pb_data
+  return new Promise((resolve) => {
     const pbDataDir = process.env.PB_DATA_DIR || path.resolve(process.cwd(), 'pb_data');
     fs.mkdirSync(pbDataDir, { recursive: true });
     log(`[PB Startup] PocketBase data directory: ${pbDataDir}`);
 
-    // Run superuser upsert via CLI before spawning the server to avoid database locked/WAL mode conflicts
     const emailsToCreate = Array.from(new Set([
       process.env.POCKETBASE_ADMIN_EMAIL || 'admin@latexify.io',
       process.env.ADMIN_EMAIL || 'sid.ilm6@gmail.com'
     ].filter(Boolean)));
     let cliPassword = process.env.POCKETBASE_ADMIN_PASSWORD;
-    if (cliPassword === 'admin123456') cliPassword = undefined; // Ignore stale old default
+    if (cliPassword === 'admin123456') cliPassword = undefined;
     const activePassword = cliPassword || 'Sczone@123';
 
     for (const email of emailsToCreate) {
@@ -155,7 +165,6 @@ async function startPocketBase() {
       }
     }
 
-    // Ensure migrations directory exists (pointing to our tracked pb_migrations/)
     const migrationsDir = path.resolve(process.cwd(), 'pb_migrations');
     fs.mkdirSync(migrationsDir, { recursive: true });
 
@@ -163,7 +172,14 @@ async function startPocketBase() {
 
     let pbResolved = false;
     let pbProcess = null;
-    let monitorInterval = null;
+
+    function markReady() {
+      if (!pbResolved) {
+        pbResolved = true;
+        log('PocketBase is ready.');
+        resolve();
+      }
+    }
 
     function spawnPocketBase() {
       pbProcess = spawn(pbBinary, ['serve', '--http=0.0.0.0:8090', `--dir=${pbDataDir}`, `--migrationsDir=${migrationsDir}`], {
@@ -174,55 +190,59 @@ async function startPocketBase() {
       pbProcess.stdout.on('data', (data) => {
         const msg = data.toString();
         process.stdout.write(`[PB] ${msg}`);
-        if (msg.includes('Server started') && !pbResolved) {
-          pbResolved = true;
-          log('PocketBase is ready.');
-          resolve();
-          // Start background health monitor to restart PB if it dies later
-          startMonitor();
+        if ((msg.includes('Server started') || msg.includes('http://')) && !pbResolved) {
+          markReady();
         }
       });
 
       pbProcess.stderr.on('data', (data) => {
-        process.stderr.write(`[PB] ${data.toString()}`);
+        const msg = data.toString();
+        process.stderr.write(`[PB] ${msg}`);
+        if ((msg.includes('Server started') || msg.includes('http://')) && !pbResolved) {
+          markReady();
+        }
       });
 
       pbProcess.on('error', (err) => {
         log('Failed to start PocketBase process', err);
-        if (!pbResolved) {
-          pbResolved = true;
-          resolve(); // Don't block startup
-        }
+        markReady();
       });
 
       pbProcess.on('exit', (code) => {
-        log(`PocketBase exited with code ${code}`);
+        log(`PocketBase process exited with code ${code}`);
         pbProcess = null;
         if (!pbResolved) {
-          log(`PocketBase exited before ready (code ${code}) — will retry in 5s...`);
-          setTimeout(spawnPocketBase, 5000);
+          log(`PocketBase exited before ready (code ${code}) — retrying in 3s...`);
+        } else {
+          log(`PocketBase exited unexpectedly (code ${code}) — restarting in 3s...`);
         }
+        setTimeout(spawnPocketBase, 3000);
       });
-    }
-
-    function startMonitor() {
-      // Check PB every 30s; restart if process died
-      monitorInterval = setInterval(async () => {
-        if (pbProcess && pbProcess.exitCode === null) return; // still running
-        if (!pbProcess || pbProcess.exitCode !== null) {
-          log('[PB Monitor] PocketBase is not running — restarting...');
-          spawnPocketBase();
-        }
-      }, 30000);
-      monitorInterval.unref();
     }
 
     spawnPocketBase();
 
+    // Active health polling until PB becomes responsive
+    const pollHealth = setInterval(async () => {
+      if (pbResolved) {
+        clearInterval(pollHealth);
+        return;
+      }
+      try {
+        const res = await fetch(pbUrl + '/api/health', { signal: AbortSignal.timeout(1500) });
+        if (res.ok) {
+          log('PocketBase health check succeeded.');
+          clearInterval(pollHealth);
+          markReady();
+        }
+      } catch {}
+    }, 500);
+
     // Timeout: if PocketBase doesn't start within 30s, continue anyway
     setTimeout(() => {
+      clearInterval(pollHealth);
       if (!pbResolved) {
-        pbResolved = true;
+        markReady();
         log('PocketBase startup timeout — continuing without confirmed readiness.');
       }
     }, 30000);
