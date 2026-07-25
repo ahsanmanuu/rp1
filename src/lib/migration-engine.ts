@@ -135,9 +135,21 @@ export async function migrateToTemplate(
       auditLog.push(`- Scrubbed from Preamble: \\${cmd} (${res.extracted.length} instances)`);
     }
   }
-  // Add Universal Fallbacks for common legacy macros across all major publisher classes (VGTC, ACM, IEEE, Elsevier, Springer, RevTeX, JFM)
-  const universalFallbacks = `
-% --- UNIVERSAL FALLBACKS ---
+  // INTELLIGENT SOURCE CLASS DETECTION
+  // Detect source document class from user's preamble to selectively activate ONLY relevant fallbacks
+  const srcClassMatch = userMainTex.match(/\\documentclass(?:\s*\[[^\]]*\])?\s*\{([^}]+)\}/);
+  const srcClass = srcClassMatch ? srcClassMatch[1].trim().toLowerCase() : '';
+  const srcIsVGTC = srcClass.includes('vgtc') || userPreamble.includes('\\onlineid') || userPreamble.includes('\\vgtccategory');
+  const srcIsACM = srcClass.includes('acm') || userPreamble.includes('\\acmConference') || userPreamble.includes('\\setcopyright');
+  const srcIsElsevier = srcClass.includes('elsevier') || srcClass.includes('elsarticle') || userPreamble.includes('\\corref');
+  const srcIsIEEE = srcClass.includes('ieee') || userPreamble.includes('\\IEEEauthorblockN');
+  const srcIsSpringer = srcClass.includes('llncs') || srcClass.includes('svjour') || userPreamble.includes('\\inst{');
+  const srcIsRevTeX = srcClass.includes('revtex') || srcClass.includes('aps') || userPreamble.includes('\\collaboration');
+  const srcIsAMS = srcClass.includes('ams') || srcClass.includes('amsproc') || userPreamble.includes('\\subjclass');
+
+  // Build SELECTIVE fallbacks: only activate sections that are actually needed for the SOURCE class
+  let universalFallbacks = `
+% --- SELECTIVE FALLBACKS (source class: ${srcClass || 'unknown'}) ---
 \\catcode\`\\@=11
 \\providecommand{\\authororcid}[2]{#1}
 \\providecommand{\\subref}[1]{\\ref{#1}}
@@ -145,8 +157,12 @@ export async function migrateToTemplate(
 \\providecommand{\\subjclass}[2][]{}
 \\providecommand{\\curraddr}[1]{}
 \\providecommand{\\dedicatory}[1]{}
+\\providecommand{\\numberwithin}[2]{}
+`;
 
-% VGTC (IEEE VIS / TVCG / VR / ISMAR) Fallbacks
+  if (srcIsVGTC) {
+    universalFallbacks += `
+% VGTC Fallbacks (source detected)
 \\providecommand{\\onlineid}[1]{}
 \\providecommand{\\vgtccategory}[1]{}
 \\providecommand{\\authorfooter}[1]{}
@@ -158,8 +174,12 @@ export async function migrateToTemplate(
 \\providecommand{\\ieeedoi}[1]{}
 \\providecommand{\\manuscriptnotetxt}[1]{}
 \\providecommand{\\nocopyrightspace}{}
+`;
+  }
 
-% ACMart Fallbacks
+  if (srcIsACM) {
+    universalFallbacks += `
+% ACMart Fallbacks (source detected)
 \\providecommand{\\acmConference}[4]{}
 \\providecommand{\\acmBooktitle}[1]{}
 \\providecommand{\\acmPrice}[1]{}
@@ -173,42 +193,61 @@ export async function migrateToTemplate(
 \\providecommand{\\acmYear}[1]{}
 \\providecommand{\\acmMonth}[1]{}
 \\providecommand{\\authorsaddresses}[1]{}
+`;
+  }
 
-% Elsevier Fallbacks
+  if (srcIsElsevier) {
+    universalFallbacks += `
+% Elsevier Fallbacks (source detected)
 \\providecommand{\\corref}[1]{}
 \\providecommand{\\cortext}[2][]{}
 \\providecommand{\\fnref}[1]{}
 \\providecommand{\\fntext}[2][]{}
 \\providecommand{\\ead}[2][]{}
 \\providecommand{\\sep}{, }
+`;
+  }
 
-% IEEEtran Fallbacks
+  if (srcIsIEEE) {
+    universalFallbacks += `
+% IEEEtran Fallbacks (source detected)
 \\providecommand{\\IEEEauthorblockN}[1]{#1}
 \\providecommand{\\IEEEauthorblockA}[1]{#1}
-\\providecommand{\\IEEEpeerreviewmaketitle}{\\maketitle}
+\\providecommand{\\IEEEpeerreviewmaketitle}{}
 \\providecommand{\\IEEEpubid}[1]{}
 \\providecommand{\\IEEEpubidmailingonly}[1]{}
 \\providecommand{\\IEEEspecialpapernotice}[1]{}
+`;
+  }
 
-% Springer / LLNCS Fallbacks
+  if (srcIsSpringer) {
+    universalFallbacks += `
+% Springer / LLNCS Fallbacks (source detected)
 \\providecommand{\\institute}[1]{}
 \\providecommand{\\inst}[1]{}
 \\providecommand{\\titlerunning}[1]{}
 \\providecommand{\\authorrunning}[1]{}
 \\providecommand{\\tocauthor}[1]{}
 \\providecommand{\\toctitle}[1]{}
+`;
+  }
 
-% RevTeX / APS / AIP Fallbacks
+  if (srcIsRevTeX) {
+    universalFallbacks += `
+% RevTeX / APS / AIP Fallbacks (source detected)
 \\providecommand{\\collaboration}[1]{}
 \\providecommand{\\homepage}[1]{}
 \\providecommand{\\altaffiliation}[1]{}
 \\providecommand{\\pacs}[1]{}
+`;
+  }
 
+  // Common structural fallbacks that are universally safe
+  universalFallbacks += `
 % General Structural Fallbacks
 \\providecommand{\\acknowledgments}[1]{}
 \\providecommand{\\acknowledgements}[1]{}
 \\providecommand{\\suppmaterial}[1]{}
-\\providecommand{\\numberwithin}[2]{}
 
 \\@ifundefined{subfigure}{
   \\newenvironment{subfigure}[2][]{}{}
@@ -228,7 +267,23 @@ export async function migrateToTemplate(
 `;
 
   // Scrub usepackage calls for documentclass names to prevent "File '.sty' not found" crashes
-  const knownClassNames = ['jfm', 'vgtc', 'IEEEtran', 'acmart', 'elsarticle', 'llncs', 'revtex4', 'revtex4-1', 'revtex4-2', 'svjour3', 'amsart', 'article', 'report', 'book', 'mdpi', 'nature', 'wlscirep', 'aip', 'aps'];
+  const knownClassNames = [
+    'jfm', 'vgtc', 'IEEEtran', 'acmart', 'elsarticle', 'llncs', 'revtex4', 'revtex4-1', 'revtex4-2', 
+    'svjour3', 'amsart', 'amsproc', 'article', 'report', 'book', 'mdpi', 'nature', 'wlscirep', 'aip', 'aps',
+    'siamart190516', 'siamart171218', 'siamart', 'siamltex', 'siamltex1213',
+    'sig-alternate', 'sig-alternate-05-2015', 'sigplanconf',
+    'IEEEconf', 'ieeeconf', 'IEEEtran',
+    'lipics-v2021', 'lipics', 'OASIcs-v2021', 'lmcs',
+    'copernicus', 'achemso', 'acs', 'rsc',
+    'cas-sc', 'cas-dc', 'ecca',
+    'pnas-new', 'pnas', 'pnastwo',
+    'aa', 'aastex63', 'aastex62', 'emulateapj', 'apj',
+    'mnras', 'pasj'
+  ];
+  // Also dynamically scrub the SOURCE document class (whatever it is)
+  if (srcClass && !knownClassNames.includes(srcClass)) {
+    knownClassNames.push(srcClass);
+  }
   for (const clsName of knownClassNames) {
     pResBody = pResBody.replace(new RegExp(`\\\\usepackage(?:\\s*\\[[^\\]]*\\])?\\s*\\{${clsName}\\}`, 'gi'), `% [Scrubbed class package: ${clsName}]`);
   }
@@ -326,6 +381,12 @@ function expandSubTexFiles(content: string, fileMap: Record<string, string>, dep
 
   // Strip leading page breaks from the start of userBody so Introduction flows directly on Page 1 below title
   userBody = userBody.replace(/^\s*(?:\\newpage|\\clearpage|\\pagebreak)\s*/gi, '');
+
+  // Clean residual empty comment blocks (e.g. "%    author one information", "%    author two information")
+  // These are leftover placeholders from source templates that serve no purpose in target
+  userBody = userBody
+    .replace(/^%\s*(?:Remove any unused author tags|author (?:one|two|three|four|five) information).*$/gmi, '')
+    .replace(/\n{3,}/g, '\n\n');
 
   // 3. TARGET SKELETON GESTATION
   const templateContent = templateData.content || '';
