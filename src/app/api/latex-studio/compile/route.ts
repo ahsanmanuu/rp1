@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
     let res;
     if (projectType === 'DOC2LATEX' || projectType === 'CONVERTER') {
       res = await runDoc2LatexCompiler(engine, files, mainFile, projectId);
-    } else if (projectType === 'MIGRATOR') {
+    } else if (projectType === 'MIGRATOR' || projectType === 'TEMPLATE_MIGRATOR') {
       res = await runMigratorCompiler(engine, files, mainFile, projectId);
     } else {
       res = await runLatexifyCompiler(engine, files, mainFile, projectId);

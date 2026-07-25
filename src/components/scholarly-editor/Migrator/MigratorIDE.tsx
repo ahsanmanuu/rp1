@@ -126,6 +126,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
   const compileRef = useRef<(() => Promise<void>) | null>(null);
   const codeRef = useRef('');
   const filesRef = useRef<StudioFile[]>([]);
+  const saveTimer = useRef<any>(null);
 
   const safeSetItem = useCallback((key: string, value: string) => {
     try {
@@ -328,6 +329,25 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
   }, [code]);
   useEffect(() => { codeRef.current = code; }, [code]);
 
+  const saveFile = useCallback(async (filePath: string, fileContent: string) => {
+    if (!fs || !projectId) return;
+    await fs.writeFile(projectId, filePath, fileContent);
+    // Cloud sync to DB so server compilation and backups always have user's custom typed code
+    fetch(`/api/projects/${projectId}/files`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: filePath, content: fileContent })
+    }).catch(e => console.error("Cloud save failed:", e));
+
+    if (filePath === 'main.tex' || filePath === 'Migrated_Manuscript.tex') {
+      fetch(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ latexContent: fileContent })
+      }).catch(e => console.error("Cloud main save failed:", e));
+    }
+  }, [fs, projectId]);
+
   // Handle Diagnostic Markers (Error Squiggles) & Whole Line Highlights
   useEffect(() => {
     if (monacoRef.current && editorRef.current) {
@@ -466,7 +486,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
     setErrors([]);
 
     try {
-      await fs.writeFile(projectId, activeFile, codeRef.current);
+      await saveFile(activeFile, codeRef.current);
       const payloadMeta = await fs.listFiles(projectId);
       const payloadFiles = [];
       for (let i = 0; i < payloadMeta.length; i++) {
@@ -1210,7 +1230,12 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
                          defaultValue={code} 
                          onChange={v => {
                            isSelfChange.current = true;
-                           setCode(v || '');
+                           const val = v || '';
+                           setCode(val);
+                           if (saveTimer.current) clearTimeout(saveTimer.current);
+                           saveTimer.current = setTimeout(() => {
+                             saveFile(activeFile, val);
+                           }, 1000);
                          }}
                          onMount={(ed, mon) => { 
                            editorRef.current = ed; 
