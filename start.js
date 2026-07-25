@@ -391,7 +391,7 @@ startPocketBase().then(async () => {
       await import('./.next/standalone/server.js');
     } catch (importErr) {
       log('Failed to import standalone server, falling back to next start:', importErr);
-      const port = process.env.PORT || 10005;
+      const port = process.env.PORT || 3000;
       const nextBin = path.resolve(process.cwd(), 'node_modules', 'next', 'dist', 'bin', 'next');
       spawn(process.execPath, [nextBin, 'start', '-p', String(port), '-H', '0.0.0.0'], {
         stdio: 'inherit',
@@ -400,7 +400,7 @@ startPocketBase().then(async () => {
     }
   } else {
     log('Standalone server not found, launching next start CLI fallback...');
-    const port = process.env.PORT || 10005;
+    const port = process.env.PORT || 3000;
     const nextBin = path.resolve(process.cwd(), 'node_modules', 'next', 'dist', 'bin', 'next');
     spawn(process.execPath, [nextBin, 'start', '-p', String(port), '-H', '0.0.0.0'], {
       stdio: 'inherit',
