@@ -96,15 +96,17 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
         sessionTokenRef.current = null;
         if (typeof window !== "undefined") localStorage.removeItem("auth-token");
       } else {
-        // Transient error (500, 502, 503, 504, etc.) — DO NOT clear session!
+        // Transient error (500, 502, 503, 504, etc.) — DO NOT clear session if already logged in!
         console.warn(`[PB Session Provider] Received transient status ${res.status}. Keeping current session.`);
+        setStatus(prev => prev === 'loading' ? 'unauthenticated' : prev);
       }
     } catch (err: any) {
-      // Network timeout or connection drop — DO NOT clear session!
+      // Network timeout or connection drop — DO NOT clear session if already logged in!
       const msg = err?.name === 'TimeoutError' || err?.name === 'AbortError'
         ? 'Request timed out'
         : (err?.message || String(err));
       console.warn("[PB Session Provider] Fetch failed with network/timeout error:", msg);
+      setStatus(prev => prev === 'loading' ? 'unauthenticated' : prev);
     } finally {
       isFetching.current = false;
     }

@@ -224,7 +224,7 @@ const nextConfig: NextConfig = {
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'X-XSS-Protection', value: '1; mode=block' },
           { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' },
-          { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; frame-ancestors 'none';" },
+          { key: 'Content-Security-Policy', value: "default-src 'self' https: http: data: blob: 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https: http:; font-src 'self' data: https:; connect-src 'self' https: http: wss: ws:;" },
           { key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate, proxy-revalidate' },
           { key: 'Pragma', value: 'no-cache' },
           { key: 'Expires', value: '0' },
