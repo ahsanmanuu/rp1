@@ -590,8 +590,10 @@ async function getClient(): Promise<PocketBase> {
     const client = await pbAdmin();
     _cachedClient = client;
     return client;
-  } catch (err) {
-    console.error('[pb-adapter] Failed to get admin client, using unauthenticated client:', err);
+  } catch (err: any) {
+    if (!err?.message?.includes('unreachable')) {
+      console.error('[pb-adapter] Failed to get admin client, using unauthenticated client:', err?.message || err);
+    }
     // Don't cache unauthenticated fallback — retry pbAdmin on next call
     return createPb();
   }

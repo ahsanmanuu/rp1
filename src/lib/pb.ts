@@ -313,8 +313,9 @@ export async function pbAdmin(): Promise<PocketBase> {
 
   if (online) {
     _adminPbFailureAt = null;
-  } else if (_adminPbFailureAt && Date.now() - _adminPbFailureAt < ADMIN_PB_FAILURE_TTL) {
-    throw new Error('PocketBase is unreachable (cached)');
+  } else {
+    _adminPbFailureAt = Date.now();
+    throw new Error('PocketBase is unreachable');
   }
 
   // Deduplicate concurrent auth requests

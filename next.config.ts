@@ -134,7 +134,7 @@ const nextConfig: NextConfig = {
   // Keep all Prisma and Prisma-related dependencies external on the server to prevent bundler resolution hijacking
   serverExternalPackages: ['@prisma/client', '.prisma/client', '@auth/prisma-adapter', 'sharp', 'better-sqlite3', 'adm-zip', 'original-fs'],
   compress: true,
-  output: 'standalone',
+  output: process.env.BUILD_STANDALONE === 'true' ? 'standalone' : undefined,
   async redirects() {
     return [
       {
@@ -237,7 +237,7 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: '100mb',
     },
-    middlewareClientMaxBodySize: '100mb',
+    proxyClientMaxBodySize: '100mb',
     optimizePackageImports: ['lucide-react', 'pdfjs-dist', 'framer-motion'],
   },
   turbopack: {},
