@@ -19,11 +19,10 @@ export function securityHeaders(requestId: string): Record<string, string> {
     // Isolate the browsing context from cross-origin documents.
     "Cross-Origin-Opener-Policy": "same-origin",
     // Prevent other origins from embedding API responses as subresources.
-    "Cross-Origin-Resource-Policy": "same-origin",
-    // Hard deny policy for JSON API responses: nothing can load/execute in
-    // browser context, no framing, no inline base/form actions.
+    "Cross-Origin-Resource-Policy": "cross-origin",
+    // Standard application CSP policy: permits scripts, styles, images, fonts, and websockets
     "Content-Security-Policy":
-      "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'",
+      "default-src 'self' https: http: data: blob: 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https: http:; font-src 'self' data: https:; connect-src 'self' https: http: wss: ws:;",
     // Mark responses as processed by the hardening layer + correlation id.
     "X-Security-Policy": "hardened",
     "X-Request-Id": requestId,
