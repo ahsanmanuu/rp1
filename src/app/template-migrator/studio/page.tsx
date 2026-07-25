@@ -252,6 +252,16 @@ export default function TemplateMigratorPage() {
         await fsLocal.writeFile(newProjectId, file.path, content);
       }
 
+      // Sync merged main.tex code to backend database so server compilation and backups have full access
+      const mergedMainTex = result.files.find(f => f.path === 'main.tex')?.content;
+      if (typeof mergedMainTex === 'string' && mergedMainTex.trim().length > 0) {
+        await fetch(`/api/projects/${newProjectId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ latexContent: mergedMainTex })
+        }).catch(err => console.warn('Database latexContent sync warning:', err));
+      }
+
       toast.success('Migration successful! Launching Studio...');
       
       // 3. Redirect to the specialized Migrator Studio

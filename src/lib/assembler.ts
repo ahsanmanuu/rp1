@@ -776,7 +776,10 @@ export class LatexAssembler {
         const rawId = String(node.id || "image").replace(/\\/g, '/');
         const fileId = rawId.replace(/^assets\//, '') || "image";
         const guid = `img_${Math.random().toString(36).substring(2, 7)}`;
-        return `\n\\begin{figure}[H]\n\\centering\n\\zimg{${fileId}}{width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio}{${guid}}{${fileId}}\n\\end{figure}\n`;
+        const twoCol = (node as any).twoColumn === true;
+        const figEnv = twoCol ? 'figure*' : 'figure';
+        const placement = twoCol ? '[htbp]' : '[H]';
+        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\zimg{${fileId}}{width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio}{${guid}}{${fileId}}\n\\end{${figEnv}}\n`;
       }
       case 'figure': {
         const rawId = String(node.id || 'figure').replace(/\\/g, '/');
@@ -787,7 +790,10 @@ export class LatexAssembler {
         const labelIdx = (node as any).labelIdx ?? Math.random().toString(36).substring(2, 7);
         const label = `fig:${String(labelIdx).replace(/[^a-z0-9]/gi, '_')}`;
         const guid = `fig_${String(labelIdx).replace(/[^a-z0-9]/gi, '_')}`;
-        return `\n\\begin{figure}[H]\n\\centering\n\\zimg{${fileId}}{width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio}{${guid}}{${fileId}}\n\\caption{${caption}}\n\\label{${label}}\n\\end{figure}\n`;
+        const twoCol = (node as any).twoColumn === true;
+        const figEnv = twoCol ? 'figure*' : 'figure';
+        const placement = twoCol ? '[htbp]' : '[H]';
+        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\zimg{${fileId}}{width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio}{${guid}}{${fileId}}\n\\caption{${caption}}\n\\label{${label}}\n\\end{${figEnv}}\n`;
       }
       case 'chart': {
         const rawId = String(node.id || 'chart').replace(/\\/g, '/');
@@ -798,7 +804,10 @@ export class LatexAssembler {
         const labelIdx = (node as any).labelIdx ?? Math.random().toString(36).substring(2, 7);
         const label = `chart:${String(labelIdx).replace(/[^a-z0-9]/gi, '_')}`;
         const guid = `chart_${String(labelIdx).replace(/[^a-z0-9]/gi, '_')}`;
-        return `\n\\begin{figure}[H]\n\\centering\n\\zimg{${fileId}}{width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio}{${guid}}{${fileId}}\n\\caption{${caption}}\n\\label{${label}}\n\\end{figure}\n`;
+        const twoCol = (node as any).twoColumn === true;
+        const figEnv = twoCol ? 'figure*' : 'figure';
+        const placement = twoCol ? '[htbp]' : '[H]';
+        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\zimg{${fileId}}{width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio}{${guid}}{${fileId}}\n\\caption{${caption}}\n\\label{${label}}\n\\end{${figEnv}}\n`;
       }
       case 'figure-group':
         return LatexAssembler.assembleFigureGroup(node, mathBlocks);
@@ -1002,10 +1011,9 @@ export class LatexAssembler {
     const labelKey = `tab:${caption.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20)}`;
 
     // Force tabularx line-wrapping for all multi-column or text-bearing tables to prevent right-margin overflow
-    const useTabularx = true;
     const twoColWide = (node as any).twoColumn === true && (totalGridCols > 2 || colMaxLen.some(l => l > 30));
     const tableEnv = twoColWide ? 'table*' : 'table';
-    const tablePlacement = twoColWide ? '[t]' : '[H]';
+    const tablePlacement = twoColWide ? '[htbp]' : ((node as any).twoColumn ? '[htbp]' : '[H]');
     const tabularEnv = 'tabularx';
     const widthParam = twoColWide ? '{\\textwidth}' : '{\\linewidth}';
     const activeSpec = fullSpec;

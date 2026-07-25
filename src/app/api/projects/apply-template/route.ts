@@ -183,6 +183,14 @@ export async function POST(req: Request) {
         fullLatex = assembled.mainTex;
         extractedComponents = assembled.files;
         structured = parsedModel;
+    } else if ((project as any).latexContent && (project as any).latexContent.trim().length > 0) {
+        console.log(`[LATEX_SYNC] Preserving existing LaTeX source code from project.latexContent...`);
+        const existingLatex = (project as any).latexContent;
+        const parsedModel = DeepDocumentParser.parse(existingLatex, structured.mathBlocks || [], project.title, {}, rawXml);
+        const assembled = ModularLatexAssembler.assemble(parsedModel, mapLegacyTemplateId(templateId), templateMainTex);
+        fullLatex = assembled.mainTex;
+        extractedComponents = assembled.files;
+        structured = parsedModel;
     } else {
         console.log(`[LATEX_SYNC] No content found. Using template main.tex directly without further synthesis/processing...`);
         fullLatex = templateMainTex || "";

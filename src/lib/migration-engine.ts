@@ -173,12 +173,46 @@ export async function migrateToTemplate(
       return `\\makeatletter\\@ifundefined{${name}}{${cmdName}{${name}}${optBefore}${label}${optAfter}}{}\\makeatother`;
     }
   );
+// Helper: Recursively expand \input{...} and \include{...} files from fileMap into body content
+function expandSubTexFiles(content: string, fileMap: Record<string, string>, depth = 0): string {
+  if (depth > 5 || !content) return content;
+  
+  return content.replace(/\\(?:input|include)\s*\{([^}]+)\}/gi, (match, relPath) => {
+    let cleanPath = relPath.trim();
+    if (!cleanPath.toLowerCase().endsWith('.tex')) cleanPath += '.tex';
+    
+    const matchingKey = Object.keys(fileMap).find(k => {
+      const normK = k.replace(/\\/g, '/').toLowerCase();
+      const normP = cleanPath.replace(/\\/g, '/').toLowerCase();
+      return normK === normP || normK.endsWith('/' + normP);
+    });
+
+    if (matchingKey && fileMap[matchingKey]) {
+      let subContent = fileMap[matchingKey]
+        .replace(/\\documentclass[\s\S]*?\{[^}]*\}/gi, '')
+        .replace(/\\begin\s*\{\s*document\s*\}/gi, '')
+        .replace(/\\end\s*\{\s*document\s*\}/gi, '');
+      return `\n% --- BEGIN INPUT: ${cleanPath} ---\n` + expandSubTexFiles(subContent, fileMap, depth + 1) + `\n% --- END INPUT: ${cleanPath} ---\n`;
+    }
+    return match;
+  });
+}
+
+  // Scrub Preamble of page break and maketitle artifacts
+  userPreamble = userPreamble
+    .replace(/\\newpage(?![a-zA-Z])/gi, '% [Scrubbed newpage]')
+    .replace(/\\clearpage(?![a-zA-Z])/gi, '% [Scrubbed clearpage]')
+    .replace(/\\pagebreak(?![a-zA-Z])/gi, '% [Scrubbed pagebreak]')
+    .replace(/\\maketitle(?![a-zA-Z])/gi, '% [Scrubbed maketitle]');
+
   userPreamble = universalFallbacks + scrubbedPreamble;
 
-  let userBody = (docStart !== -1 && docEnd !== -1) 
+  let rawUserBody = (docStart !== -1 && docEnd !== -1) 
     ? userMainTex.substring(docStart + beginLength, docEnd) 
-    : userMainTex;
-  userBody = userBody.trim();
+    : (docStart !== -1 ? userMainTex.substring(docStart + beginLength) : userMainTex);
+  
+  // Recursively expand all sub-included .tex files from ZIP into body
+  let userBody = expandSubTexFiles(rawUserBody, fileMap).trim();
 
   // Scrub Body
   let bResBody = userBody;
@@ -209,6 +243,9 @@ export async function migrateToTemplate(
     .replace(/\\curraddr\s*\{[^}]*\}/gi, '')
     .replace(/\\dedicatory\s*\{[^}]*\}/gi, '')
     .replace(/\\subjclass\s*(?:\[[^\]]*\])?\s*\{[^}]*\}/gi, '');
+
+  // Strip leading page breaks from the start of userBody so Introduction flows directly on Page 1 below title
+  userBody = userBody.replace(/^\s*(?:\\newpage|\\clearpage|\\pagebreak)\s*/gi, '');
 
   // 3. TARGET SKELETON GESTATION
   const templateContent = templateData.content || '';
@@ -244,6 +281,27 @@ ${userPreamble}
       const isACM = templateId.includes('acm') || templateContent.includes('acmart');
       const isIEEE = templateId.includes('ieee') || templateContent.includes('IEEEtran');
       const isElsevier = templateId.includes('elsevier') || templateContent.includes('elsarticle');
+
+      // TWO-COLUMN FLOAT AUTO-PROMOTION
+      const isTwoColumnTarget = isIEEE || isACM || 
+        /\\documentclass\s*\[[^\]]*\b(?:twocolumn|sigconf|reprint|2column|5p)\b[^\]]*\]/.test(templateContent) ||
+        /\\twocolumn\b/.test(templateContent);
+
+      if (isTwoColumnTarget) {
+        // Promote wide single-column tables to table* [htbp]
+        userBody = userBody.replace(/\\begin\s*\{\s*table\s*\}(?:\[[^\]]*\])?([\s\S]*?)\\end\s*\{\s*table\s*\}/gi, (match, inner) => {
+          const colCount = (inner.match(/&/g) || []).length;
+          if (colCount > 6 || inner.includes('tabularx') || inner.includes('adjustbox')) {
+            return `\\begin{table*}[htbp]${inner}\\end{table*}`;
+          }
+          return match;
+        });
+
+        // Replace invalid [H] or [h] on starred floats with [htbp]
+        userBody = userBody.replace(/\\begin\s*\{\s*(figure\*|table\*|algorithm\*)\s*\}\s*\[[^\]]*\]/gi, (match, envName) => {
+          return `\\begin{${envName}}[htbp]`;
+        });
+      }
 
       // PREAMBLE SCRUBBING: Remove only placeholder metadata and residual maketitle from preamble
       const scrubCmds = ['title', 'author', 'email', 'affiliation', 'abstract', 'keywords', 'thanks', 'institute'];

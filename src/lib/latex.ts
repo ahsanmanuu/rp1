@@ -1321,6 +1321,7 @@ export function injectProfessionalMetadata(templateId: string, meta: ScholarlyMe
     });
     output += `\n\\begin{abstract}\n${meta.abstract || "Abstract text goes here."}\n\\end{abstract}\n\n`;
     if (meta.keywords) output += `\\keywords{${meta.keywords}}\n`;
+    output += `\\maketitle\n\n`;
   } else if (templateId === "article_ieee") {
     output += `\\title{${meta.title || "Untitled"}}\n\n`;
     output += `\\author{\n`;
@@ -1376,7 +1377,8 @@ export function injectProfessionalMetadata(templateId: string, meta: ScholarlyMe
     if (corresponding?.email) output += `\\affil[*]{${corresponding.email}}\n`;
     
     if (meta.keywords) output += `\\keywords{${meta.keywords}}\n\n`;
-    output += `\\begin{abstract}\n${meta.abstract || "Abstract text goes here."}\n\\end{abstract}\n`;
+    output += `\\begin{abstract}\n${meta.abstract || "Abstract text goes here."}\n\\end{abstract}\n\n`;
+    output += `\\maketitle\n\n`;
   } else {
     // Standard Article (arXiv, Blank, etc.)
     output += `\\title{${meta.title || "Untitled"}}\n`;
@@ -1404,37 +1406,37 @@ export function injectProfessionalMetadata(templateId: string, meta: ScholarlyMe
  * Auto-detects the target template's metadata style without hardcoded bias.
  */
 export function injectUniversalMetadata(templateContent: string, templateId: string, meta: ScholarlyMetadata): string {
+  let result = "";
   // 1. HARDCODED ROUTING (For built-in templates with known special requirements)
   // Use regex to match \documentclass{...} to avoid false positives from comments/conditional code
-  if (templateId.includes('acm') || /\\documentclass\s*(?:\[[^\]]*\])?\s*\{acmart\}/.test(templateContent)) return injectProfessionalMetadata('article_acm', meta);
-  if (templateId.includes('ieee') || /\\documentclass\s*(?:\[[^\]]*\])?\s*\{IEEEtran\}/.test(templateContent)) return injectProfessionalMetadata('article_ieee', meta);
-  if (templateId.includes('elsevier') || /\\documentclass\s*(?:\[[^\]]*\])?\s*\{elsarticle\}/.test(templateContent)) return injectProfessionalMetadata('article_elsevier', meta);
-  if (templateId.includes('scirep') || /\\documentclass\s*(?:\[[^\]]*\])?\s*\{wlscirep\}/.test(templateContent)) return injectProfessionalMetadata('article_scirep', meta);
-  if (/\\documentclass\s*(?:\[[^\]]*\])?\s*\{llncs\}/.test(templateContent)) return injectProfessionalMetadata('article_springer_lncs', meta);
+  if (templateId.includes('acm') || /\\documentclass\s*(?:\[[^\]]*\])?\s*\{acmart\}/.test(templateContent)) result = injectProfessionalMetadata('article_acm', meta);
+  else if (templateId.includes('ieee') || /\\documentclass\s*(?:\[[^\]]*\])?\s*\{IEEEtran\}/.test(templateContent)) result = injectProfessionalMetadata('article_ieee', meta);
+  else if (templateId.includes('elsevier') || /\\documentclass\s*(?:\[[^\]]*\])?\s*\{elsarticle\}/.test(templateContent)) result = injectProfessionalMetadata('article_elsevier', meta);
+  else if (templateId.includes('scirep') || /\\documentclass\s*(?:\[[^\]]*\])?\s*\{wlscirep\}/.test(templateContent)) result = injectProfessionalMetadata('article_scirep', meta);
+  else if (/\\documentclass\s*(?:\[[^\]]*\])?\s*\{llncs\}/.test(templateContent)) result = injectProfessionalMetadata('article_springer_lncs', meta);
 
   // 2. HEURISTIC DETECTION (For custom/unknown templates)
-  
-  // Elsevier style
-  if (templateContent.includes('\\begin{frontmatter}')) return injectProfessionalMetadata('article_elsevier', meta);
-
-  // Springer Style
-  if (templateContent.includes('\\institute{')) return injectProfessionalMetadata('article_springer_lncs', meta);
-
-  // Nature Style (\affil)
-  if (templateContent.includes('\\affil[')) return injectProfessionalMetadata('article_scirep', meta);
-
-  // MDPI Style (\abstract{...})
-  if (templateContent.includes('\\abstract{')) {
+  else if (templateContent.includes('\\begin{frontmatter}')) result = injectProfessionalMetadata('article_elsevier', meta);
+  else if (templateContent.includes('\\institute{')) result = injectProfessionalMetadata('article_springer_lncs', meta);
+  else if (templateContent.includes('\\affil[')) result = injectProfessionalMetadata('article_scirep', meta);
+  else if (templateContent.includes('\\abstract{')) {
     let output = `\\title{${meta.title || "Untitled"}}\n`;
     output += `\\author{${meta.authors.map(a => a.name).join(", ") || "Author"}}\n`;
     output += `\\abstract{${meta.abstract || "Abstract text"}}\n`;
     if (meta.keywords) output += `\\keyword{${meta.keywords}}\n`;
     output += `\\maketitle\n`;
-    return output;
+    result = output;
+  } else {
+    // Fallback to Standard
+    result = injectProfessionalMetadata('standard', meta);
   }
 
-  // Fallback to Standard
-  return injectProfessionalMetadata('standard', meta);
+  // Universal Safety Guarantee: Ensure \maketitle or \begin{frontmatter} is always executed before body content
+  if (!result.includes('\\maketitle') && !result.includes('\\begin{frontmatter}')) {
+    result += '\n\\maketitle\n';
+  }
+
+  return result;
 }
 
 /**
