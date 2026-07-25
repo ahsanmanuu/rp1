@@ -29,7 +29,10 @@ import PocketBase from 'pocketbase';
 // }
 
 
-const PB_URL = process.env.POCKETBASE_URL || (typeof window !== 'undefined' ? '/pb' : 'http://127.0.0.1:8090');
+const rawPbUrl = process.env.POCKETBASE_URL || (typeof window !== 'undefined' ? '/pb' : 'http://127.0.0.1:8090');
+export const PB_URL = (typeof window === 'undefined' && rawPbUrl.includes('localhost'))
+  ? rawPbUrl.replace('localhost', '127.0.0.1')
+  : rawPbUrl;
 
 /** Fresh unauthenticated client (use for public reads). */
 export function createPb() {
@@ -298,14 +301,20 @@ export async function pbAdmin(): Promise<PocketBase> {
     }
   }
 
-  // If a recent auth attempt failed, check if PB is now online before throwing
-  if (_adminPbFailureAt && Date.now() - _adminPbFailureAt < ADMIN_PB_FAILURE_TTL) {
-    const online = await isPocketBaseReachable();
-    if (online) {
-      _adminPbFailureAt = null;
-    } else {
-      throw new Error('PocketBase is unreachable (cached)');
-    }
+  // Check if PB is online; auto-start if server-side and offline
+  let online = await isPocketBaseReachable();
+  if (!online && typeof window === 'undefined') {
+    try {
+      const { ensureAndStartPocketBase } = await import('./pb-starter');
+      await ensureAndStartPocketBase();
+      online = await isPocketBaseReachable();
+    } catch {}
+  }
+
+  if (online) {
+    _adminPbFailureAt = null;
+  } else if (_adminPbFailureAt && Date.now() - _adminPbFailureAt < ADMIN_PB_FAILURE_TTL) {
+    throw new Error('PocketBase is unreachable (cached)');
   }
 
   // Deduplicate concurrent auth requests
