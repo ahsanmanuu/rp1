@@ -237,6 +237,7 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: '100mb',
     },
+    middlewareClientMaxBodySize: '100mb',
     optimizePackageImports: ['lucide-react', 'pdfjs-dist', 'framer-motion'],
   },
   turbopack: {},

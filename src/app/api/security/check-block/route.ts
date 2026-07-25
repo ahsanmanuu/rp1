@@ -8,10 +8,10 @@ export const dynamic = 'force-dynamic';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "";
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession();
-  if (!session?.user) return NextResponse.json({ success: true, blocked: false });
-
   try {
+    const session = await getServerSession();
+    if (!session?.user) return NextResponse.json({ success: true, blocked: false });
+
     const user = await prisma.user.findUnique({
       where: { id: (session.user as any).id },
       select: { blockedUntil: true, status: true, blacklistReason: true }
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
       headers: { 'Cache-Control': 'private, max-age=5, stale-while-revalidate=15' },
     });
   } catch (error: any) {
-    console.warn("[Check-Block API] Database or schema check failed, defaulting to unblocked:", error.message);
+    console.warn("[Check-Block API] Check block failed, defaulting to unblocked:", error?.message || error);
     return NextResponse.json({
       success: true,
       blocked: false,
@@ -50,12 +50,16 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession();
-  if (!session?.user) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-
   try {
-    const text = await req.text();
-    const body = text ? JSON.parse(text) : {};
+    const session = await getServerSession();
+    if (!session?.user) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+
+    const text = await req.text().catch(() => "");
+    let body: any = {};
+    if (text && text.trim().length > 0) {
+      try { body = JSON.parse(text); } catch {}
+    }
+
     const { ipAddress, location } = body;
     const userId = (session.user as any).id;
     const userAgent = req.headers.get("user-agent") || "Unknown";
@@ -66,7 +70,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.warn("[Check-Block POST] Exception logging activity:", error.message);
+    console.warn("[Check-Block POST] Exception logging activity:", error?.message || error);
     return NextResponse.json({ success: true, logged: false });
   }
 }
