@@ -134,7 +134,6 @@ const nextConfig: NextConfig = {
   // Keep all Prisma and Prisma-related dependencies external on the server to prevent bundler resolution hijacking
   serverExternalPackages: ['@prisma/client', '.prisma/client', '@auth/prisma-adapter', 'sharp', 'better-sqlite3', 'adm-zip', 'original-fs'],
   compress: false,
-  output: 'standalone',
   async redirects() {
     return [
       {
