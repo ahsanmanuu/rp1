@@ -796,8 +796,8 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
   return (
     <StudioErrorBoundary>
       <EditorLoadingOverlay 
-        isCompiling={compiling || initializing} 
-        message={initializing ? "Loading Editor Workspace..." : "Compiling LaTeX Document..."} 
+        visible={compiling || initializing} 
+        label={initializing ? "LOADING EDITOR WORKSPACE" : "COMPILING LATEX DOCUMENT"} 
       />
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-primary)', color: 'var(--text-primary)', overflow: 'hidden', fontFamily: 'var(--font-body)' }}>
       
