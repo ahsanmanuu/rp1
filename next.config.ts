@@ -134,7 +134,8 @@ const nextConfig: NextConfig = {
   // Keep all Prisma and Prisma-related dependencies external on the server to prevent bundler resolution hijacking
   serverExternalPackages: ['@prisma/client', '.prisma/client', '@auth/prisma-adapter', 'sharp', 'better-sqlite3', 'adm-zip', 'original-fs'],
   compress: true,
-  output: process.env.BUILD_STANDALONE === 'true' ? 'standalone' : undefined,
+  // output: 'standalone' is intentionally omitted — aiccloud.in uses `next start`
+  // which is incompatible with standalone mode and skips instrumentation.ts hooks.
   async redirects() {
     return [
       {
