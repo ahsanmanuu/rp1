@@ -8,7 +8,10 @@ import bcrypt from "bcryptjs";
 import fs from "fs";
 import path from "path";
 
-const PB_URL = process.env.POCKETBASE_URL || "http://127.0.0.1:8090";
+const rawPbUrl = process.env.POCKETBASE_URL || "http://127.0.0.1:8090";
+const PB_URL = (typeof window === "undefined" && rawPbUrl.includes("localhost"))
+  ? rawPbUrl.replace("localhost", "127.0.0.1")
+  : rawPbUrl;
 
 export const dynamic = "force-dynamic";
 
