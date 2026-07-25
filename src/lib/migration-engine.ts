@@ -208,6 +208,7 @@ export async function migrateToTemplate(
 \\providecommand{\\acknowledgments}[1]{}
 \\providecommand{\\acknowledgements}[1]{}
 \\providecommand{\\suppmaterial}[1]{}
+\\providecommand{\\numberwithin}[2]{}
 
 \\@ifundefined{subfigure}{
   \\newenvironment{subfigure}[2][]{}{}

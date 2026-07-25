@@ -23,6 +23,75 @@ export const getLatexSuggestions = (monaco: any, model: any, position: any, file
     endColumn: word.endColumn
   };
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // CITATION AUTOCOMPLETION PROVIDER (BibTeX & \bibitem Keys)
+  // ═══════════════════════════════════════════════════════════════════════
+  const lineUntilPosition = lineContent.substring(0, position.column - 1);
+  const citeMatch = lineUntilPosition.match(/\\(cite|citep|citet|autocite|citealp|citeauthor|citeyear|nocite)\s*\{([^}]*)$/i);
+
+  if (citeMatch) {
+    const bibSuggestions: any[] = [];
+    (files || []).forEach(file => {
+      const isBib = file.path.endsWith('.bib');
+      const isTex = file.path.endsWith('.tex');
+
+      if (isBib) {
+        const entryRegex = /@([a-zA-Z]+)\s*\{\s*([^,\s]+)\s*,([\s\S]*?)(?=\n@|\n*$)/g;
+        let m;
+        while ((m = entryRegex.exec(file.content)) !== null) {
+          const type = m[1].toLowerCase();
+          const key = m[2].trim();
+          const body = m[3] || '';
+
+          const authorMatch = body.match(/author\s*=\s*\{([^}]*)\}|author\s*=\s*"([^"]*)"/i);
+          const titleMatch  = body.match(/title\s*=\s*\{([^}]*)\}|title\s*=\s*"([^"]*)"/i);
+          const yearMatch   = body.match(/year\s*=\s*\{([^}]*)\}|year\s*=\s*"([^"]*)"/i);
+          const journalMatch = body.match(/(?:journal|booktitle)\s*=\s*\{([^}]*)\}|(?:journal|booktitle)\s*=\s*"([^"]*)"/i);
+
+          const author = authorMatch ? (authorMatch[1] || authorMatch[2] || '').trim() : '';
+          const title = titleMatch ? (titleMatch[1] || titleMatch[2] || '').trim() : '';
+          const year = yearMatch ? (yearMatch[1] || yearMatch[2] || '').trim() : '';
+          const journal = journalMatch ? (journalMatch[1] || journalMatch[2] || '').trim() : '';
+
+          const detail = [author, year ? `(${year})` : ''].filter(Boolean).join(' ');
+          const doc = [title, journal ? `[${journal}]` : '', `Type: @${type}`].filter(Boolean).join('\n');
+
+          bibSuggestions.push({
+            label: key,
+            kind: kinds.Reference,
+            insertText: key,
+            detail: detail || `BibTeX entry (${key})`,
+            documentation: doc || `Key: ${key}`,
+            filterText: `${key} ${author} ${title} ${year}`,
+            range: normalRange,
+            sortText: '00' + key
+          });
+        }
+      } else if (isTex) {
+        const bibitemRegex = /\\bibitem\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}([\s\S]*?)(?=\\bibitem|\\end\{thebibliography\}|$)/g;
+        let bm;
+        while ((bm = bibitemRegex.exec(file.content)) !== null) {
+          const key = bm[1].trim();
+          const text = (bm[2] || '').replace(/[\n\r]+/g, ' ').trim().slice(0, 100);
+          bibSuggestions.push({
+            label: key,
+            kind: kinds.Reference,
+            insertText: key,
+            detail: `bibitem: ${key}`,
+            documentation: text || `Inline bibitem key: ${key}`,
+            filterText: `${key} ${text}`,
+            range: normalRange,
+            sortText: '00' + key
+          });
+        }
+      }
+    });
+
+    if (bibSuggestions.length > 0) {
+      return bibSuggestions;
+    }
+  }
+
   const suggestions: any[] = [
     // ═══════════════════════════════════════════════════════════════════════
     // DOCUMENT STRUCTURE
