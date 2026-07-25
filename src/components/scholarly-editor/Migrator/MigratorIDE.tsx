@@ -119,6 +119,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
   const [syncJumpLine, setSyncJumpLine] = useState<{ line: number; timestamp: number } | null>(null);
   const [syncTexStr, setSyncTexStr] = useState<string | null>(null);
   const [loadingCode, setLoadingCode] = useState(false);
+  const [initializing, setInitializing] = useState(true);
 
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
@@ -183,6 +184,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
     };
 
     const init = async () => {
+      setInitializing(true);
       const savedS = localStorage.getItem(`migrator_sidebar_${projectId}`);
       const savedP = localStorage.getItem(`migrator_pdf_${projectId}`);
       const savedMood = localStorage.getItem(`migrator_mood_${projectId}`) as EditorMood;
@@ -191,10 +193,32 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
       if (savedP) setPdfWidth(parseInt(savedP));
       if (savedMood) setEditorMood(savedMood);
 
-      const [proj, fileList] = await Promise.all([
+      let [proj, fileList] = await Promise.all([
         studioFs.getProject(projectId),
         studioFs.listFiles(projectId)
       ]);
+
+      // Server Fallback: If not found in local IndexedDB, fetch from backend server
+      if (!proj || fileList.length === 0) {
+        try {
+          const res = await fetch(`/api/projects/${projectId}`);
+          if (res.ok) {
+            const data = await res.json();
+            const serverProj = data.project;
+            if (serverProj) {
+              const mainFileName = serverProj.mainFile || 'main.tex';
+              await studioFs.injectProject(projectId, serverProj.title || 'Migrated Manuscript', serverProj.templateName || 'article', mainFileName);
+              if (serverProj.latexContent) {
+                await studioFs.writeFile(projectId, 'main.tex', serverProj.latexContent);
+              }
+              proj = await studioFs.getProject(projectId);
+              fileList = await studioFs.listFiles(projectId);
+            }
+          }
+        } catch (err) {
+          console.error("Failed to fetch project from backend server:", err);
+        }
+      }
 
       if (proj) {
         setProject(proj);
@@ -222,6 +246,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
           setOpenTabs(prev => prev.includes(activeMeta.path) ? prev : [...prev, activeMeta.path]);
         }
       }
+      setInitializing(false);
     };
     init();
    
@@ -770,6 +795,10 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
 
   return (
     <StudioErrorBoundary>
+      <EditorLoadingOverlay 
+        isCompiling={compiling || initializing} 
+        message={initializing ? "Loading Editor Workspace..." : "Compiling LaTeX Document..."} 
+      />
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-primary)', color: 'var(--text-primary)', overflow: 'hidden', fontFamily: 'var(--font-body)' }}>
       
       {/* EMERALD GLASS HEADER */}

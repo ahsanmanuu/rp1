@@ -1380,7 +1380,7 @@ export function injectProfessionalMetadata(templateId: string, meta: ScholarlyMe
     output += `\\begin{abstract}\n${meta.abstract || "Abstract text goes here."}\n\\end{abstract}\n\n`;
     output += `\\maketitle\n\n`;
   } else {
-    // Standard Article (arXiv, Blank, etc.)
+    // Standard Article (arXiv, Blank, VGTC, JFM, MDPI, etc.)
     output += `\\title{${meta.title || "Untitled"}}\n`;
     if (meta.affiliations && meta.affiliations.length > 0) {
       meta.authors.forEach(a => {
@@ -1393,9 +1393,10 @@ export function injectProfessionalMetadata(templateId: string, meta: ScholarlyMe
     } else {
       output += `\\author{${meta.authors.map(a => a.name).join(", ") || "Author Name"}}\n`;
     }
-    output += `\\date{\\today}\n\n\\maketitle\n\n`;
+    output += `\\date{\\today}\n\n`;
     if (meta.abstract) output += `\\begin{abstract}\n${meta.abstract}\n\\end{abstract}\n\n`;
     if (meta.keywords) output += `\\providecommand{\\keywords}[1]{\\textbf{\\textit{Keywords:}} #1}\n\\keywords{${meta.keywords}}\n\n`;
+    output += `\\maketitle\n\n`;
   }
 
   return output;
