@@ -1150,8 +1150,8 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
 
                <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }}>
                   <EditorLoadingOverlay 
-                    visible={compiling || initializing} 
-                    label={initializing ? "LOADING EDITOR WORKSPACE" : "COMPILING LATEX DOCUMENT"} 
+                    visible={initializing} 
+                    label="LOADING EDITOR WORKSPACE" 
                   />
                   {isImage(activeFile) ? (
                     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', padding: '2rem' }}>

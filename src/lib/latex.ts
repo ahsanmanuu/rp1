@@ -461,6 +461,8 @@ export function extractAndRemoveCommand(content: string, commandName: string): {
 
 function normalizeImageInner(optsStr: string | undefined): string {
   let optStr = optsStr ? optsStr.trim().slice(1, -1) : "";
+  // Strip non-standard keys like alt={...} or alt="..." or alt=val that cause LaTeX option parser corruption
+  optStr = optStr.replace(/\balt\s*=\s*(?:\{[^{}]*\}|"[^"]*"|'[^']*'|\S+)/gi, "");
   optStr = optStr.replace(/width\s*=\s*\\(text|column)width/g, "width=\\linewidth");
   
   if (!optStr.includes("max width")) optStr = optStr ? `${optStr},max width=\\linewidth` : "max width=\\linewidth";
@@ -470,6 +472,7 @@ function normalizeImageInner(optsStr: string | undefined): string {
     if (optStr.length > 0) optStr += ",keepaspectratio";
     else optStr = "keepaspectratio";
   }
+  optStr = optStr.replace(/^,+|,+$/g, "").replace(/,,+/g, ",");
   return optStr;
 }
 
