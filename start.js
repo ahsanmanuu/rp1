@@ -383,6 +383,28 @@ startPocketBase().then(async () => {
   } catch (syncErr) {
     log('Background sync worker failed to start (non-fatal)', syncErr);
   }
-  log('Starting Next.js standalone server...');
-  import('./.next/standalone/server.js');
+  log('Starting Next.js server...');
+  const standaloneServer = path.resolve(process.cwd(), '.next', 'standalone', 'server.js');
+  if (fs.existsSync(standaloneServer)) {
+    log(`Launching Next.js standalone server from ${standaloneServer}...`);
+    try {
+      await import('./.next/standalone/server.js');
+    } catch (importErr) {
+      log('Failed to import standalone server, falling back to next start:', importErr);
+      const port = process.env.PORT || 10005;
+      const nextBin = path.resolve(process.cwd(), 'node_modules', 'next', 'dist', 'bin', 'next');
+      spawn(process.execPath, [nextBin, 'start', '-p', String(port), '-H', '0.0.0.0'], {
+        stdio: 'inherit',
+        env: { ...process.env },
+      });
+    }
+  } else {
+    log('Standalone server not found, launching next start CLI fallback...');
+    const port = process.env.PORT || 10005;
+    const nextBin = path.resolve(process.cwd(), 'node_modules', 'next', 'dist', 'bin', 'next');
+    spawn(process.execPath, [nextBin, 'start', '-p', String(port), '-H', '0.0.0.0'], {
+      stdio: 'inherit',
+      env: { ...process.env },
+    });
+  }
 });
