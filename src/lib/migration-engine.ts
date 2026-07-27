@@ -152,7 +152,6 @@ export async function migrateToTemplate(
   let universalFallbacksInner = `
 \\providecommand{\\authororcid}[2]{#1}
 \\providecommand{\\subref}[1]{\\ref{#1}}
-\\@ifundefined{theoremstyle}{\\providecommand{\\theoremstyle}[1]{}}{}
 \\providecommand{\\subjclass}[2][]{}
 \\providecommand{\\curraddr}[1]{}
 \\providecommand{\\dedicatory}[1]{}
@@ -247,20 +246,17 @@ export async function migrateToTemplate(
 \\providecommand{\\acknowledgments}[1]{}
 \\providecommand{\\acknowledgements}[1]{}
 \\providecommand{\\suppmaterial}[1]{}
-
-\\@ifundefined{subfigure}{
-  \\newenvironment{subfigure}[2][]{}{}
-}{}
 `;
 
   let universalFallbacks = `
 % --- SELECTIVE FALLBACKS (source class: ${srcClass || 'unknown'}) ---
 \\makeatletter
-\\AtBeginDocument{
-${universalFallbacksInner}
-}
+\\@ifundefined{theoremstyle}{\\providecommand{\\theoremstyle}[1]{}}{}
+\\@ifundefined{subfigure}{
+  \\newenvironment{subfigure}[2][]{}{}
+}{}
 \\makeatother
-`;
+${universalFallbacksInner}`;
 
   // Scrub usepackage calls for documentclass names to prevent "File '.sty' not found" crashes
   const knownClassNames = [
