@@ -204,7 +204,7 @@ export function usePbRealtimeReports(userId?: string) {
         authors: parseSafe(r.authorsJson, []),
         affiliations: parseSafe(r.affiliationsJson, []),
         keywords: parseSafe(r.keywordsJson, []),
-      status: r.status || 'verified',
+        status: r.status || 'verified',
       pdfUrl: r.pdfUrl,
       latexUrl: r.latexUrl,
       zipUrl: r.zipUrl,
@@ -213,7 +213,8 @@ export function usePbRealtimeReports(userId?: string) {
       updatedAt: r.updated,
       type: 'DOC2LATEX',
       isLocal: false,
-    }),
+      };
+    },
   });
 }
 
