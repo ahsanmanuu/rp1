@@ -5,6 +5,7 @@ import {
   applyFinalSanitizationSieve,
   extractAndRemoveCommand
 } from './latex';
+import { TEMPLATE_REGISTRY } from './templates/registry';
 
 export interface MigratedProject {
   files: { 
@@ -28,6 +29,15 @@ export interface TemplateData {
   clsContent?: string;
   bstContent?: string;
   bibContent?: string;
+}
+
+function bstSupportsAuthoryear(bstContent: string): boolean {
+  return /format\.lab\.names\b|author\.key\.label\b|calc\.label\b/.test(bstContent);
+}
+
+function lookupCitationStyle(templateId: string): 'numeric' | 'authoryear' | 'superscript' | null {
+  const entry = TEMPLATE_REGISTRY.find(t => t.id === templateId);
+  return entry?.mapping?.citationStyle ?? null;
 }
 
 /**
@@ -578,13 +588,51 @@ ${userPreamble}
         } else {
           // Inject \setcitestyle matching the bibliographystyle to prevent natbib's
           // "Bibliography not compatible with author-year citations" error.
-          // Known author-year .bst styles; everything else defaults to numbers.
-          const authoryearStyles = new Set(['apalike','apa','chicago','humannat','dcu','dg','dgw','authordate','named','harvard','k harvard','jf','jtb','jmb','k BibTeX','k.bibtex','ksfh_n','model1n-num-names']);
-          const isAuthoryear = [...authoryearStyles].some(s => bibStyle.toLowerCase().includes(s));
+          // Multi-layered detection:
+          // 1) Template registry's citationStyle mapping
+          // 2) .bst file content (format.lab.names / author.key.label / calc.label)
+          // 3) Known author-year .bst name heuristics
+          // 4) Default to numeric
+            
+          let isAuthoryear: boolean;
+            
+          // Layer 1: Registry mapping
+          const regStyle = lookupCitationStyle(templateId);
+          if (regStyle === 'authoryear') {
+            isAuthoryear = true;
+          } else if (regStyle === 'numeric' || regStyle === 'superscript') {
+            isAuthoryear = false;
+          } else {
+            // Layer 2: Check .bst file content if available in assets
+            const bstAsset = (templateData.assets || []).find(a => {
+              const name = a.path.toLowerCase();
+              return name.endsWith('.bst') && name.includes(bibStyle.toLowerCase());
+            });
+            const bstContent = bstAsset?.content;
+            if (bstContent && bstSupportsAuthoryear(bstContent)) {
+              isAuthoryear = true;
+            } else {
+              // Layer 3: Heuristic by style name
+              const authoryearStyles = new Set([
+                'apalike','apa','chicago','humannat','dcu','dg','dgw',
+                'authordate','named','harvard','k harvard','jf','jtb','jmb',
+                'k bibtex','k.bibtex','ksfh_n',
+                'acl_natbib','jmlr2e','imsart-nameyear',
+                'model1n-ayear','model1n-ayear-names',
+                'agsm','agu','geophys','gsa','jgr','jss','jse',
+                'jpc','jom','jhe',
+                'apsrev','siam','plainyr','abbrvnat','unsrtnat','plainnat',
+                'chicagoa','chicagoyear','authoryear'
+              ]);
+              isAuthoryear = [...authoryearStyles].some(s => bibStyle.toLowerCase().includes(s));
+              // Layer 4: default to numeric
+            }
+          }
           const citestyleCmd = isAuthoryear
             ? `\n\\setcitestyle{authoryear}\n`
             : `\n\\setcitestyle{numbers,sort&compress}\n`;
-          const bibCmd = `${citestyleCmd}\\bibliographystyle{${bibStyle}}\n\\bibliography{${bibBaseString}}\n`;
+          const natbibGuard = `\n\\makeatletter\\@ifundefined{setcitestyle}{\\usepackage{natbib}}{}\\makeatother\n`;
+          const bibCmd = `${natbibGuard}${citestyleCmd}\\bibliographystyle{${bibStyle}}\n\\bibliography{${bibBaseString}}\n`;
           templateBody = templateBody.replace(/\\bibliographystyle\{[^}]*\}/gi, '').replace(/\\bibliography\{[^}]*\}/gi, '');
           templateBody = templateBody.replace('\\end{document}', `${bibCmd}\\end{document}`);
         }

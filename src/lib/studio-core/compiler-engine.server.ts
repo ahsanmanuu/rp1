@@ -224,8 +224,17 @@ function isPlaceholderBst(content: string): boolean {
   // A real BibTeX style emits \bibitem entries; placeholders never do.
   if (/\\bibitem/.test(content)) return false;
   if (/Minimal placeholder/i.test(content)) return true;
-  // No ITERATE over entries and no \bibitem => cannot produce citations.
-  return !/ITERATE\s*\{\s*call\.type\$/.test(content);
+  // Real .bst files have ITERATE { call.type$ } — check flexibly for spacing
+  if (/ITERATE\s*\{[^}]*call\.type\$/i.test(content)) return false;
+  // Real .bst files also define FUNCTIONS (ENTRY alone is not enough)
+  if (/FUNCTION\s*\{/.test(content)) return false;
+  // Real .bst files typically have READ and SORT
+  if (/\bREAD\b/.test(content) && /\bSORT\b/.test(content)) return false;
+  return true;
+}
+
+function bstSupportsAuthoryear(bstContent: string): boolean {
+  return /format\.lab\.names\b|author\.key\.label\b|calc\.label\b/.test(bstContent);
 }
 
 function extractCiteKeys(tex: string): string[] {
@@ -296,19 +305,35 @@ function applyUniversalBibliographyFix(activeFiles: FilePayload[], cleanMain: st
 
   // 3) Handle biblatex / \addbibresource compatibility for Tectonic
   const isBiblatex = /\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\bbiblatex\b[^}]*\}/i.test(tex);
+  const hasBibResource = /\\addbibresource\s*(?:\[[^\]]*\])?\s*\{[^}]+\}/gi.test(tex);
   const bibResourceMatches = [...tex.matchAll(/\\addbibresource\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/gi)];
   const bibResourceFiles = bibResourceMatches.map(m => path.basename(m[1].trim()).replace(/\.bib$/i, '')).filter(Boolean);
 
   if (isBiblatex || bibResourceFiles.length > 0) {
-    const bibListStr = bibResourceFiles.length > 0 ? bibResourceFiles.join(',') : 'scholarly-autocite';
-    if (!/\\bibliography\b/.test(tex)) {
-      if (/\\printbibliography\b/.test(tex)) {
-        tex = tex.replace(/\\printbibliography\b.*/g, `\\bibliographystyle{plain}\n\\bibliography{${bibListStr}}`);
-      } else {
-        tex = tex.replace(/\\end\s*\{\s*document\s*\}/i, `\\bibliographystyle{plain}\n\\bibliography{${bibListStr}}\n\\end{document}`);
-      }
-      mainObj.content = tex;
+    const existingBibMatch = tex.match(/\\bibliography\s*\{([^}]*)\}/i);
+    const existingBibFiles = existingBibMatch
+      ? existingBibMatch[1].split(',').map(s => s.trim()).filter(Boolean)
+      : [];
+    const mergedBibFiles = [...new Set([...existingBibFiles, ...bibResourceFiles])];
+    const bibListStr = mergedBibFiles.length > 0 ? mergedBibFiles.join(',') : 'scholarly-autocite';
+    
+    // Preserve existing bibliographystyle if present
+    const existingBibStyle = tex.match(/\\bibliographystyle\s*\{\s*([^}]+)\s*\}/i);
+    const styleCmd = existingBibStyle
+      ? `\\bibliographystyle{${existingBibStyle[1].trim()}}`
+      : '\\bibliographystyle{plain}';
+    
+    if (/\\printbibliography\b/.test(tex)) {
+      tex = tex.replace(/\\printbibliography\b.*/g, `${styleCmd}\n\\bibliography{${bibListStr}}`);
+    } else if (!existingBibMatch) {
+      tex = tex.replace(/\\end\s*\{\s*document\s*\}/i, `${styleCmd}\n\\bibliography{${bibListStr}}\n\\end{document}`);
+    } else {
+      // Update existing \bibliography with merged list
+      tex = tex.replace(/\\bibliography\s*\{([^}]*)\}/i, `\\bibliography{${bibListStr}}`);
     }
+    // Remove \addbibresource lines after conversion
+    tex = tex.replace(/\\addbibresource\s*(?:\[[^\]]*\])?\s*\{[^}]+\}\s*\n?/gi, '');
+    mainObj.content = tex;
   }
 
   // 4) Ensure \bibliography{...} exists if \cite{...} is present without inline thebibliography
@@ -317,8 +342,10 @@ function applyUniversalBibliographyFix(activeFiles: FilePayload[], cleanMain: st
     const bibFiles = activeFiles.filter(f => f.path.toLowerCase().endsWith('.bib'));
     const bibFileNames = bibFiles.map(f => path.basename(f.path).replace(/\.bib$/i, '')).filter(b => b !== 'scholarly-autocite');
     const primaryBib = bibFileNames.length > 0 ? bibFileNames.join(',') : 'scholarly-autocite';
+    const existingStyle = tex.match(/\\bibliographystyle\s*\{\s*([^}]+)\s*\}/i);
+    const styleCmd = existingStyle ? `\\bibliographystyle{${existingStyle[1].trim()}}` : '\\bibliographystyle{plain}';
 
-    tex = tex.replace(/\\end\s*\{\s*document\s*\}/i, `\n\\bibliographystyle{plain}\n\\bibliography{${primaryBib}}\n\\end{document}`);
+    tex = tex.replace(/\\end\s*\{\s*document\s*\}/i, `\n${styleCmd}\n\\bibliography{${primaryBib}}\n\\end{document}`);
     mainObj.content = tex;
     console.log(`[BIBFIX] Injected missing \\bibliography{${primaryBib}} for cited keys.`);
   }
@@ -376,6 +403,41 @@ function applyUniversalBibliographyFix(activeFiles: FilePayload[], cleanMain: st
       console.log(`[BIBFIX] Injected missing style .bst: ${bstPath} (wrapEnv=${!isNatbib})`);
     }
   });
+
+  // 8) Ensure \setcitestyle matches the .bst capability AND ensure natbib is loaded
+  // "Bibliography not compatible with author-year citations" occurs when
+  // \setcitestyle{authoryear} is used with a .bst that doesn't define
+  // format.lab.names / author.key.label / calc.label.
+  const currentTex = mainObj.content || tex;
+  const setciteMatch = currentTex.match(/\\setcitestyle\s*\{([^}]+)\}/i);
+  if (setciteMatch) {
+    const currentStyle = setciteMatch[1].toLowerCase();
+    const activeBst = activeFiles.find(f => {
+      const base = f.path.toLowerCase();
+      return base.endsWith('.bst') && styleNames.some(n => base === `${n}.bst` || base.includes(n));
+    });
+    if (currentStyle.includes('authoryear') && activeBst && !bstSupportsAuthoryear(activeBst.content || '')) {
+      mainObj.content = currentTex.replace(/\\setcitestyle\s*\{[^}]*\}/gi, '\\setcitestyle{numbers,sort&compress}');
+      console.log(`[BIBFIX] Downgraded \\setcitestyle from authoryear to numbers for .bst that lacks author-year support`);
+    }
+    // If .bst not found but authoryear is set, downgrade to numeric to be safe
+    if (currentStyle.includes('authoryear') && !activeBst) {
+      mainObj.content = (mainObj.content || currentTex).replace(/\\setcitestyle\s*\{[^}]*\}/gi, '\\setcitestyle{numbers,sort&compress}');
+      console.log(`[BIBFIX] Downgraded \\setcitestyle from authoryear to numbers (no .bst found to confirm capability)`);
+    }
+    // Ensure natbib is loaded when \setcitestyle is used (regardless of isNatbib — which
+    // only tracks env-aware .bst wrapping, not actual natbib package loading).
+    const updatedTex = mainObj.content || currentTex;
+    const hasNatbibPkg = /\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\bnatbib\b[^}]*\}/i.test(updatedTex);
+    const natbibClassPattern = /\\documentclass\s*(?:\[[^\]]*\])?\s*\{(elsarticle|nature|ieee|ieeetran|acmart|revtex)\b/i;
+    const classLoadsNatbib = natbibClassPattern.test(updatedTex);
+    if (!hasNatbibPkg && !classLoadsNatbib) {
+      mainObj.content = updatedTex.replace(/\\setcitestyle\s*\{[^}]*\}/gi, (m) => {
+        return `\\makeatletter\\@ifundefined{setcitestyle}{\\usepackage{natbib}}{}\\makeatother\n${m}`;
+      });
+      console.log(`[BIBFIX] Injected \\usepackage{natbib} before \\setcitestyle`);
+    }
+  }
 }
 
 
