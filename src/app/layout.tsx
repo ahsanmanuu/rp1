@@ -82,6 +82,13 @@ export default function RootLayout({
                 e.preventDefault();
                 forceReload();
               }
+              // DOM ErrorEvent rejections (e.g. from PocketBase EventSource errors or
+              // next/image preloader failures) are not actionable — stop propagation
+              // to prevent Next.js dev overlay from showing them.
+              if (typeof ErrorEvent !== 'undefined' && e.reason instanceof ErrorEvent) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+              }
             });
           })();
         `}} />
