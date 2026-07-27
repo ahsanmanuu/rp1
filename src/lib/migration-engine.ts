@@ -96,8 +96,9 @@ export async function migrateToTemplate(
   const docStart = beginMatch ? beginMatch.index! : -1;
   const beginLength = beginMatch ? beginMatch[0].length : 16;
 
-  const endMatch = userMainTex.match(/\\end\s*\{\s*document\s*\}/);
-  const docEnd = endMatch ? endMatch.index! : -1;
+  const allEndMatches = [...userMainTex.matchAll(/(?<!%)\s*\\end\s*\{\s*document\s*\}/gi)];
+  const lastEndMatch = allEndMatches.length > 0 ? allEndMatches[allEndMatches.length - 1] : null;
+  const docEnd = lastEndMatch ? lastEndMatch.index! : -1;
   
   let userPreamble = docStart !== -1 ? userMainTex.substring(0, docStart) : '';
   const scholarlyMeta = extractProfessionalMetadata(userMainTex);
@@ -295,26 +296,42 @@ ${universalFallbacksInner}
       return `\\makeatletter\\@ifundefined{${name}}{${cmdName}{${name}}${optBefore}${label}${optAfter}}{}\\makeatother`;
     }
   );
-// Helper: Recursively expand \input{...} and \include{...} files from fileMap into body content
+// Helper: Recursively expand \input{...}, \include{...}, \subfile{...}, \import{...} files from fileMap into body content
 function expandSubTexFiles(content: string, fileMap: Record<string, string>, depth = 0): string {
-  if (depth > 5 || !content) return content;
+  if (depth > 10 || !content) return content;
   
-  return content.replace(/\\(?:input|include)\s*\{([^}]+)\}/gi, (match, relPath) => {
-    let cleanPath = relPath.trim();
-    if (!cleanPath.toLowerCase().endsWith('.tex')) cleanPath += '.tex';
+  const incRegex = /\\(?:input|include|subfile|import|subimport)\s*(?:\{([^}]*)\}\s*\{([^}]*)\}|\{([^}]*)\}|([^\s\\%{}]+))/gi;
+  
+  return content.replace(incRegex, (match, dir, file, single, rawPath) => {
+    let target = (single || file || rawPath || '').trim();
+    if (dir && file) {
+      target = (dir.trim() + '/' + file.trim()).replace(/\/\//g, '/');
+    }
+    if (!target) return match;
+    target = target.replace(/\\/g, '/').replace(/^\.\//, '');
+    if (!target.toLowerCase().endsWith('.tex') && !target.includes('.')) target += '.tex';
     
     const matchingKey = Object.keys(fileMap).find(k => {
-      const normK = k.replace(/\\/g, '/').toLowerCase();
-      const normP = cleanPath.replace(/\\/g, '/').toLowerCase();
-      return normK === normP || normK.endsWith('/' + normP);
+      const normK = k.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
+      const normT = target.toLowerCase();
+      return normK === normT || normK.endsWith('/' + normT) || normT.endsWith('/' + normK) || normK.split('/').pop() === normT.split('/').pop();
     });
 
     if (matchingKey && fileMap[matchingKey]) {
-      let subContent = fileMap[matchingKey]
-        .replace(/\\documentclass[\s\S]*?\{[^}]*\}/gi, '')
-        .replace(/\\begin\s*\{\s*document\s*\}/gi, '')
-        .replace(/\\end\s*\{\s*document\s*\}/gi, '');
-      return `\n% --- BEGIN INPUT: ${cleanPath} ---\n` + expandSubTexFiles(subContent, fileMap, depth + 1) + `\n% --- END INPUT: ${cleanPath} ---\n`;
+      let subContent = fileMap[matchingKey];
+
+      const subDocStart = subContent.indexOf('\\begin{document}');
+      const subDocEnd = subContent.lastIndexOf('\\end{document}');
+      if (subDocStart !== -1 && subDocEnd !== -1 && subDocEnd > subDocStart) {
+        subContent = subContent.substring(subDocStart + 16, subDocEnd);
+      } else {
+        subContent = subContent
+          .replace(/\\documentclass[\s\S]*?\{[^}]*\}/gi, '')
+          .replace(/\\begin\s*\{\s*document\s*\}/gi, '')
+          .replace(/\\end\s*\{\s*document\s*\}/gi, '');
+      }
+
+      return `\n% --- BEGIN INPUT: ${matchingKey} ---\n` + expandSubTexFiles(subContent, fileMap, depth + 1) + `\n% --- END INPUT: ${matchingKey} ---\n`;
     }
     return match;
   });

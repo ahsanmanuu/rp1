@@ -275,22 +275,46 @@ export function calculatePayloadSize(files: FilePayload[]): number {
 }
 
 export function flattenProject(files: FilePayload[], mainPath: string): string {
-  const fileMap = new Map((files || []).map(f => [f.path.toLowerCase().replace(/^\.\//, ''), f.content]));
+  const rawMap = new Map((files || []).map(f => [f.path.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase(), f.content]));
   const visited = new Set<string>();
+
   function resolve(p: string, depth: number = 0): string {
-    if (depth > 20) return ''; // Protection against deep recursion
-    const norm = p.toLowerCase().replace(/^\.\//, '');
-    if (visited.has(norm)) return ''; 
+    if (depth > 20) return '';
+    const norm = p.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
+    if (visited.has(norm)) return '';
     visited.add(norm);
-    const content = fileMap.get(norm) || '';
-    const includeRegex = /\\(?:input|include|subfile|import|subimport)\s*(?:\{([^}]*)\}\s*\{([^}]*)\}|\{([^}]*)\})/gi;
-    return content.replace(includeRegex, (match, dir, file, single) => {
-      let target = (single || file || '').trim().toLowerCase().replace(/^\.\//, '');
+
+    let content = rawMap.get(norm) || '';
+    if (!content) {
+      for (const [k, val] of Array.from(rawMap.entries())) {
+        if (k.endsWith('/' + norm) || norm.endsWith('/' + k) || k.split('/').pop() === norm.split('/').pop()) {
+          content = val;
+          break;
+        }
+      }
+    }
+    if (!content) return '';
+
+    const subDocStart = content.indexOf('\\begin{document}');
+    const subDocEnd = content.lastIndexOf('\\end{document}');
+    if (subDocStart !== -1 && subDocEnd !== -1 && subDocEnd > subDocStart) {
+      content = content.substring(subDocStart + 16, subDocEnd);
+    }
+
+    const includeRegex = /\\(?:input|include|subfile|import|subimport)\s*(?:\{([^}]*)\}\s*\{([^}]*)\}|\{([^}]*)\}|([^\s\\%{}]+))/gi;
+    return content.replace(includeRegex, (match, dir, file, single, rawPath) => {
+      let target = (single || file || rawPath || '').trim();
+      if (dir && file) {
+        target = (dir.trim() + '/' + file.trim()).replace(/\/\//g, '/');
+      }
       if (!target) return match;
-      if (!target.endsWith('.tex') && !target.includes('.')) target += '.tex';
+      target = target.replace(/\\/g, '/').replace(/^\.\//, '');
+      if (!target.toLowerCase().endsWith('.tex') && !target.includes('.')) target += '.tex';
+
       const dirPath = norm.includes('/') ? norm.substring(0, norm.lastIndexOf('/') + 1) : '';
       const candidates = [target, dirPath + target, `chapters/${target}`, `sections/${target}`];
-      const matchPath = candidates.find(c => fileMap.has(c));
+      const matchPath = candidates.find(c => rawMap.has(c.toLowerCase()) || Array.from(rawMap.keys()).some(k => k.endsWith('/' + c.toLowerCase()) || k.split('/').pop() === c.toLowerCase().split('/').pop()));
+
       return matchPath ? resolve(matchPath, depth + 1) : match;
     });
   }
