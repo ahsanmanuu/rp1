@@ -76,13 +76,7 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
           setData(prev => {
             if (prev && JSON.stringify(prev) === JSON.stringify(json)) return prev;
             return json;
-});
-
-        // Guard against PB SDK's internal subscription promise resolution
-        // that could reject asynchronously after the initial subscribe completes
-        if (typeof unsub?.then === 'function') {
-          unsub.catch(() => {});
-        }
+          });
           setStatus("authenticated");
           sessionTokenRef.current = json.token || null;
           // Store token in localStorage for PB real-time subscription

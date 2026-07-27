@@ -146,6 +146,26 @@ export async function migrateToTemplate(
       auditLog.push(`- Scrubbed from Preamble: \\${cmd} (${res.extracted.length} instances)`);
     }
   }
+  // Scrub class-level command/environment definitions from user preamble that would
+  // conflict with the target class's own definitions (e.g. \abstract, \proof).
+  // Standard classes and journal classes (siamart190516, acmart, etc.) define these
+  // themselves, causing "Command already defined" errors.
+  const classLevelDefs = ['abstract', 'proof', 'theorem', 'lemma', 'corollary', 'definition', 'remark', 'example', 'notation'];
+  const defPatterns = classLevelDefs.flatMap(name => [
+    new RegExp(`\\\\(?:new|renew|provide)command\\s*\\*?\\s*\\{\\\\${name}\\}`, 'gi'),
+    new RegExp(`\\\\newenvironment\\s*\\*?\\s*\\{${name}\\}`, 'gi'),
+  ]);
+  for (const pat of defPatterns) {
+    let match;
+    while ((match = pat.exec(pResBody)) !== null) {
+      const lineStart = pResBody.lastIndexOf('\n', match.index) + 1;
+      const lineEnd = pResBody.indexOf('\n', match.index);
+      const line = pResBody.substring(lineStart, lineEnd !== -1 ? lineEnd : undefined).trim();
+      pResBody = pResBody.substring(0, lineStart) + `% [Scrubbed class-level definition: ${line}]` + (lineEnd !== -1 ? pResBody.substring(lineEnd) : '');
+      auditLog.push(`- Scrubbed class-level definition from preamble: ${line}`);
+      pat.lastIndex = 0;
+    }
+  }
   // INTELLIGENT SOURCE CLASS DETECTION
   // Detect source document class from user's preamble to selectively activate ONLY relevant fallbacks
   const srcClassMatch = userMainTex.match(/\\documentclass(?:\s*\[[^\]]*\])?\s*\{([^}]+)\}/);
