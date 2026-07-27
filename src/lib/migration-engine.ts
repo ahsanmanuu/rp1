@@ -588,31 +588,47 @@ ${userPreamble}
         } else {
           // Inject \setcitestyle matching the bibliographystyle to prevent natbib's
           // "Bibliography not compatible with author-year citations" error.
-          // Multi-layered detection:
-          // 1) Template registry's citationStyle mapping
-          // 2) .bst file content (format.lab.names / author.key.label / calc.label)
-          // 3) Known author-year .bst name heuristics
-          // 4) Default to numeric
+          // The actual .bst file content is AUTHORITATIVE over registry mappings.
+          // Only fall back to registry + heuristics when no .bst content is available.
+            
+          // First, find the actual .bst content from all available sources:
+          let bstContentToCheck: string | undefined;
+          // Source 1: Template assets
+          const bstAsset = (templateData.assets || []).find(a => {
+            const name = a.path.toLowerCase();
+            return name.endsWith('.bst') && name.includes(bibStyle.toLowerCase());
+          });
+          if (bstAsset?.content) {
+            bstContentToCheck = bstAsset.content;
+          }
+          // Source 2: Legacy templateData.bstContent
+          if (!bstContentToCheck && templateData.bstContent) {
+            bstContentToCheck = templateData.bstContent;
+          }
+          // Source 3: User's uploaded .bst files
+          if (!bstContentToCheck) {
+            const userBstEntry = Object.entries(fileMap).find(([path]) => {
+              const name = path.toLowerCase();
+              return name.endsWith('.bst') && (name.includes(bibStyle.toLowerCase()) || name === `${bibStyle.toLowerCase()}.bst`);
+            });
+            if (userBstEntry) {
+              bstContentToCheck = userBstEntry[1];
+            }
+          }
             
           let isAuthoryear: boolean;
-            
-          // Layer 1: Registry mapping
-          const regStyle = lookupCitationStyle(templateId);
-          if (regStyle === 'authoryear') {
-            isAuthoryear = true;
-          } else if (regStyle === 'numeric' || regStyle === 'superscript') {
-            isAuthoryear = false;
+          if (bstContentToCheck !== undefined) {
+            // .bst content is authoritative — check actual capability
+            isAuthoryear = bstSupportsAuthoryear(bstContentToCheck);
           } else {
-            // Layer 2: Check .bst file content if available in assets
-            const bstAsset = (templateData.assets || []).find(a => {
-              const name = a.path.toLowerCase();
-              return name.endsWith('.bst') && name.includes(bibStyle.toLowerCase());
-            });
-            const bstContent = bstAsset?.content;
-            if (bstContent && bstSupportsAuthoryear(bstContent)) {
+            // No .bst content available — fall back to registry + heuristics
+            const regStyle = lookupCitationStyle(templateId);
+            if (regStyle === 'authoryear') {
               isAuthoryear = true;
+            } else if (regStyle === 'numeric' || regStyle === 'superscript') {
+              isAuthoryear = false;
             } else {
-              // Layer 3: Heuristic by style name
+              // Heuristic by style name
               const authoryearStyles = new Set([
                 'apalike','apa','chicago','humannat','dcu','dg','dgw',
                 'authordate','named','harvard','k harvard','jf','jtb','jmb',
@@ -625,7 +641,6 @@ ${userPreamble}
                 'chicagoa','chicagoyear','authoryear'
               ]);
               isAuthoryear = [...authoryearStyles].some(s => bibStyle.toLowerCase().includes(s));
-              // Layer 4: default to numeric
             }
           }
           const citestyleCmd = isAuthoryear

@@ -413,7 +413,12 @@ function applyUniversalBibliographyFix(activeFiles: FilePayload[], cleanMain: st
     const currentStyle = setciteMatch[1].toLowerCase();
     const activeBst = activeFiles.find(f => {
       const base = f.path.toLowerCase();
-      return base.endsWith('.bst') && styleNames.some(n => base === `${n}.bst` || base.includes(n));
+      const normBasename = base.split('/').pop()?.split('\\').pop() || base;
+      return base.endsWith('.bst') && styleNames.some(n =>
+        normBasename === `${n}.bst`.toLowerCase() ||
+        normBasename.includes(n.toLowerCase()) ||
+        base.includes(n.toLowerCase())
+      );
     });
     if (currentStyle.includes('authoryear') && activeBst && !bstSupportsAuthoryear(activeBst.content || '')) {
       mainObj.content = currentTex.replace(/\\setcitestyle\s*\{[^}]*\}/gi, '\\setcitestyle{numbers,sort&compress}');
