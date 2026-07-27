@@ -129,6 +129,25 @@ export async function POST(req: NextRequest) {
     }
 
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    
+    // Ensure Prisma user table has matching user record before creating userSession
+    try {
+      await prisma.user.upsert({
+        where: { id: userId },
+        update: { email: cleanEmail },
+        create: {
+          id: userId,
+          email: cleanEmail,
+          name: record.name || cleanEmail.split("@")[0] || "",
+          membership: record.membership || "free",
+          role: record.role || "user",
+          points: record.points ?? 50,
+        }
+      });
+    } catch (uErr: any) {
+      console.warn("[AUTH pb-login] Prisma user sync failed (non-fatal):", uErr.message);
+    }
+
     try {
       await prisma.userSession.create({
         data: {

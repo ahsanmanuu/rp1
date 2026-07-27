@@ -204,8 +204,11 @@ export async function signOut(options?: { callbackUrl?: string }) {
     (window as any).__latexy_signOutInProgress = true;
     try {
       localStorage.removeItem("auth-token");
-      document.cookie = "pb_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-      document.cookie = "admin_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      sessionStorage.clear();
+      document.cookie = "pb_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
+      document.cookie = "admin_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
+      document.cookie = "next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
+      document.cookie = "__Secure-next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
     } catch {}
   }
   try {

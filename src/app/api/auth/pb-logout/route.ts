@@ -32,27 +32,20 @@ export async function POST() {
   }
 
   // Delete cookies via Next.js cookies API
-  try {
-    cookieStore.delete('pb_token');
-    cookieStore.delete('admin_session');
-  } catch (err) {
-    console.error("[AUTH pb-logout] Error deleting cookies via cookieStore:", err);
-  }
+  const authCookieNames = ['pb_token', 'admin_session', 'next-auth.session-token', '__Secure-next-auth.session-token'];
+  authCookieNames.forEach(c => {
+    try { cookieStore.delete(c); } catch {}
+  });
 
   const response = NextResponse.json({ success: true });
-  response.cookies.set("pb_token", "", {
-    path: "/",
-    expires: new Date(0),
-    maxAge: 0,
-    httpOnly: true,
-    sameSite: "lax",
-  });
-  response.cookies.set("admin_session", "", {
-    path: "/",
-    expires: new Date(0),
-    maxAge: 0,
-    httpOnly: true,
-    sameSite: "lax",
+  authCookieNames.forEach(c => {
+    response.cookies.set(c, "", {
+      path: "/",
+      expires: new Date(0),
+      maxAge: 0,
+      httpOnly: true,
+      sameSite: "lax",
+    });
   });
 
   return response;

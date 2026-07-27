@@ -80,13 +80,16 @@ export async function POST(req: Request) {
     // 3. Find the free AI Cap plan
     const freePlan = await prisma.aiCapPlan.findFirst({ where: { name: 'free' } }).catch(() => null);
 
-    // 4. Create User in PocketBase
+    // 4. Create User in PocketBase (using pbAdmin for guaranteed creation)
+    const { pbAdmin } = await import("@/lib/pb");
+    const admPb = await pbAdmin().catch(() => pb);
     let record;
     try {
-      record = await pb.collection("users").create({
+      record = await admPb.collection("users").create({
         email: cleanEmail,
         password,
         passwordConfirm: password,
+        emailVisibility: true,
         name: cleanName || cleanEmail.split("@")[0],
         points: 50,
         theme: "dark",
@@ -100,6 +103,27 @@ export async function POST(req: Request) {
       const firstError = Object.values(details)[0] as any;
       const message = firstError?.message || pbErr?.message || "Registration failed in authentication database.";
       return NextResponse.json({ error: message }, { status: 400 });
+    }
+
+    // 4b. Sync user record into Prisma DB so sessions and relational queries resolve
+    try {
+      await prisma.user.upsert({
+        where: { id: record.id },
+        update: {
+          email: cleanEmail,
+          name: cleanName || cleanEmail.split("@")[0],
+        },
+        create: {
+          id: record.id,
+          email: cleanEmail,
+          name: cleanName || cleanEmail.split("@")[0],
+          membership: "free",
+          role: "user",
+          points: 50,
+        }
+      });
+    } catch (prismaErr: any) {
+      console.warn("[Register API] Failed to upsert user in Prisma (non-fatal):", prismaErr?.message);
     }
 
     // 5. Log Initial Session Activity with Geo Location

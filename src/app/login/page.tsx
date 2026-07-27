@@ -38,6 +38,12 @@ export default function LoginPage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (status === "authenticated") {
+      router.push("/dashboard");
+    }
+  }, [status, router]);
+
   const handleForceLogin = async () => {
     setModalLoading(true);
     try {
