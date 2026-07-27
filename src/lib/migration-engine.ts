@@ -148,9 +148,7 @@ export async function migrateToTemplate(
   const srcIsAMS = srcClass.includes('ams') || srcClass.includes('amsproc') || userPreamble.includes('\\subjclass');
 
   // Build SELECTIVE fallbacks: only activate sections that are actually needed for the SOURCE class
-  let universalFallbacks = `
-% --- SELECTIVE FALLBACKS (source class: ${srcClass || 'unknown'}) ---
-\\catcode\`\\@=11
+  let universalFallbacksInner = `
 \\providecommand{\\authororcid}[2]{#1}
 \\providecommand{\\subref}[1]{\\ref{#1}}
 \\providecommand{\\theoremstyle}[1]{}
@@ -161,7 +159,7 @@ export async function migrateToTemplate(
 `;
 
   if (srcIsVGTC) {
-    universalFallbacks += `
+    universalFallbacksInner += `
 % VGTC Fallbacks (source detected)
 \\providecommand{\\onlineid}[1]{}
 \\providecommand{\\vgtccategory}[1]{}
@@ -178,7 +176,7 @@ export async function migrateToTemplate(
   }
 
   if (srcIsACM) {
-    universalFallbacks += `
+    universalFallbacksInner += `
 % ACMart Fallbacks (source detected)
 \\providecommand{\\acmConference}[4]{}
 \\providecommand{\\acmBooktitle}[1]{}
@@ -197,7 +195,7 @@ export async function migrateToTemplate(
   }
 
   if (srcIsElsevier) {
-    universalFallbacks += `
+    universalFallbacksInner += `
 % Elsevier Fallbacks (source detected)
 \\providecommand{\\corref}[1]{}
 \\providecommand{\\cortext}[2][]{}
@@ -209,7 +207,7 @@ export async function migrateToTemplate(
   }
 
   if (srcIsIEEE) {
-    universalFallbacks += `
+    universalFallbacksInner += `
 % IEEEtran Fallbacks (source detected)
 \\providecommand{\\IEEEauthorblockN}[1]{#1}
 \\providecommand{\\IEEEauthorblockA}[1]{#1}
@@ -221,7 +219,7 @@ export async function migrateToTemplate(
   }
 
   if (srcIsSpringer) {
-    universalFallbacks += `
+    universalFallbacksInner += `
 % Springer / LLNCS Fallbacks (source detected)
 \\providecommand{\\institute}[1]{}
 \\providecommand{\\inst}[1]{}
@@ -233,7 +231,7 @@ export async function migrateToTemplate(
   }
 
   if (srcIsRevTeX) {
-    universalFallbacks += `
+    universalFallbacksInner += `
 % RevTeX / APS / AIP Fallbacks (source detected)
 \\providecommand{\\collaboration}[1]{}
 \\providecommand{\\homepage}[1]{}
@@ -243,7 +241,7 @@ export async function migrateToTemplate(
   }
 
   // Common structural fallbacks that are universally safe
-  universalFallbacks += `
+  universalFallbacksInner += `
 % General Structural Fallbacks
 \\providecommand{\\acknowledgments}[1]{}
 \\providecommand{\\acknowledgements}[1]{}
@@ -252,18 +250,15 @@ export async function migrateToTemplate(
 \\@ifundefined{subfigure}{
   \\newenvironment{subfigure}[2][]{}{}
 }{}
-\\@ifundefined{newtheorem*}{
-  \\@ifundefined{proof}{
-    \\RequirePackage{amsthm}
-  }{
-    \\let\\savedproof\\proof
-    \\let\\savedendproof\\endproof
-    \\let\\proof\\relax
-    \\let\\endproof\\relax
-    \\RequirePackage{amsthm}
-  }
-}{}
-\\catcode\`\\@=12
+`;
+
+  let universalFallbacks = `
+% --- SELECTIVE FALLBACKS (source class: ${srcClass || 'unknown'}) ---
+\\makeatletter
+\\AtBeginDocument{
+${universalFallbacksInner}
+}
+\\makeatother
 `;
 
   // Scrub usepackage calls for documentclass names to prevent "File '.sty' not found" crashes

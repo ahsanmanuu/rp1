@@ -1047,8 +1047,6 @@ export function autoHealLatex(latex: string): string {
       "\\PassOptionsToPackage{export}{graphicx}",
       "\\PassOptionsToPackage{export}{adjustbox}",
       "\\nonstopmode",
-      "\\ifx\\abstract\\undefined\\else\\let\\abstract\\relax\\fi",
-      "\\ifx\\endabstract\\undefined\\else\\let\\endabstract\\relax\\fi",
       "\\ifx\\DeclareUnicodeCharacter\\undefined\\long\\def\\DeclareUnicodeCharacter#1#2{}\\else\\fi",
       "\\let\\Bbbk\\relax",
       "\\usepackage[utf8]{inputenc}",
