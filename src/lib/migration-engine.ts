@@ -151,7 +151,7 @@ export async function migrateToTemplate(
   let universalFallbacksInner = `
 \\providecommand{\\authororcid}[2]{#1}
 \\providecommand{\\subref}[1]{\\ref{#1}}
-\\providecommand{\\theoremstyle}[1]{}
+\\@ifundefined{theoremstyle}{\\providecommand{\\theoremstyle}[1]{}}{}
 \\providecommand{\\subjclass}[2][]{}
 \\providecommand{\\curraddr}[1]{}
 \\providecommand{\\dedicatory}[1]{}
@@ -397,6 +397,36 @@ function expandSubTexFiles(content: string, fileMap: Record<string, string>, dep
   if (templateDocStart !== -1) {
       let templatePre = templateContent.substring(0, templateDocStart + 16);
       let templateBody = templateContent.substring(templateDocStart + 16);
+
+      // Detect target document class name
+      const targetClassMatch = templatePre.match(/\\documentclass(?:\s*\[[^\]]*\])?\s*\{([^}]+)\}/);
+      const targetClass = targetClassMatch ? targetClassMatch[1].trim().toLowerCase() : '';
+
+      // Build comprehensive list of class names to scrub from \usepackage in templatePre & userPreamble
+      const allClassesToScrub = Array.from(new Set([
+        ...knownClassNames,
+        srcClass,
+        targetClass,
+        srcClass.replace(/\d+$/g, ''),
+        targetClass.replace(/\d+$/g, ''),
+        templateId.toLowerCase().replace(/-/g, '')
+      ])).filter(Boolean);
+
+      for (const clsName of allClassesToScrub) {
+        templatePre = templatePre.replace(
+          new RegExp(`\\\\usepackage(?:\\s*\\[[^\\]]*\\])?\\s*\\{${clsName}\\}`, 'gi'),
+          `% [Scrubbed target class package: ${clsName}]`
+        );
+        userPreamble = userPreamble.replace(
+          new RegExp(`\\\\usepackage(?:\\s*\\[[^\\]]*\\])?\\s*\\{${clsName}\\}`, 'gi'),
+          `% [Scrubbed source class package: ${clsName}]`
+        );
+      }
+
+      // If userPreamble contains AMS theorem commands, pre-load amsthm safely
+      if ((userPreamble.includes('\\theoremstyle') || userPreamble.includes('\\newtheorem')) && !templatePre.includes('{amsthm}')) {
+        templatePre = templatePre.replace('\\begin{document}', `\\usepackage{amsthm}\n\\begin{document}`);
+      }
       
       // I. INJECT PREAMBLE
       templatePre = templatePre.replace('\\begin{document}', `
