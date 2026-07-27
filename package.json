@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "node dev.js",
-    "dev:next": "next dev -p 3000",
+    "dev:next": "next dev -p 3000 --webpack",
     "build": "node scripts/fix-prisma-exports.js && next build --webpack",
     "start": "node start.js",
     "lint": "eslint",
