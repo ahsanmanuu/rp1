@@ -337,28 +337,22 @@ function expandSubTexFiles(content: string, fileMap: Record<string, string>, dep
   });
 }
 
-  // Scrub Preamble of page break and maketitle artifacts
-  userPreamble = userPreamble
-    .replace(/\\newpage(?![a-zA-Z])/gi, '% [Scrubbed newpage]')
-    .replace(/\\clearpage(?![a-zA-Z])/gi, '% [Scrubbed clearpage]')
-    .replace(/\\pagebreak(?![a-zA-Z])/gi, '% [Scrubbed pagebreak]')
-    .replace(/\\maketitle(?![a-zA-Z])/gi, '% [Scrubbed maketitle]');
+  userPreamble = universalFallbacks + scrubbedPreamble;
 
-  // Clean userPreamble of raw un-commented text lines or body structural commands that would spill onto Page 1 before title
-  const bodyCmdsInPreamble = /^\s*\\(?:section|subsection|subsubsection|paragraph|subparagraph|chapter|part|caption|includegraphics|thanks|maketitle|newpage|clearpage|pagebreak|tableofcontents|listoffigures|listoftables)\b/i;
-
+  // Clean combined preamble of raw un-commented text lines or body structural
+  // commands that would spill onto Page 1 before \begin{document}, causing
+  // "Missing \begin{document}" errors and unwanted text in the PDF.
+  const preambleLineBodyCmds = /^\s*\\(?:section|subsection|subsubsection|paragraph|subparagraph|chapter|part|caption|includegraphics|thanks|maketitle|newpage|clearpage|pagebreak|tableofcontents|listoffigures|listoftables)\b/i;
   userPreamble = userPreamble.split('\n').map(line => {
     const trimmed = line.trim();
     if (!trimmed) return line;
     if (trimmed.startsWith('%')) return line;
-    if (bodyCmdsInPreamble.test(trimmed)) {
+    if (preambleLineBodyCmds.test(trimmed)) {
       return `% [Scrubbed body command from preamble]: ${line}`;
     }
     if (trimmed.startsWith('\\')) return line;
     return `% [Scrubbed non-declaration preamble line]: ${line}`;
   }).join('\n');
-
-  userPreamble = universalFallbacks + scrubbedPreamble;
 
   let rawUserBody = (docStart !== -1 && docEnd !== -1) 
     ? userMainTex.substring(docStart + beginLength, docEnd) 
@@ -440,9 +434,11 @@ function expandSubTexFiles(content: string, fileMap: Record<string, string>, dep
         );
       }
 
-      // If userPreamble contains AMS theorem commands, pre-load amsthm safely
+      // If userPreamble contains AMS theorem commands, pre-load amsthm safely.
+      // Use \@ifundefined{proof} to avoid "Command \proof already defined" conflicts
+      // with classes (e.g. acmart) that define their own proof environment.
       if ((userPreamble.includes('\\theoremstyle') || userPreamble.includes('\\newtheorem')) && !templatePre.includes('{amsthm}')) {
-        templatePre = templatePre.replace('\\begin{document}', `\\usepackage{amsthm}\n\\begin{document}`);
+        templatePre = templatePre.replace('\\begin{document}', `\\makeatletter\\@ifundefined{proof}{\\usepackage{amsthm}}{\\providecommand{\\proofname}{Proof}}\\makeatother\n\\begin{document}`);
       }
       
       // I. INJECT PREAMBLE
@@ -578,7 +574,15 @@ ${userPreamble}
           });
           templateBody = templateBody.replace('\\end{document}', `\\printbibliography\n\\end{document}`);
         } else {
-          const bibCmd = `\n\\bibliographystyle{${bibStyle}}\n\\bibliography{${bibBaseString}}\n`;
+          // Inject \setcitestyle matching the bibliographystyle to prevent natbib's
+          // "Bibliography not compatible with author-year citations" error.
+          // Known author-year .bst styles; everything else defaults to numbers.
+          const authoryearStyles = new Set(['apalike','apa','chicago','humannat','dcu','dg','dgw','authordate','named','harvard','k harvard','jf','jtb','jmb','k BibTeX','k.bibtex','ksfh_n','model1n-num-names']);
+          const isAuthoryear = [...authoryearStyles].some(s => bibStyle.toLowerCase().includes(s));
+          const citestyleCmd = isAuthoryear
+            ? `\n\\setcitestyle{authoryear}\n`
+            : `\n\\setcitestyle{numbers,sort&compress}\n`;
+          const bibCmd = `${citestyleCmd}\\bibliographystyle{${bibStyle}}\n\\bibliography{${bibBaseString}}\n`;
           templateBody = templateBody.replace(/\\bibliographystyle\{[^}]*\}/gi, '').replace(/\\bibliography\{[^}]*\}/gi, '');
           templateBody = templateBody.replace('\\end{document}', `${bibCmd}\\end{document}`);
         }
