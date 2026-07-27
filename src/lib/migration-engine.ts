@@ -332,11 +332,17 @@ function expandSubTexFiles(content: string, fileMap: Record<string, string>, dep
     .replace(/\\pagebreak(?![a-zA-Z])/gi, '% [Scrubbed pagebreak]')
     .replace(/\\maketitle(?![a-zA-Z])/gi, '% [Scrubbed maketitle]');
 
-  // Clean userPreamble of raw un-commented text lines that would spill onto Page 1 before title
+  // Clean userPreamble of raw un-commented text lines or body structural commands that would spill onto Page 1 before title
+  const bodyCmdsInPreamble = /^\s*\\(?:section|subsection|subsubsection|paragraph|subparagraph|chapter|part|caption|includegraphics|thanks|maketitle|newpage|clearpage|pagebreak|tableofcontents|listoffigures|listoftables)\b/i;
+
   userPreamble = userPreamble.split('\n').map(line => {
     const trimmed = line.trim();
     if (!trimmed) return line;
-    if (trimmed.startsWith('%') || trimmed.startsWith('\\')) return line;
+    if (trimmed.startsWith('%')) return line;
+    if (bodyCmdsInPreamble.test(trimmed)) {
+      return `% [Scrubbed body command from preamble]: ${line}`;
+    }
+    if (trimmed.startsWith('\\')) return line;
     return `% [Scrubbed non-declaration preamble line]: ${line}`;
   }).join('\n');
 
@@ -434,6 +440,14 @@ ${userPreamble}
           const colCount = (inner.match(/&/g) || []).length;
           if (colCount > 6 || inner.includes('tabularx') || inner.includes('adjustbox')) {
             return `\\begin{table*}[htbp]${inner}\\end{table*}`;
+          }
+          return match;
+        });
+
+        // Promote wide single-column figures with wide images to figure* [htbp]
+        userBody = userBody.replace(/\\begin\s*\{\s*figure\s*\}(?:\[[^\]]*\])?([\s\S]*?)\\end\s*\{\s*figure\s*\}/gi, (match, inner) => {
+          if (inner.includes('width=\\textwidth') || inner.includes('width=\\linewidth') || inner.includes('0.8\\textwidth') || inner.includes('0.9\\textwidth') || inner.includes('subfigure')) {
+            return `\\begin{figure*}[htbp]${inner}\\end{figure*}`;
           }
           return match;
         });

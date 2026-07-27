@@ -1397,9 +1397,9 @@ export function injectProfessionalMetadata(templateId: string, meta: ScholarlyMe
       output += `\\author{${meta.authors.map(a => a.name).join(", ") || "Author Name"}}\n`;
     }
     output += `\\date{\\today}\n\n`;
+    output += `\\maketitle\n\n`;
     if (meta.abstract) output += `\\begin{abstract}\n${meta.abstract}\n\\end{abstract}\n\n`;
     if (meta.keywords) output += `\\providecommand{\\keywords}[1]{\\textbf{\\textit{Keywords:}} #1}\n\\keywords{${meta.keywords}}\n\n`;
-    output += `\\maketitle\n\n`;
   }
 
   return output;
