@@ -305,7 +305,6 @@ function applyUniversalBibliographyFix(activeFiles: FilePayload[], cleanMain: st
 
   // 3) Handle biblatex / \addbibresource compatibility for Tectonic
   const isBiblatex = /\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\bbiblatex\b[^}]*\}/i.test(tex);
-  const hasBibResource = /\\addbibresource\s*(?:\[[^\]]*\])?\s*\{[^}]+\}/gi.test(tex);
   const bibResourceMatches = [...tex.matchAll(/\\addbibresource\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/gi)];
   const bibResourceFiles = bibResourceMatches.map(m => path.basename(m[1].trim()).replace(/\.bib$/i, '')).filter(Boolean);
 
