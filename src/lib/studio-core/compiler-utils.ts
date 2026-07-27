@@ -295,10 +295,17 @@ export function flattenProject(files: FilePayload[], mainPath: string): string {
     }
     if (!content) return '';
 
-    const subDocStart = content.indexOf('\\begin{document}');
-    const subDocEnd = content.lastIndexOf('\\end{document}');
-    if (subDocStart !== -1 && subDocEnd !== -1 && subDocEnd > subDocStart) {
-      content = content.substring(subDocStart + 16, subDocEnd);
+    if (depth > 0) {
+      const subDocStart = content.indexOf('\\begin{document}');
+      const subDocEnd = content.lastIndexOf('\\end{document}');
+      if (subDocStart !== -1 && subDocEnd !== -1 && subDocEnd > subDocStart) {
+        content = content.substring(subDocStart + 16, subDocEnd);
+      } else {
+        content = content
+          .replace(/\\documentclass[\s\S]*?\{[^}]*\}/gi, '')
+          .replace(/\\begin\s*\{\s*document\s*\}/gi, '')
+          .replace(/\\end\s*\{\s*document\s*\}/gi, '');
+      }
     }
 
     const includeRegex = /\\(?:input|include|subfile|import|subimport)\s*(?:\{([^}]*)\}\s*\{([^}]*)\}|\{([^}]*)\}|([^\s\\%{}]+))/gi;
