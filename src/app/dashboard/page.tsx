@@ -428,7 +428,8 @@ export default function DashboardPage() {
       const storedImage = localStorage.getItem('user_profile_image');
       if (storedName) setProfileName(storedName);
       else if (session?.user?.name) setProfileName(session?.user?.name);
-      if (storedImage) setProfileImage(storedImage);
+      if (storedImage && storedImage.startsWith('data:image/')) setProfileImage(storedImage);
+      else if (storedImage) localStorage.removeItem('user_profile_image');
     }
   }, [session]);
 
@@ -1600,15 +1601,23 @@ export default function DashboardPage() {
                     accept="image/*"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          const base64String = reader.result as string;
-                          setProfileImage(base64String);
-                          localStorage.setItem('user_profile_image', base64String);
-                        };
-                        reader.readAsDataURL(file);
-                      }
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onerror = () => {
+                        console.warn('[Profile] FileReader failed to read file');
+                        localStorage.removeItem('user_profile_image');
+                      };
+                      reader.onloadend = () => {
+                        const result = reader.result;
+                        if (typeof result !== 'string' || !result.startsWith('data:image/')) {
+                          console.warn('[Profile] FileReader produced invalid result');
+                          localStorage.removeItem('user_profile_image');
+                          return;
+                        }
+                        setProfileImage(result);
+                        localStorage.setItem('user_profile_image', result);
+                      };
+                      reader.readAsDataURL(file);
                     }}
                   />
                 </label>

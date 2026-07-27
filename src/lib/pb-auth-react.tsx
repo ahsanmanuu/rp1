@@ -76,7 +76,13 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
           setData(prev => {
             if (prev && JSON.stringify(prev) === JSON.stringify(json)) return prev;
             return json;
-          });
+});
+
+        // Guard against PB SDK's internal subscription promise resolution
+        // that could reject asynchronously after the initial subscribe completes
+        if (typeof unsub?.then === 'function') {
+          unsub.catch(() => {});
+        }
           setStatus("authenticated");
           sessionTokenRef.current = json.token || null;
           // Store token in localStorage for PB real-time subscription
@@ -145,17 +151,21 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
         const currentToken = sessionTokenRef.current;
 
         unsub = await pb.collection("user_sessions").subscribe("*", (e) => {
-          if (!mounted) return;
-          // If session was deleted (force logout from another device)
-          if (e.action === "delete") {
-            const deletedToken = e.record?.sessionToken;
-            if (deletedToken === currentToken) {
-              setData(null);
-              setStatus("unauthenticated");
-              sessionTokenRef.current = null;
-              // Clear cookie via logout endpoint
-              fetch("/api/auth/pb-logout", { method: "POST", signal: AbortSignal.timeout(10000) }).catch(() => {});
+          try {
+            if (!mounted) return;
+            // If session was deleted (force logout from another device)
+            if (e.action === "delete") {
+              const deletedToken = e.record?.sessionToken;
+              if (deletedToken === currentToken) {
+                setData(null);
+                setStatus("unauthenticated");
+                sessionTokenRef.current = null;
+                // Clear cookie via logout endpoint
+                fetch("/api/auth/pb-logout", { method: "POST", signal: AbortSignal.timeout(10000) }).catch(() => {});
+              }
             }
+          } catch (subErr) {
+            console.warn("[PB Session Provider] Subscription callback error:", subErr);
           }
         });
       } catch {

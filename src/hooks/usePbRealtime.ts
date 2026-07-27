@@ -136,11 +136,15 @@ export function usePbRealtime<T = any>(options: PbRealtimeOptions<T>) {
           }
           const subFilter = subscribeFilter || (userId ? `userId = "${userId}"` : undefined);
           const unsub = await pb.collection(collection).subscribe('*', (e: any) => {
-            if (!mountedRef.current) return;
-            fetchRecords();
-            if (onEventRef.current) {
-              const mapped = mapperRef.current ? mapperRef.current(e.record) : e.record as T;
-              onEventRef.current(e.action as PbRealtimeEvent, mapped, []);
+            try {
+              if (!mountedRef.current) return;
+              fetchRecords();
+              if (onEventRef.current) {
+                const mapped = mapperRef.current ? mapperRef.current(e.record) : e.record as T;
+                onEventRef.current(e.action as PbRealtimeEvent, mapped, []);
+              }
+            } catch (subErr) {
+              console.warn(`[usePbRealtime] Subscription callback error for ${collection}:`, subErr);
             }
           }, subFilter ? { filter: subFilter } : undefined);
           subRef.current = unsub;
@@ -184,16 +188,22 @@ export function usePbRealtimeReports(userId?: string) {
     fields: 'id,userId,projectId,title,statsJson,authorsJson,affiliationsJson,keywordsJson,status,pdfUrl,latexUrl,zipUrl,created,updated',
     subscribeRealtime: !!userId,
     subscribeFilter: userId ? `userId = "${userId}"` : undefined,
-    mapRecord: (r: any) => ({
-      id: r.id,
-      userId: r.userId,
-      projectId: r.projectId,
-      title: r.title,
-      stats: typeof r.statsJson === 'string' ? JSON.parse(r.statsJson || '{}') : (r.statsJson || {}),
-      words: typeof r.statsJson === 'string' ? JSON.parse(r.statsJson || '{}').words || 0 : (r.statsJson?.words || 0),
-      authors: typeof r.authorsJson === 'string' ? JSON.parse(r.authorsJson || '[]') : (r.authorsJson || []),
-      affiliations: typeof r.affiliationsJson === 'string' ? JSON.parse(r.affiliationsJson || '[]') : (r.affiliationsJson || []),
-      keywords: typeof r.keywordsJson === 'string' ? JSON.parse(r.keywordsJson || '[]') : (r.keywordsJson || []),
+    mapRecord: (r: any) => {
+      const parseSafe = (val: string | null | undefined, fallback: any) => {
+        if (typeof val !== 'string') return val || fallback;
+        try { return JSON.parse(val); } catch { return fallback; }
+      };
+      const stats = parseSafe(r.statsJson, {});
+      return {
+        id: r.id,
+        userId: r.userId,
+        projectId: r.projectId,
+        title: r.title,
+        stats,
+        words: stats.words || 0,
+        authors: parseSafe(r.authorsJson, []),
+        affiliations: parseSafe(r.affiliationsJson, []),
+        keywords: parseSafe(r.keywordsJson, []),
       status: r.status || 'verified',
       pdfUrl: r.pdfUrl,
       latexUrl: r.latexUrl,
