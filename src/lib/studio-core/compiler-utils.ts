@@ -307,6 +307,7 @@ export interface DiagnosticError {
 
 export function parseLog(log: string): DiagnosticError[] {
   const errors: DiagnosticError[] = [];
+  const seenKeys = new Set<string>();
   const lines = (log || '').split('\n');
 
   lines.forEach((rawLine, idx) => {
@@ -328,55 +329,74 @@ export function parseLog(log: string): DiagnosticError[] {
         }
       }
 
-      errors.push({ 
-        line: errorLineNum, 
-        type: 'error', 
-        message: errorMsg, 
-        raw: line 
-      });
+      const key = `err:${errorLineNum}:${errorMsg}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        errors.push({ 
+          line: errorLineNum, 
+          type: 'error', 
+          message: errorMsg, 
+          raw: line 
+        });
+      }
       return;
     }
 
     // Pattern 2: Tectonic prefixed diagnostics
-    // Tectonic always prefixes each diagnostic with "warning:" or "error:"
     const tectonicWarning = line.match(/^warning:\s+(.*)/i);
     const tectonicError   = line.match(/^error:\s+(.*)/i);
 
     if (tectonicWarning) {
       const rest  = tectonicWarning[1];
       const inner = rest.match(/^(.*?):(\d+):\s*(.*)/);
-      errors.push({
-        file:    inner ? inner[1].replace(/^\.\//,'') : undefined,
-        line:    inner ? parseInt(inner[2]) : 0,
-        type:    'warning',
-        message: inner ? inner[3].trim() : rest.trim(),
-        raw:     line,
-      });
+      const lineNum = inner ? parseInt(inner[2]) : 0;
+      const msg = inner ? inner[3].trim() : rest.trim();
+      const key = `warn:${lineNum}:${msg}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        errors.push({
+          file:    inner ? inner[1].replace(/^\.\//,'') : undefined,
+          line:    lineNum,
+          type:    'warning',
+          message: msg,
+          raw:     line,
+        });
+      }
       return;
     }
 
     if (tectonicError) {
       const rest  = tectonicError[1];
       const inner = rest.match(/^(.*?):(\d+):\s*(.*)/);
-      errors.push({
-        file:    inner ? inner[1].replace(/^\.\//,'') : undefined,
-        line:    inner ? parseInt(inner[2]) : 0,
-        type:    'error',
-        message: inner ? inner[3].trim() : rest.trim(),
-        raw:     line,
-      });
+      const lineNum = inner ? parseInt(inner[2]) : 0;
+      const msg = inner ? inner[3].trim() : rest.trim();
+      const key = `err:${lineNum}:${msg}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        errors.push({
+          file:    inner ? inner[1].replace(/^\.\//,'') : undefined,
+          line:    lineNum,
+          type:    'error',
+          message: msg,
+          raw:     line,
+        });
+      }
       return;
     }
 
-    // Pattern 3: Legacy file:line:msg (non-tectonic upstream responses)
-    if (line.match(/^(.*?):(\d+):\s*(.*)/)) {
-      const match = line.match(/^(.*?):(\d+):\s*(.*)/);
-      if (match) {
+    // Pattern 3: Legacy file:line:msg
+    const match = line.match(/^(.*?):(\d+):\s*(.*)/);
+    if (match) {
+      const lineNum = parseInt(match[2]);
+      const msg = match[3].trim();
+      const key = `err:${lineNum}:${msg}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
         errors.push({
           file:    match[1].replace(/^\.\//,''),
-          line:    parseInt(match[2]),
+          line:    lineNum,
           type:    'error',
-          message: match[3].trim(),
+          message: msg,
           raw:     line,
         });
       }
@@ -387,23 +407,33 @@ export function parseLog(log: string): DiagnosticError[] {
     if (line.includes('LaTeX Warning:') || (line.includes('Package') && line.includes('Warning:'))) {
       const lineMatch = line.match(/line\s+(\d+)/i);
       const fileMatch = rawLine.match(/\((.*?)\)/);
-      errors.push({
-        file:    fileMatch ? fileMatch[1].split('/').pop() : undefined,
-        line:    lineMatch ? parseInt(lineMatch[1]) : 0,
-        type:    'warning',
-        message: line.split(':').pop()?.trim() || line,
-        raw:     line,
-      });
+      const lineNum = lineMatch ? parseInt(lineMatch[1]) : 0;
+      const msg = line.split(':').pop()?.trim() || line;
+      const key = `warn:${lineNum}:${msg}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        errors.push({
+          file:    fileMatch ? fileMatch[1].split('/').pop() : undefined,
+          line:    lineNum,
+          type:    'warning',
+          message: msg,
+          raw:     line,
+        });
+      }
     }
 
     // Pattern 5: Phantom Artifact Detection
     if (line.includes('color color') || line.includes('Scale=MatchLowercase') || line.includes('bstract')) {
-      errors.push({
-        line: 0,
-        type: 'warning',
-        message: `Detected phantom artifact in output: ${line.substring(0, 50)}...`,
-        raw: line
-      });
+      const key = `warn:0:phantom`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        errors.push({
+          line: 0,
+          type: 'warning',
+          message: `Detected phantom artifact in output: ${line.substring(0, 50)}...`,
+          raw: line
+        });
+      }
     }
   });
 

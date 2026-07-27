@@ -647,33 +647,41 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
         }
       };
 
+      const parsedErrors = (result.errors && result.errors.length > 0) ? result.errors : parseLog(result.log || '');
+      const realErrors   = parsedErrors.filter((e: any) => e.type === 'error');
+      const warnings     = parsedErrors.filter((e: any) => e.type === 'warning');
+      setErrors(parsedErrors);
+
+      if (realErrors.length > 0) {
+        setConsoleOpen(true);
+      }
+
       if (result.success) {
         if (result.syncTex) setSyncTexStr(result.syncTex);
         await renderPdf();
-        setCompileLog(prev => prev + '> SUCCESS: PDF Generated.\n' + (result.log || ''));
-        toast.success('Manuscript Compiled Successfully', { icon: '✨' });
+        if (realErrors.length > 0) {
+          setCompileLog(prev => prev + `> COMPILED WITH SYNTAX/SEMANTIC ERRORS: ${realErrors.length} error(s), ${warnings.length} warning(s).\n` + (result.log || ''));
+          toast(`PDF Generated with ${realErrors.length} syntax error(s)`, { icon: '⚠️' });
+        } else if (warnings.length > 0) {
+          setCompileLog(prev => prev + `> COMPILED WITH WARNINGS: ${warnings.length} warning(s).\n` + (result.log || ''));
+          toast.success('Manuscript Compiled Successfully', { icon: '✨' });
+        } else {
+          setCompileLog(prev => prev + '> SUCCESS: PDF Generated.\n' + (result.log || ''));
+          toast.success('Manuscript Compiled Successfully', { icon: '✨' });
+        }
       } else if (result.pdfUrl || result.pdfBase64) {
-        // PDF was produced despite non-fatal errors (e.g. missing images, undefined cmds)
+        // PDF produced despite non-fatal errors
         await renderPdf();
-        const parsedErrors = result.errors || parseLog(result.log || '');
-        const realErrors   = parsedErrors.filter((e: any) => e.type === 'error');
-        const warnings     = parsedErrors.filter((e: any) => e.type === 'warning');
-        setErrors(parsedErrors);
         setCompileLog(prev => prev + `> COMPILED WITH ISSUES: ${realErrors.length} error(s), ${warnings.length} warning(s).\n` + (result.log || ''));
         if (realErrors.length > 0) {
-          setConsoleOpen(true);
           toast(`PDF generated with ${realErrors.length} error(s) — check console`, { icon: '⚠️' });
         } else {
           toast(`Compiled with ${warnings.length} warning(s)`, { icon: '🟡' });
         }
       } else {
-        const parsedErrors = result.errors || parseLog(result.log || '');
-        const realErrors   = parsedErrors.filter((e: any) => e.type === 'error');
-        setErrors(parsedErrors);
         setCompileLog(prev => prev + '> ERROR: Compilation Failed.\n' + (result.log || ''));
-        setPdfUrl(''); // Clear the stale PDF URL so the user knows compilation failed
+        setPdfUrl('');
         if (realErrors.length > 0) {
-          setConsoleOpen(true);
           toast.error(`Build failed: ${realErrors.length} error(s) found.`, { icon: '🚫' });
         } else {
           toast.error(result.message || result.error || 'Compilation Error');
