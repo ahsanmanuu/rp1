@@ -452,21 +452,27 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
     }
   }, [editorMood]);
 
-  // Safely update editor value without resetting cursor position
+  // Keep codeRef in sync with React state
+  useEffect(() => { codeRef.current = code; }, [code]);
+
+  // Recover editor content when browser tab regains focus (prevents blank editor after tab switch)
   useEffect(() => {
-    codeRef.current = code;
-    if (editorRef.current) {
-      if (isSelfChange.current) {
-        isSelfChange.current = false;
-        return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && editorRef.current) {
+        const editor = editorRef.current;
+        const model = editor.getModel();
+        if (model) {
+          const currentVal = model.getValue();
+          if (!currentVal && codeRef.current) {
+            model.setValue(codeRef.current);
+          }
+        }
+        editor.layout();
       }
-      const currentValue = editorRef.current.getValue();
-      const normalizeNewlines = (str: string) => str.replace(/\r\n/g, '\n');
-      if (normalizeNewlines(code) !== normalizeNewlines(currentValue)) {
-        editorRef.current.setValue(code);
-      }
-    }
-  }, [code]);
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
 
   // Handle Diagnostic Markers (Error Squiggles) & Whole Line Highlights
   useEffect(() => {
@@ -1516,10 +1522,11 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                               sublabel="Populating editor with manuscript content..."
                             />
                             <MonacoEditor 
+                              key={activeFile}
                               height="100%" 
                               theme="vs-dark" 
                               language="latex" 
-                              defaultValue={code}
+                              value={code}
                               onChange={v => {
                                 isSelfChange.current = true;
                                 setCode(v || '');
@@ -1527,9 +1534,6 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                               onMount={(ed, mon) => { 
                                 editorRef.current = ed; 
                                 monacoRef.current = mon; 
-                                if (code) {
-                                  ed.setValue(code);
-                                } 
                                 
                                 // Register LaTeX Language & Monarch Tokenizer for Multicolor Syntax Highlighting
                                 try {

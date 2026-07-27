@@ -338,20 +338,26 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
     }
   }, [editorMood]);
 
-  // Safely update editor value without resetting cursor position
+  // Recover editor content when browser tab regains focus (prevents blank editor after tab switch)
   useEffect(() => {
-    if (editorRef.current) {
-      if (isSelfChange.current) {
-        isSelfChange.current = false;
-        return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && editorRef.current) {
+        const editor = editorRef.current;
+        const model = editor.getModel();
+        if (model) {
+          const currentVal = model.getValue();
+          if (!currentVal && codeRef.current) {
+            // Model lost its content while tab was hidden — restore from React state
+            model.setValue(codeRef.current);
+          }
+        }
+        // Force Monaco to re-layout after tab returns (fixes invisible content)
+        editor.layout();
       }
-      const currentValue = editorRef.current.getValue();
-      const normalizeNewlines = (str: string) => str.replace(/\r\n/g, '\n');
-      if (normalizeNewlines(code) !== normalizeNewlines(currentValue)) {
-        editorRef.current.setValue(code);
-      }
-    }
-  }, [code]);
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
   useEffect(() => { codeRef.current = code; }, [code]);
 
   const saveFile = useCallback(async (filePath: string, fileContent: string) => {
@@ -1279,10 +1285,11 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
                           sublabel="Populating editor with manuscript content..."
                         />
                         <MonacoEditor
+                         key={activeFile}
                          height="100%" 
                          theme="vs-dark" 
                          language="latex" 
-                         defaultValue={code} 
+                         value={code} 
                          onChange={v => {
                            isSelfChange.current = true;
                            const val = v || '';
@@ -1295,11 +1302,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
                          }}
                          onMount={(ed, mon) => { 
                            editorRef.current = ed; 
-                           monacoRef.current = mon; 
-                           
-                           if (code) {
-                             ed.setValue(code);
-                           }
+                           monacoRef.current = mon;
   
                            // Register LaTeX Language & Monarch Tokenizer for Multicolor Syntax Highlighting
                            try {
