@@ -230,7 +230,7 @@ function isPlaceholderBst(content: string): boolean {
 
 function extractCiteKeys(tex: string): string[] {
   const keys = new Set<string>();
-  const re = /\\(?:cite|citep|citet|citeauthor|citeyear|citeyearpar|citealp|citealt|cites|autocite|textcite|parencite|footcite|smartcite|parentcite|nocite)\*?\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}/g;
+  const re = /\\(?:cite|citep|citet|citeauthor|citeyear|citeyearpar|citealp|citealt|cites|autocite|textcite|parencite|footcite|smartcite|parentcite|nocite)\*?\s*(?:\[[^\]]*\])*\s*\{([^}]*)\}/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(tex)) !== null) {
     const inner = m[1] || '';
@@ -256,6 +256,9 @@ function extractBibKeys(bibContent: string): Set<string> {
 
 /**
  * Guarantees a resolvable bibliography for any BibTeX-based document:
+ *  - Strips invalid .bib extension inside \bibliography{...} (e.g. \bibliography{refs.bib} -> \bibliography{refs}).
+ *  - Handles biblatex / \addbibresource by converting to standard BibTeX style.
+ *  - Auto-injects \bibliography{...} if citations exist without a bibliography section.
  *  - Injects synthetic @misc entries for cited keys missing from .bib files.
  *  - Substitutes a working numeric .bst for any placeholder style file.
  * Mutates `activeFiles` in place and may rewrite the main .tex bibliography list.
@@ -263,7 +266,7 @@ function extractBibKeys(bibContent: string): Set<string> {
 function applyUniversalBibliographyFix(activeFiles: FilePayload[], cleanMain: string): void {
   const mainObj = activeFiles.find(f => normalizePath(f.path) === normalizePath(cleanMain));
   if (!mainObj) return;
-  const tex = mainObj.content || '';
+  let tex = mainObj.content || '';
 
   // Determine document class + natbib usage for env-aware .bst selection.
   const dcMatch = tex.match(/\\documentclass\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/);
@@ -274,16 +277,60 @@ function applyUniversalBibliographyFix(activeFiles: FilePayload[], cleanMain: st
     /\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\bnatbib\b[^}]*\}/i.test(tex) ||
     /\\(?:citep|citet|citeauthor|citeyear|citealp|citealt)\*?\s*(?:\[[^\]]*\])?\s*\{/.test(tex);
 
-  // 1) Gather cited keys and existing bib keys.
+  // 1) Gather cited keys across ALL .tex files
   const allTex = activeFiles.filter(f => f.path.toLowerCase().endsWith('.tex')).map(f => f.content || '').join('\n');
   const citedKeys = extractCiteKeys(allTex);
+
+  // 2) Clean .bib extensions inside existing \bibliography{...} (e.g. \bibliography{refs.bib} -> \bibliography{refs})
+  if (/\\bibliography\s*\{/.test(tex)) {
+    tex = tex.replace(/\\bibliography\s*\{([^}]*)\}/gi, (match, list) => {
+      const cleanedList = list
+        .split(',')
+        .map((s: string) => path.basename(s.trim()).replace(/\.bib$/i, ''))
+        .filter(Boolean)
+        .join(',');
+      return `\\bibliography{${cleanedList}}`;
+    });
+    mainObj.content = tex;
+  }
+
+  // 3) Handle biblatex / \addbibresource compatibility for Tectonic
+  const isBiblatex = /\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\bbiblatex\b[^}]*\}/i.test(tex);
+  const bibResourceMatches = [...tex.matchAll(/\\addbibresource\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/gi)];
+  const bibResourceFiles = bibResourceMatches.map(m => path.basename(m[1].trim()).replace(/\.bib$/i, '')).filter(Boolean);
+
+  if (isBiblatex || bibResourceFiles.length > 0) {
+    const bibListStr = bibResourceFiles.length > 0 ? bibResourceFiles.join(',') : 'scholarly-autocite';
+    if (!/\\bibliography\b/.test(tex)) {
+      if (/\\printbibliography\b/.test(tex)) {
+        tex = tex.replace(/\\printbibliography\b.*/g, `\\bibliographystyle{plain}\n\\bibliography{${bibListStr}}`);
+      } else {
+        tex = tex.replace(/\\end\s*\{\s*document\s*\}/i, `\\bibliographystyle{plain}\n\\bibliography{${bibListStr}}\n\\end{document}`);
+      }
+      mainObj.content = tex;
+    }
+  }
+
+  // 4) Ensure \bibliography{...} exists if \cite{...} is present without inline thebibliography
+  const hasInlineBib = tex.includes('\\begin{thebibliography}');
+  if (citedKeys.length > 0 && !/\\bibliography\b/.test(tex) && !hasInlineBib) {
+    const bibFiles = activeFiles.filter(f => f.path.toLowerCase().endsWith('.bib'));
+    const bibFileNames = bibFiles.map(f => path.basename(f.path).replace(/\.bib$/i, '')).filter(b => b !== 'scholarly-autocite');
+    const primaryBib = bibFileNames.length > 0 ? bibFileNames.join(',') : 'scholarly-autocite';
+
+    tex = tex.replace(/\\end\s*\{\s*document\s*\}/i, `\n\\bibliographystyle{plain}\n\\bibliography{${primaryBib}}\n\\end{document}`);
+    mainObj.content = tex;
+    console.log(`[BIBFIX] Injected missing \\bibliography{${primaryBib}} for cited keys.`);
+  }
+
+  // 5) Gather present keys in all .bib files and synthesize missing ones
   const bibFiles = activeFiles.filter(f => f.path.toLowerCase().endsWith('.bib'));
   const presentKeys = new Set<string>();
   bibFiles.forEach(f => extractBibKeys(f.content || '').forEach(k => presentKeys.add(k)));
 
   const missingKeys = citedKeys.filter(k => !presentKeys.has(k));
   if (missingKeys.length > 0) {
-    console.log(`[BIBFIX] Missing cited keys (will inject): ${missingKeys.join(', ')}`);
+    console.log(`[BIBFIX] Missing cited keys (will inject synthetic @misc): ${missingKeys.join(', ')}`);
     const entries = missingKeys.map(k =>
       `@misc{${k},\n  author = {Author, Anonymous},\n  title = {Reference: ${k}},\n  journal = {},\n  year = {2024}\n}`
     ).join('\n\n');
@@ -294,29 +341,26 @@ function applyUniversalBibliographyFix(activeFiles: FilePayload[], cleanMain: st
     } else {
       activeFiles.push({ path: autociteName, content: entries });
     }
-    // Ensure the autocite .bib is listed in \bibliography{...}.
-    if (/\\bibliography\s*\{/.test(tex)) {
-      mainObj.content = tex.replace(/\\bibliography\s*\{([^}]*)\}/, (mm, list) =>
-        list.split(',').map((s: string) => s.trim()).filter(Boolean).includes('scholarly-autocite')
-          ? mm
-          : `\\bibliography{${list},scholarly-autocite}`
-      );
-    } else if (/\\bibliographystyle\s*\{/.test(tex)) {
-      mainObj.content = tex.replace(/\\bibliographystyle\s*\{[^}]*\}/, (mm) => `${mm}\n\\bibliography{scholarly-autocite}`);
+    // Ensure scholarly-autocite is listed in \bibliography{...}
+    if (/\\bibliography\s*\{/.test(mainObj.content)) {
+      mainObj.content = mainObj.content.replace(/\\bibliography\s*\{([^}]*)\}/gi, (mm, list) => {
+        const names = list.split(',').map((s: string) => s.trim()).filter(Boolean);
+        if (names.includes('scholarly-autocite')) return mm;
+        return `\\bibliography{${list},scholarly-autocite}`;
+      });
     }
   }
 
-  // 2) Supply a bibliographystyle if none present (bibtex needs one).
+  // 6) Supply a bibliographystyle if none present
   const refreshedTex = mainObj.content || tex;
   if (/\\bibliography\b/.test(refreshedTex) && !/\\bibliographystyle\s*\{/.test(refreshedTex)) {
     mainObj.content = refreshedTex.replace(/\\bibliography\s*\{/, '\\bibliographystyle{plain}\n\\bibliography{');
     console.log('[BIBFIX] Injected default \\bibliographystyle{plain}.');
   }
 
-  // 3) Substitute placeholder .bst files with a working numeric style.
+  // 7) Substitute placeholder .bst files with a working numeric style
   const bstStyleMatch = (mainObj.content || tex).match(/\\bibliographystyle\s*\{\s*([^}]+)\s*\}/);
   const styleNames = bstStyleMatch ? [bstStyleMatch[1].trim()] : [];
-  // Also catch .bst files pulled in via \bibliographystyle or present in payload.
   activeFiles.forEach(f => {
     if (!f.path.toLowerCase().endsWith('.bst')) return;
     if (isPlaceholderBst(f.content || '')) {
@@ -324,7 +368,6 @@ function applyUniversalBibliographyFix(activeFiles: FilePayload[], cleanMain: st
       console.log(`[BIBFIX] Replaced placeholder .bst with working style: ${f.path} (wrapEnv=${!isNatbib})`);
     }
   });
-  // If the referenced style's .bst is missing, inject the canonical one.
   styleNames.forEach(name => {
     const bstPath = `${name}.bst`;
     const has = activeFiles.some(f => normalizePath(f.path) === bstPath.toLowerCase());
@@ -993,21 +1036,11 @@ export async function runHardenedPipeline(
     // ────────────────────────────────────────────────────────────────────────
     // UNIVERSAL CITATION RESOLUTION (run BEFORE monolithic collapse so the
     // flattened main file and injected .bib/.bst survive into every strategy)
-    {
-        const _mainObj = activeFiles.find(f => normalizePath(f.path) === normalizePath(cleanMain));
-        const _mainContent = _mainObj?.content || '';
-        if (
-            (/\\(?:bibliography|addbibresource)\s*\{/.test(_mainContent) ||
-                /\\cite[tpsnra]?\s*(?:\[[^\]]*\])?\s*\{/.test(_mainContent)) &&
-            !/\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\bbiblatex\b[^}]*\}/i.test(_mainContent)
-        ) {
-            try {
-                applyUniversalBibliographyFix(activeFiles, cleanMain);
-                console.log('[BIBFIX] Universal bibliography resolution applied.');
-            } catch (bibErr) {
-                console.warn('[BIBFIX] Universal bibliography fix skipped due to error:', bibErr);
-            }
-        }
+    try {
+        applyUniversalBibliographyFix(activeFiles, cleanMain);
+        console.log('[BIBFIX] Universal bibliography resolution applied.');
+    } catch (bibErr) {
+        console.warn('[BIBFIX] Universal bibliography fix skipped due to error:', bibErr);
     }
 
     // ────────────────────────────────────────────────────────────────────────
