@@ -429,9 +429,7 @@ function applyUniversalBibliographyFix(activeFiles: FilePayload[], cleanMain: st
     // only tracks env-aware .bst wrapping, not actual natbib package loading).
     const updatedTex = mainObj.content || currentTex;
     const hasNatbibPkg = /\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\bnatbib\b[^}]*\}/i.test(updatedTex);
-    const natbibClassPattern = /\\documentclass\s*(?:\[[^\]]*\])?\s*\{(elsarticle|nature|ieee|ieeetran|acmart|revtex)\b/i;
-    const classLoadsNatbib = natbibClassPattern.test(updatedTex);
-    if (!hasNatbibPkg && !classLoadsNatbib) {
+    if (!hasNatbibPkg) {
       mainObj.content = updatedTex.replace(/\\setcitestyle\s*\{[^}]*\}/gi, (m) => {
         return `\\makeatletter\\@ifundefined{setcitestyle}{\\usepackage{natbib}}{}\\makeatother\n${m}`;
       });
