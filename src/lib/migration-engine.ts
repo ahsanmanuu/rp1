@@ -338,6 +338,9 @@ function expandSubTexFiles(content: string, fileMap: Record<string, string>, dep
   // Clean combined preamble of raw un-commented text lines or body structural
   // commands that would spill onto Page 1 before \begin{document}, causing
   // "Missing \begin{document}" errors and unwanted text in the PDF.
+  // Preserve lines that are only braces/brackets/whitespace — they are valid
+  // multi-line continuations of macro arguments (e.g. closing `}{}` of
+  // \@ifundefined{subfigure}{...}{}).
   const preambleLineBodyCmds = /^\s*\\(?:section|subsection|subsubsection|paragraph|subparagraph|chapter|part|caption|includegraphics|thanks|maketitle|newpage|clearpage|pagebreak|tableofcontents|listoffigures|listoftables)\b/i;
   userPreamble = userPreamble.split('\n').map(line => {
     const trimmed = line.trim();
@@ -347,6 +350,9 @@ function expandSubTexFiles(content: string, fileMap: Record<string, string>, dep
       return `% [Scrubbed body command from preamble]: ${line}`;
     }
     if (trimmed.startsWith('\\')) return line;
+    // Preserve lines containing only braces, brackets, commas, ampersands, and whitespace
+    // — these are continuations of multi-line macro arguments, not stray text.
+    if (/^[\s\]\[{}&,;]*$/.test(trimmed)) return line;
     return `% [Scrubbed non-declaration preamble line]: ${line}`;
   }).join('\n');
 
