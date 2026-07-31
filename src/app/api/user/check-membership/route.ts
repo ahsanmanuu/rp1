@@ -84,20 +84,20 @@ async function getMemberSince(userId: string): Promise<string | null> {
 }
 
 export async function GET(_req: NextRequest) {
-  const session = await getServerSession();
-  if (!session?.user) {
-    return NextResponse.json({ success: true, showReminder: false });
-  }
-
-  const userId = (session.user as any).id;
-
-  // Return cached response if still valid (avoids re-running heavy queries)
-  const cached = RESPONSE_CACHE.get(userId);
-  if (cached && cached.expiry > Date.now()) {
-    return NextResponse.json(cached.data);
-  }
-
   try {
+    const session = await getServerSession().catch(() => null);
+    if (!session?.user) {
+      return NextResponse.json({ success: true, showReminder: false });
+    }
+
+    const userId = (session.user as any).id;
+
+    // Return cached response if still valid (avoids re-running heavy queries)
+    const cached = RESPONSE_CACHE.get(userId);
+    if (cached && cached.expiry > Date.now()) {
+      return NextResponse.json(cached.data);
+    }
+
     ensureStatusFieldsInPb().catch(() => {});
     await syncUserMembershipChain(userId);
 

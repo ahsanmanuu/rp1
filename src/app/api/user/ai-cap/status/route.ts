@@ -10,24 +10,23 @@ const AI_CAP_CACHE = new Map<string, { data: any; expiry: number }>();
 const AI_CAP_CACHE_TTL = 15_000; // 15 seconds
 
 export async function GET() {
-  const session = await getServerSession();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const userId = session.user.id as string;
-
-  // Return cached response if still valid
-  const cached = AI_CAP_CACHE.get(userId);
-  if (cached && cached.expiry > Date.now()) {
-    return NextResponse.json(cached.data, {
-      headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=20' },
-    });
-  }
-
-  const userEmail = session.user.email as string | undefined;
-
   try {
+    const session = await getServerSession().catch(() => null);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const userId = session.user.id as string;
+
+    // Return cached response if still valid
+    const cached = AI_CAP_CACHE.get(userId);
+    if (cached && cached.expiry > Date.now()) {
+      return NextResponse.json(cached.data, {
+        headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=20' },
+      });
+    }
+
+    const userEmail = session.user.email as string | undefined;
     const today = new Date().toISOString().slice(0, 10);
     const nowMs = Date.now();
 

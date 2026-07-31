@@ -13,7 +13,7 @@ const BLOCK_CACHE_TTL = 10_000; // 10 seconds
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession().catch(() => null);
     if (!session?.user) return NextResponse.json({ success: true, blocked: false });
 
     const uid = (session.user as any).id;
