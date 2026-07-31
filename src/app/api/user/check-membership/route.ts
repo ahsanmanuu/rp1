@@ -93,9 +93,9 @@ export async function GET(_req: NextRequest) {
     const userId = (session.user as any).id;
 
     // Return cached response if still valid (avoids re-running heavy queries)
-    const cached = RESPONSE_CACHE.get(userId);
-    if (cached && cached.expiry > Date.now()) {
-      return NextResponse.json(cached.data);
+    const cachedResponse = RESPONSE_CACHE.get(userId);
+    if (cachedResponse && cachedResponse.expiry > Date.now()) {
+      return NextResponse.json(cachedResponse.data);
     }
 
     ensureStatusFieldsInPb().catch(() => {});
@@ -146,14 +146,14 @@ export async function GET(_req: NextRequest) {
 
     // Detect plan change and write lifecycle log
     const cacheKey = `membership_${userId}`;
-    const cached = LIFECYCLE_CACHE.get(cacheKey);
-    if (cached && cached.plan !== user.membership) {
+    const cachedLifecycle = LIFECYCLE_CACHE.get(cacheKey);
+    if (cachedLifecycle && cachedLifecycle.plan !== user.membership) {
       const eventType =
         user.membership === "free" ? "expiry" :
-        cached.plan === "free" ? "activation" :
+        cachedLifecycle.plan === "free" ? "activation" :
         "upgrade";
       await writeLifecycleLog(
-        userId, cached.plan, user.membership, eventType, "auto_expiry",
+        userId, cachedLifecycle.plan, user.membership, eventType, "auto_expiry",
         { membershipExpiresAt: user.membershipExpiresAt ? new Date(user.membershipExpiresAt).toISOString() : undefined }
       );
     }
