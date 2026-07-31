@@ -1320,24 +1320,24 @@ export function injectProfessionalMetadata(templateId: string, meta: ScholarlyMe
         }
       });
     });
-    output += `\n\\begin{abstract}\n${meta.abstract || "Abstract text goes here."}\n\\end{abstract}\n\n`;
+    output += `\n\\date{\\today}\n\n\\begin{abstract}\n${meta.abstract || "Abstract text goes here."}\n\\end{abstract}\n\n`;
     if (meta.keywords) output += `\\keywords{${meta.keywords}}\n`;
     output += `\\maketitle\n\n`;
   } else if (templateId === "article_ieee") {
     output += `\\title{${meta.title || "Untitled"}}\n\n`;
     output += `\\author{\n`;
     meta.authors.forEach((a, index) => {
-      output += `  \\IEEEauthorblockN{${a.name}}\n`;
-      output += `  \\IEEEauthorblockA{`;
-      a.affiliationIds.forEach(fid => {
-        const aff = meta.affiliations.find(f => f.id === fid);
-        if (aff) {
-          output += `\\textit{${aff.organization || ""}}${aff.department ? `\\\\ ${aff.department}` : ""} \\\\ ${aff.city || ""}, ${aff.country || ""} \\\\ ${a.email || ""}`;
-        }
-      });
-      output += `}${index < meta.authors.length - 1 ? " \\and\n" : ""}\n`;
+output += `  \\IEEEauthorblockN{${a.name}}\n`;
+    output += `  \\IEEEauthorblockA{`;
+    a.affiliationIds.forEach(fid => {
+      const aff = meta.affiliations.find(f => f.id === fid);
+      if (aff) {
+        output += `\\textit{${aff.organization || ""}}${aff.department ? `\\\\ ${aff.department}` : ""} \\\\ ${aff.city || ""}, ${aff.country || ""} \\\\ ${a.email || ""}`;
+      }
     });
-    output += `}\n\n\\maketitle\n\n\\begin{abstract}\n${meta.abstract || "Abstract goes here."}\n\\end{abstract}\n\n`;
+    output += `}${index < meta.authors.length - 1 ? " \\and\n" : ""}\n`;
+    });
+    output += `}\n\n\\date{\\today}\n\n\\maketitle\n\n\\begin{abstract}\n${meta.abstract || "Abstract goes here."}\n\\end{abstract}\n\n`;
     if (meta.keywords) output += `\\begin{IEEEkeywords}\n${meta.keywords}\n\\end{IEEEkeywords}\n`;
   } else if (templateId === "article_elsevier") {
     output += `\\begin{frontmatter}\n\n\\title{${meta.title || "Untitled"}}\n\n`;
@@ -1347,7 +1347,7 @@ export function injectProfessionalMetadata(templateId: string, meta: ScholarlyMe
     meta.affiliations.forEach(aff => {
       output += `\\affiliation[${aff.id || "inst1"}]{organization={${aff.organization || ""}}, department={${aff.department || ""}}, city={${aff.city || ""}}, country={${aff.country || ""}}}\n`;
     });
-    output += `\n\\begin{abstract}\n${meta.abstract || "Abstract goes here."}\n\\end{abstract}\n\n`;
+    output += `\n\\date{\\today}\n\n\\begin{abstract}\n${meta.abstract || "Abstract goes here."}\n\\end{abstract}\n\n`;
     if (meta.keywords) {
       output += `\\begin{keyword}\n${meta.keywords}\n\\end{keyword}\n`;
     }
@@ -1362,7 +1362,7 @@ export function injectProfessionalMetadata(templateId: string, meta: ScholarlyMe
     meta.affiliations.forEach((aff, i) => {
       output += `${aff.organization || ""}, ${aff.city || ""}, ${aff.country || ""}${i < meta.affiliations.length - 1 ? " \\and\n" : ""}`;
     });
-    output += `}\n`;
+    output += `}\n\n\\date{\\today}\n\n`;
     
     output += `\\maketitle\n\n\\begin{abstract}\n${meta.abstract || "Abstract goes here."}\n\n\\keywords{${meta.keywords || ""}}\n\\end{abstract}\n`;
   } else if (templateId === "article_scirep") {
@@ -1378,7 +1378,7 @@ export function injectProfessionalMetadata(templateId: string, meta: ScholarlyMe
     if (corresponding?.email) output += `\\affil[*]{${corresponding.email}}\n`;
     
     if (meta.keywords) output += `\\keywords{${meta.keywords}}\n\n`;
-    output += `\\begin{abstract}\n${meta.abstract || "Abstract text goes here."}\n\\end{abstract}\n\n`;
+    output += `\\begin{abstract}\n${meta.abstract || "Abstract text goes here."}\n\\end{abstract}\n\n\\date{\\today}\n\n`;
     output += `\\maketitle\n\n`;
   } else {
     // Standard Article (arXiv, Blank, VGTC, JFM, MDPI, etc.)
@@ -1426,6 +1426,7 @@ export function injectUniversalMetadata(templateContent: string, templateId: str
     output += `\\author{${meta.authors.map(a => a.name).join(", ") || "Author"}}\n`;
     output += `\\abstract{${meta.abstract || "Abstract text"}}\n`;
     if (meta.keywords) output += `\\keyword{${meta.keywords}}\n`;
+    output += `\\date{\\today}\n\n`;
     output += `\\maketitle\n`;
     result = output;
   } else {

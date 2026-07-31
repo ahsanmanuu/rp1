@@ -612,6 +612,14 @@ export class DeepDocumentParser {
     };
   }
 
+  private static getStrongTextRatio(el: Element): number {
+    const totalText = (el.textContent || '').trim();
+    if (!totalText) return 0;
+    const strongEls = Array.from(el.querySelectorAll('strong, b'));
+    const strongText = strongEls.map(s => (s.textContent || '').trim()).join('');
+    return strongText.length / totalText.length;
+  }
+
   // ── 2. METADATA EXTRACTION (SCORE-BASED) ──────────────────────────────────
   
   private static Phase2_landmarkScan(elements: Element[]): any[] {
@@ -751,46 +759,54 @@ export class DeepDocumentParser {
       else if (ALGO_LABEL_PATTERN.test(f.text) && f.text.length < 150) {
           nextRole = 'algorithm';
       }
-      else if (tagName.startsWith('h') || this.detectHeading(el, f.text) !== null) {
+      else if (tagName.startsWith('h') || this.detectHeading(el, f.text) !== null || (tagName === 'p' && f.wordCount <= 12 && f.wordCount >= 1 && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 && !f.text.endsWith('.') && f.text.length < 120 && f.text.length > 2)) {
           const detectedLvl = this.detectHeading(el, f.text);
-          const isNumberedHeading = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*[.:\s)]/i.test(f.text);
+          const isNumberedHeading = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(f.text);
           const isStandardSectionName = /^(?:[\d\.]+\s*)?(?:introduction|related work|background|methodology|conclusion|abstract|acknowledgments|references|overview|implementation|proposed|experimental|results|discussion|system)/i.test(f.text);
-          const isSectionHeading = detectedLvl !== null || isNumberedHeading || isStandardSectionName || tagName.startsWith('h');
+          const isSectionHeading = detectedLvl !== null || isNumberedHeading || isStandardSectionName || tagName.startsWith('h') || (tagName === 'p' && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8);
 
           if (isSectionHeading) {
               nextRole = 'section';
           } else if (!foundAbstract && i < 20 && f.text.length > 10 && f.text.length < 500
               && !/ieee|journal|transactions|vol\.|no\.|arxiv|preprint|copyright|issn/i.test(f.text)) {
-              const looksLikeAuthor = (f.wordCount >= 2 && f.wordCount <= 30 &&
+              const isAlreadyTitleStarted = currentRole === 'title' || manifest.some(m => m.role === 'title');
+              const looksLikeAuthor = ((f.wordCount >= 2 && f.wordCount <= 30 &&
                 (f.text.includes(',') || f.text.includes(';') || /\b(and|&)\b/i.test(f.text) || /\d/.test(f.text) || /#/.test(f.text) ||
+                 /orcid/i.test(f.text) ||
                  /^[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,3}$/.test(f.text)) &&
                 (f.capRatio > 0.15 || /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+/.test(f.text)) &&
                 !AFFIL_KEYWORDS.test(f.text) &&
-                !STOPWORDS.has(f.text.split(' ')[0].toLowerCase()));
+                !STOPWORDS.has(f.text.split(' ')[0].toLowerCase())) ||
+                (f.wordCount === 1 && /^[A-Z][a-z]{2,}$/.test(f.text.trim()) && isAlreadyTitleStarted));
 
-              const isAlreadyTitleStarted = currentRole === 'title' || manifest.some(m => m.role === 'title');
-              if ((EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text)) && isAlreadyTitleStarted) {
+              const isLocationAffil = isAlreadyTitleStarted && !foundAbstract &&
+                (/(?:\b\d{5,6}\b|\b(?:India|USA|UK|China|Japan|Germany|France|Australia|Canada|Brazil|Korea|Italy|Spain|Netherlands|Switzerland|Singapore|Malaysia|Iran|Egypt|Pakistan|Indonesia|Thailand|Turkey|Russia|Mexico|Colombia|Nigeria|Kenya|Ethiopia|South\s+Africa)\b)/i.test(f.text) || /orcid/i.test(f.text)) &&
+                f.wordCount < 15 && f.text.length < 200;
+
+              if ((EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil) && isAlreadyTitleStarted) {
                   nextRole = 'affiliation';
               } else if (looksLikeAuthor && isAlreadyTitleStarted) {
                   nextRole = 'author';
               } else if (!isAlreadyTitleStarted) {
                   nextRole = 'title';
               } else if (currentRole === 'title') {
-                  if (looksLikeAuthor || EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || /#/.test(f.text) || f.text.includes(',') || f.text.match(/\d/)) {
+                  if (looksLikeAuthor || EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil || /#/.test(f.text) || f.text.includes(',') || f.text.match(/\d/)) {
                       if (looksLikeAuthor) {
                           nextRole = 'author';
-                      } else if (EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text)) {
+                      } else if (EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil) {
                           nextRole = 'affiliation';
                       } else {
                           nextRole = 'author';
                       }
-                  } else {
+                  } else if (f.text.length < 200 && f.wordCount < 25 && !foundAbstract && !/^(?:abstract|introduction|related work)/i.test(f.text)) {
                       nextRole = 'title';
+                  } else {
+                      nextRole = 'section';
                   }
               } else {
                   if (looksLikeAuthor) {
                       nextRole = 'author';
-                  } else if (EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text)) {
+                  } else if (EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil) {
                       nextRole = 'affiliation';
                   } else {
                       nextRole = 'section';
@@ -806,43 +822,51 @@ export class DeepDocumentParser {
       else if (!foundAbstract && i < 20 && f.text.length > 10 && f.text.length < 500
           && !/ieee|journal|transactions|vol\.|no\.|arxiv|preprint|copyright|issn/i.test(f.text)
           && !/^(?:introduction|related work|background|methodology|conclusion|abstract|acknowledgments|references|overview)/i.test(f.text)) {
-          const looksLikeAuthor = (f.wordCount >= 2 && f.wordCount <= 30 &&
+          const isAlreadyTitleStarted = currentRole === 'title' || manifest.some(m => m.role === 'title');
+          const looksLikeAuthor = ((f.wordCount >= 2 && f.wordCount <= 30 &&
             (f.text.includes(',') || f.text.includes(';') || /\b(and|&)\b/i.test(f.text) || /\d/.test(f.text) || /#/.test(f.text) ||
+             /orcid/i.test(f.text) ||
              /^[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,3}$/.test(f.text)) &&
             (f.capRatio > 0.15 || /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+/.test(f.text)) &&
             !AFFIL_KEYWORDS.test(f.text) &&
-            !STOPWORDS.has(f.text.split(' ')[0].toLowerCase()));
+            !STOPWORDS.has(f.text.split(' ')[0].toLowerCase())) ||
+            (f.wordCount === 1 && /^[A-Z][a-z]{2,}$/.test(f.text.trim()) && isAlreadyTitleStarted));
 
-          const isAlreadyTitleStarted = currentRole === 'title' || manifest.some(m => m.role === 'title');
-          if ((EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text)) && isAlreadyTitleStarted) {
+          const isLocationAffil = isAlreadyTitleStarted && !foundAbstract &&
+            (/(?:\b\d{5,6}\b|\b(?:India|USA|UK|China|Japan|Germany|France|Australia|Canada|Brazil|Korea|Italy|Spain|Netherlands|Switzerland|Singapore|Malaysia|Iran|Egypt|Pakistan|Indonesia|Thailand|Turkey|Russia|Mexico|Colombia|Nigeria|Kenya|Ethiopia|South\s+Africa)\b)/i.test(f.text) || /orcid/i.test(f.text)) &&
+            f.wordCount < 15 && f.text.length < 200;
+
+          if ((EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil) && isAlreadyTitleStarted) {
               nextRole = 'affiliation';
           } else if (looksLikeAuthor && isAlreadyTitleStarted) {
               nextRole = 'author';
           } else if (!isAlreadyTitleStarted) {
               nextRole = 'title';
           } else if (currentRole === 'title') {
-              if (looksLikeAuthor || EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || /#/.test(f.text) || f.text.includes(',') || f.text.match(/\d/)) {
+              if (looksLikeAuthor || EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil || /#/.test(f.text) || f.text.includes(',') || f.text.match(/\d/)) {
                   if (looksLikeAuthor) {
                       nextRole = 'author';
-                  } else if (EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text)) {
+                  } else if (EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil) {
                       nextRole = 'affiliation';
                   } else {
                       nextRole = 'author';
                   }
-              } else {
+              } else if (f.text.length < 200 && f.wordCount < 25 && !foundAbstract && !/^(?:abstract|introduction|related work)/i.test(f.text)) {
                   nextRole = 'title';
+              } else {
+                  nextRole = 'section';
               }
           } else {
               if (looksLikeAuthor) {
                   nextRole = 'author';
-              } else if (EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text)) {
+              } else if (EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil) {
                   nextRole = 'affiliation';
               }
           }
       }
 
       // 1. Apply override/continuation heuristics to nextRole first
-      if (currentRole === 'abstract' && nextRole === 'paragraph' && i < currentStart + 10) {
+      if (currentRole === 'abstract' && nextRole === 'paragraph' && i < currentStart + 25 && f.wordCount > 5) {
           nextRole = 'abstract';
       } else if ((currentRole as string) === 'algorithm' && ['paragraph', 'list', 'table'].includes(nextRole)) {
           const isActualHeading = this.detectHeading(el, f.text) !== null ||
@@ -855,7 +879,11 @@ export class DeepDocumentParser {
           }
       } else if (['idle', 'title', 'author', 'affiliation', 'paragraph'].includes(currentRole) && nextRole === 'paragraph' && !foundAbstract) {
           const isAlreadyTitleStarted = currentRole === 'title' || manifest.some(m => m.role === 'title');
-          if (isAlreadyTitleStarted && (EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text))) {
+          const isLocationAffil = isAlreadyTitleStarted && !foundAbstract &&
+            (/(?:\b\d{5,6}\b|\b(?:India|USA|UK|China|Japan|Germany|France|Australia|Canada|Brazil|Korea|Italy|Spain|Netherlands|Switzerland|Singapore|Malaysia|Iran|Egypt|Pakistan|Indonesia|Thailand|Turkey|Russia|Mexico|Colombia|Nigeria|Kenya|Ethiopia|South\s+Africa)\b)/i.test(f.text) || /orcid/i.test(f.text)) &&
+            f.wordCount < 15 && f.text.length < 200;
+
+          if (isAlreadyTitleStarted && (EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil)) {
             const affilIdx = f.text.search(AFFIL_KEYWORDS);
             const preAffil = affilIdx > 0 ? f.text.substring(0, affilIdx).trim() : '';
             const lookLikeNames = preAffil
@@ -952,7 +980,7 @@ export class DeepDocumentParser {
                 remainingProse = rawKeywordText.substring(periodIdx + 1).trim();
               }
               
-              const rawList = keywordPart.split(/[,;]/).map((k: string) => k.trim().replace(/\.$/, '')).filter(Boolean);
+              const rawList = keywordPart.split(/[,;·•–—|]|\n/).map((k: string) => k.trim().replace(/\.$/, '')).filter(Boolean);
               const validKeywords: string[] = [];
               
               for (let kIdx = 0; kIdx < rawList.length; kIdx++) {
@@ -1067,6 +1095,17 @@ export class DeepDocumentParser {
                   if (!refs) return match;
                   return `\\cite{${refs}}`;
               });
+
+              // Enrich equation count for inline/display MATHBLOCKX markers inside paragraphs
+              const markerMatches = Array.from(text.matchAll(/MATHBLOCKX(\d+)XMARKER/gi));
+              for (const mm of markerMatches as RegExpExecArray[]) {
+                const mbIdx = parseInt(mm[1]);
+                const mb = _mathBlocks[mbIdx];
+                if (mb && (typeof mb === 'object' ? mb.isDisplay : false)) {
+                  result.stats.equationCount++;
+                }
+              }
+
               if (entry.role === 'section') {
                   // UNIVERSAL: Check for embedded heading flag set in Phase2
                   const embeddedHeading = entry.elements[0] && (entry.elements[0] as any).__embeddedHeading;
@@ -1105,11 +1144,12 @@ export class DeepDocumentParser {
               const firstRow = tableEl.querySelector('tr');
               if (firstRow) {
                   const firstRowText = firstRow.textContent?.trim() || '';
-                  if (/^\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]+/i.test(firstRowText)) {
+                  const normalizedFirstRowText = firstRowText.replace(/[\u00A0\u202F\u2009\u200B\uFEFF]/g, ' ').trim();
+                  if (/^\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]+/i.test(normalizedFirstRowText)) {
                       if (!tableCaption) {
-                          const prefixMatch = firstRowText.match(/^\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]+/i);
+                          const prefixMatch = normalizedFirstRowText.match(/^\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]+/i);
                           const cleanPrefix = prefixMatch ? prefixMatch[0].replace(/[:.–\-\s]+$/, '').trim() : '';
-                          const afterPrefix = prefixMatch ? firstRowText.slice(prefixMatch[0].length).replace(/^[:.–\-\s]*/, '').trim() : '';
+                          const afterPrefix = prefixMatch ? normalizedFirstRowText.slice(prefixMatch[0].length).replace(/^[:.–\-\s]*/, '').trim() : '';
                           tableCaption = afterPrefix.length > 0 ? `${cleanPrefix}: ${afterPrefix}` : cleanPrefix;
                       }
                       firstRow.remove(); // Remove the caption row so it's not rendered inside the table
@@ -1339,9 +1379,9 @@ export class DeepDocumentParser {
     const trimmed = line.trim();
     if (trimmed.length < 10) return false;
 
-    // 1. Matches numeric prefix: [1], 1., 1)
-    // If it starts with a clear numbered prefix inside the reference block, it is almost certainly a new reference start.
-    const hasNumberedPrefix = /^\[?\d+\]?[\dots\-\t\s]+/.test(trimmed) || /^\[?\d+\]?[\.\-\t\s]+/.test(trimmed);
+    // 1. Matches numeric prefix: [1], 1., 1), [Author2020]
+    // If it starts with a clear numbered or bracketed prefix inside the reference block, it is almost certainly a new reference start.
+    const hasNumberedPrefix = /^\[?\d+\]?[\dots\-\t\s]+/.test(trimmed) || /^\[?\d+\]?[\.\-\t\s]+/.test(trimmed) || /^\[[\w\-]+\]\s*\S/.test(trimmed);
     if (hasNumberedPrefix) return true;
 
     // Safety check: a real reference almost always contains a year, quotes, or academic publication keywords.
@@ -1363,20 +1403,20 @@ export class DeepDocumentParser {
     if (/^[&,.;\-:\/“"']/.test(trimmed)) return false;
 
     // 3. Author patterns:
-    // - LastName, F. or LastName, First
-    if (/^[A-Z][A-Za-z\-']{1,25},\s+[A-Z][a-z]?\.?\b/.test(trimmed)) return true;
+    // - LastName, F. or LastName, First (including Unicode accents)
+    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,25},\s+[A-Z\u00C0-\u024F\u1E00-\u1EFF][a-z\u00C0-\u024F\u1E00-\u1EFF]?\.?\b/.test(trimmed)) return true;
     // - LastName F. / LastName F.M. / LastName F.M.,
-    if (/^[A-Z][A-Za-z\-']{1,25}\s+[A-Z](?:\.[A-Z])*\.?\s*(?:,|\s|$)/.test(trimmed)) return true;
+    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,25}\s+[A-Z\u00C0-\u024F\u1E00-\u1EFF](?:\.[A-Z\u00C0-\u024F\u1E00-\u1EFF])*\.?\s*(?:,|\s|$)/.test(trimmed)) return true;
     // - LastName et al.
-    if (/^[A-Z][A-Za-z\-']{1,25}\s+et\s+al\b/i.test(trimmed)) return true;
+    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,25}\s+et\s+al\b/i.test(trimmed)) return true;
     // - FirstName LastName / FirstName M. LastName,
-    if (/^[A-Z][a-z]+\s+(?:[A-Z]\.?\s+)?[A-Z][A-Za-z\-']{1,25}\s*(?:,|\s|$)/.test(trimmed)) return true;
+    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF][a-z\u00C0-\u024F\u1E00-\u1EFF]+\s+(?:[A-Z\u00C0-\u024F\u1E00-\u1EFF]\.?\s+)?[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,25}\s*(?:,|\s|$)/.test(trimmed)) return true;
     // - Author (Year)
-    if (/^[A-Z][A-Za-z\-']{1,25}\s+\(\d{4}\)/.test(trimmed)) return true;
-    if (/^[A-Z][A-Za-z\-']{1,25}\s*,\s*[A-Z][A-Za-z\-']{1,25}\s+\(\d{4}\)/.test(trimmed)) return true;
+    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,25}\s+\(\d{4}\)/.test(trimmed)) return true;
+    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,25}\s*,\s*[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,25}\s+\(\d{4}\)/.test(trimmed)) return true;
 
     // Default fallback: if it starts with a Capital letter and has a year in the first 60 characters
-    if (/^[A-Z]/.test(trimmed) && /\(\d{4}\)/.test(trimmed.substring(0, 60))) {
+    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF]/.test(trimmed) && /\(\d{4}\)/.test(trimmed.substring(0, 60))) {
       return true;
     }
 
@@ -1410,7 +1450,7 @@ export class DeepDocumentParser {
         const liText = (lis[0].textContent || '').trim();
         const liNorm = liText.toLowerCase().replace(/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i, '').replace(/[.:\s]*$/, '').trim();
         const matchesCanonical = this.FORCED_LEVEL1.has(liNorm);
-        const matchesNumbered = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*[.:\s)]/i.test(liText);
+        const matchesNumbered = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(liText);
         
         const words = liText.split(/\s+/).filter(w => w.length > 0);
         const isTitleCase = words.length > 0 && words.every(w => /^[A-Z]/.test(w) || STOPWORDS.has(w.toLowerCase()) || /^\d/.test(w));
@@ -1430,7 +1470,7 @@ export class DeepDocumentParser {
             return 1;
           }
           if (matchesNumbered) {
-            const prefixMatch = liText.match(/^(?:\s*(?:(?:section|chapter|appendix|part)\s+)?((?:\d+|[ivxlcdm]+|[A-Za-z])(?:\.(?:\d+|[ivxlcdm]+|[A-Za-z]))*)(?:\.?[.:\s)]+))/i);
+            const prefixMatch = liText.match(/^(?:\s*(?:(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[A-Za-z])(?:\.(?:\d+|[ivxlcdm]+|[A-Za-z]))*)(?:\]|\))?(?:\.?[.:\s)]+))/i);
             if (prefixMatch) {
               const cleanPrefix = prefixMatch[1];
               const parts = cleanPrefix.split('.');
@@ -1465,10 +1505,10 @@ export class DeepDocumentParser {
     // Priority 1: Canonical Academic Section Names (always level 1)
     if (this.FORCED_LEVEL1.has(normClean)) return 1;
 
-    // Priority 2: Numerical/Alpha Hierarchical Numbering Ground Truth (1., 1.1, 1.1.1, A., A.1, I., I.1)
-    const isNumbered = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*[.:\s)]/i.test(f.text);
+    // Priority 2: Numerical/Alpha Hierarchical Numbering Ground Truth (1., 1.1, 1.1.1, A., A.1, I., I.1, [1], (A))
+    const isNumbered = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(f.text);
     if (isNumbered) {
-      const prefixMatch = f.text.match(/^(?:\s*(?:(?:section|chapter|appendix|part)\s+)?((?:\d+|[ivxlcdm]+|[A-Za-z])(?:\.(?:\d+|[ivxlcdm]+|[A-Za-z]))*)(?:\.?[.:\s)]+))/i);
+      const prefixMatch = f.text.match(/^(?:\s*(?:(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[A-Za-z])(?:\.(?:\d+|[ivxlcdm]+|[A-Za-z]))*)(?:\]|\))?(?:\.?[.:\s)]+))/i);
       if (prefixMatch) {
         const cleanPrefix = prefixMatch[1];
         const parts = cleanPrefix.split('.');

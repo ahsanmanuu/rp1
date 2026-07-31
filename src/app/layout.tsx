@@ -62,29 +62,51 @@ export default function RootLayout({
         <link rel="preload" href="/fonts/material-symbols-outlined.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
         <Script id="chunk-retry" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: `
           (function(){
+            var lastReload = 0;
             function isChunkError(e){
               var m = (e && (e.message || e.name || (e.reason && e.reason.message))) || '';
               return m.indexOf('Loading chunk') !== -1 || m.indexOf('Loading CSS') !== -1 || m.indexOf('ChunkLoadError') !== -1 || m.indexOf('Failed to fetch dynamically imported module') !== -1 || m.indexOf('ImportModuleError') !== -1;
             }
-            function forceReload(){setTimeout(function(){window.location.reload()}, 500)}
+            function forceReload(){
+              var now = Date.now();
+              if (now - lastReload < 20000) return;
+              lastReload = now;
+              setTimeout(function(){ window.location.reload() }, 1500);
+            }
+            function retryResource(url, tagName){
+              var ts = Date.now();
+              var retryUrl = url + (url.indexOf('?') === -1 ? '?' : '&') + '_rt=' + ts;
+              fetch(retryUrl, { cache: 'no-store' }).then(function(r){
+                if (!r.ok) { forceReload(); return; }
+                r.text().then(function(code){
+                  if (tagName === 'SCRIPT') {
+                    var s = document.createElement('script');
+                    s.textContent = code;
+                    document.head.appendChild(s);
+                    setTimeout(function(){ window.location.reload(); }, 500);
+                  }
+                });
+              }).catch(function(){ forceReload(); });
+            }
 
             window.addEventListener('error', function(e) {
               var t = e.target || {};
               if ((t.tagName === 'SCRIPT' && t.src && t.src.indexOf('/_next/static/chunks/') !== -1) || 
                   (t.tagName === 'LINK' && t.rel === 'stylesheet' && t.href && t.href.indexOf('/_next/static/') !== -1)) {
                 e.preventDefault && e.preventDefault();
-                forceReload();
+                retryResource(t.src || t.href, t.tagName);
               }
             }, true);
 
             window.addEventListener('unhandledrejection', function(e) {
               if (isChunkError(e.reason)) {
                 e.preventDefault();
+                // Extract chunk URL from error message for targeted retry
+                var msg = (e.reason && e.reason.message) || '';
+                var m = msg.match(/\\(timeout:\\s*([^)]+)\\)/);
+                if (m && m[1]) { retryResource(m[1], 'SCRIPT'); return; }
                 forceReload();
               }
-              // DOM ErrorEvent rejections (e.g. from PocketBase EventSource errors or
-              // next/image preloader failures) are not actionable — stop propagation
-              // to prevent Next.js dev overlay from showing them.
               if (typeof ErrorEvent !== 'undefined' && e.reason instanceof ErrorEvent) {
                 e.preventDefault();
                 e.stopImmediatePropagation();
