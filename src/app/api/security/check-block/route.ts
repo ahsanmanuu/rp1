@@ -7,13 +7,27 @@ export const dynamic = 'force-dynamic';
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "";
 
+// Per-user response cache to avoid DB hit on rapid re-checks
+const BLOCK_CACHE = new Map<string, { data: any; expiry: number }>();
+const BLOCK_CACHE_TTL = 10_000; // 10 seconds
+
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession();
     if (!session?.user) return NextResponse.json({ success: true, blocked: false });
 
+    const uid = (session.user as any).id;
+
+    // Return cached response if still valid
+    const cached = BLOCK_CACHE.get(uid);
+    if (cached && cached.expiry > Date.now()) {
+      return NextResponse.json(cached.data, {
+        headers: { 'Cache-Control': 'private, max-age=5, stale-while-revalidate=15' },
+      });
+    }
+
     const user = await prisma.user.findUnique({
-      where: { id: (session.user as any).id },
+      where: { id: uid },
       select: { blockedUntil: true, status: true, blacklistReason: true }
     });
 
@@ -24,7 +38,7 @@ export async function GET(req: NextRequest) {
     const isTemporarilyBlocked = !isPermanentlyBlacklisted && !!(user.blockedUntil && user.blockedUntil > now);
     const isBlocked = isPermanentlyBlacklisted || isTemporarilyBlocked;
 
-    return NextResponse.json({
+    const blockData = {
       success: true,
       blocked: isBlocked,
       isBlacklisted: isPermanentlyBlacklisted,
@@ -32,7 +46,9 @@ export async function GET(req: NextRequest) {
       blacklistReason: isPermanentlyBlacklisted ? (user.blacklistReason || 'Violation of platform terms of service.') : null,
       status: user.status,
       adminEmail: ADMIN_EMAIL
-    }, {
+    };
+    BLOCK_CACHE.set(uid, { data: blockData, expiry: Date.now() + BLOCK_CACHE_TTL });
+    return NextResponse.json(blockData, {
       headers: { 'Cache-Control': 'private, max-age=5, stale-while-revalidate=15' },
     });
   } catch (error: any) {

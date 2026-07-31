@@ -76,8 +76,8 @@ export default function BroadcastBanner() {
       console.warn('[PB Realtime Broadcast] Failed to subscribe to announcements, falling back to polling:', err);
     });
 
-    // Poll every 30 seconds for live updates
-    const interval = setInterval(fetchAnnouncements, 30000);
+    // Poll every 5 minutes as fallback (PB realtime handles instant updates)
+    const interval = setInterval(fetchAnnouncements, 300000);
 
     return () => {
       clearInterval(interval);

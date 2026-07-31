@@ -5,6 +5,10 @@ import { findMatchingRule } from "@/lib/aiCapRules";
 import { getServerSession } from "@/lib/auth-pb";
 export const dynamic = "force-dynamic";
 
+// Per-user response cache to avoid re-running 5+ PB queries on every poll
+const AI_CAP_CACHE = new Map<string, { data: any; expiry: number }>();
+const AI_CAP_CACHE_TTL = 15_000; // 15 seconds
+
 export async function GET() {
   const session = await getServerSession();
   if (!session?.user?.id) {
@@ -12,6 +16,15 @@ export async function GET() {
   }
 
   const userId = session.user.id as string;
+
+  // Return cached response if still valid
+  const cached = AI_CAP_CACHE.get(userId);
+  if (cached && cached.expiry > Date.now()) {
+    return NextResponse.json(cached.data, {
+      headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=20' },
+    });
+  }
+
   const userEmail = session.user.email as string | undefined;
 
   try {
@@ -169,7 +182,7 @@ export async function GET() {
       ? Math.max(0, Math.ceil((new Date(aiPlanExpiresAt).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
       : null;
 
-    return NextResponse.json({
+    const capStatusData = {
       isCapped,
       dailyCap: effectiveDailyCap,
       usedToday,
@@ -192,6 +205,10 @@ export async function GET() {
       aiPlanStartsAt: aiPlanStartsAt ? new Date(aiPlanStartsAt).toISOString() : null,
       aiPlanExpiresAt: aiPlanExpiresAt ? new Date(aiPlanExpiresAt).toISOString() : null,
       aiPlanRemainingDays: remainingDays,
+    };
+    AI_CAP_CACHE.set(userId, { data: capStatusData, expiry: Date.now() + AI_CAP_CACHE_TTL });
+    return NextResponse.json(capStatusData, {
+      headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=20' },
     });
   } catch (error: any) {
     console.error("[AI_CAP_STATUS_ERROR]", error);

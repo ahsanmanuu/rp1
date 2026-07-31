@@ -27,7 +27,7 @@ interface AiCapWarningProps {
 }
 
 const REFRESH_INTERVAL_CAPPED   = 30_000;
-const REFRESH_INTERVAL_UNCAPPED = 60_000;
+const REFRESH_INTERVAL_UNCAPPED = 300_000;
 const WARNING_THRESHOLD         = 80;
 
 function fmtDate(iso: string | null | undefined): string {

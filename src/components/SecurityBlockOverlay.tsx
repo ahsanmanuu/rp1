@@ -72,7 +72,7 @@ export default function SecurityBlockOverlay() {
 
     recordGeoLocation();
     checkBlock();
-    const interval = setInterval(checkBlock, 10000); // Poll block check every 10s
+    const interval = setInterval(checkBlock, 60000); // Poll block check every 60s (reduced from 10s)
     return () => clearInterval(interval);
   }, []);
 

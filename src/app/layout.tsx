@@ -9,7 +9,7 @@ import BroadcastBanner from "@/components/BroadcastBanner";
 import SecurityBlockOverlay from "@/components/SecurityBlockOverlay";
 import AiCapWarning from "@/components/AiCapWarning";
 import { Heartbeat } from "@/components/Heartbeat";
-import MonacoSetup from "@/components/MonacoSetup";
+import ConditionalMonacoSetup from "@/components/ConditionalMonacoSetup";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -135,7 +135,7 @@ export default function RootLayout({
           <ConditionalNavbar />
           <AiCapWarning />
           <Heartbeat />
-          <MonacoSetup />
+          <ConditionalMonacoSetup />
           <main>
             {children}
           </main>

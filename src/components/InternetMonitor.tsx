@@ -128,9 +128,9 @@ export default function InternetMonitor() {
     };
 
     // Check every 30 seconds
-    const interval = setInterval(heartbeat, 30000);
-    // Initial check after 5 seconds
-    const initial = setTimeout(heartbeat, 5000);
+    const interval = setInterval(heartbeat, 120000); // Check every 120s (reduced from 30s)
+    // Initial check after 15s (let critical data load first)
+    const initial = setTimeout(heartbeat, 15000);
 
     return () => {
       clearInterval(interval);
@@ -148,7 +148,7 @@ export default function InternetMonitor() {
     window.addEventListener("online", update);
     const interval = setInterval(() => {
       if (navigator.onLine) update();
-    }, 500);
+    }, 2000);
     return () => {
       window.removeEventListener("online", update);
       clearInterval(interval);

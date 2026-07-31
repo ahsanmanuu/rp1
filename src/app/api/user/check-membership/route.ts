@@ -40,6 +40,10 @@ async function ensureStatusFieldsInPb() {
 
 const LIFECYCLE_CACHE = new Map<string, { plan: string; ts: number }>();
 
+// Per-user response cache to avoid re-running heavy queries on every navigation
+const RESPONSE_CACHE = new Map<string, { data: any; expiry: number }>();
+const RESPONSE_CACHE_TTL = 30_000; // 30 seconds
+
 async function writeLifecycleLog(
   userId: string,
   fromPlan: string,
@@ -86,6 +90,12 @@ export async function GET(_req: NextRequest) {
   }
 
   const userId = (session.user as any).id;
+
+  // Return cached response if still valid (avoids re-running heavy queries)
+  const cached = RESPONSE_CACHE.get(userId);
+  if (cached && cached.expiry > Date.now()) {
+    return NextResponse.json(cached.data);
+  }
 
   try {
     ensureStatusFieldsInPb().catch(() => {});
@@ -165,12 +175,14 @@ export async function GET(_req: NextRequest) {
 
         await writeLifecycleLog(userId, user.membership, "free", "expiry", "auto_expiry");
 
-        return NextResponse.json({
+        const expiredData = {
           success: true, showReminder: false, expired: true,
           membership: "free", membershipExpiresAt: null,
           memberSince, joiningDate: memberSince, totalDays, points: user.points,
           subscriptionCount, projectsCount, doc2latexCount, latexCount, diagramCount
-        });
+        };
+        RESPONSE_CACHE.set(userId, { data: expiredData, expiry: Date.now() + RESPONSE_CACHE_TTL });
+        return NextResponse.json(expiredData);
       }
 
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -201,22 +213,26 @@ export async function GET(_req: NextRequest) {
           }).catch(() => {});
         }
 
-        return NextResponse.json({
+        const reminderData = {
           success: true, showReminder: true,
           daysLeft: diffDays, expiryDate: expiry.toLocaleDateString(),
           membership: user.membership, membershipExpiresAt: user.membershipExpiresAt,
           memberSince, joiningDate: memberSince, totalDays, points: user.points,
           subscriptionCount, projectsCount, doc2latexCount, latexCount, diagramCount
-        });
+        };
+        RESPONSE_CACHE.set(userId, { data: reminderData, expiry: Date.now() + RESPONSE_CACHE_TTL });
+        return NextResponse.json(reminderData);
       }
     }
 
-    return NextResponse.json({
+    const responseData = {
       success: true, showReminder: false,
       membership: user.membership, membershipExpiresAt: user.membershipExpiresAt,
       memberSince, joiningDate: memberSince, totalDays, points: user.points,
       subscriptionCount, projectsCount, doc2latexCount, latexCount, diagramCount
-    });
+    };
+    RESPONSE_CACHE.set(userId, { data: responseData, expiry: Date.now() + RESPONSE_CACHE_TTL });
+    return NextResponse.json(responseData);
   } catch (error: any) {
     console.error("[CHECK_MEMBERSHIP_ERROR] Failed:", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
