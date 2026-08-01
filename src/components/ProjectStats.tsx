@@ -373,7 +373,12 @@ export const ProjectStats: React.FC<ProjectStatsProps> = ({ stats, metadata }) =
                     return tables.map((tbl: any, i: number) => (
                       <div key={i} className="flex items-start gap-4 bg-[var(--strict-bg)] p-5 rounded-2xl border border-[var(--strict-border)] shadow-sm transition-all hover:border-[var(--accent-primary)] hover:shadow-md">
                         <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-white/10 flex items-center justify-center text-[10px] font-black border border-[var(--strict-border)] shrink-0">{i + 1}</div>
-                        <p className="text-sm font-medium text-[var(--strict-text)] leading-snug line-clamp-2">{tbl.caption}</p>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-[var(--strict-text)] leading-snug line-clamp-2">{tbl.caption}</p>
+                          {tbl.rowCount > 0 && tbl.colCount > 0 && (
+                            <p className="text-xs text-[var(--strict-text)] opacity-60 mt-1">{tbl.rowCount} rows × {tbl.colCount} cols</p>
+                          )}
+                        </div>
                       </div>
                     ));
                   }

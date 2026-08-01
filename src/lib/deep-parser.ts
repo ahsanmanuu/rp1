@@ -546,8 +546,10 @@ export class DeepDocumentParser {
     // Citation Counting: count unique reference numbers from raw HTML [N], [N,M], [N-M] brackets.
     // We do NOT also count from body \cite{} text — that would double-count every citation.
     const seenCiteNums = new Set<number>();
-    const mergedHtml = this.mergeCitations(rawHtmlForCitations);
-    const rawBracketMatches = mergedHtml.match(/(?<!\b(?:interval|range|scale|domain|coordinates|matrix|vector|box|bounds|values|pixel|pixels|from|to|between)\s*)\[\s*\d{1,3}(?:\s*[,;\u2013\-]\s*\d{1,3})*\s*\]/gi) || [];
+    // In-text citation counting: only count brackets OUTSIDE the reference-list
+    // entries (reference entries "[1]. Author, ..." are not citations themselves).
+    const mergedHtml = this.mergeCitations(this.stripReferenceEntriesFromHtml(rawHtmlForCitations));
+    const rawBracketMatches = mergedHtml.match(/(?<!\b(?:interval|range|scale|domain|coordinates|matrix|vector|box|bounds|values|pixel|pixels|from|to|between|like|such\s+as|e\.g\.?|eg\.?|bracket|for\s+example|example)\s*(?:\[\s*\d{1,3}\s*\]\s*[,;\s]*)*)\[\s*\d{1,3}(?:\s*[,;\u2013\-]\s*\d{1,3})*\s*\]/gi) || [];
     for (const m of rawBracketMatches) {
       const inner = m.replace(/[\[\]\s]/g, '');
       const parts = inner.split(/[,;–\-\u2013\u2014]/).map(p => p.trim()).filter(Boolean);
@@ -585,9 +587,15 @@ export class DeepDocumentParser {
       title: n.title || 'Algorithm', content: (n.items || []).join('\n')
     }));
 
-    result.tables = result.body.filter(n => n.type === 'table').map((n: any) => ({
-      caption: n.caption || 'Table', id: n.id || ''
-    }));
+    result.tables = result.body.filter(n => n.type === 'table').map((n: any) => {
+      const dims = n.html ? this.tableHtmlDimensions(n.html) : { rowCount: 0, colCount: 0 };
+      return {
+        caption: n.caption || 'Table',
+        id: n.id || '',
+        rowCount: dims.rowCount,
+        colCount: dims.colCount
+      };
+    });
 
     return result;
   }
@@ -667,10 +675,13 @@ export class DeepDocumentParser {
           }
       }
 
-      const isRefGuideline = /\b(?:within|content|main|guideline|style|how to|instruction|write|cite|citation|guidance|prepare)\b/i.test(lower);
+      // UNIVERSAL: Normalize away template style annotations before header matching,
+      // e.g. "REFERENCES <10 point, Bold>" (often HTML-escaped as &lt;10 point, Bold&gt;)
+      const refHeaderText = lower.replace(/&lt;[\s\S]*?&gt;/gi, ' ').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      const isRefGuideline = /\b(?:within|content|main|guideline|style|how to|instruction|write|cite|citation|guidance|prepare)\b/i.test(refHeaderText);
       const isRefHeader = !isRefGuideline && (
-                            (tagName.startsWith('h') && (lower.includes('reference') || lower.includes('bibliography'))) ||
-                            (lower.length < 60 && /^(?:[\dIVX\.\s]+)?(?:references?|bibliography|works cited)(?:\s*(?:and|&|source|notes|material|cited)\b.*|[.:\s]*)$/i.test(lower.trim()))
+                            (tagName.startsWith('h') && (refHeaderText.includes('reference') || refHeaderText.includes('bibliography'))) ||
+                            (refHeaderText.length < 60 && /^(?:[\dIVX\.\s]+)?(?:references?|bibliography|works cited)(?:\s*(?:and|&|source|notes|material|cited)\b.*|[.:\s]*)$/i.test(refHeaderText))
                           );
       if (isRefHeader && i > elements.length * 0.3) {
           flush(i);
@@ -695,10 +706,12 @@ export class DeepDocumentParser {
         }
       }
 
-      if (lower === 'abstract' || /^abstract[\s:.\-_—–]/.test(lower)) {
+      // Table cells often contain the words "Abstract"/"Keywords" (e.g. style-guide tables) —
+      // abstract/keyword detection must never fire on table elements.
+      if (tagName !== 'table' && (lower === 'abstract' || /^abstract[\s:.\-_—–]/.test(lower))) {
           nextRole = 'abstract';
           foundAbstract = true;
-      } else if (lower.includes('keyword') || lower.includes('index term')) {
+      } else if (tagName !== 'table' && (lower.includes('keyword') || lower.includes('index term'))) {
           nextRole = 'keywords';
       }
       else if (
@@ -759,7 +772,7 @@ export class DeepDocumentParser {
       else if (ALGO_LABEL_PATTERN.test(f.text) && f.text.length < 150) {
           nextRole = 'algorithm';
       }
-      else if (tagName.startsWith('h') || this.detectHeading(el, f.text) !== null || (tagName === 'p' && f.wordCount <= 12 && f.wordCount >= 1 && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 && !f.text.endsWith('.') && f.text.length < 120 && f.text.length > 2)) {
+      else if (!f.text.includes('\t') && !f.text.includes('|') && (tagName.startsWith('h') || this.detectHeading(el, f.text) !== null || (tagName === 'p' && f.wordCount <= 12 && f.wordCount >= 1 && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 && !f.text.endsWith('.') && f.text.length < 120 && f.text.length > 2))) {
           const detectedLvl = this.detectHeading(el, f.text);
           const isNumberedHeading = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(f.text);
           const isStandardSectionName = /^(?:[\d\.]+\s*)?(?:introduction|related work|background|methodology|conclusion|abstract|acknowledgments|references|overview|implementation|proposed|experimental|results|discussion|system)/i.test(f.text);
@@ -927,23 +940,43 @@ export class DeepDocumentParser {
 
   private static Phase4_deepExtract(manifest: any[], result: StructuredDocument, _mathBlocks: any[], _rawHtml: string) {
       const consumedCaptions = new Set<Element>();
-      
+
+      // Position maps (1-based document order per type) so adjacent table/figure captions
+      // can be disambiguated: a caption whose label ordinal matches the FAR-side media
+      // element's position belongs to that media, not the current one.
+      const tablePositions = new Map<Element, number>();
+      const figurePositions = new Map<Element, number>();
+      {
+          let tIdx = 0;
+          let fIdx = 0;
+          for (let i = 0; i < manifest.length; i++) {
+              const entry = manifest[i];
+              if (entry.role === 'table') {
+                  tIdx++;
+                  tablePositions.set(entry.elements[0], tIdx);
+              } else if (entry.role === 'figure') {
+                  fIdx++;
+                  figurePositions.set(entry.elements[0], fIdx);
+              }
+          }
+      }
+
       // Pre-pass: discover and consume all captions for tables and figures
       for (let i = 0; i < manifest.length; i++) {
           const entry = manifest[i];
           if (entry.role === 'table') {
-              entry.caption = this.findCaption(entry.elements[0], consumedCaptions, 'table');
+              entry.caption = this.findCaption(entry.elements[0], consumedCaptions, 'table', tablePositions);
           } else if (entry.role === 'figure') {
               const el0 = entry.elements[0];
               const textContent = el0.textContent || '';
               const chartMatch = textContent.match(/CHARTIMGX(chart_pending_\d+)XEND/);
               if (chartMatch) {
-                  entry.caption = this.findCaption(el0, consumedCaptions, 'figure');
+                  entry.caption = this.findCaption(el0, consumedCaptions, 'figure', figurePositions);
               } else {
                   const imgs: Element[] = Array.from(el0.querySelectorAll('img'));
                   if (imgs.length === 0 && el0.tagName.toLowerCase() === 'img') imgs.push(el0);
                   if (imgs.length > 0) {
-                      entry.caption = this.findCaption(el0, consumedCaptions, 'figure');
+                      entry.caption = this.findCaption(el0, consumedCaptions, 'figure', figurePositions);
                   }
               }
           }
@@ -1070,7 +1103,7 @@ export class DeepDocumentParser {
           }
           else if (entry.role === 'section' || entry.role === 'paragraph') {
               const mergedText = this.mergeCitations(text);
-              const withCitations = mergedText.replace(/(?<!\b(?:interval|range|scale|domain|coordinates|matrix|vector|box|bounds|values|pixel|pixels|from|to|between)\s*)\[\s*(\d{1,3}(?:\s*[,;–\-]\s*\d{1,3})*)\s*\]/gi, (match: string, inner: string) => {
+              const withCitations = mergedText.replace(/(?<!\b(?:interval|range|scale|domain|coordinates|matrix|vector|box|bounds|values|pixel|pixels|from|to|between|like|such\s+as|e\.g\.?|eg\.?|bracket|for\s+example|example)\s*(?:\[\s*\d{1,3}\s*\]\s*[,;\s]*)*)\[\s*(\d{1,3}(?:\s*[,;–\-]\s*\d{1,3})*)\s*\]/gi, (match: string, inner: string) => {
                   const parts = inner.split(/[,;–\-\u2013\u2014]/).map(p => p.trim()).filter(Boolean);
                   const hasZero = parts.some(p => p === '0');
                   let offset = 0;
@@ -1141,43 +1174,57 @@ export class DeepDocumentParser {
               let tableCaption = entry.caption;
               
               const tableEl = entry.elements[0];
-              const firstRow = tableEl.querySelector('tr');
-              if (firstRow) {
-                  const firstRowText = firstRow.textContent?.trim() || '';
-                  const normalizedFirstRowText = firstRowText.replace(/[\u00A0\u202F\u2009\u200B\uFEFF]/g, ' ').trim();
-                  if (/^\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]+/i.test(normalizedFirstRowText)) {
-                      if (!tableCaption) {
-                          const prefixMatch = normalizedFirstRowText.match(/^\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]+/i);
-                          const cleanPrefix = prefixMatch ? prefixMatch[0].replace(/[:.–\-\s]+$/, '').trim() : '';
-                          const afterPrefix = prefixMatch ? normalizedFirstRowText.slice(prefixMatch[0].length).replace(/^[:.–\-\s]*/, '').trim() : '';
-                          tableCaption = afterPrefix.length > 0 ? `${cleanPrefix}: ${afterPrefix}` : cleanPrefix;
+              const isNativeTable = tableEl.tagName.toLowerCase() === 'table';
+
+              if (isNativeTable) {
+                  const firstRow = tableEl.querySelector('tr');
+                  if (firstRow) {
+                      const firstRowText = firstRow.textContent?.trim() || '';
+                      const normalizedFirstRowText = firstRowText.replace(/[\u00A0\u202F\u2009\u200B\uFEFF]/g, ' ').trim();
+                      if (/^\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]+/i.test(normalizedFirstRowText)) {
+                          if (!tableCaption) {
+                              const prefixMatch = normalizedFirstRowText.match(/^\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]+/i);
+                              const cleanPrefix = prefixMatch ? prefixMatch[0].replace(/[:.–\-\s]+$/, '').trim() : '';
+                              const afterPrefix = prefixMatch ? normalizedFirstRowText.slice(prefixMatch[0].length).replace(/^[:.–\-\s]*/, '').trim() : '';
+                              tableCaption = afterPrefix.length > 0 ? `${cleanPrefix}: ${afterPrefix}` : cleanPrefix;
+                          }
+                          firstRow.remove(); // Remove the caption row so it's not rendered inside the table
                       }
-                      firstRow.remove(); // Remove the caption row so it's not rendered inside the table
+                  }
+
+                  if (!tableCaption) {
+                    const firstTh = tableEl.querySelector('th');
+                    const thText = firstTh?.textContent?.trim() || '';
+                    if (/^\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]+/i.test(thText)) {
+                      tableCaption = thText;
+                      firstTh?.parentElement?.remove();
+                    }
                   }
               }
 
-              if (!tableCaption) {
-                const firstTh = tableEl.querySelector('th');
-                const thText = firstTh?.textContent?.trim() || '';
-                if (/^\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]+/i.test(thText)) {
-                  tableCaption = thText;
-                  firstTh?.parentElement?.remove();
-                }
-              }
-              if (!tableCaption) {
-                const rowCount = tableEl.querySelectorAll('tr').length;
-                const colCount = tableEl.querySelector('tr')?.querySelectorAll('td,th').length || 0;
-                tableCaption = `Table (${rowCount} rows × ${colCount} cols)`;
-              }
-              
               // Standard HTML <table> vs Plain-text table elements
               let tableHtml = '';
-              if (tableEl.tagName.toLowerCase() === 'table') {
+              if (isNativeTable) {
                 tableHtml = tableEl.outerHTML;
               } else {
                 tableHtml = this.convertPlainTextTableToHtml(entry.elements);
               }
 
+              // UNIVERSAL: A table must actually contain rows and columns to be emitted.
+              // Degenerate detections (tab-stopped layout/prose lines, empty shells) are
+              // demoted to plain paragraphs so they neither pollute the table count nor
+              // render as empty tables.
+              const { rowCount, colCount } = this.tableHtmlDimensions(tableHtml);
+              if (rowCount === 0 || colCount === 0) {
+                  const fallbackText = entry.elements.map((e: Element) => e.textContent || '').join('\n').trim();
+                  if (fallbackText) result.body.push({ type: 'paragraph', text: fallbackText });
+                  continue;
+              }
+
+              if (!tableCaption) {
+                tableCaption = `Table (${rowCount} rows × ${colCount} cols)`;
+              }
+              
               result.body.push({ type: 'table', html: tableHtml, caption: tableCaption } as any);
           }
           else if (entry.role === 'figure') {
@@ -1488,6 +1535,8 @@ export class DeepDocumentParser {
 
     const f = this.featurize(targetEl);
     if (f.text.length > 200 || f.text.length < 3) return null;
+    // Headings never contain tab/pipe column structure (tab-stopped layout/legend lines are not headings)
+    if (f.text.includes('\t') || f.text.includes('|')) return null;
     if (f.text.endsWith('.') && !/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-z][.\s]+)/i.test(f.text) && !(f.wordCount < 6 && f.isBold)) return null;
 
     // Guard: Exclude Author/Affiliation metadata lines that start with number indices (e.g., "1 Designation of 1st Author...", "1 Department of CS...")
@@ -1545,17 +1594,25 @@ export class DeepDocumentParser {
   }
 
   // ── CAPTION FINDER ───────────────────────────────────────────────────────────
+  private static isTableCaptionProse(t: string): boolean {
+    // A genuine table caption does not begin running prose.
+    // "Table 1 summarizes the datasets used in our experiments..." is body text, not a caption.
+    const remainder = t.replace(/^\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]*\s*[:.–\-\s]*/i, '').trim().slice(0, 60);
+    return /\b(?:shows?|presents|illustrates|compares|depicts|displays|demonstrates|summarizes|lists|reports|plots|gives|provides|represents|outlines|describes|highlights|overviews|contains|yields|produces|indicates|details|tabulates)\b/i.test(remainder);
+  }
+
   private static findCaption(
     el: Element,
     processed: Set<Element>,
-    type: 'figure' | 'table'
+    type: 'figure' | 'table',
+    typePositions: Map<Element, number>
   ): string {
     // 1. Direct structured inner check (e.g. child <caption> tag generated by parser)
     if (type === 'table') {
       const internalCap = el.querySelector('caption');
       if (internalCap && !processed.has(internalCap)) {
         processed.add(internalCap);
-        return internalCap.textContent?.trim() || '';
+        return this.cleanCaption(internalCap.textContent?.trim() || '');
       }
     }
 
@@ -1564,36 +1621,77 @@ export class DeepDocumentParser {
         ? /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo)\s*[\d.\-:A-Za-z]*/i
         : /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]*/i;
 
+    const captionOrdinal = (t: string): number | null => {
+      const m = t.match(
+        type === 'figure'
+          ? /(?:Figure|Fig\.?|Image|Chart|Diagram|Photo)\s*(\d+(?:\.\d+)*|[IVXLCDM]+)/i
+          : /(?:Table|Tab\.?)\s*(\d+(?:\.\d+)*|[IVXLCDM]+)/i
+      );
+      if (!m) return null;
+      const s = m[1];
+      if (/^\d/.test(s)) return parseInt(s.split('.')[0], 10);
+      const roman: Record<string, number> = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
+      let sum = 0;
+      let prev = 0;
+      for (const ch of s.toUpperCase().split('').reverse()) {
+        const v = roman[ch] ?? 0;
+        sum += v < prev ? -v : v;
+        prev = v;
+      }
+      return sum > 0 ? sum : null;
+    };
+
+    const farSibling = (node: Element | null, dir: 1 | -1): Element | null => {
+      let sib = dir === 1 ? node?.nextElementSibling || null : node?.previousElementSibling || null;
+      while (sib) {
+        const tag = sib.tagName.toLowerCase();
+        const txt = (sib.textContent || '').trim();
+        if (txt.length > 0 || ['table', 'img', 'figure'].includes(tag)) return sib;
+        sib = dir === 1 ? sib.nextElementSibling || null : sib.previousElementSibling || null;
+      }
+      return null;
+    };
+
     // Scan next and previous siblings up to 35 hops (mammoth can inject several empty paragraphs between img and caption)
     let next = el.nextElementSibling;
     let prev = el.previousElementSibling;
     for (let i = 0; i < 35; i++) {
       if (next && !processed.has(next)) {
         const t = next.textContent?.trim() || '';
-        if (rx.test(t)) {
-          processed.add(next);
-          // Return full caption text — e.g. "Figure 1: Architecture of proposed framework"
-          // Strip only leading whitespace/colon after the label prefix
-          const prefixMatch = t.match(rx);
-          const cleanPrefix = prefixMatch ? prefixMatch[0].replace(/[:.–\-\s]+$/, '').trim() : '';
-          let afterPrefix = prefixMatch ? t.slice(prefixMatch[0].length).replace(/^[:.–\-\s]*/, '').trim() : '';
-          
-          // DUAL PARAGRAPH MERGE (FORWARD SENSE):
-          if (afterPrefix.length < 5) {
-            let nextSib = next.nextElementSibling;
-            while (nextSib && !nextSib.textContent?.trim() && !['table', 'img', 'figure'].includes(nextSib.tagName.toLowerCase())) {
-              nextSib = nextSib.nextElementSibling;
-            }
-            if (nextSib && !processed.has(nextSib) && ['p', 'div'].includes(nextSib.tagName.toLowerCase())) {
-              const sibText = nextSib.textContent?.trim() || '';
-              if (sibText.length > 0 && sibText.length < 300 && !rx.test(sibText) && !/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i.test(sibText) && !this.FORCED_LEVEL1.has(sibText.toLowerCase())) {
-                processed.add(nextSib);
-                afterPrefix = sibText;
+        // Captions are single logical lines — multi-line element text (e.g. a whole table) is never a caption
+        const isTableProse = type === 'table' && this.isTableCaptionProse(t);
+        if (rx.test(t) && !t.includes('\n') && !isTableProse) {
+          // If this caption's label ordinal matches the media element that directly follows it,
+          // the caption belongs to THAT media (above-caption convention), not the current one.
+          const capOrdinal = captionOrdinal(t);
+          const farEl = farSibling(next, 1);
+          const farPos = farEl ? typePositions.get(farEl) : undefined;
+          const belongsToFar = capOrdinal !== null && farPos !== undefined && capOrdinal === farPos;
+          if (!belongsToFar) {
+            processed.add(next);
+            // Return full caption text — e.g. "Figure 1: Architecture of proposed framework"
+            // Strip only leading whitespace/colon after the label prefix
+            const prefixMatch = t.match(rx);
+            const cleanPrefix = prefixMatch ? prefixMatch[0].replace(/[:.–\-\s]+$/, '').trim() : '';
+            let afterPrefix = prefixMatch ? t.slice(prefixMatch[0].length).replace(/^[:.–\-\s]*/, '').trim() : '';
+            
+            // DUAL PARAGRAPH MERGE (FORWARD SENSE):
+            if (afterPrefix.length < 5) {
+              let nextSib = next.nextElementSibling;
+              while (nextSib && !nextSib.textContent?.trim() && !['table', 'img', 'figure'].includes(nextSib.tagName.toLowerCase())) {
+                nextSib = nextSib.nextElementSibling;
+              }
+              if (nextSib && !processed.has(nextSib) && ['p', 'div'].includes(nextSib.tagName.toLowerCase())) {
+                const sibText = nextSib.textContent?.trim() || '';
+                if (sibText.length > 0 && sibText.length < 300 && !rx.test(sibText) && !/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i.test(sibText) && !this.FORCED_LEVEL1.has(sibText.toLowerCase())) {
+                  processed.add(nextSib);
+                  afterPrefix = sibText;
+                }
               }
             }
+            
+            return this.cleanCaption(afterPrefix.length > 0 ? `${cleanPrefix}: ${afterPrefix}` : cleanPrefix);
           }
-          
-          return afterPrefix.length > 0 ? `${cleanPrefix}: ${afterPrefix}` : cleanPrefix;
         }
         // Stop scanning forward if we hit a substantial text paragraph (not a caption, not empty, not sub-caption)
         if (next.tagName.toLowerCase() === 'p' || next.tagName.toLowerCase() === 'div') {
@@ -1609,29 +1707,39 @@ export class DeepDocumentParser {
       
       if (prev && !processed.has(prev)) {
         const t = prev.textContent?.trim() || '';
-        if (rx.test(t)) {
-          processed.add(prev);
-          const prefixMatch = t.match(rx);
-          const cleanPrefix = prefixMatch ? prefixMatch[0].replace(/[:.–\-\s]+$/, '').trim() : '';
-          let afterPrefix = prefixMatch ? t.slice(prefixMatch[0].length).replace(/^[:.–\-\s]*/, '').trim() : '';
-          
-          // DUAL PARAGRAPH MERGE (BACKWARD SENSE):
-          if (afterPrefix.length < 5) {
-            let descSib = prev.nextElementSibling;
-            while (descSib && descSib !== el) {
-              if (!processed.has(descSib) && ['p', 'div'].includes(descSib.tagName.toLowerCase())) {
-                const sibText = descSib.textContent?.trim() || '';
-                if (sibText.length > 0 && sibText.length < 300 && !rx.test(sibText) && !/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i.test(sibText) && !this.FORCED_LEVEL1.has(sibText.toLowerCase())) {
-                  processed.add(descSib);
-                  afterPrefix = sibText;
-                  break;
+        // Captions are single logical lines — multi-line element text (e.g. a whole table) is never a caption
+        const isTableProse = type === 'table' && this.isTableCaptionProse(t);
+        if (rx.test(t) && !t.includes('\n') && !isTableProse) {
+          // If this caption's label ordinal matches the media element that directly precedes it,
+          // the caption belongs to THAT media (below-caption convention), not the current one.
+          const capOrdinal = captionOrdinal(t);
+          const farEl = farSibling(prev, -1);
+          const farPos = farEl ? typePositions.get(farEl) : undefined;
+          const belongsToFar = capOrdinal !== null && farPos !== undefined && capOrdinal === farPos;
+          if (!belongsToFar) {
+            processed.add(prev);
+            const prefixMatch = t.match(rx);
+            const cleanPrefix = prefixMatch ? prefixMatch[0].replace(/[:.–\-\s]+$/, '').trim() : '';
+            let afterPrefix = prefixMatch ? t.slice(prefixMatch[0].length).replace(/^[:.–\-\s]*/, '').trim() : '';
+            
+            // DUAL PARAGRAPH MERGE (BACKWARD SENSE):
+            if (afterPrefix.length < 5) {
+              let descSib = prev.nextElementSibling;
+              while (descSib && descSib !== el) {
+                if (!processed.has(descSib) && ['p', 'div'].includes(descSib.tagName.toLowerCase())) {
+                  const sibText = descSib.textContent?.trim() || '';
+                  if (sibText.length > 0 && sibText.length < 300 && !rx.test(sibText) && !/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i.test(sibText) && !this.FORCED_LEVEL1.has(sibText.toLowerCase())) {
+                    processed.add(descSib);
+                    afterPrefix = sibText;
+                    break;
+                  }
                 }
+                descSib = descSib.nextElementSibling;
               }
-              descSib = descSib.nextElementSibling;
             }
+            
+            return this.cleanCaption(afterPrefix.length > 0 ? `${cleanPrefix}: ${afterPrefix}` : cleanPrefix);
           }
-          
-          return afterPrefix.length > 0 ? `${cleanPrefix}: ${afterPrefix}` : cleanPrefix;
         }
         // Stop scanning backward if we hit a substantial text paragraph
         if (prev.tagName.toLowerCase() === 'p' || prev.tagName.toLowerCase() === 'div') {
@@ -1650,29 +1758,66 @@ export class DeepDocumentParser {
     return '';
   }
 
+  private static cleanCaption(s: string): string {
+    return s.replace(/&lt;[\s\S]*?&gt;/gi, ' ').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  private static stripReferenceEntriesFromHtml(html: string): string {
+    // Remove reference-list entries ("[1]. Author, Title, ...") from the HTML used
+    // for in-text citation counting — reference entries are not citations.
+    return html
+      .split(/<\/p\s*>/gi)
+      .map(chunk => {
+        const textOnly = chunk.replace(/<[^>]*>/g, '').replace(/&nbsp;|&amp;|&lt;|&gt;|&quot;/gi, ' ').trim();
+        if (/^\[\s*\d{1,3}\s*\]\s*[.\-–—\t\s]/.test(textOnly) || /^\[\s*\d{1,3}\s*\]\s*$/.test(textOnly)) {
+          return '';
+        }
+        return chunk;
+      })
+      .join('</p>');
+  }
+
+  private static tableHtmlDimensions(html: string): { rowCount: number; colCount: number } {
+    let rowCount = 0;
+    let colCount = 0;
+    const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let trMatch: RegExpExecArray | null;
+    while ((trMatch = trRegex.exec(html)) !== null) {
+      rowCount++;
+      const cellMatches = trMatch[1].match(/<t[dh][^>]*>/gi) || [];
+      colCount = Math.max(colCount, cellMatches.length);
+    }
+    return { rowCount, colCount };
+  }
+
   private static convertPlainTextTableToHtml(elements: Element[]): string {
     let html = '<table>';
-    elements.forEach((el, index) => {
+    let rowIdx = 0;
+    elements.forEach((el) => {
       const text = (el.textContent || '').trim();
       if (!text) return;
-      
-      let cells: string[] = [];
-      if (text.includes('|')) {
-        cells = text.split('|').map(c => c.trim());
-        if (text.startsWith('|')) cells.shift();
-        if (text.endsWith('|')) cells.pop();
-      } else if (text.includes('\t')) {
-        cells = text.split('\t').map(c => c.trim());
-      } else {
-        cells = text.split(',').map(c => c.trim());
+
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      for (const line of lines) {
+        let cells: string[] = [];
+        if (line.includes('|')) {
+          cells = line.split('|').map(c => c.trim());
+          if (line.startsWith('|')) cells.shift();
+          if (line.endsWith('|')) cells.pop();
+        } else if (line.includes('\t')) {
+          cells = line.split('\t').map(c => c.trim());
+        } else {
+          cells = line.split(',').map(c => c.trim());
+        }
+
+        const tag = rowIdx === 0 ? 'th' : 'td';
+        html += '<tr>';
+        for (const cell of cells) {
+          html += `<${tag}>${cell}</${tag}>`;
+        }
+        html += '</tr>';
+        rowIdx++;
       }
-      
-      const tag = index === 0 ? 'th' : 'td';
-      html += '<tr>';
-      for (const cell of cells) {
-        html += `<${tag}>${cell}</${tag}>`;
-      }
-      html += '</tr>';
     });
     html += '</table>';
     return html;
@@ -1725,9 +1870,35 @@ export class DeepDocumentParser {
 
     if (f.text.match(/^(?:according|due|however|therefore|additionally|furthermore|consequently|although|whereas|specifically|in\s+addition|we\s+can|observe|note|notice)\b/i)) return false;
 
-    // Statistical hint: Many commas/tabs in a short line often means a table row
-    if (commaCount >= 3 && f.wordCount < 25 && f.stopwordDensity < 0.05 && numericDensity > 0.1) return true;
-    if (tabCount >= 1 || pipeCount >= 2) return true;
+    // ── STRUCTURAL TABLE EVIDENCE (UNIVERSAL — no template/layout bias) ──
+    // A genuine plain-text table must show consistent multi-column structure:
+    //  - Multi-row: at least 2 rows carrying the same delimiter with a matching column count
+    //  - Single row: at least 3 columns AND at least 2 numeric cells (data row, not a label/legend line)
+    const lines = f.text.split('\n').map(l => l.trim()).filter(Boolean);
+    const isMultiLine = lines.length >= 2;
+
+    const splitCells = (line: string): string[] => {
+      if (line.includes('\t')) return line.split(/\t/).map(c => c.trim()).filter(Boolean);
+      if (line.includes('|')) return line.split('|').map(c => c.trim()).filter(Boolean);
+      return line.split(',').map(c => c.trim()).filter(Boolean);
+    };
+    const numericCellCount = (cells: string[]) => cells.filter(c => /\d/.test(c)).length;
+
+    if (tabCount >= 1 || pipeCount >= 2) {
+      if (isMultiLine) {
+        const rowCols = lines.map(l => splitCells(l).length).filter(n => n >= 2);
+        if (rowCols.length >= 2 && Math.max(...rowCols) - Math.min(...rowCols) <= 1) return true;
+      } else {
+        const cells = splitCells(f.text);
+        if (cells.length >= 3 && numericCellCount(cells) >= 2) return true;
+      }
+    }
+
+    // Comma structure: statistical hint PLUS numeric evidence in multiple cells
+    if (commaCount >= 3 && f.wordCount < 25 && f.stopwordDensity < 0.05 && numericDensity > 0.1) {
+      const cells = f.text.split(',').map(c => c.trim()).filter(Boolean);
+      if (numericCellCount(cells) >= 2) return true;
+    }
     
     return false;
   }
