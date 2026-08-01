@@ -886,6 +886,29 @@ export async function POST(req: Request) {
         }
       }
 
+      // --- AI-ASSISTED STRUCTURAL VERIFICATION ---
+      // Second opinion from the AI backend: verifies/corrects title, authors,
+      // affiliations, abstract, keywords, section hierarchy, component counts
+      // and references BEFORE modular assembly, so the mapped/flushed LaTeX
+      // files carry the corrected structure. Heuristics remain the fallback.
+      try {
+        const { analyzeManuscriptStructure, applyStructureCorrections } = await import('@/lib/ai-manuscript-analysis');
+        const aiRes = await analyzeManuscriptStructure(deepData, {
+          html: mammothResult.value,
+          filename: file.name,
+          userId: (session?.user as any)?.id ?? null,
+        });
+        if (aiRes) {
+          const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
+          console.log(`[TELEMETRY] AI structure corrections applied: ${applied.join(', ') || 'none'} (${aiRes.model})`);
+        } else {
+          console.warn('[TELEMETRY] AI structural analysis unavailable — keeping heuristic parse.');
+        }
+      } catch (aiErr: any) {
+        console.warn('[AI-STRUCTURE] AI structural analysis failed (non-critical):', aiErr?.message || aiErr);
+      }
+      // --- END AI-ASSISTED STRUCTURAL VERIFICATION ---
+
       // --- BIBLIOGRAPHY EXTRACTION ---
       console.time("[PERF] Bibliography Extraction");
       const bibContent = extractBibliography(zip);
@@ -1072,6 +1095,22 @@ export async function POST(req: Request) {
       const pdfLines = pdfText.split('\n').map((l: string) => l.trim()).filter(Boolean);
       const { DeepDocumentParser: PdfParser } = await import('@/lib/deep-parser');
       deepData = PdfParser.parsePdfText(pdfLines);
+
+      // AI-ASSISTED STRUCTURAL VERIFICATION for PDF path (non-blocking of pipeline)
+      try {
+        const { analyzeManuscriptStructure, applyStructureCorrections } = await import('@/lib/ai-manuscript-analysis');
+        const aiRes = await analyzeManuscriptStructure(deepData, {
+          pdfText,
+          filename: file.name,
+          userId: (session?.user as any)?.id ?? null,
+        });
+        if (aiRes) {
+          const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
+          console.log(`[TELEMETRY] PDF AI structure corrections applied: ${applied.join(', ') || 'none'} (${aiRes.model})`);
+        }
+      } catch (aiErr: any) {
+        console.warn('[AI-STRUCTURE] PDF AI structural analysis failed (non-critical):', aiErr?.message || aiErr);
+      }
 
       const { ModularLatexAssembler: PdfAssembler } = await import('@/lib/assembler');
       const pdfModular = PdfAssembler.assemble(deepData as any, 'article_lncs', { hasBibFile: false });

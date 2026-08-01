@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "es2022",
+    "lib": ["es2022", "dom"],
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "noEmitOnError": false,
+    "declaration": false,
+    "sourceMap": false,
+    "outDir": "compiled-ai",
+    "rootDir": "../src",
+    "resolveJsonModule": true,
+    "types": []
+  },
+  "include": [
+    "../src/lib/ai-manuscript-analysis.ts",
+    "../src/lib/assembler.ts",
+    "../src/lib/agent-gateway/**/*.ts",
+    "../src/lib/deep-parser.ts"
+  ],
+  "exclude": ["node_modules"]
+}

@@ -880,3 +880,113 @@ Return ONLY valid JSON. No markdown, no text before or after.`;
     }
   },
 });
+
+register({
+  id: 'structure-analyze',
+  name: 'Manuscript Structure Analyzer',
+  description: 'AI-driven structural verification of converted manuscripts: exact title, authors, affiliations, abstract, keywords, section hierarchy, component counts (figures/charts/tables/equations/pseudocode/citations/references) and reference list',
+  temperature: 0.05,
+  maxTokens: 8192,
+  rateLimit: 20,
+  model: 'mimo-v2.5-free',
+  buildSystemPrompt(ctx) {
+    const frontMatter = String(ctx.frontMatter || '').substring(0, 6500);
+    const documentTitle = String(ctx.documentTitle || 'Untitled Document');
+    const sectionTitles = (ctx.sectionTitles as string[]) || [];
+    const figureCaptions = (ctx.figureCaptions as string[]) || [];
+    const tableCaptions = (ctx.tableCaptions as string[]) || [];
+    const algorithmTitles = (ctx.algorithmTitles as string[]) || [];
+    const equationSnippets = (ctx.equationSnippets as string[]) || [];
+    const referenceEntries = (ctx.referenceEntries as string[]) || [];
+    const heuristic = JSON.stringify(ctx.heuristic || {});
+
+    return `You are a world-class scholarly document analysis engine with 20 years of experience in academic publishing (IEEE, ACM, Springer LNCS, Elsevier, Nature, and APA/IEEE reference formats). Your job is to verify and correct the STRUCTURAL ANALYSIS of a converted academic manuscript with surgical precision.
+
+## INPUTS
+### A. Document front matter (first ~6500 characters of the manuscript text — title area, authors, affiliations, abstract, keywords):
+"""TEXT
+${frontMatter}
+"""
+
+### B. Heuristic extraction already performed by the structural parser (for reference only — verify it, do not trust it blindly):
+${heuristic}
+
+### C. Section headings detected by the parser (ordered):
+${sectionTitles.slice(0, 40).map((s, i) => `${i + 1}. "${s}"`).join('\n') || 'none'}
+
+### D. Figure captions detected:
+${figureCaptions.slice(0, 30).map(s => `- ${s}`).join('\n') || 'none'}
+
+### E. Table captions detected:
+${tableCaptions.slice(0, 30).map(s => `- ${s}`).join('\n') || 'none'}
+
+### F. Algorithm/pseudocode titles detected:
+${algorithmTitles.slice(0, 15).map(s => `- ${s}`).join('\n') || 'none'}
+
+### G. Math snippets detected:
+${equationSnippets.slice(0, 8).map(s => `- ${s}`).join('\n') || 'none'}
+
+### H. Reference entries detected:
+${referenceEntries.slice(0, 40).map((s, i) => `${i + 1}. ${s}`).join('\n') || 'none'}
+
+Document working title (from filename, may be wrong): "${documentTitle}"
+
+## YOUR TASK
+Analyze the manuscript and return ONE JSON object (no markdown, no commentary before or after) with this EXACT schema:
+{
+  "title": { "text": "the exact manuscript title as it appears (no numbering, no surrounding quotes)", "confidence": 0-100 },
+  "authors": [ { "name": "Full Name", "affiliations": ["Department, University, Country"] } ],
+  "affiliations": ["each unique affiliation written ONCE in clean form"],
+  "abstract": { "text": "the abstract text EXACTLY as it appears (do not rewrite, shorten or summarize)", "confidence": 0-100 },
+  "keywords": ["keyword1", "keyword2"],
+  "sections": [ { "title": "exact heading text without numbering", "level": 1 or 2 } ],
+  "components": {
+    "figures": <integer count of figures (images with captions)>,
+    "charts": <integer count of charts/plots/graphs>,
+    "tables": <integer count of tables>,
+    "equations": <integer count of display/math equations>,
+    "pseudocode": <integer count of algorithms/pseudocode listings>,
+    "citations": <integer count of in-text citation markers>,
+    "references": <integer count of bibliography entries>
+  },
+  "references": ["complete bibliography entries as they appear, in order"],
+  "notes": "one short sentence about anything unusual"
+}
+
+## HARD RULES
+1. Use ONLY text that actually appears in the manuscript. NEVER invent, paraphrase, translate or beautify titles, abstracts, author names, affiliations or references.
+2. If front matter is missing a field, set it to null. Never fabricate placeholder values like "Author Name", "Unknown" or "Institution".
+3. Authors: list every author with the exact name (drop only trailing superscript digits/asterisks used for affiliation markers, e.g. "John Doe1" -> "John Doe"). Attach the matching affiliation(s) from the manuscript.
+4. Affiliations: deduplicate; include department, institution and country when present.
+5. Abstract: copy verbatim; strip a leading "Abstract" label if present.
+6. Keywords: exact terms, no numbering, no bullet prefixes.
+7. Sections: FULL ordered list of every section and subsection heading visible in the evidence. level 1 = \\section, level 2 = \\subsection. Drop leading numbering ("1.", "1.1", "[1]", "I."). "References"/"Bibliography", "Acknowledgements", "Declarations", "Appendix" are level 1 headings.
+8. Components: count them ONLY from the actual evidence (front matter + detected captions + math snippets + reference entries). If a count cannot be determined from the given evidence, return null for that field — never guess 0 or random numbers.
+9. Citations: an in-text citation marker is a bracketed number/reference like [12] or (Smith et al., 2020) in the body text.
+10. References: include the actual bibliography entries verbatim (up to 200). If no bibliography is visible in the evidence, return [].
+11. confidence for title/abstract must be 90+ when the text appears verbatim in the front matter.
+12. JSON keys must match EXACTLY. Escape backslashes and quotes properly.
+
+Respond with ONLY the JSON object.`;
+  },
+  parseResponse(raw) {
+    // Try direct JSON parse first
+    try { return JSON.parse(raw.trim()); } catch { /* continue */ }
+
+    // Extract the balanced JSON block
+    const json = extractJsonBlock(raw);
+    if (json) {
+      try { return cleanAndParseJson(json); } catch { /* continue */ }
+    }
+
+    // Strip code fences and try the largest brace-delimited span
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start !== -1 && end !== -1 && end > start) {
+      try { return cleanAndParseJson(cleaned.substring(start, end + 1)); } catch { /* continue */ }
+    }
+
+    throw new Error('AI structure analysis response did not contain valid JSON');
+  },
+});
