@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
 
       await prisma.$transaction([
         prisma.membershipTransaction.update({
-          where: { orderId },
+          where: { id: tx.id },
           data: { paymentStatus: "paid", expiresAt: newExpiry }
         }),
         prisma.user.update({
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, message: "Payment processed successfully" });
     } else {
       await prisma.membershipTransaction.update({
-        where: { orderId },
+        where: { id: tx.id },
         data: { paymentStatus: "failed" }
       });
       return NextResponse.json({ success: true, message: "Payment failed status updated" });

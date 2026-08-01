@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendAiPlanExpiryReminderEmail } from "@/lib/mailer";
+import { ensureAiPlanCollections } from "@/lib/pbAiPlans";
 
 import { getServerSession } from "@/lib/auth-pb";
 export const dynamic = "force-dynamic";
@@ -40,6 +41,8 @@ async function getMemberSince(userId: string): Promise<string | null> {
 
 export async function GET() {
   try {
+    await ensureAiPlanCollections();
+
     const session = await getServerSession().catch(() => null);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -242,6 +245,7 @@ export async function GET() {
       planType: plan?.name ?? "free",
       planName: plan?.label ?? "Free Tier",
       planDescription: plan?.description ?? null,
+      priceINR: plan?.priceINR ?? 0,
       status: aiPlanExpired ? "expired" : (plan && plan.name !== "free" ? "active" : "free"),
       isPremiumTier: !!plan && plan.name !== "free",
       startsAt: iso(aiPlanStartsAt),
@@ -268,7 +272,7 @@ export async function GET() {
     const availableAiPlans = await prisma.aiCapPlan.findMany({
       where: { isActive: true },
       orderBy: { createdAt: "asc" },
-      select: { id: true, name: true, label: true, dailyTokenCap: true, description: true, isActive: true },
+      select: { id: true, name: true, label: true, dailyTokenCap: true, priceINR: true, description: true, isActive: true },
     });
 
     const data = {

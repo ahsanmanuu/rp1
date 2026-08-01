@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
       // Perform a transaction to update both tables
       await prisma.$transaction([
         prisma.membershipTransaction.update({
-          where: { orderId },
+          where: { id: tx.id },
           data: { paymentStatus: "paid", expiresAt: newExpiry }
         }),
         prisma.user.update({
@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(`${redirectBase}/dashboard?payment=success&plan=${tx.planType}`);
     } else {
       await prisma.membershipTransaction.update({
-        where: { orderId },
+        where: { id: tx.id },
         data: { paymentStatus: "failed" }
       });
 

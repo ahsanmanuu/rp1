@@ -30,6 +30,7 @@ interface CapPlan {
   planId: string;
   name: string;
   dailyTokenCap: number;
+  priceINR?: number;
   userCount: number;
   isActive: boolean;
   color: string;
@@ -219,7 +220,7 @@ export default function AdminAiCapsPage() {
   const [editPlanId, setEditPlanId] = useState<string | null>(null);
   const [editPlanData, setEditPlanData] = useState<Partial<CapPlan>>({});
   const [showNewPlanForm, setShowNewPlanForm] = useState(false);
-  const [newPlanData, setNewPlanData] = useState({ name: '', dailyTokenCap: 50000 });
+  const [newPlanData, setNewPlanData] = useState({ name: '', dailyTokenCap: 50000, priceINR: 0 });
   const [actionLoading, setActionLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -310,6 +311,7 @@ export default function AdminAiCapsPage() {
           planId: p.id,
           name: p.name,
           dailyTokenCap: p.dailyTokenCap,
+          priceINR: p.priceINR || 0,
           userCount: p._count?.users || 0,
           isActive: p.isActive,
           color: PIE_COLORS[data.plans.indexOf(p) % PIE_COLORS.length],
@@ -636,12 +638,12 @@ export default function AdminAiCapsPage() {
       const res = await fetch('/api/admin/ai-caps/plans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newPlanData.name, label: newPlanData.name, dailyTokenCap: newPlanData.dailyTokenCap }),
+        body: JSON.stringify({ name: newPlanData.name, label: newPlanData.name, dailyTokenCap: newPlanData.dailyTokenCap, priceINR: newPlanData.priceINR }),
       });
       const data = await res.json();
       if (data.success) {
         setShowNewPlanForm(false);
-        setNewPlanData({ name: '', dailyTokenCap: 50000 });
+        setNewPlanData({ name: '', dailyTokenCap: 50000, priceINR: 0 });
         fetchPlans();
         setToastMessage('Plan created successfully');
       } else {
@@ -1150,6 +1152,14 @@ export default function AdminAiCapsPage() {
                         className="w-full border rounded-lg px-3 py-2 text-sm outline-none"
                         style={{ backgroundColor: 'var(--color-admin-surface-container-lowest)', borderColor: 'var(--color-admin-outline-variant)', color: 'var(--color-admin-on-surface)' }} />
                     </div>
+                    <div className="w-full sm:w-40">
+                      <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-admin-on-surface-variant)' }}>Price (₹/month)</label>
+                      <input type="number" min="0" step="1" value={newPlanData.priceINR}
+                        onChange={e => setNewPlanData(p => ({ ...p, priceINR: parseFloat(e.target.value) || 0 }))}
+                        className="w-full border rounded-lg px-3 py-2 text-sm outline-none"
+                        style={{ backgroundColor: 'var(--color-admin-surface-container-lowest)', borderColor: 'var(--color-admin-outline-variant)', color: 'var(--color-admin-on-surface)' }}
+                        placeholder="0 = free" />
+                    </div>
                     <div className="flex gap-2">
                       <button onClick={handleCreatePlan} disabled={actionLoading}
                         className="px-5 py-2 rounded-lg text-sm font-bold hover:opacity-90 transition-opacity flex items-center gap-2"
@@ -1218,6 +1228,13 @@ export default function AdminAiCapsPage() {
                           className="w-full border rounded-lg px-3 py-2 text-sm outline-none"
                           style={{ backgroundColor: 'var(--color-admin-surface-container-lowest)', borderColor: 'var(--color-admin-outline-variant)', color: 'var(--color-admin-on-surface)' }} />
                       </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold mb-1 uppercase" style={{ color: 'var(--color-admin-on-surface-variant)' }}>Price (₹/month)</label>
+                        <input type="number" min="0" step="1" value={editPlanData.priceINR ?? plan.priceINR ?? 0}
+                          onChange={e => setEditPlanData(p => ({ ...p, priceINR: parseFloat(e.target.value) || 0 }))}
+                          className="w-full border rounded-lg px-3 py-2 text-sm outline-none"
+                          style={{ backgroundColor: 'var(--color-admin-surface-container-lowest)', borderColor: 'var(--color-admin-outline-variant)', color: 'var(--color-admin-on-surface)' }} />
+                      </div>
                       <div className="flex gap-2">
                         <button onClick={() => handleSavePlan(plan.planId)} disabled={actionLoading}
                           className="flex-1 py-2 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-1"
@@ -1238,6 +1255,16 @@ export default function AdminAiCapsPage() {
                           {formatTokens(plan.dailyTokenCap)}
                         </span>
                         <span className="text-xs font-semibold" style={{ color: 'var(--color-admin-on-surface-variant)' }}>tokens/day</span>
+                        {plan.priceINR ? (
+                          <span className="ml-auto text-sm font-bold" style={{ color: '#10b981' }}>
+                            ₹{plan.priceINR}<span className="text-[10px] font-semibold" style={{ color: 'var(--color-admin-on-surface-variant)' }}>/mo</span>
+                          </span>
+                        ) : (
+                          <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: 'var(--color-admin-surface-container-lowest)', color: 'var(--color-admin-on-surface-variant)' }}>
+                            Free
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <button onClick={() => { setEditPlanId(plan.planId); setEditPlanData({}); }}

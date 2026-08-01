@@ -1,4 +1,5 @@
 import { pbAdmin } from "@/lib/pb";
+import { ensureAiPlanCollections } from "@/lib/pbAiPlans";
 
 // In-process idempotency guard — seed only runs once per server lifecycle
 let _seedDone = false;
@@ -14,6 +15,9 @@ export async function seedAiCapsDemoData() {
   if (_seedDone) return;
   try {
     const pb = await pbAdmin();
+
+    // Ensure priceINR + ai_plan_transactions exist in PB before writing
+    await ensureAiPlanCollections();
 
     // ── 0. Deduplicate plans: keep oldest of each name, delete the rest ──
     const rawPlans = await pb.collection("ai_cap_plans").getFullList({
@@ -31,9 +35,9 @@ export async function seedAiCapsDemoData() {
 
     // ── 1. Ensure the 3 core plans exist ──
     const planDefs = [
-      { name: "free", label: "Free Tier", dailyTokenCap: 10000, description: "10K tokens/day — Enough for basic AI assistance." },
-      { name: "pro", label: "Pro Plan", dailyTokenCap: 50000, description: "50K tokens/day — Ideal for power users." },
-      { name: "enterprise", label: "Enterprise Plan", dailyTokenCap: 200000, description: "200K tokens/day — Maximum throughput." },
+      { name: "free", label: "Free Tier", dailyTokenCap: 10000, priceINR: 0, description: "10K tokens/day — Enough for basic AI assistance." },
+      { name: "pro", label: "Pro Plan", dailyTokenCap: 50000, priceINR: 499, description: "50K tokens/day — Ideal for power users." },
+      { name: "enterprise", label: "Enterprise Plan", dailyTokenCap: 200000, priceINR: 1999, description: "200K tokens/day — Maximum throughput." },
     ];
 
     const planMap = new Map<string, string>(); // name → id
@@ -41,6 +45,14 @@ export async function seedAiCapsDemoData() {
       const existing = seen.get(p.name);
       if (existing) {
         planMap.set(p.name, existing.id);
+        // Number fields default to 0 in PB after migration — backfill prices for
+        // paid plans only (free plans legitimately stay at 0).
+        const unset = existing.priceINR === undefined || existing.priceINR === null || (existing.priceINR === 0 && p.name !== 'free');
+        if (unset && existing.priceINR !== p.priceINR) {
+          try {
+            await pb.collection("ai_cap_plans").update(existing.id, { priceINR: p.priceINR }, { requestKey: `seed_price_${p.name}_${uid()}` });
+          } catch {}
+        }
       } else {
         try {
           const created = await pb.collection("ai_cap_plans").create(p, { requestKey: `seed_create_${p.name}_${uid()}` });

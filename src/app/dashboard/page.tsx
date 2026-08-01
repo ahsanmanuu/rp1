@@ -537,6 +537,11 @@ export default function DashboardPage() {
       fetchUserOffers();
     }).then(u => unsubFns.push(u)).catch(() => {});
 
+    // Realtime AI plan updates (admin edits to caps/prices refresh instantly)
+    pb.collection('ai_cap_plans').subscribe('*', () => {
+      refetchSubscriptions();
+    }).then(u => unsubFns.push(u)).catch(() => {});
+
     // Subscribe to citation_projects and paper_reviews for realtime counter updates
     if (session?.user?.id) {
       pb.collection('citation_projects').subscribe('*', () => {
@@ -561,7 +566,10 @@ export default function DashboardPage() {
       const upgradeTrigger = urlParams.get('upgrade');
       
       if (paymentStatus === 'success') {
-        alert("Payment Successful! Your Premium membership has been activated.");
+        alert("Payment Successful! Your subscription has been activated.");
+        refetchSubscriptions();
+        refetchMembership();
+        refetchQuota();
         router.replace('/dashboard');
       } else if (paymentStatus === 'failed') {
         alert("Payment Failed. Please check payment details and try again.");
@@ -2080,6 +2088,7 @@ export default function DashboardPage() {
         availablePlans={subscriptions?.availableAiPlans || []}
         currentPlanType={subscriptions?.aiPlan?.planType || null}
         isPremiumMember={membership?.membership !== 'free'}
+        loading={subscriptionsLoading}
         onSubscribed={() => {
           refetchSubscriptions();
           refetchMembership();

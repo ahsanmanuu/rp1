@@ -45,7 +45,7 @@ export default function AdminProfilePage() {
   const [loadingAiPlans, setLoadingAiPlans] = useState(globalAiPlansCache.length === 0);
   const [editingAiPlan, setEditingAiPlan] = useState<any | null>(null);
   const [creatingAiPlan, setCreatingAiPlan] = useState(false);
-  const [newAiPlan, setNewAiPlan] = useState({ name: "", label: "", dailyTokenCap: "", description: "" });
+  const [newAiPlan, setNewAiPlan] = useState({ name: "", label: "", dailyTokenCap: "", priceINR: "", description: "" });
   const [saveAiPlanLoading, setSaveAiPlanLoading] = useState(false);
   const [createAiPlanLoading, setCreateAiPlanLoading] = useState(false);
   const [deletingAiPlanId, setDeletingAiPlanId] = useState<string | null>(null);
@@ -172,12 +172,13 @@ export default function AdminProfilePage() {
           name: newAiPlan.name,
           label: newAiPlan.label,
           dailyTokenCap: parseInt(newAiPlan.dailyTokenCap, 10),
+          priceINR: newAiPlan.priceINR ? parseFloat(newAiPlan.priceINR) : 0,
           description: newAiPlan.description,
         }),
       });
       const data = await res.json();
       if (data.success) {
-        setNewAiPlan({ name: "", label: "", dailyTokenCap: "", description: "" });
+        setNewAiPlan({ name: "", label: "", dailyTokenCap: "", priceINR: "", description: "" });
         setCreatingAiPlan(false);
         fetchAiPlans();
         setMessage({ type: "success", text: "AI Plan created successfully!" });
@@ -205,6 +206,7 @@ export default function AdminProfilePage() {
           name: editingAiPlan.name,
           label: editingAiPlan.label,
           dailyTokenCap: parseInt(editingAiPlan.dailyTokenCap, 10),
+          priceINR: editingAiPlan.priceINR !== undefined && !isNaN(editingAiPlan.priceINR) ? editingAiPlan.priceINR : 0,
           description: editingAiPlan.description,
           isActive: editingAiPlan.isActive,
         }),
@@ -903,6 +905,7 @@ export default function AdminProfilePage() {
                       <th className="py-3 px-2 opacity-60">Plan Name (System Key)</th>
                       <th className="py-3 px-2 opacity-60">Display Label</th>
                       <th className="py-3 px-2 opacity-60 text-right">Daily Token Cap</th>
+                      <th className="py-3 px-2 opacity-60 text-right">Price (₹/mo)</th>
                       <th className="py-3 px-2 opacity-60 text-center">Status</th>
                       <th className="py-3 px-2 opacity-60 text-center">Actions</th>
                     </tr>
@@ -910,7 +913,7 @@ export default function AdminProfilePage() {
                   <tbody>
                     {aiPlans.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="py-8 text-center text-sm opacity-50">
+                        <td colSpan={6} className="py-8 text-center text-sm opacity-50">
                           No AI plans defined yet.
                         </td>
                       </tr>
@@ -925,6 +928,13 @@ export default function AdminProfilePage() {
                           <td className="py-3.5 px-2 font-bold">{ap.label}</td>
                           <td className="py-3.5 px-2 font-mono font-bold text-right text-emerald-400">
                             {ap.dailyTokenCap.toLocaleString()} tokens
+                          </td>
+                          <td className="py-3.5 px-2 font-mono font-bold text-right">
+                            {ap.priceINR ? (
+                              <span className="text-amber-400">₹{ap.priceINR}</span>
+                            ) : (
+                              <span className="opacity-50">Free</span>
+                            )}
                           </td>
                           <td className="py-3.5 px-2 text-center">
                             <span
@@ -1365,7 +1375,7 @@ export default function AdminProfilePage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold mb-2 opacity-80">Daily Token Cap <span className="text-rose-400">*</span></label>
                       <input
@@ -1374,6 +1384,22 @@ export default function AdminProfilePage() {
                         value={newAiPlan.dailyTokenCap}
                         onChange={(e) => setNewAiPlan({ ...newAiPlan, dailyTokenCap: e.target.value })}
                         required
+                        min={0}
+                        className="w-full px-4 py-3 rounded-xl border text-sm font-medium outline-none"
+                        style={{
+                          backgroundColor: "var(--color-admin-surface-container-lowest)",
+                          borderColor: "var(--color-admin-outline-variant)",
+                          color: "var(--color-admin-on-surface)",
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold mb-2 opacity-80">Price (₹/month) <span className="text-emerald-400">0 = free</span></label>
+                      <input
+                        type="number"
+                        placeholder="e.g. 499"
+                        value={newAiPlan.priceINR}
+                        onChange={(e) => setNewAiPlan({ ...newAiPlan, priceINR: e.target.value })}
                         min={0}
                         className="w-full px-4 py-3 rounded-xl border text-sm font-medium outline-none"
                         style={{
@@ -1492,6 +1518,21 @@ export default function AdminProfilePage() {
                         value={editingAiPlan.dailyTokenCap === undefined || isNaN(editingAiPlan.dailyTokenCap) ? "" : editingAiPlan.dailyTokenCap}
                         onChange={(e) => setEditingAiPlan({ ...editingAiPlan, dailyTokenCap: parseInt(e.target.value, 10) })}
                         required
+                        min={0}
+                        className="w-full px-4 py-3 rounded-xl border text-sm font-medium outline-none"
+                        style={{
+                          backgroundColor: "var(--color-admin-surface-container-lowest)",
+                          borderColor: "var(--color-admin-outline-variant)",
+                          color: "var(--color-admin-on-surface)",
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold mb-2 opacity-80">Price (₹/month)</label>
+                      <input
+                        type="number"
+                        value={editingAiPlan.priceINR === undefined || isNaN(editingAiPlan.priceINR) ? "" : editingAiPlan.priceINR}
+                        onChange={(e) => setEditingAiPlan({ ...editingAiPlan, priceINR: parseFloat(e.target.value) })}
                         min={0}
                         className="w-full px-4 py-3 rounded-xl border text-sm font-medium outline-none"
                         style={{

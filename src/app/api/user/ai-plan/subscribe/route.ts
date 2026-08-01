@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "@/lib/auth-pb";
 import { syncUserToPb } from "@/lib/pb-sync";
+import { ensureAiPlanCollections } from "@/lib/pbAiPlans";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +21,12 @@ function remainingDays(target: Date | null | undefined): number | null {
  * Self-service AI subscription activation.
  * Sets aiCapPlanId + aiPlanStartsAt + aiPlanExpiresAt with compounding
  * (extends from the current expiry when the user is already active on an AI plan).
+ * Free plans (priceINR = 0) activate instantly; paid plans require the
+ * Cashfree order flow via /api/payments/ai-plan/create-order.
  */
 export async function POST(req: NextRequest) {
   try {
+    await ensureAiPlanCollections();
     const session = await getServerSession().catch(() => null);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -43,6 +47,21 @@ export async function POST(req: NextRequest) {
     const plan = await prisma.aiCapPlan.findFirst({ where: { name: planName, isActive: true } });
     if (!plan) {
       return NextResponse.json({ error: "AI plan not found or inactive" }, { status: 404 });
+    }
+
+    // Paid plans must be purchased via the Cashfree flow — never activated for free.
+    if (plan.priceINR && plan.priceINR > 0) {
+      return NextResponse.json(
+        {
+          error: "PAYMENT_REQUIRED",
+          message: `"${plan.label}" is a paid plan. Please complete payment to activate it.`,
+          priceINR: plan.priceINR,
+          totalINR: Math.round(plan.priceINR * durationMonths * 100) / 100,
+          durationMonths,
+          planName: plan.name,
+        },
+        { status: 402 }
+      );
     }
 
     const user = await prisma.user.findUnique({
@@ -101,6 +120,7 @@ export async function POST(req: NextRequest) {
       planType: plan.name,
       planName: plan.label,
       planDescription: plan.description,
+      priceINR: plan.priceINR ?? 0,
       status: "active",
       isPremiumTier: plan.name !== "free",
       startsAt: iso(startsAt),

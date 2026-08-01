@@ -646,6 +646,8 @@ const MODEL_MAP: Record<string, string> = {
   PromoCode: 'promo_codes',
   AiCapPlan: 'ai_cap_plans',
   aiCapPlan: 'ai_cap_plans',
+  AiPlanTransaction: 'ai_plan_transactions',
+  aiPlanTransaction: 'ai_plan_transactions',
   AiCapRule: 'ai_cap_rules',
   aiCapRule: 'ai_cap_rules',
   userAiCap: 'user_ai_caps',

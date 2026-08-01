@@ -597,9 +597,28 @@ export const COLLECTIONS: CollectionDef[] = [
       { name: 'name', type: 'text', required: true, unique: true },
       { name: 'label', type: 'text', required: true },
       { name: 'dailyTokenCap', type: 'number', required: true },
+      { name: 'priceINR', type: 'number' },
       { name: 'description', type: 'text' },
       { name: 'isActive', type: 'bool' },
     ],
+  },
+  // ─── AI Plan Transactions ─────────────────────────────────────────
+  {
+    name: 'ai_plan_transactions',
+    type: 'base',
+    schema: [
+      { name: 'userId', type: 'relation', required: true, options: { collectionId: '_pb_users_collection_', cascadeDelete: true } },
+      { name: 'orderId', type: 'text', required: true, unique: true },
+      { name: 'planId', type: 'relation', required: true, options: { collectionId: 'ai_cap_plans', cascadeDelete: true } },
+      { name: 'planName', type: 'text', required: true },
+      { name: 'amount', type: 'number', required: true },
+      { name: 'currency', type: 'text' },
+      { name: 'durationMonths', type: 'number', required: true },
+      { name: 'paymentStatus', type: 'select', required: true, options: { values: ['pending', 'paid', 'failed'] } },
+      { name: 'startsAt', type: 'date' },
+      { name: 'expiresAt', type: 'date' },
+    ],
+    indexes: ['CREATE INDEX idx_aipt_user ON ai_plan_transactions (userId);'],
   },
   // ─── User AI Caps ──────────────────────────────────────────────────
   {
@@ -954,11 +973,40 @@ async function main() {
   }
   const usersCollectionId = usersCollection.id;
 
+  // Build a field object compatible with the current PocketBase collection API:
+  // relation props (collectionId/cascadeDelete/maxSelect/minSelect) are top-level,
+  // select options use a flat `values` array.
+  function buildField(f: FieldDef, usersColId: string): any {
+    const field: any = { name: f.name, type: f.type, required: f.required || false, unique: f.unique || false };
+    if (f.options) {
+      if (f.type === 'relation') {
+        const rel = { ...f.options };
+        if (rel.collectionId === '_pb_users_collection_') {
+          rel.collectionId = usersColId;
+        } else {
+          // Resolve collection names to real IDs (e.g. "ai_cap_plans" -> pbc_...)
+          const named = existingCollections.find((c: any) => c.name === rel.collectionId);
+          if (named) rel.collectionId = named.id;
+        }
+        field.collectionId = rel.collectionId;
+        field.cascadeDelete = rel.cascadeDelete !== undefined ? rel.cascadeDelete : true;
+        field.maxSelect = rel.maxSelect || 0;
+        field.minSelect = rel.minSelect || 0;
+      } else if (f.type === 'select') {
+        field.values = f.options.values || [];
+        field.maxSelect = 0;
+      } else {
+        field.options = { ...f.options };
+      }
+    }
+    return field;
+  }
+
   console.log(`\nFound ${existingCollections.length} existing collections. Users collection ID: ${usersCollectionId}\n`);
 
   // Extend users collection with custom fields
   console.log('Extending users collection with custom fields...');
-  const existingUserFields = new Set((usersCollection as any).schema?.map((f: any) => f.name) || []);
+  const existingUserFields = new Set(((usersCollection as any).fields || (usersCollection as any).schema || []).map((f: any) => f.name));
   const userFieldsToAdd: FieldDef[] = [
     { name: 'points', type: 'number' },
     { name: 'theme', type: 'text' },
@@ -973,16 +1021,18 @@ async function main() {
     { name: 'aiCapPlanId', type: 'relation', options: { collectionId: '' } },
   ];
 
-  const newSchema: any[] = [...((usersCollection as any).schema || [])];
+  const newFields: any[] = [...((usersCollection as any).fields || [])];
   for (const field of userFieldsToAdd) {
     if (!existingUserFields.has(field.name)) {
-      const f: any = { name: field.name, type: field.type, required: false, unique: false };
-      if (field.options) f.options = field.options;
-      newSchema.push(f);
+      newFields.push(buildField(field, usersCollectionId));
       console.log(`  + Added field: ${field.name} (${field.type})`);
     }
   }
-  await pb.collections.update(usersCollectionId, { schema: newSchema });
+  if (newFields.length !== ((usersCollection as any).fields || []).length) {
+    await pb.collections.update(usersCollectionId, { fields: newFields });
+  } else {
+    console.log('  Users collection already up to date.');
+  }
   console.log('  Users collection updated.\n');
 
   // Create base collections
@@ -992,23 +1042,17 @@ async function main() {
       console.log(`  Syncing rules and schema for existing collection ${name}...`);
       try {
         const existing = await pb.collections.getOne(name);
-        const existingFields = new Set((existing as any).schema?.map((f: any) => f.name) || []);
-        const newSchema = [...((existing as any).schema || [])];
+        const existingFields = new Set(((existing as any).fields || []).map((f: any) => f.name));
+        const newFields = [...((existing as any).fields || [])];
         for (const field of def.schema) {
           if (!existingFields.has(field.name)) {
-            const f: any = { name: field.name, type: field.type, required: field.required || false, unique: field.unique || false };
-            if (field.options) {
-              f.options = { ...field.options };
-              if (f.options.collectionId === '_pb_users_collection_') {
-                f.options.collectionId = usersCollectionId;
-              }
-            }
-            newSchema.push(f);
+            const f: any = buildField(field, usersCollectionId);
+            newFields.push(f);
             console.log(`  + Added missing field: ${field.name} (${field.type}) to existing collection ${name}`);
           }
         }
         await pb.collections.update(existing.id, {
-          schema: newSchema,
+          fields: newFields,
           listRule: def.listRule !== undefined ? def.listRule : existing.listRule,
           viewRule: def.viewRule !== undefined ? def.viewRule : existing.viewRule,
           createRule: def.createRule !== undefined ? def.createRule : existing.createRule,
@@ -1022,17 +1066,7 @@ async function main() {
     }
 
     console.log(`  Creating ${name}...`);
-    const fields = def.schema.map((f: FieldDef) => {
-      const field: any = { name: f.name, type: f.type, required: f.required || false, unique: f.unique || false };
-      if (f.options) {
-        field.options = { ...f.options };
-        // Fix relation references - replace placeholder with actual users collection ID
-        if (field.options.collectionId === '_pb_users_collection_') {
-          field.options.collectionId = usersCollectionId;
-        }
-      }
-      return field;
-    });
+    const fields = def.schema.map((f: FieldDef) => buildField(f, usersCollectionId));
 
     try {
       const created = await pb.collections.create({

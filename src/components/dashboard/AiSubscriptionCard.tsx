@@ -100,6 +100,11 @@ export default function AiSubscriptionCard({
                 {plan.planName || "Free Tier"}
                 {!isFree && <CheckCircle2 className="text-emerald-500 fill-emerald-500/20 shrink-0" size={18} />}
               </div>
+              {plan.priceINR > 0 && (
+                <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                  ₹{Number(plan.priceINR).toLocaleString('en-IN')} / month
+                </div>
+              )}
             </div>
           </div>
           <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md ${statusBadge.cls}`}>

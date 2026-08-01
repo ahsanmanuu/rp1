@@ -266,6 +266,7 @@ const schemas = {
     makeField(text("label", { required: true })),
     makeField(text("description")),
     makeField(number("dailyTokenCap", { required: true })),
+    makeField(number("priceINR")),
     makeField(bool("isActive")),
   ],
 };

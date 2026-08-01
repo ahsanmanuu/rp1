@@ -101,7 +101,7 @@ export async function ensurePbUserCollectionFields(): Promise<void> {
     if (!usersCol) return;
 
     const existingFields = new Set(
-      ((usersCol as any).schema || []).map((f: any) => f.name)
+      ((usersCol as any).fields || (usersCol as any).schema || []).map((f: any) => f.name)
     );
     const missingFields: { name: string; type: string; options?: any }[] = [];
     const fieldDefs: Record<string, { type: string; options?: any }> = {
@@ -124,16 +124,21 @@ export async function ensurePbUserCollectionFields(): Promise<void> {
 
     for (const [name, def] of Object.entries(fieldDefs)) {
       if (!existingFields.has(name)) {
-        missingFields.push({ name, ...def });
+        const field: any = { name, type: def.type, required: false, unique: false };
+        if (def.type === 'select') {
+          field.values = def.options?.values;
+          field.maxSelect = 0;
+        }
+        missingFields.push(field);
       }
     }
 
     if (missingFields.length > 0) {
-      const newSchema = [...((usersCol as any).schema || [])];
+      const newFields = [...((usersCol as any).fields || (usersCol as any).schema || [])];
       for (const field of missingFields) {
-        newSchema.push({ name: field.name, type: field.type, required: false, unique: false, options: field.options });
+        newFields.push(field);
       }
-      await admPb.collections.update(usersCol.id, { schema: newSchema });
+      await admPb.collections.update(usersCol.id, { fields: newFields });
     }
   } catch {
     // non-fatal
@@ -147,12 +152,12 @@ export async function ensurePbSessionCollectionFields(): Promise<void> {
     if (!sessionCol) return;
 
     const existingFields = new Set(
-      ((sessionCol as any).schema || []).map((f: any) => f.name)
+      ((sessionCol as any).fields || (sessionCol as any).schema || []).map((f: any) => f.name)
     );
     if (!existingFields.has('lastActiveAt')) {
-      const newSchema = [...((sessionCol as any).schema || [])];
-      newSchema.push({ name: 'lastActiveAt', type: 'date', required: false, unique: false });
-      await admPb.collections.update(sessionCol.id, { schema: newSchema });
+      const newFields = [...((sessionCol as any).fields || (sessionCol as any).schema || [])];
+      newFields.push({ name: 'lastActiveAt', type: 'date', required: false, unique: false });
+      await admPb.collections.update(sessionCol.id, { fields: newFields });
     }
   } catch (err: any) {
     console.error("Failed to update user_sessions collection in PocketBase:", err.message);
@@ -166,7 +171,7 @@ export async function ensurePbSessionActivitiesCollectionFields(): Promise<void>
     if (!col) return;
 
     const existingFields = new Set(
-      ((col as any).schema || []).map((f: any) => f.name)
+      ((col as any).fields || (col as any).schema || []).map((f: any) => f.name)
     );
     const missingFields: { name: string; type: string }[] = [];
     if (!existingFields.has('latitude')) {
@@ -177,11 +182,11 @@ export async function ensurePbSessionActivitiesCollectionFields(): Promise<void>
     }
 
     if (missingFields.length > 0) {
-      const newSchema = [...((col as any).schema || [])];
+      const newFields = [...((col as any).fields || (col as any).schema || [])];
       for (const field of missingFields) {
-        newSchema.push({ name: field.name, type: field.type, required: false, unique: false });
+        newFields.push(field);
       }
-      await admPb.collections.update(col.id, { schema: newSchema });
+      await admPb.collections.update(col.id, { fields: newFields });
     }
   } catch (err: any) {
     console.error("Failed to update user_session_activities collection in PocketBase:", err.message);

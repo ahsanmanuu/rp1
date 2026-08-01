@@ -50,6 +50,7 @@ model User {
   aiPlanExpiryWarnedAt DateTime? @db.Timestamptz
   aiCaps        UserAiCap[]
   aiUsageDailySummaries AiUsageDailySummary[]
+  aiPlanTransactions AiPlanTransaction[]
   userSessions  UserSession[]
   layoutSettings LayoutSettings?
 }
@@ -687,6 +688,7 @@ model AiCapPlan {
   name            String   @unique // e.g. "free", "pro", "enterprise", "custom"
   label           String   // Display name e.g. "Free Tier", "Pro Plan"
   dailyTokenCap   Int      // Max tokens per day
+  priceINR        Float    @default(0) // Price per month in INR (0 = free plan)
   description     String?
   isActive        Boolean  @default(true)
   createdAt       DateTime @default(now()) @db.Timestamptz
@@ -696,6 +698,26 @@ model AiCapPlan {
   userAiCaps      UserAiCap[]
 
   @@map("ai_cap_plans")
+}
+
+model AiPlanTransaction {
+  id              String   @id @default(cuid())
+  userId          String
+  orderId         String   @unique
+  planId          String
+  planName        String
+  amount          Float
+  currency        String   @default("INR")
+  durationMonths  Int
+  paymentStatus   String   // pending, paid, failed
+  startsAt        DateTime @default(now()) @db.Timestamptz
+  expiresAt       DateTime @db.Timestamptz
+  createdAt       DateTime @default(now()) @db.Timestamptz
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("ai_plan_transactions")
 }
 
 model UserAiCap {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAdminSessionFromRequest } from "@/lib/adminAuth";
 import { seedAiCapsDemoData } from "@/lib/seedAiCaps";
+import { ensureAiPlanCollections } from "@/lib/pbAiPlans";
 
 export const dynamic = "force-dynamic";
 
@@ -46,8 +47,11 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
+    // Ensure PB schema has priceINR + ai_plan_transactions before writing
+    await ensureAiPlanCollections();
+
     const body = await req.json();
-    const { name, label, dailyTokenCap, description } = body;
+    const { name, label, dailyTokenCap, priceINR, description } = body;
 
     if (!name || !label || dailyTokenCap === undefined) {
       return NextResponse.json({ error: "Missing required fields: name, label, dailyTokenCap" }, { status: 400 });
@@ -63,6 +67,7 @@ export async function POST(req: NextRequest) {
         name,
         label,
         dailyTokenCap: parseInt(dailyTokenCap, 10),
+        priceINR: priceINR !== undefined && priceINR !== "" ? parseFloat(priceINR) : 0,
         description: description || null,
       },
     });
@@ -79,8 +84,10 @@ export async function PUT(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
+    await ensureAiPlanCollections();
+
     const body = await req.json();
-    const { id, name, label, dailyTokenCap, description, isActive } = body;
+    const { id, name, label, dailyTokenCap, priceINR, description, isActive } = body;
 
     if (!id) {
       return NextResponse.json({ error: "Missing plan ID" }, { status: 400 });
@@ -97,6 +104,7 @@ export async function PUT(req: NextRequest) {
         ...(name !== undefined && { name }),
         ...(label !== undefined && { label }),
         ...(dailyTokenCap !== undefined && { dailyTokenCap: parseInt(dailyTokenCap, 10) }),
+        ...(priceINR !== undefined && { priceINR: priceINR !== "" ? parseFloat(priceINR) : 0 }),
         ...(description !== undefined && { description: description || null }),
         ...(isActive !== undefined && { isActive }),
       },

@@ -49,6 +49,7 @@ export const BACKUP_COLLECTIONS: CollectionDef[] = [
   { name: 'ai_cap_plans' },
   { name: 'ai_cap_rules' },
   { name: 'user_ai_caps' },
+  { name: 'ai_plan_transactions' },
   { name: 'ai_usage_logs' },
   { name: 'ai_usage_daily_summaries' },
   { name: 'ai_context_configs' },
