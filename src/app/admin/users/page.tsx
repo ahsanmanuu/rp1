@@ -54,6 +54,14 @@ interface AdminUser {
   aiPlanStartsAt?: string | null;
   aiPlanExpiresAt?: string | null;
   aiCapPlanId?: string | null;
+  aiCap?: {
+    planName: string | null;
+    planType: string | null;
+    dailyCap: number;
+    usedToday: number;
+    remaining: number;
+    percentage: number;
+  };
 }
 
 function getDuration(membershipRaw: string): string {
@@ -1696,6 +1704,31 @@ export default function AdminUsersPage() {
                           )}
                         </div>
                       </div>
+
+                      {/* Live daily token remaining */}
+                      {selectedUser.aiCap && selectedUser.aiCap.dailyCap > 0 && (
+                        <div className="mt-2 pt-2 border-t" style={{ borderColor: 'var(--color-admin-outline-variant)' }}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[9px] uppercase tracking-wider font-bold" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
+                              Tokens Today ({selectedUser.aiCap.planName || selectedUser.aiCap.planType || 'Free'})
+                            </span>
+                            <span className={`text-[10px] font-black ${selectedUser.aiCap.remaining === 0 ? 'text-rose-500' : 'text-emerald-400'}`}>
+                              {selectedUser.aiCap.remaining.toLocaleString()} remaining
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(0,0,0,0.08)' }}>
+                              <div className="h-full rounded-full" style={{
+                                width: `${Math.min(selectedUser.aiCap.percentage, 100)}%`,
+                                background: selectedUser.aiCap.percentage >= 95 ? '#ef4444' : selectedUser.aiCap.percentage >= 80 ? '#f59e0b' : '#10b981',
+                              }} />
+                            </div>
+                            <span className="text-[9px] font-bold tabular-nums" style={{ color: 'var(--color-admin-on-surface-variant)' }}>
+                              {selectedUser.aiCap.usedToday.toLocaleString()} / {selectedUser.aiCap.dailyCap.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Stats */}

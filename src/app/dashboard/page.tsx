@@ -2112,6 +2112,7 @@ export default function DashboardPage() {
         data={{
           dailyTokenCap: quotaStatus?.ai?.dailyTokenCap ?? 0,
           usedToday: quotaStatus?.ai?.usedToday ?? 0,
+          remaining: quotaStatus?.ai?.remaining,
           percentage: quotaStatus?.ai?.percentage ?? 0,
           planName: quotaStatus?.ai?.planType ?? 'Free',
           quotaResetAt: quotaStatus?.ai?.quotaResetAt ?? '',

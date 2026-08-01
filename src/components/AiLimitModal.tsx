@@ -10,6 +10,7 @@ interface AiLimitModalProps {
   data?: {
     dailyTokenCap: number;
     usedToday: number;
+    remaining?: number;
     percentage: number;
     planName: string;
     quotaResetAt: string;
@@ -117,6 +118,17 @@ export default function AiLimitModal({ open, onClose, data }: AiLimitModalProps)
                 margin: 0,
               }}>
                 You've used {data?.dailyTokenCap ? data.usedToday.toLocaleString() : '—'} of {data?.dailyTokenCap ? data.dailyTokenCap.toLocaleString() : '—'} tokens today ({Math.round(data?.percentage || 0)}%).
+              </p>
+              <p style={{
+                color: 'var(--text-secondary, #64748b)',
+                fontSize: '0.85rem',
+                margin: '0.4rem 0 0',
+                fontWeight: 600,
+              }}>
+                <span style={{ color: data?.remaining && data.remaining > 0 ? '#10b981' : '#ef4444' }}>
+                  {data?.dailyTokenCap ? Math.max(0, data.remaining ?? 0).toLocaleString() : '—'} tokens remaining
+                </span>{' '}
+                today.
               </p>
             </div>
 

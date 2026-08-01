@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { findMatchingRule } from "@/lib/aiCapRules";
 
@@ -9,7 +9,11 @@ export const dynamic = "force-dynamic";
 const AI_CAP_CACHE = new Map<string, { data: any; expiry: number }>();
 const AI_CAP_CACHE_TTL = 15_000; // 15 seconds
 
-export async function GET() {
+function isFreshRequest(req: NextRequest | undefined): boolean {
+  return req?.nextUrl.searchParams.get("fresh") === "1";
+}
+
+export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession().catch(() => null);
     if (!session?.user?.id) {
@@ -18,9 +22,10 @@ export async function GET() {
 
     const userId = session.user.id as string;
 
-    // Return cached response if still valid
+    // Return cached response if still valid (skip when fresh=1 from realtime events)
+    const fresh = isFreshRequest(req);
     const cached = AI_CAP_CACHE.get(userId);
-    if (cached && cached.expiry > Date.now()) {
+    if (!fresh && cached && cached.expiry > Date.now()) {
       return NextResponse.json(cached.data, {
         headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=20' },
       });

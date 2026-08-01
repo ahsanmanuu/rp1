@@ -1,15 +1,19 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "@/lib/auth-pb";
 
 export const dynamic = "force-dynamic";
+
+function isFreshRequest(req: NextRequest | undefined): boolean {
+  return req?.nextUrl.searchParams.get("fresh") === "1";
+}
 
 function remainingDays(target: Date | null | undefined): number | null {
   if (!target) return null;
   return Math.max(0, Math.ceil((new Date(target).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession().catch(() => null);
     if (!session?.user?.id) {

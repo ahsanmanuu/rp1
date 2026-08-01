@@ -1,10 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendAiPlanExpiryReminderEmail } from "@/lib/mailer";
 import { ensureAiPlanCollections } from "@/lib/pbAiPlans";
 
 import { getServerSession } from "@/lib/auth-pb";
 export const dynamic = "force-dynamic";
+
+function isFreshRequest(req: NextRequest | undefined): boolean {
+  return req?.nextUrl.searchParams.get("fresh") === "1";
+}
 
 // Per-user response cache to avoid re-running heavy queries on every poll
 const SUBSCRIPTION_CACHE = new Map<string, { data: any; expiry: number }>();
@@ -39,7 +43,7 @@ async function getMemberSince(userId: string): Promise<string | null> {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     await ensureAiPlanCollections();
 
@@ -50,8 +54,9 @@ export async function GET() {
 
     const userId = session.user.id as string;
 
+    const fresh = isFreshRequest(req);
     const cached = SUBSCRIPTION_CACHE.get(userId);
-    if (cached && cached.expiry > Date.now()) {
+    if (!fresh && cached && cached.expiry > Date.now()) {
       return NextResponse.json(cached.data, {
         headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=20' },
       });

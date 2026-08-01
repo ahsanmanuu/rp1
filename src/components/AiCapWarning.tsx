@@ -89,9 +89,10 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
   const intervalRef       = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef      = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchStatus = useCallback(async () => {
+  const fetchStatus = useCallback(async (fresh = false) => {
     try {
-      const res = await fetch('/api/user/ai-cap/status', { cache: 'no-store' });
+      const url = fresh ? '/api/user/ai-cap/status?fresh=1' : '/api/user/ai-cap/status';
+      const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const raw = await res.json();
       const rawDailyCap  = raw.dailyCap  ?? raw.limit  ?? 0;
@@ -130,7 +131,7 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
     const handleCapTrigger = () => {
       dismissedSession.current = false;
       hasBeenDismissed.current = false;
-      fetchStatus();
+      fetchStatus(true);
     };
     window.addEventListener('ai-cap-triggered', handleCapTrigger);
     return () => { window.removeEventListener('ai-cap-triggered', handleCapTrigger); };

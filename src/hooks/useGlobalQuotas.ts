@@ -50,15 +50,16 @@ export function useGlobalQuotas() {
   const hasShownProjectModalRef = useRef(false);
   const hasShownAiDismissedRef = useRef(false);
 
-  const fetchStatus = useCallback(async () => {
+  const fetchStatus = useCallback(async (fresh = false) => {
     try {
-      if (cacheRef.current && cacheRef.current.expiry > Date.now()) {
+      if (!fresh && cacheRef.current && cacheRef.current.expiry > Date.now()) {
         setStatus(cacheRef.current.data);
         setLoading(false);
         return;
       }
 
-      const res = await fetch('/api/user/quota-status', { cache: 'no-store' });
+      const url = fresh ? '/api/user/quota-status?fresh=1' : '/api/user/quota-status';
+      const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: QuotaStatus = await res.json();
 
@@ -117,7 +118,7 @@ export function useGlobalQuotas() {
     status,
     loading,
     error,
-    refetch: fetchStatus,
+    refetch: () => fetchStatus(true),
     showProjectLimitModal,
     showAiLimitModal,
     setShowProjectLimitModal,

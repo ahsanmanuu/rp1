@@ -28,6 +28,14 @@ export interface AdminUser {
   aiPlanStartsAt?: string | null;
   aiPlanExpiresAt?: string | null;
   aiCapPlanId?: string | null;
+  aiCap?: {
+    planName: string | null;
+    planType: string | null;
+    dailyCap: number;
+    usedToday: number;
+    remaining: number;
+    percentage: number;
+  };
 }
 
 export interface ExpiryNotification {

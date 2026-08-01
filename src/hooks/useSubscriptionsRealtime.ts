@@ -50,14 +50,14 @@ export function useSubscriptionsRealtime(options: UseSubscriptionsOptions = {}) 
 
   const mountedRef = useRef(true);
   const unsubRef = useRef<(() => void) | null>(null);
-  const fetchRef = useRef<((bg?: boolean) => void) | null>(null);
+  const fetchRef = useRef<((bg?: boolean, fresh?: boolean) => void) | null>(null);
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
   const userIdRef = useRef(userId);
   userIdRef.current = userId;
 
   if (fetchRef.current === null) {
-    fetchRef.current = async (isBackground = false) => {
+    fetchRef.current = async (isBackground = false, fresh = false) => {
       if (!mountedRef.current) return;
 
       if (!isBackground) {
@@ -65,7 +65,10 @@ export function useSubscriptionsRealtime(options: UseSubscriptionsOptions = {}) 
       }
 
       try {
-        const res = await fetch('/api/user/subscriptions', { cache: 'no-store' });
+        const url = fresh
+          ? '/api/user/subscriptions?fresh=1'
+          : '/api/user/subscriptions';
+        const res = await fetch(url, { cache: 'no-store' });
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           throw new Error(body?.error || `Failed to load subscriptions (${res.status})`);
@@ -102,8 +105,8 @@ export function useSubscriptionsRealtime(options: UseSubscriptionsOptions = {}) 
     };
   }
 
-  const refetch = useCallback(() => {
-    fetchRef.current?.(true);
+  const refetch = useCallback((fresh = true) => {
+    fetchRef.current?.(true, fresh);
   }, []);
 
   useEffect(() => {
@@ -133,7 +136,7 @@ export function useSubscriptionsRealtime(options: UseSubscriptionsOptions = {}) 
 
           const unsubFns: (() => void)[] = [];
           const onEvent = () => {
-            if (mountedRef.current) fetchRef.current?.(true);
+            if (mountedRef.current) fetchRef.current?.(true, true);
           };
 
           try {

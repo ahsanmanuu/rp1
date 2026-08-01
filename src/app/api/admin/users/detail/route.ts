@@ -25,11 +25,47 @@ function formatPlan(membership: string): string {
 }
 
 // ── Full user detail builder ─────────────────────────────────────────────────
-async function buildUserDetail(u: any, aiTokenMap: Record<string, number>) {
+async function buildUserDetail(u: any, aiTokenMap: Record<string, number>, includeAiCap = false) {
   const lastSession = u.sessionActivities?.[0] || null;
   const isTempBlocked =
     u.status !== "blacklisted" &&
     !!(u.blockedUntil && new Date(u.blockedUntil) > new Date());
+
+  // ── Today's AI cap status (used/remaining tokens) ──────────────────────────
+  let aiCap: {
+    planName: string | null;
+    planType: string | null;
+    dailyCap: number;
+    usedToday: number;
+    remaining: number;
+    percentage: number;
+  } = { planName: null, planType: null, dailyCap: 0, usedToday: 0, remaining: 0, percentage: 0 };
+  if (includeAiCap) {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const [todaySummary, capPlan] = await Promise.all([
+        prisma.aiUsageDailySummary.findUnique({
+          where: { userId_date: { userId: u.id, date: today } },
+        }),
+        u.aiCapPlanId
+          ? prisma.aiCapPlan.findUnique({ where: { id: u.aiCapPlanId } })
+          : Promise.resolve(null),
+      ]);
+      const dailyCap = u.aiDailyCapOverride || capPlan?.dailyTokenCap || 0;
+      const usedToday = todaySummary?.totalTokens ?? 0;
+      const remaining = Math.max(0, dailyCap - usedToday);
+      aiCap = {
+        planName: capPlan?.label ?? (capPlan?.name ?? null),
+        planType: capPlan?.name ?? null,
+        dailyCap,
+        usedToday,
+        remaining,
+        percentage: dailyCap > 0 ? Math.round((usedToday / dailyCap) * 100) : 0,
+      };
+    } catch (err: any) {
+      console.warn(`[admin users detail] aiCap computation failed for ${u.id}:`, err?.message);
+    }
+  }
 
   return {
     id: u.id,
@@ -39,6 +75,11 @@ async function buildUserDetail(u: any, aiTokenMap: Record<string, number>) {
     membership: formatPlan(u.membership || "free"),
     membershipRaw: u.membership || "free",
     membershipExpiresAt: u.membershipExpiresAt || null,
+    aiPlanStartsAt: u.aiPlanStartsAt || null,
+    aiPlanExpiresAt: u.aiPlanExpiresAt || null,
+    aiCapPlanId: u.aiCapPlanId || null,
+    aiDailyCapOverride: u.aiDailyCapOverride || 0,
+    aiCap,
     points: u.points || 0,
     status: u.status || "active",
     blacklistReason: u.blacklistReason || null,
@@ -119,7 +160,7 @@ export async function GET(req: NextRequest) {
       const aiTokens = aiLog[0]?._sum?.totalTokens || 0;
 
       const tokenMap: Record<string, number> = { [userId]: aiTokens };
-      const detail = await buildUserDetail(u, tokenMap);
+      const detail = await buildUserDetail(u, tokenMap, true);
 
       return NextResponse.json({ success: true, user: detail });
     }

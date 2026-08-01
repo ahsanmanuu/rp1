@@ -276,9 +276,10 @@ export default function CitationGeneratorPage() {
     }
   };
 
-  const fetchAiCapStatus = async () => {
+  const fetchAiCapStatus = async (fresh = false) => {
     try {
-      const res = await fetch('/api/user/ai-cap/status');
+      const url = fresh ? '/api/user/ai-cap/status?fresh=1' : '/api/user/ai-cap/status';
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setAiCapStatus({
@@ -293,7 +294,12 @@ export default function CitationGeneratorPage() {
   useEffect(() => {
     fetchAiCapStatus();
     const interval = setInterval(fetchAiCapStatus, 30000);
-    return () => clearInterval(interval);
+    const onCapTrigger = () => fetchAiCapStatus(true);
+    window.addEventListener('ai-cap-triggered', onCapTrigger);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('ai-cap-triggered', onCapTrigger);
+    };
   }, []);
 
   const toggleCheck = (id: string) => {

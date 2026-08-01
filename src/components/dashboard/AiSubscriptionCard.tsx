@@ -40,6 +40,20 @@ export default function AiSubscriptionCard({
   const expired = plan.status === 'expired';
 
   const counter = useCountdown(plan.expiresAt, 1000);
+  const resetCounter = useCountdown(plan.quotaResetAt, 1000);
+
+  const usedToday = Number(plan.usedToday ?? plan.used ?? 0) || 0;
+  const dailyLimit = Number(plan.limit ?? plan.dailyTokenCap ?? 0) || 0;
+  const remainingTokens =
+    plan.remaining != null
+      ? Math.max(0, Number(plan.remaining))
+      : Math.max(0, dailyLimit - usedToday);
+  const percentage =
+    plan.percentage != null
+      ? Number(plan.percentage)
+      : dailyLimit > 0
+        ? (usedToday / dailyLimit) * 100
+        : 0;
 
   const remainingDays =
     plan.remainingDays ?? (plan.expiresAt ? Math.max(0, Math.ceil((new Date(plan.expiresAt).getTime() - Date.now()) / 86400000)) : null);
@@ -132,14 +146,14 @@ export default function AiSubscriptionCard({
           <div className="flex justify-between items-baseline mb-2">
             <div>
               <span className="text-2xl font-black text-primary leading-none">
-                {formatTokens(plan.usedToday)}
+                {formatTokens(usedToday)}
               </span>
               <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 ml-1">
-                / {formatTokens(plan.limit || 0)} tokens used today
+                / {formatTokens(dailyLimit)} tokens used today
               </span>
             </div>
             <span className="text-xs font-bold text-slate-400 dark:text-slate-500">
-              {Math.round(plan.percentage ?? 0)}%
+              {Math.round(percentage)}%
             </span>
           </div>
 
@@ -148,12 +162,35 @@ export default function AiSubscriptionCard({
               className={`h-full rounded-full transition-all duration-700 ease-out ${
                 plan.isCapped
                   ? "bg-gradient-to-r from-rose-500 to-rose-600"
-                  : (plan.percentage ?? 0) >= 80
+                  : percentage >= 80
                     ? "bg-gradient-to-r from-amber-500 to-amber-600"
                     : "bg-gradient-to-r from-emerald-500 to-emerald-600"
               }`}
-              style={{ width: `${Math.max(Math.min(plan.percentage ?? 0, 100), 2)}%` }}
+              style={{ width: `${Math.max(Math.min(percentage, 100), 2)}%` }}
             />
+          </div>
+
+          {/* Live remaining tokens readout */}
+          <div className="flex justify-between items-center gap-2 mt-2.5 rounded-xl border border-outline/10 bg-surface/60 px-3 py-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Zap size={12} className={remainingTokens === 0 ? "text-rose-500 shrink-0" : "text-emerald-500 shrink-0"} />
+              <span className={`text-[13px] font-black leading-none truncate ${remainingTokens === 0 ? "text-rose-500" : "text-emerald-600 dark:text-emerald-400"}`}>
+                {formatTokens(remainingTokens)} remaining
+              </span>
+              <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 whitespace-nowrap">
+                today
+              </span>
+            </div>
+            {plan.isCapped ? (
+              <span className="text-[9px] font-black uppercase tracking-wider text-rose-500 whitespace-nowrap flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+                Exhausted
+              </span>
+            ) : resetCounter.active ? (
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 whitespace-nowrap font-mono tabular-nums">
+                Reset in {resetCounter.hours}h {resetCounter.minutes}m {resetCounter.seconds}s
+              </span>
+            ) : null}
           </div>
 
           <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-2 flex-wrap gap-2">

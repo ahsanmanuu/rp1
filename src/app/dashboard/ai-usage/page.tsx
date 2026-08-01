@@ -62,9 +62,10 @@ export default function AiUsagePage() {
   const [refreshing, setRefreshing] = useState(false);
   const [days, setDays] = useState(30);
 
-  const fetchStatus = useCallback(async () => {
+  const fetchStatus = useCallback(async (fresh = false) => {
     try {
-      const res = await fetch('/api/user/ai-cap/status');
+      const url = fresh ? '/api/user/ai-cap/status?fresh=1' : '/api/user/ai-cap/status';
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setCapStatus(data);
@@ -109,7 +110,7 @@ export default function AiUsagePage() {
     if (status !== 'authenticated') return;
 
     const refreshAll = () => {
-      fetchStatus();
+      fetchStatus(true);
       fetchHistory();
     };
 
