@@ -1363,7 +1363,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                <motion.main 
                  initial={{ y: 20, opacity: 0 }}
                  animate={{ y: 0, opacity: 1 }}
-                  style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: EDITOR_MOODS[editorMood].bg, borderRadius: '16px', border: '1px solid color-mix(in srgb, var(--accent-primary) 28%, var(--border))', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}
+                  style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid color-mix(in srgb, var(--accent-primary) 28%, var(--border))', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}
                >
                  <div className="custom-scroll" style={{ 
                      height: '42px', 
@@ -1376,7 +1376,10 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                      overflowY: 'hidden', 
                      whiteSpace: 'nowrap',
                      scrollbarWidth: 'none',
-                     msOverflowStyle: 'none'
+                     msOverflowStyle: 'none',
+                     borderTopLeftRadius: '15px',
+                     borderTopRightRadius: '15px',
+                     isolation: 'isolate'
                    }}>
                       {openTabs.map(t => (
                         <div key={t} onClick={() => switchTab(t)} className="group" style={{ 
@@ -1421,7 +1424,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                        </div>
                      ))}
                   </div>
-                           <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'row', minHeight: 0 }}>
+                           <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'row', minHeight: 0, background: EDITOR_MOODS[editorMood].bg }}>
                      <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                         {isImage(activeFile) ? (
                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', padding: '2rem' }}>

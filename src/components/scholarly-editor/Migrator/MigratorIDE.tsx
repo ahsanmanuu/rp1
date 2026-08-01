@@ -1139,7 +1139,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
             <motion.main 
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
-              style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: EDITOR_MOODS[editorMood].bg, borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}
+              style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}
             >
                <div style={{ 
                   height: '42px', 
@@ -1150,7 +1150,10 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
                   position: 'relative',
                   overflowX: 'auto',
                   scrollbarWidth: 'none',
-                  msOverflowStyle: 'none'
+                  msOverflowStyle: 'none',
+                  borderTopLeftRadius: '15px',
+                  borderTopRightRadius: '15px',
+                  isolation: 'isolate'
                }}>
                   {openTabs.map(t => (
                     <div key={t} onClick={() => switchTab(t)} className="group" style={{ 
@@ -1180,7 +1183,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
                   ))}
                </div>
 
-               <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }}>
+               <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', background: EDITOR_MOODS[editorMood].bg }}>
                   <EditorLoadingOverlay 
                     visible={initializing} 
                     label="LOADING EDITOR WORKSPACE" 

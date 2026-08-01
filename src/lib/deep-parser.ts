@@ -703,7 +703,7 @@ export class DeepDocumentParser {
       }
       else if (
           tagName !== 'table' && (
-            (/^\s*(?:MATHBLOCKX\d+XMARKER|(?:\(\d+(?:\.\d+)*\)|\[\d+(?:\.\d+)*\])|[,.:;()\[\]\s*-])+$/i.test(f.text)) ||
+            (/^\s*(?:MATHBLOCKX\d+XMARKER)(?:\s*(?:MATHBLOCKX\d+XMARKER|(?:\(\d+(?:\.\d+)*\)|\[\d+(?:\.\d+)*\])|[,.:;()\[\]\s*-]))*$/i.test(f.text)) ||
             this.detectEquation(f)
           )
       ) {
@@ -1773,6 +1773,10 @@ export class DeepDocumentParser {
     // Email addresses should never be classified as equations
     if (EMAIL_RE.test(text)) return false;
 
+    // Reference lines: "[N] Author, Title, ..." — must NOT be classified as equations
+    if (/^\s*\[\d+\]/.test(text) && text.length > 40) return false;
+    if (/\b(?:et\s+al|vol\.|pp\.|doi:|proceedings|journal|conference)\b/i.test(text)) return false;
+
     // 1. Exclude lines that are clearly normal headings, captions, or list items
     if (/^(?:figure|fig\.|table|tab\.|algorithm|algo\.|section|chapter|appendix)/i.test(text)) return false;
     
@@ -1783,8 +1787,13 @@ export class DeepDocumentParser {
     }
 
     // 3. Equation with trailing/leading equation number: e.g., "y = mx + c (1)" or "(1) y = mx + c"
-    const hasEquationNumber = /(?:\(\d+(?:\.\d+)*\)|\[\d+(?:\.\d+)*\])\s*$/.test(text) ||
-                              /^\s*(?:\(\d+(?:\.\d+)*\)|\[\d+(?:\.\d+)*\])/.test(text);
+    // Equation numbers use (N) format. Square brackets [N] are ambiguous (could be references).
+    // Only treat [N] as equation number if the text has NO reference-like content.
+    const hasParenEquationNum = /\(\d+(?:\.\d+)*\)\s*$/.test(text) || /^\s*\(\d+(?:\.\d+)*\)/.test(text);
+    const hasBracketNum = /\[\d+(?:\.\d+)*\]\s*$/.test(text) || /^\s*\[\d+(?:\.\d+)*\]/.test(text);
+    const isReferenceContent = /\b(?:et\s+al|vol\.|no\.|pp\.|doi:|issn|isbn|proceedings|journal|conference|trans\.|ieee|acm|springer|elsevier|wiley)\b/i.test(text) ||
+                               /\b(?:19|20)\d{2}\b/.test(text); // Contains a year (1900-2099)
+    const hasEquationNumber = hasParenEquationNum || (hasBracketNum && !isReferenceContent);
     
     // Math symbols: basic operators, Greek letters, summation, integration, brackets, relations
     const mathSymbolCount = (text.match(/[=+\-*/^\\∑∫√²³α-ωΑ-Ωθλπμσδφψωηρ<>~≈≠≤≥_()\[\]{}]/g) || []).length;

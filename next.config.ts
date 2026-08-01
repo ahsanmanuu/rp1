@@ -240,7 +240,7 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '100mb',
     },
     proxyClientMaxBodySize: '100mb',
-    optimizePackageImports: ['lucide-react', 'pdfjs-dist', 'framer-motion'],
+    optimizePackageImports: ['pdfjs-dist', 'framer-motion'],
   },
   turbopack: {},
   webpack: (config, { isServer, webpack }) => {

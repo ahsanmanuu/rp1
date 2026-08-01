@@ -1037,7 +1037,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                <motion.main 
                  initial={{ y: 20, opacity: 0 }}
                  animate={{ y: 0, opacity: 1 }}
-                 style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: EDITOR_MOODS[editorMood].bg, borderRadius: '16px', border: '1px solid var(--border)', overflow: 'hidden', boxShadow: '0 8px 30px rgba(0,0,0,0.15)' }}
+                 style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid var(--border)', overflow: 'hidden', boxShadow: '0 8px 30px rgba(0,0,0,0.15)' }}
                >
                  <div style={{ 
                      height: '42px', 
@@ -1048,7 +1048,10 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                      position: 'relative',
                      overflowX: 'auto',
                      scrollbarWidth: 'none',
-                     msOverflowStyle: 'none'
+                     msOverflowStyle: 'none',
+                     borderTopLeftRadius: '15px',
+                     borderTopRightRadius: '15px',
+                     isolation: 'isolate'
                    }}>
                       {openTabs.map(t => (
                         <div key={t} onClick={() => switchTab(t)} className="group" style={{ 
@@ -1078,7 +1081,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                       ))}
                   </div>
 
-                  <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: showAiChat ? 'row' : 'column', minWidth: 0 }}>
+                  <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: showAiChat ? 'row' : 'column', minWidth: 0, background: EDITOR_MOODS[editorMood].bg }}>
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                     <EditorLoadingOverlay
                       visible={isSyncing}

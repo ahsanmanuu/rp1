@@ -24,6 +24,8 @@ interface CapStatus {
 
 interface AiCapWarningProps {
   onStatusChange?: (status: CapStatus) => void;
+  open?: boolean;
+  onClose?: () => void;
 }
 
 const REFRESH_INTERVAL_CAPPED   = 30_000;

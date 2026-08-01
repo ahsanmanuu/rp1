@@ -366,11 +366,11 @@ const ScholarlyPDFViewer = memo(({ pdfUrl, syncTexStr, compiling, onJumpToLatexC
   };
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#3a3a3a', position: 'relative' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#3a3a3a', position: 'relative', borderRadius: '16px', overflow: 'hidden' }}>
       <div style={{
         height: '44px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px',
-        flexShrink: 0,
+        flexShrink: 0, borderTopLeftRadius: '15px', borderTopRightRadius: '15px', isolation: 'isolate'
       }}>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
            <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 600 }}>SYNC READY</span>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { Fragment, useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useSession } from "@/lib/pb-auth-react";
 import { createPb } from "@/lib/pb";
 import { useRouter } from "next/navigation";
@@ -12,7 +12,14 @@ import Sidebar from "@/components/Sidebar";
 import { StudioFS } from "@/lib/studio-fs";
 import { usePbRealtimeReports, usePbRealtimeProjects } from "@/hooks/usePbRealtime";
 import { useMembershipRealtime } from "@/hooks/useMembershipRealtime";
+import { useSubscriptionsRealtime } from "@/hooks/useSubscriptionsRealtime";
+import { useGlobalQuotas } from "@/hooks/useGlobalQuotas";
+import { useCountdown } from "@/hooks/useCountdown";
 import { useUserLocation } from "@/hooks/useUserLocation";
+import AiSubscriptionCard from "@/components/dashboard/AiSubscriptionCard";
+import AiPlanSubscribeModal from "@/components/dashboard/AiPlanSubscribeModal";
+import ProjectLimitModal from "@/components/ProjectLimitModal";
+import AiLimitModal from "@/components/AiLimitModal";
 const ProjectStats = dynamic(() => import("@/components/ProjectStats").then(m => m.ProjectStats), { ssr: false });
 const ChatWidget = dynamic(() => import("@/components/ChatWidget"), { ssr: false });
 import ProLoader from "@/components/ProLoader";
@@ -23,7 +30,7 @@ import {
   Zap, FileEdit, Network, RefreshCw,
   Brain, Quote, Trash2, Archive, FileDown,
   Award, CheckCircle2, PlusCircle, KeyRound,
-  Tag, Megaphone, X, Camera, Share2, Printer, FileArchive, Check, Clock
+  Tag, Megaphone, X, Camera, Share2, Printer, FileArchive, Check
 } from "lucide-react";
 import { saveAs } from 'file-saver';
 
@@ -41,8 +48,29 @@ export default function DashboardPage() {
   const [selectedProjectDetails, setSelectedProjectDetails] = useState<any | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [greeting, setGreeting] = useState("Good morning");
-  const [aiCapStatus, setAiCapStatus] = useState<any>(null);
-  const [loadingAiCap, setLoadingAiCap] = useState(true);
+  const [showAiPlanModal, setShowAiPlanModal] = useState(false);
+
+  const {
+    status: quotaStatus,
+    loading: quotaLoading,
+    error: quotaError,
+    refetch: refetchQuota,
+    showProjectLimitModal,
+    showAiLimitModal,
+    setShowProjectLimitModal,
+    setShowAiLimitModal,
+  } = useGlobalQuotas();
+
+  const {
+    data: subscriptions,
+    loading: subscriptionsLoading,
+    error: subscriptionsError,
+    refetch: refetchSubscriptions,
+  } = useSubscriptionsRealtime({
+    pollIntervalMs: 30000,
+    userId: session?.user?.id,
+    onError: (err) => console.warn('[Subscriptions] Poll error:', err),
+  });
 
   // Dynamic membership states
   const {
@@ -311,6 +339,12 @@ export default function DashboardPage() {
     success: false,
   } as any, [rawMembership]);
 
+  // Live auto-counter for the membership subscription (ticks every second, silent)
+  const membershipCounter = useCountdown(rawMembership?.membershipExpiresAt ?? null, 1000);
+  const daysLeftMembership = membership.membershipExpiresAt
+    ? Math.max(0, Math.ceil((new Date(membership.membershipExpiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : null;
+
   // Refetch membership (and thus project count) when PB projects change in realtime
   const prevProjectsCountRef = useRef(pbAllProjects.length);
   useEffect(() => {
@@ -326,6 +360,13 @@ export default function DashboardPage() {
       setReminderInfo({ daysLeft: rawMembership.daysLeft, expiryDate: rawMembership.expiryDate });
     }
   }, [rawMembership?.showReminder, rawMembership?.daysLeft, rawMembership?.expiryDate]);
+
+  // Open AI subscription modal when triggered from the AI limit alert
+  useEffect(() => {
+    const handleOpenAiSub = () => setShowAiPlanModal(true);
+    window.addEventListener('open-ai-subscription', handleOpenAiSub);
+    return () => window.removeEventListener('open-ai-subscription', handleOpenAiSub);
+  }, []);
 
   const initiatePayment = async (planId: string) => {
     setPaymentLoading(true);
@@ -433,20 +474,6 @@ export default function DashboardPage() {
     }
   }, [session]);
 
-  const fetchAiCapStatus = async () => {
-    try {
-      const res = await fetch("/api/user/ai-cap/status");
-      if (res.ok) {
-        const data = await res.json();
-        setAiCapStatus(data);
-      }
-    } catch (err) {
-      console.warn("Failed to fetch AI cap status on dashboard:", err);
-    } finally {
-      setLoadingAiCap(false);
-    }
-  };
-
   useEffect(() => {
     const updateConnection = () => {
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -489,7 +516,6 @@ export default function DashboardPage() {
 
     if (!session?.user?.email) return;
     
-    fetchAiCapStatus();
     loadCurrencyAndGeo();
     fetchUserOffers();
     fetchAnnouncements();
@@ -796,7 +822,7 @@ export default function DashboardPage() {
             {/* Finance & Membership Row */}
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
               {/* Membership Status Card - Premium Design */}
-              <div className="lg:col-span-2 glass-card rounded-[2rem] p-6 lg:p-8 border border-outline hover:shadow-ambient-soft transition-all bg-surface-container-lowest/30 relative overflow-hidden">
+              <div className="lg:col-span-1 glass-card rounded-[2rem] p-6 lg:p-8 border border-outline hover:shadow-ambient-soft transition-all bg-surface-container-lowest/30 relative overflow-hidden">
                 {/* Decorative Background Accent */}
                 <div className="absolute -top-12 -right-12 w-48 h-48 rounded-full blur-[80px] pointer-events-none opacity-20" style={{ background: 'var(--accent-primary)' }} />
 
@@ -855,6 +881,61 @@ export default function DashboardPage() {
                   {/* Divider */}
                   <div className="border-t border-outline/10" />
 
+                  {/* Plan Period: Start / Expiry / Duration */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex items-center gap-2 text-[11px] font-semibold text-secondary min-w-0">
+                      <span className="material-symbols-outlined text-primary text-[16px] shrink-0">play_circle</span>
+                      <span className="truncate">
+                        Start: <strong className="text-on-surface">{new Date(membership.joiningDate || membership.memberSince).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</strong>
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] font-semibold text-secondary min-w-0">
+                      <span className="material-symbols-outlined text-primary text-[16px] shrink-0">hourglass_bottom</span>
+                      <span className="truncate">
+                        Duration: <strong className="text-on-surface">
+                          {membership.membership !== "free" && membership.membershipExpiresAt
+                            ? `${Math.max(1, Math.round((new Date(membership.membershipExpiresAt).getTime() - new Date(membership.memberSince).getTime()) / (1000 * 60 * 60 * 24)))} days`
+                            : "Lifetime"}
+                        </strong>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Auto Counter — live ticking countdown */}
+                  <div className="rounded-2xl border border-outline/10 bg-surface/60 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-secondary/70 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Auto Counter
+                      </span>
+                      <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500">
+                        Remaining: {membership.membershipExpiresAt ? daysLeftMembership : "∞"} day{membership.membershipExpiresAt && daysLeftMembership !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    {membershipCounter.active ? (
+                      <div className="flex items-center justify-between gap-1 font-mono">
+                        {[
+                          { v: membershipCounter.parts.days, l: 'Days' },
+                          { v: membershipCounter.parts.hours, l: 'Hrs' },
+                          { v: membershipCounter.parts.minutes, l: 'Min' },
+                          { v: membershipCounter.parts.seconds, l: 'Sec' },
+                        ].map((p, i) => (
+                          <Fragment key={p.l}>
+                            <div className="flex flex-col items-center bg-slate-100 dark:bg-slate-900/60 rounded-lg px-2 py-1.5 min-w-[52px]">
+                              <span className="text-base font-black text-primary leading-none">{p.v}</span>
+                              <span className="text-[8px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mt-1">{p.l}</span>
+                            </div>
+                            {i < 3 && <span className="text-xs font-black text-slate-400">:</span>}
+                          </Fragment>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className={`text-[11px] font-black uppercase tracking-widest flex items-center gap-2 ${membershipCounter.expired ? 'text-rose-500' : 'text-emerald-500'}`}>
+                        {membershipCounter.expired ? 'Membership Expired — Renew to restore access' : 'Lifetime access (Free tier)'}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Projects Section */}
                   <div>
                     <div className="flex items-center justify-between mb-3">
@@ -889,113 +970,6 @@ export default function DashboardPage() {
 
                   {/* Divider */}
                   <div className="border-t border-outline/10" />
-
-                  {/* AI Quota & Capping Plan Panel */}
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded bg-primary/10 flex items-center justify-center text-primary">
-                          <Brain size={14} />
-                        </div>
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Daily AI Quota</span>
-                      </div>
-                      {aiCapStatus && (
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
-                          aiCapStatus.isCapped
-                            ? "bg-rose-500/10 text-rose-500"
-                            : aiCapStatus.percentage >= 80
-                            ? "bg-amber-500/10 text-amber-500"
-                            : "bg-emerald-500/10 text-emerald-500"
-                        }`}>
-                          {aiCapStatus.planName || "Free Tier"}
-                        </span>
-                      )}
-                    </div>
-
-                    {loadingAiCap ? (
-                      <div className="flex items-center gap-2 py-2 text-xs text-secondary font-medium">
-                        <div className="w-3 h-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                        <span>Loading AI quota details...</span>
-                      </div>
-                    ) : aiCapStatus ? (
-                      <div className="space-y-3">
-                        <div className="flex justify-between items-baseline">
-                          <div>
-                            <span className="text-2xl font-black text-primary leading-none">
-                              {aiCapStatus.used?.toLocaleString() ?? 0}
-                            </span>
-                            <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 ml-1">
-                              / {aiCapStatus.limit?.toLocaleString() ?? 0} tokens used today
-                            </span>
-                          </div>
-                          <span className="text-xs font-bold text-slate-400 dark:text-slate-500">
-                            {Math.round(aiCapStatus.percentage ?? 0)}%
-                          </span>
-                        </div>
-
-                        {/* Progress Bar */}
-                        <div className="w-full bg-slate-100 dark:bg-slate-900/60 rounded-full h-2 overflow-hidden">
-                          <div 
-                            className={`h-full rounded-full transition-all duration-700 ease-out ${
-                              aiCapStatus.isCapped
-                                ? "bg-gradient-to-r from-rose-500 to-rose-600"
-                                : (aiCapStatus.percentage ?? 0) >= 80
-                                ? "bg-gradient-to-r from-amber-500 to-amber-600"
-                                : "bg-gradient-to-r from-emerald-500 to-emerald-600"
-                            }`}
-                            style={{ width: `${Math.max(Math.min(aiCapStatus.percentage ?? 0, 100), 2)}%` }}
-                          />
-                        </div>
-
-                        <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 dark:text-slate-500 flex-wrap gap-2">
-                          {aiCapStatus.isCapped ? (
-                            <span className="text-rose-500 flex items-center gap-1.5">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
-                              Daily Quota Exhausted! Resets on {new Date(aiCapStatus.quotaResetAt || aiCapStatus.reactivateAt).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })} at {new Date(aiCapStatus.quotaResetAt || aiCapStatus.reactivateAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-1">
-                              <Clock size={10} />
-                              Resets in {Math.max(0, Math.ceil((new Date(aiCapStatus.quotaResetAt || Date.now()).getTime() - Date.now()) / (1000 * 60 * 60)))} hours
-                            </span>
-                          )}
-                          {aiCapStatus.ruleName && (
-                            <span className="text-amber-500 font-extrabold uppercase tracking-wider">
-                              Rule: {aiCapStatus.ruleName}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* AI Plan Dates */}
-                        {(aiCapStatus.aiPlanStartsAt || aiCapStatus.aiPlanExpiresAt) && (
-                          <div className="pt-2.5 mt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex flex-col gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 font-semibold animate-fade-in">
-                            <div className="flex justify-between">
-                              <span>AI Plan Period:</span>
-                              <span className="text-slate-600 dark:text-slate-300 font-bold">
-                                {aiCapStatus.aiPlanStartsAt ? new Date(aiCapStatus.aiPlanStartsAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : "—"} to {aiCapStatus.aiPlanExpiresAt ? new Date(aiCapStatus.aiPlanExpiresAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : "Lifetime"}
-                              </span>
-                            </div>
-                            {aiCapStatus.aiPlanExpiresAt && (
-                              <div className="flex justify-between items-center">
-                                <span>Remaining Days:</span>
-                                <span className={`px-1.5 py-0.5 rounded font-black ${
-                                  aiCapStatus.aiPlanRemainingDays <= 3 
-                                    ? "bg-rose-500/10 text-rose-500" 
-                                    : aiCapStatus.aiPlanRemainingDays <= 7 
-                                    ? "bg-amber-500/10 text-amber-500" 
-                                    : "bg-emerald-500/10 text-emerald-500"
-                                }`}>
-                                  {aiCapStatus.aiPlanRemainingDays} day{aiCapStatus.aiPlanRemainingDays !== 1 ? 's' : ''} left
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-secondary font-semibold">AI Quota information unavailable.</span>
-                    )}
-                  </div>
 
                   {/* Upgrade CTA */}
                   <button 
@@ -1081,6 +1055,15 @@ export default function DashboardPage() {
                   </p>
                 )}
               </div>
+
+              {/* AI Subscription Status Card */}
+              <AiSubscriptionCard
+                aiPlan={subscriptions?.aiPlan}
+                loading={subscriptionsLoading}
+                error={subscriptionsError}
+                onTakeSubscription={() => setShowAiPlanModal(true)}
+                onRetry={() => refetchSubscriptions()}
+              />
 
               {/* Points Wallet & Auto-Exchange Card */}
               <div className="lg:col-span-1 glass-card rounded-[2rem] p-6 border border-outline hover:shadow-ambient-soft transition-all bg-surface-container-lowest/30 relative overflow-hidden flex flex-col justify-between">
@@ -2089,6 +2072,43 @@ export default function DashboardPage() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* AI Subscription Taking Modal */}
+      <AiPlanSubscribeModal
+        open={showAiPlanModal}
+        onClose={() => setShowAiPlanModal(false)}
+        availablePlans={subscriptions?.availableAiPlans || []}
+        currentPlanType={subscriptions?.aiPlan?.planType || null}
+        isPremiumMember={membership?.membership !== 'free'}
+        onSubscribed={() => {
+          refetchSubscriptions();
+          refetchMembership();
+          refetchQuota();
+          setShowAiLimitModal(false);
+        }}
+      />
+
+      {/* Project Limit Alert (free tier: 7 projects) */}
+      <ProjectLimitModal
+        isOpen={showProjectLimitModal}
+        onClose={() => setShowProjectLimitModal(false)}
+        currentCount={quotaStatus?.projects?.count ?? 7}
+        max={quotaStatus?.projects?.max ?? 7}
+      />
+
+      {/* AI Token Limit Alert */}
+      <AiLimitModal
+        open={showAiLimitModal}
+        onClose={() => setShowAiLimitModal(false)}
+        data={{
+          dailyTokenCap: quotaStatus?.ai?.dailyTokenCap ?? 0,
+          usedToday: quotaStatus?.ai?.usedToday ?? 0,
+          percentage: quotaStatus?.ai?.percentage ?? 0,
+          planName: quotaStatus?.ai?.planType ?? 'Free',
+          quotaResetAt: quotaStatus?.ai?.quotaResetAt ?? '',
+        }}
+      />
+
       <ChatWidget />
       </div>
 

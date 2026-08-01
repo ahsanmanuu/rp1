@@ -213,7 +213,7 @@ export default function Home() {
     <div style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)', fontFamily: 'var(--font-inter)', overflowX: 'hidden' }}>
 
       {/* ═══════════════ HERO SECTION ═══════════════ */}
-      <section className="relative w-full min-h-screen flex flex-col justify-center overflow-hidden"
+      <section id="hero-section" className="relative w-full min-h-screen flex flex-col justify-center overflow-hidden"
         style={{ paddingTop: '80px' }}>
 
         {/* Background: dot grid */}
@@ -399,10 +399,26 @@ export default function Home() {
         </div>
 
         {/* Scroll indicator */}
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 animate-bounce opacity-60">
-          <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>Scroll</span>
-          <ChevronDown size={18} style={{ color: 'var(--text-secondary)' }} />
-        </div>
+        <button
+          type="button"
+          onClick={() => {
+            const hero = document.getElementById('hero-section');
+            if (hero && hero.nextElementSibling) {
+              hero.nextElementSibling.scrollIntoView({ behavior: 'smooth' });
+            } else {
+              window.scrollTo({ top: window.innerHeight * 0.85, behavior: 'smooth' });
+            }
+          }}
+          aria-label="Scroll down to next section"
+          className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 cursor-pointer z-30 transition-all duration-300 hover:scale-110 group focus:outline-none"
+          style={{ background: 'transparent', border: 'none' }}
+        >
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full border shadow-xl backdrop-blur-md transition-all duration-300 group-hover:border-[var(--accent-primary)] group-hover:shadow-2xl"
+            style={{ background: 'color-mix(in srgb, var(--bg-secondary) 92%, transparent)', borderColor: 'var(--border)' }}>
+            <span className="text-xs font-bold uppercase tracking-widest transition-colors group-hover:text-[var(--accent-primary)]" style={{ color: 'var(--text-primary)' }}>Scroll</span>
+            <ChevronDown size={18} className="animate-bounce transition-transform group-hover:translate-y-0.5" style={{ color: 'var(--accent-primary)' }} />
+          </div>
+        </button>
       </section>
 
       {/* ═══════════════ SEE HOW IT WORKS ═══════════════ */}

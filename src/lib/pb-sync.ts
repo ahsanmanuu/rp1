@@ -5,6 +5,7 @@ const PB_USER_FIELDS = [
   'points', 'theme', 'status', 'role', 'membership',
   'membershipExpiresAt', 'blockedUntil', 'blacklistReason',
   'aiDailyCapOverride', 'aiAgentReactivatesAt',
+  'aiCapPlanId', 'aiPlanStartsAt', 'aiPlanExpiresAt', 'aiPlanExpiryWarnedAt',
 ] as const;
 
 export async function syncUserToPb(userId: string, data: Record<string, any>): Promise<boolean> {
@@ -115,6 +116,10 @@ export async function ensurePbUserCollectionFields(): Promise<void> {
       blacklistReason: { type: 'text' },
       aiDailyCapOverride: { type: 'number' },
       aiAgentReactivatesAt: { type: 'date' },
+      aiCapPlanId: { type: 'text' },
+      aiPlanStartsAt: { type: 'date' },
+      aiPlanExpiresAt: { type: 'date' },
+      aiPlanExpiryWarnedAt: { type: 'date' },
     };
 
     for (const [name, def] of Object.entries(fieldDefs)) {

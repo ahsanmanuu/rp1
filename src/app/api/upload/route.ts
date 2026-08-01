@@ -390,16 +390,16 @@ export async function POST(req: Request) {
           const pTag = String(parent.tagName || "").toLowerCase();
           if (pTag === 'm:omath' || pTag === 'm:omathpara') {
             isNested = true;
+            if (pTag === 'm:omathpara') isDisplay = true; // Inherit display if ancestor is oMathPara
             break;
           }
-          if (pTag === 'm:omathpara') isDisplay = true; // Inherit display if ancestor is oMathPara
           
           const cleanPTag = pTag.replace(/^w:/, '');
           if (cleanPTag === 'p') {
             const pText = (parent.textContent || '').trim();
             const mathText = (node.textContent || '').trim();
             const nonMathText = pText.replace(mathText, '').trim();
-            if (nonMathText.length === 0 || /^\s*[\(\[\d\.\-\s\)\]]+\s*$/.test(nonMathText)) {
+            if (nonMathText.length === 0 || /^\s*[\(\d\.\-\s\)]+\s*$/.test(nonMathText)) {
               isDisplay = true;
             }
           }
@@ -653,10 +653,12 @@ export async function POST(req: Request) {
         const isGrid = (rows >= 2 && cells >= 4);
 
         // Rule 2: Semantic Exclusion (remove Title/Author tables)
-        const isMetadata = text.includes('@') || text.includes('email') || text.includes('affiliation') || text.includes('institution') || text.includes('orcid');
+        const hasEmailContext = (text.includes('@') && /\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/i.test(text));
+        const isMetadata = hasEmailContext || text.includes('affiliation') || text.includes('institution') || text.includes('orcid');
 
         // Rule 3: Positional suppression for Header Region (Template Tables)
-        const isEarly = idx < 3 && (text.length < 500);
+        // Only suppress the very first w:tbl if it has very little data content (layout table)
+        const isEarly = idx === 0 && text.length < 200 && rows < 3;
 
         return isGrid && !isMetadata && !isEarly;
       }).length;
