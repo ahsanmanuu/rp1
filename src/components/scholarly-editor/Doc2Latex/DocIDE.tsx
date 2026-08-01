@@ -33,6 +33,44 @@ import EditorLoadingOverlay from '../EditorLoadingOverlay';
 const MonacoEditor = dynamic(() => import('@monaco-editor/react').then(m => m.default), { ssr: false, loading: () => <div style={{ flex: 1, background: '#0a0a0a' }} /> });
 const ScholarlyViewer = dynamic(() => import('../ScholarlyPDFViewer').then(m => m.default), { ssr: false, loading: () => <div style={{ height: '100%', background: '#050505' }} /> });
 
+const RETRYABLE_HTTP_STATUS = new Set([408, 429, 502, 503, 504]);
+const SYNC_FETCH_ATTEMPTS = 3;
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// Fetches the project payload from the cloud with a per-attempt timeout and
+// retries, so transient failures (dev-server restarts, proxy 5xx, aborts)
+// don't leave the editor uninitialized.
+async function fetchProjectWithRetry(projectId: string): Promise<Response> {
+  let lastError: any;
+  for (let attempt = 1; attempt <= SYNC_FETCH_ATTEMPTS; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) return res;
+      lastError = new Error(`Cloud sync failed with status ${res.status}`);
+      if (attempt < SYNC_FETCH_ATTEMPTS && RETRYABLE_HTTP_STATUS.has(res.status)) {
+        console.warn(`[DocIDE] Sync attempt ${attempt}/${SYNC_FETCH_ATTEMPTS} failed with HTTP ${res.status} — retrying…`);
+        await sleep(1000 * attempt);
+        continue;
+      }
+      return res;
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      const retryable = err?.name === 'AbortError' || err?.name === 'TypeError' || err?.name === 'TimeoutError';
+      if (retryable && attempt < SYNC_FETCH_ATTEMPTS) {
+        lastError = err;
+        console.warn(`[DocIDE] Sync attempt ${attempt}/${SYNC_FETCH_ATTEMPTS} failed (${err?.name || 'network'}) — retrying…`);
+        await sleep(1000 * attempt);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
+}
+
 
 export default function DocIDE({ projectId }: { projectId: string }) {
   const { data: session, status } = useSession();
@@ -118,18 +156,20 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     filesRef.current = files;
   }, [files]);
 
-  const sessionRef = useRef(session);
-  sessionRef.current = session;
-  const statusRef = useRef(status);
-  statusRef.current = status;
+  const initStartedRef = useRef<{ projectId: string; email: string } | null>(null);
 
   useEffect(() => {
     setMounted(true);
     document.body.classList.add('theme-purple');
 
-    if (statusRef.current === 'loading') return;
-    const currentSession = sessionRef.current;
+    // Wait for an authenticated session. The effect re-runs when `status` /
+    // email settle, so a slow session fetch (e.g. during a dev-server restart)
+    // no longer leaves the editor permanently uninitialized.
+    if (status !== 'authenticated') return;
+    const currentSession = session;
     const userEmail = currentSession?.user?.email || 'guest';
+    if (initStartedRef.current?.projectId === projectId && initStartedRef.current?.email === userEmail) return;
+    initStartedRef.current = { projectId, email: userEmail };
 
     const loadPdfBlob = async (projId: string) => {
       try {
@@ -157,11 +197,8 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     const syncFromCloud = async (studioFs: StudioFS) => {
       setIsSyncing(true);
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000);
-        const res = await fetch(`/api/projects/${projectId}`, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (!res.ok) throw new Error("Failed to sync from cloud");
+        const res = await fetchProjectWithRetry(projectId);
+        if (!res.ok) throw new Error(`Failed to sync from cloud (HTTP ${res.status})`);
         const data = await res.json();
         
         if (data.project) {
@@ -244,6 +281,25 @@ export default function DocIDE({ projectId }: { projectId: string }) {
           console.error("Cloud sync failed:", err);
           toast.error("Failed to sync workspace");
         }
+        // Fall back to whatever is cached locally so the workspace is never
+        // left blank after a transient network failure.
+        try {
+          const cachedFiles = await studioFs.listFiles(projectId);
+          if (cachedFiles.length > 0) {
+            setFiles(cachedFiles);
+            const active = cachedFiles.find(f => f.path === 'main.tex') || cachedFiles[0];
+            if (active) {
+              setActiveFile(active.path);
+              const fullActive = await studioFs.readFile(projectId, active.path);
+              if (fullActive?.content) {
+                setCode(isImage(active.path) ? fullActive.content : formatLatexCode(fullActive.content));
+                setOpenTabs((prev) => (prev.includes(active.path) ? prev : [...prev, active.path]));
+              }
+            }
+          }
+        } catch (fallbackErr) {
+          console.warn("Failed to fall back to cached local files:", fallbackErr);
+        }
       } finally {
         setIsSyncing(false);
       }
@@ -311,7 +367,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       setLoadingCode(false);
     });
    
-  }, [projectId]);
+  }, [projectId, status, session]);
 
   useEffect(() => {
     if (!autoEngine || !code || activeFile !== 'main.tex') return;
