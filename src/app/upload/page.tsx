@@ -19,6 +19,7 @@ import LatexifyLogo from "@/components/LatexifyLogo";
 import ProjectLimitModal from "@/components/ProjectLimitModal";
 import { useProjectLimit } from "@/hooks/useProjectLimit";
 import { countCitationsFromHtml } from "@/lib/citationCounting";
+import { StudioFS } from "@/lib/studio-fs";
 import "./print.css";
 
 
@@ -109,7 +110,39 @@ function UploadContent() {
           const data = await studioRes.json();
           const rawProjects = data.projects || [];
           const uniqueProjects = Array.from(new Map(rawProjects.map((p: any) => [p.id, p])).values());
-          setProjects(uniqueProjects);
+
+          // LaTeX Studio projects live in local IndexedDB (StudioFS) — merge them in
+          // so the "LaTeX Manuscripts" column shows recently created/compiled projects,
+          // mirroring how the History page surfaces local projects.
+          let localProjects: any[] = [];
+          if (session?.user?.email) {
+            try {
+              const fs = new StudioFS(session.user.email);
+              const local = await fs.listProjects();
+              localProjects = await Promise.all(local.map(async (p: any) => {
+                let words = 0;
+                try {
+                  const main = await fs.readFile(p.id, p.mainFile || 'main.tex');
+                  words = main?.content ? main.content.trim().split(/\s+/).filter(Boolean).length : 0;
+                } catch { /* non-fatal — keep card with 0 words */ }
+                return {
+                  id: p.id,
+                  title: p.title,
+                  date: p.updatedAt,
+                  stats: { words, images: p.fileCount },
+                  isLocal: true,
+                };
+              }));
+            } catch (fsErr) {
+              console.warn('Upload: StudioFS load failed:', fsErr);
+            }
+          }
+
+          const merged = [...localProjects, ...uniqueProjects].sort(
+            (a: any, b: any) =>
+              new Date(b.date || b.createdAt || 0).getTime() - new Date(a.date || a.createdAt || 0).getTime()
+          );
+          setProjects(Array.from(new Map(merged.map((p: any) => [p.id, p])).values()));
         }
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -1405,6 +1438,8 @@ function UploadContent() {
                       type="project"
                       onClick={() => router.push(`/latex-studio/${p.id}`)}
                       projectId={p.id}
+                      isLocal={p.isLocal}
+                      userEmail={session?.user?.email}
                       onDeleted={(id: string) => setProjects(prev => prev.filter(x => x.id !== id))}
                     />
                   ))
@@ -1870,7 +1905,7 @@ const TemplateCard = ({ id, name, desc, projectId, router, onError, isCustom, on
   );
 };
 
-const PremiumHistoryCard = ({ title, date, stats, type, onClick, projectId, onDeleted }: any) => {
+const PremiumHistoryCard = ({ title, date, stats, type, onClick, projectId, onDeleted, isLocal, userEmail }: any) => {
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   const dateObj = new Date(date);
@@ -1884,17 +1919,19 @@ const PremiumHistoryCard = ({ title, date, stats, type, onClick, projectId, onDe
     
     setDeleting(true);
     try {
-      const url = isReportType 
-        ? `/api/reports/${projectId}/delete` 
-        : `/api/projects/${projectId}/delete`;
-        
-      const res = await fetch(url, { method: 'DELETE' });
-      if (res.ok) {
-        toast.success(isReportType ? 'Report deleted' : 'Project deleted');
-        if (onDeleted) onDeleted(projectId);
+      if (isLocal) {
+        const finalFs = new StudioFS(userEmail || 'guest');
+        await finalFs.deleteProject(projectId);
       } else {
-        throw new Error('Delete failed');
+        const url = isReportType 
+          ? `/api/reports/${projectId}/delete` 
+          : `/api/projects/${projectId}/delete`;
+          
+        const res = await fetch(url, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Delete failed');
       }
+      toast.success(isReportType ? 'Report deleted' : 'Project deleted');
+      if (onDeleted) onDeleted(projectId);
     } catch {
       toast.error('Could not complete deletion');
     } finally {
