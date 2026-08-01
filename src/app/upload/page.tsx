@@ -18,6 +18,7 @@ import { toast, Toaster } from "react-hot-toast";
 import LatexifyLogo from "@/components/LatexifyLogo";
 import ProjectLimitModal from "@/components/ProjectLimitModal";
 import { useProjectLimit } from "@/hooks/useProjectLimit";
+import { countCitationsFromHtml } from "@/lib/citationCounting";
 import "./print.css";
 
 
@@ -1016,21 +1017,30 @@ function UploadContent() {
                       return true;
                     });
 
-                    // For each metric: use live body/refs count if > 0, else fall back to
-                    // stored stats snapshot, then DB column, then 0.
+                    // For each metric: use live body/refs/rawHtml counts when the
+                    // structured content exists (it is authoritative), else fall back
+                    // to the stored stats snapshot, then DB column, then 0.
+                    // NOTE: `||` fallbacks would hide legit zero values — gate on
+                    // array/field existence instead.
                     const s = structured.stats || {};
+                    const hasBody = Array.isArray(body) && body.length > 0;
+                    const hasRefsArray = Array.isArray(structured.references);
                     return {
                       wordCount:       projectData.wordCount       || s.wordCount       || 0,
                       charCount:       projectData.charCount       || s.charCount       || 0,
                       // Images: DB file list is most accurate (actual saved assets)
                       imageCount:      Math.max(bodyFigureCount, (projectData.files?.filter((f: any) => f.fileType === 'image' || /^rf_/i.test(f.filename)).length || 0), s.imageCount || 0, projectData.imageCount || 0),
-                      chartCount:      bodyChartCount      || s.chartCount      || 0,
-                      tableCount:      bodyTableCount      || s.tableCount      || 0,
-                      equationCount:   bodyEquationCount   || s.equationCount   || 0,
-                      citationCount:   s.citationCount     || projectData.citationCount || 0,
-                      // Use sanitized refs — accurate for both new and old projects
-                      referenceCount:  validRefs.length    || s.referenceCount  || projectData.referenceCount || 0,
-                      pseudocodeCount: bodyPseudoCount     || s.pseudocodeCount || 0,
+                      chartCount:      hasBody ? bodyChartCount      : (s.chartCount      || 0),
+                      tableCount:      hasBody ? bodyTableCount      : (s.tableCount      || 0),
+                      equationCount:   hasBody ? bodyEquationCount   : (s.equationCount   || 0),
+                      // Citations: recompute live from the stored raw HTML — identical
+                      // logic to the server parser — never trust a stale snapshot.
+                      citationCount:   typeof structured?.rawHtml === 'string' && structured.rawHtml.length > 0
+                                        ? countCitationsFromHtml(structured.rawHtml)
+                                        : (s.citationCount || projectData.citationCount || 0),
+                      // References: the refs array is authoritative when present
+                      referenceCount:  hasRefsArray ? validRefs.length : (s.referenceCount || projectData.referenceCount || 0),
+                      pseudocodeCount: hasBody ? bodyPseudoCount     : (s.pseudocodeCount || 0),
                     };
                   })()}
                   metadata={{

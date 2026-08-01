@@ -1,4 +1,5 @@
 import { JSDOM } from 'jsdom';
+import { countCitationsFromHtml, mergeCitations } from './citationCounting';
 
 export interface AuthorInfo {
   name: string;
@@ -543,40 +544,10 @@ export class DeepDocumentParser {
     result.stats.pseudocodeCount = result.body.filter(n => n.type === 'algorithm').length;
     result.stats.chartCount = result.body.filter(n => n.type === 'chart').length;
     result.stats.referenceCount = result.references.length;
-    // Citation Counting: count unique reference numbers from raw HTML [N], [N,M], [N-M] brackets.
-    // We do NOT also count from body \cite{} text — that would double-count every citation.
-    const seenCiteNums = new Set<number>();
     // In-text citation counting: only count brackets OUTSIDE the reference-list
     // entries (reference entries "[1]. Author, ..." are not citations themselves).
-    const mergedHtml = this.mergeCitations(this.stripReferenceEntriesFromHtml(rawHtmlForCitations));
-    const rawBracketMatches = mergedHtml.match(/(?<!\b(?:interval|range|scale|domain|coordinates|matrix|vector|box|bounds|values|pixel|pixels|from|to|between|like|such\s+as|e\.g\.?|eg\.?|bracket|for\s+example|example)\s*(?:\[\s*\d{1,3}\s*\]\s*[,;\s]*)*)\[\s*\d{1,3}(?:\s*[,;\u2013\-]\s*\d{1,3})*\s*\]/gi) || [];
-    for (const m of rawBracketMatches) {
-      const inner = m.replace(/[\[\]\s]/g, '');
-      const parts = inner.split(/[,;–\-\u2013\u2014]/).map(p => p.trim()).filter(Boolean);
-      const hasZero = parts.some(p => p === '0');
-      let offset = 0;
-      if (hasZero && parts.every(p => /^\d+$/.test(p))) {
-        offset = 1;
-      }
-      if (offset > 0 && parts.some(p => /^\d+\s*[-–]\s*\d+$/.test(p))) {
-        const rangeParts = parts.filter(p => /^\d+\s*[-–]\s*\d+$/.test(p));
-        for (const rp of rangeParts) {
-          const [lo, hi] = rp.split(/[-–]/).map(n => parseInt(n.trim()) + offset);
-          for (let n = lo; n <= hi; n++) seenCiteNums.add(n);
-        }
-      } else {
-        for (const part of parts) {
-          const rangeMatch = part.match(/^(\d+)[\u2013\-](\d+)$/);
-          if (rangeMatch) {
-            const lo = parseInt(rangeMatch[1]), hi = parseInt(rangeMatch[2]);
-            for (let n = lo; n <= hi; n++) seenCiteNums.add(n);
-          } else if (/^\d+$/.test(part.trim())) {
-            seenCiteNums.add(parseInt(part.trim()) + offset);
-          }
-        }
-      }
-    }
-    result.stats.citationCount = seenCiteNums.size;
+    // Shared with the client studio so displayed counts always match server logic.
+    result.stats.citationCount = countCitationsFromHtml(rawHtmlForCitations);
 
     if (overrides) {
       if (overrides.tableCount) result.stats.tableCount = overrides.tableCount;
@@ -681,7 +652,7 @@ export class DeepDocumentParser {
       const isRefGuideline = /\b(?:within|content|main|guideline|style|how to|instruction|write|cite|citation|guidance|prepare)\b/i.test(refHeaderText);
       const isRefHeader = !isRefGuideline && (
                             (tagName.startsWith('h') && (refHeaderText.includes('reference') || refHeaderText.includes('bibliography'))) ||
-                            (refHeaderText.length < 60 && /^(?:[\dIVX\.\s]+)?(?:references?|bibliography|works cited)(?:\s*(?:and|&|source|notes|material|cited)\b.*|[.:\s]*)$/i.test(refHeaderText))
+                            (refHeaderText.length < 60 && /^(?:[\dIVX\.\s]+)?(?:references?|bibliography|works cited|literature cited)(?:\s*(?:and|&|source|notes|material|cited|list|section|chapter)\b.*|[.:\s]*(?:[\d.]{1,4})?)$/i.test(refHeaderText))
                           );
       if (isRefHeader && i > elements.length * 0.3) {
           flush(i);
@@ -1102,7 +1073,7 @@ export class DeepDocumentParser {
               if (cleanOrg && cleanOrg.length > 5 && !isNoise && !result.organizations.includes(cleanOrg)) result.organizations.push(cleanOrg);
           }
           else if (entry.role === 'section' || entry.role === 'paragraph') {
-              const mergedText = this.mergeCitations(text);
+              const mergedText = mergeCitations(text);
               const withCitations = mergedText.replace(/(?<!\b(?:interval|range|scale|domain|coordinates|matrix|vector|box|bounds|values|pixel|pixels|from|to|between|like|such\s+as|e\.g\.?|eg\.?|bracket|for\s+example|example)\s*(?:\[\s*\d{1,3}\s*\]\s*[,;\s]*)*)\[\s*(\d{1,3}(?:\s*[,;–\-]\s*\d{1,3})*)\s*\]/gi, (match: string, inner: string) => {
                   const parts = inner.split(/[,;–\-\u2013\u2014]/).map(p => p.trim()).filter(Boolean);
                   const hasZero = parts.some(p => p === '0');
@@ -1762,21 +1733,6 @@ export class DeepDocumentParser {
     return s.replace(/&lt;[\s\S]*?&gt;/gi, ' ').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
-  private static stripReferenceEntriesFromHtml(html: string): string {
-    // Remove reference-list entries ("[1]. Author, Title, ...") from the HTML used
-    // for in-text citation counting — reference entries are not citations.
-    return html
-      .split(/<\/p\s*>/gi)
-      .map(chunk => {
-        const textOnly = chunk.replace(/<[^>]*>/g, '').replace(/&nbsp;|&amp;|&lt;|&gt;|&quot;/gi, ' ').trim();
-        if (/^\[\s*\d{1,3}\s*\]\s*[.\-–—\t\s]/.test(textOnly) || /^\[\s*\d{1,3}\s*\]\s*$/.test(textOnly)) {
-          return '';
-        }
-        return chunk;
-      })
-      .join('</p>');
-  }
-
   private static tableHtmlDimensions(html: string): { rowCount: number; colCount: number } {
     let rowCount = 0;
     let colCount = 0;
@@ -1901,34 +1857,6 @@ export class DeepDocumentParser {
     }
     
     return false;
-  }
-
-  private static mergeCitations(text: string): string {
-    let prevText = '';
-    let currentText = text;
-    
-    while (currentText !== prevText) {
-      prevText = currentText;
-      
-      // 1. Merge range brackets: [A]-[B] or [A]–[B] -> [A, A+1, ..., B]
-      currentText = currentText.replace(/\[\s*(\d{1,3})\s*\]\s*[-–—\u2013\u2014]\s*\[\s*(\d{1,3})\s*\]/gi, (match, sStr, eStr) => {
-        const start = parseInt(sStr), end = parseInt(eStr);
-        if (!isNaN(start) && !isNaN(end) && start < end && end - start < 30) {
-          return '[' + Array.from({ length: end - start + 1 }, (_, i) => start + i).join(',') + ']';
-        }
-        return match;
-      });
-
-      // 2. Merge consecutive brackets: [A], [B] or [A] [B] -> [A, B]
-      currentText = currentText.replace(/\[\s*(\d{1,3}(?:\s*[,;–\-\u2013\u2014]\s*\d{1,3})*)\s*\]\s*[,;\s]*\s*\[\s*(\d{1,3}(?:\s*[,;–\-\u2013\u2014]\s*\d{1,3})*)\s*\]/gi, (match, inner1, inner2) => {
-        if (inner1.split(/[,;–\-\u2013\u2014]/).some((part: string) => part.trim() === '0') || 
-            inner2.split(/[,;–\-\u2013\u2014]/).some((part: string) => part.trim() === '0')) {
-          return match;
-        }
-        return '[' + inner1 + ',' + inner2 + ']';
-      });
-    }
-    return currentText;
   }
 
   private static detectEquation(f: LineFeatures): boolean {
