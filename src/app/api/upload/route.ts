@@ -3,30 +3,47 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 
+// Configure Sharp image processing engine cache and threadpool buffers for maximum upload throughput
+sharp.concurrency(4);
+sharp.cache({ memory: 256, items: 200, files: 0 });
+
+const IMAGE_ENHANCE_CACHE = new Map<string, Buffer>();
+
 async function enhanceImageFor3000Dpi(buffer: Buffer): Promise<Buffer> {
   try {
     if (!buffer || buffer.length === 0 || buffer.length > 5 * 1024 * 1024) return buffer;
+    
+    // Quick hash lookup for duplicate image buffers (e.g. logos, bullet graphics)
+    const bufKey = `${buffer.length}_${buffer.slice(0, 32).toString('hex')}`;
+    if (IMAGE_ENHANCE_CACHE.has(bufKey)) {
+      return IMAGE_ENHANCE_CACHE.get(bufKey)!;
+    }
+
     const metadata = await sharp(buffer).metadata();
     const origWidth = metadata.width || 800;
 
+    let result: Buffer;
     // Fast high-DPI density tagging: avoid heavy CPU thrashing & proxy timeouts on Render
     if (origWidth >= 1600) {
-      return await sharp(buffer)
+      result = await sharp(buffer)
+        .withMetadata({ density: 3000 })
+        .toBuffer();
+    } else {
+      const targetWidth = Math.min(Math.max(origWidth * 2, 1200), 1800);
+      result = await sharp(buffer)
+        .resize(targetWidth, null, {
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .sharpen()
+        .png({ compressionLevel: 4 })
         .withMetadata({ density: 3000 })
         .toBuffer();
     }
 
-    const targetWidth = Math.min(Math.max(origWidth * 2, 1200), 1800);
-
-    return await sharp(buffer)
-      .resize(targetWidth, null, {
-        fit: 'inside',
-        withoutEnlargement: true,
-      })
-      .sharpen()
-      .png({ compressionLevel: 4 })
-      .withMetadata({ density: 3000 })
-      .toBuffer();
+    if (IMAGE_ENHANCE_CACHE.size > 100) IMAGE_ENHANCE_CACHE.clear();
+    IMAGE_ENHANCE_CACHE.set(bufKey, result);
+    return result;
   } catch (err) {
     return buffer;
   }
@@ -619,7 +636,8 @@ export async function POST(req: Request) {
       // NOW SERIALIZE — single serialization after ALL DOM mutations (math + alternateContent + chart markers)
       finalXml = dom.serialize();
       zip.updateFile('word/document.xml', Buffer.from(finalXml));
-      zip = new AdmZip(zip.toBuffer());
+      const zipBuffer = zip.toBuffer();
+      zip = new AdmZip(zipBuffer);
       if (pendingCharts.length > 0) {
         console.log(`[CHART] Injected ${pendingCharts.length} chart/VML position markers via DOM. Serialized once.`);
       }
@@ -663,7 +681,7 @@ export async function POST(req: Request) {
       // Fixed: Removed local const declaration of extractedImages to prevent shadowing outer array
       let figIdx = 1;
       console.time("[PERF] Mammoth DOCX Extraction");
-      mammothResult = await mammoth.convertToHtml({ buffer: zip.toBuffer() }, {
+      mammothResult = await mammoth.convertToHtml({ buffer: zipBuffer }, {
         convertImage: mammoth.images.imgElement(async (image) => {
           const imgContentType = image.contentType || 'image/png';
           const ext = imgContentType.includes('jpeg') || imgContentType.includes('jpg') ? 'jpg' : 'png';
