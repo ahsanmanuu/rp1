@@ -891,6 +891,7 @@ register({
   model: 'mimo-v2.5-free',
   buildSystemPrompt(ctx) {
     const frontMatter = String(ctx.frontMatter || '').substring(0, 6500);
+    const documentTail = String(ctx.documentTail || '').substring(0, 4500);
     const documentTitle = String(ctx.documentTitle || 'Untitled Document');
     const sectionTitles = (ctx.sectionTitles as string[]) || [];
     const figureCaptions = (ctx.figureCaptions as string[]) || [];
@@ -908,11 +909,16 @@ register({
 ${frontMatter}
 """
 
+### A2. Document tail (last ~4500 characters of the manuscript text — references and back-matter):
+"""TEXT
+${documentTail}
+"""
+
 ### B. Heuristic extraction already performed by the structural parser (for reference only — verify it, do not trust it blindly):
 ${heuristic}
 
 ### C. Section headings detected by the parser (ordered):
-${sectionTitles.slice(0, 40).map((s, i) => `${i + 1}. "${s}"`).join('\n') || 'none'}
+${sectionTitles.slice(0, 60).map((s, i) => `${i + 1}. "${s}"`).join('\n') || 'none'}`;
 
 ### D. Figure captions detected:
 ${figureCaptions.slice(0, 30).map(s => `- ${s}`).join('\n') || 'none'}

@@ -194,10 +194,13 @@ export async function analyzeManuscriptStructure(
 
     const plainText = opts.html ? stripTags(opts.html) : opts.pdfText || '';
     const frontMatter = plainText.substring(0, 6500);
+    const documentTail = plainText.length > 6500
+      ? plainText.substring(Math.max(6500, plainText.length - 4500))
+      : '';
     const equationSnippets = ((deepData.mathBlocks || []) as Array<{ latex?: string }>)
       .filter(m => m.latex)
       .map(m => String(m.latex).substring(0, 200))
-      .slice(0, 8);
+      .slice(0, 15);
 
     const response = await Promise.race([
       routeToAgent({
@@ -207,12 +210,13 @@ export async function analyzeManuscriptStructure(
           userId: opts.userId ?? null,
           documentTitle: opts.filename.replace(/\.[^/.]+$/, ''),
           frontMatter,
-          sectionTitles: sectionTitles.slice(0, 40),
-          figureCaptions: figureCaptions.slice(0, 30),
-          tableCaptions: tableCaptions.slice(0, 30),
-          algorithmTitles: algorithmTitles.slice(0, 15),
+          documentTail,
+          sectionTitles: sectionTitles.slice(0, 60),
+          figureCaptions: figureCaptions.slice(0, 40),
+          tableCaptions: tableCaptions.slice(0, 40),
+          algorithmTitles: algorithmTitles.slice(0, 25),
           equationSnippets,
-          referenceEntries: (deepData.references || []).slice(0, 40),
+          referenceEntries: (deepData.references || []).slice(0, 60),
           heuristic: {
             title: deepData.title,
             authors: (deepData.authors || []).map(a => a.name),
@@ -342,31 +346,38 @@ export function applyStructureCorrections(
     if (corrected > 0) applied.push('sections');
   }
 
-  // ── Component counts (raise-only; the later LaTeX-based stats sync keeps
-  //    the existing max() semantics, so we only correct undercounts) ───────
+  // ── Component counts ─────────────────────────────────────────────────────
+  // The report display layers (upload page, ProjectStats) prefer the AI
+  // verdict's exact counts when present (stored in aiStructure.components)
+  // and fall back to the heuristic body walk / stored stats otherwise.
+  // Here we also raise the stats snapshot so the later LaTeX-based stats
+  // sync (Math.max semantics) never drops a corrected count.
   if (verdict.components) {
     const c = verdict.components;
     const stats = deepData.stats;
-    const raise = (key: keyof AiStructureComponents, target: 'imageCount' | 'chartCount' | 'tableCount' | 'equationCount' | 'pseudocodeCount' | 'citationCount' | 'referenceCount', label: string) => {
+    const applyCount = (key: keyof AiStructureComponents, target: 'imageCount' | 'chartCount' | 'tableCount' | 'equationCount' | 'pseudocodeCount' | 'citationCount' | 'referenceCount', label: string) => {
       const v = c[key];
-      if (typeof v === 'number' && v > (stats[target] || 0)) {
+      if (typeof v === 'number' && Number.isFinite(v) && v >= 0) {
         stats[target] = v;
         applied.push(label);
       }
     };
-    raise('figures', 'imageCount', 'figures');
-    raise('charts', 'chartCount', 'charts');
-    raise('tables', 'tableCount', 'tables');
-    raise('equations', 'equationCount', 'equations');
-    raise('pseudocode', 'pseudocodeCount', 'pseudocode');
-    raise('citations', 'citationCount', 'citations');
-    raise('references', 'referenceCount', 'references');
+    applyCount('figures', 'imageCount', 'figures');
+    applyCount('charts', 'chartCount', 'charts');
+    applyCount('tables', 'tableCount', 'tables');
+    applyCount('equations', 'equationCount', 'equations');
+    applyCount('pseudocode', 'pseudocodeCount', 'pseudocode');
+    applyCount('citations', 'citationCount', 'citations');
+    applyCount('references', 'referenceCount', 'references');
   }
 
   (deepData as any).aiStructure = {
     model,
     appliedAt: new Date().toISOString(),
     applied,
+    // Exact AI-verified counts (null-safe): authoritative for the report when
+    // the AI pass provided a number; `undefined` keys fall back downstream.
+    components: verdict.components ? { ...verdict.components } : undefined,
   };
 
   return { applied };

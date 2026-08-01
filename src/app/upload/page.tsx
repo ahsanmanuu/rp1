@@ -466,16 +466,19 @@ function UploadContent() {
             });
 
             const s = parsed.stats || {};
+            // AI-verified counts win when present; then live arrays; then snapshot
+            const aiComp = parsed.aiStructure?.components || null;
+            const aiCount = (key: string) => (typeof aiComp?.[key] === 'number' ? aiComp[key] : null);
             stats = {
               words: projDataResponse.project.wordCount || s.wordCount || 0,
               characters: projDataResponse.project.charCount || s.charCount || 0,
-              images: bodyFigureCount || s.imageCount || 0,
-              charts: bodyChartCount || s.chartCount || 0,
-              tables: bodyTableCount || s.tableCount || 0,
-              equations: bodyEquationCount || s.equationCount || 0,
-              citations: s.citationCount || projDataResponse.project.citationCount || 0,
-              references: validRefs.length || s.referenceCount || projDataResponse.project.referenceCount || 0,
-              pseudocode: bodyPseudoCount || s.pseudocodeCount || 0,
+              images: aiCount('figures') ?? (bodyFigureCount || s.imageCount || 0),
+              charts: aiCount('charts') ?? (bodyChartCount || s.chartCount || 0),
+              tables: aiCount('tables') ?? (bodyTableCount || s.tableCount || 0),
+              equations: aiCount('equations') ?? (bodyEquationCount || s.equationCount || 0),
+              citations: aiCount('citations') ?? (s.citationCount || projDataResponse.project.citationCount || 0),
+              references: validRefs.length > 0 ? validRefs.length : (aiCount('references') ?? (s.referenceCount || projDataResponse.project.referenceCount || 0)),
+              pseudocode: aiCount('pseudocode') ?? (bodyPseudoCount || s.pseudocodeCount || 0),
             };
           } catch (e) {
             console.warn("Failed to parse structuredContent for report history save", e);
@@ -1058,22 +1061,33 @@ function UploadContent() {
                     const s = structured.stats || {};
                     const hasBody = Array.isArray(body) && body.length > 0;
                     const hasRefsArray = Array.isArray(structured.references);
+                    // ─── AI-VERIFIED COUNTS ──────────────────────────────────────────
+                    // When the AI structure pass ran (aiStructure.components), its exact
+                    // component counts are authoritative — the heuristic body walk may
+                    // have undercounted elements the AI verified from the full evidence.
+                    // Fall back to the body walk / stored snapshot per-metric.
+                    const aiComp = structured?.aiStructure?.components || null;
+                    const aiCount = (key: string) => (typeof aiComp?.[key] === 'number' ? aiComp[key] : null);
                     return {
                       wordCount:       projectData.wordCount       || s.wordCount       || 0,
                       charCount:       projectData.charCount       || s.charCount       || 0,
-                      // Images: DB file list is most accurate (actual saved assets)
-                      imageCount:      Math.max(bodyFigureCount, (projectData.files?.filter((f: any) => f.fileType === 'image' || /^rf_/i.test(f.filename)).length || 0), s.imageCount || 0, projectData.imageCount || 0),
-                      chartCount:      hasBody ? bodyChartCount      : (s.chartCount      || 0),
-                      tableCount:      hasBody ? bodyTableCount      : (s.tableCount      || 0),
-                      equationCount:   hasBody ? bodyEquationCount   : (s.equationCount   || 0),
+                      // Images: AI verdict when present; else DB file list is most
+                      // accurate (actual saved assets)
+                      imageCount:      aiCount('figures') ?? Math.max(bodyFigureCount, (projectData.files?.filter((f: any) => f.fileType === 'image' || /^rf_/i.test(f.filename)).length || 0), s.imageCount || 0, projectData.imageCount || 0),
+                      chartCount:      aiCount('charts')     ?? (hasBody ? bodyChartCount      : (s.chartCount      || 0)),
+                      tableCount:      aiCount('tables')     ?? (hasBody ? bodyTableCount      : (s.tableCount      || 0)),
+                      equationCount:   aiCount('equations')  ?? (hasBody ? bodyEquationCount   : (s.equationCount   || 0)),
                       // Citations: recompute live from the stored raw HTML — identical
                       // logic to the server parser — never trust a stale snapshot.
+                      // (rawHtml covers the full document, so it wins over the AI's
+                      // front-matter-only view; AI fills in for PDFs without rawHtml.)
                       citationCount:   typeof structured?.rawHtml === 'string' && structured.rawHtml.length > 0
                                         ? countCitationsFromHtml(structured.rawHtml)
-                                        : (s.citationCount || projectData.citationCount || 0),
+                                        : (aiCount('citations') ?? (s.citationCount || projectData.citationCount || 0)),
                       // References: the refs array is authoritative when present
-                      referenceCount:  hasRefsArray ? validRefs.length : (s.referenceCount || projectData.referenceCount || 0),
-                      pseudocodeCount: hasBody ? bodyPseudoCount     : (s.pseudocodeCount || 0),
+                      // (AI replaces it wholesale for corrected docs)
+                      referenceCount:  hasRefsArray ? validRefs.length : (aiCount('references') ?? (s.referenceCount || projectData.referenceCount || 0)),
+                      pseudocodeCount: aiCount('pseudocode') ?? (hasBody ? bodyPseudoCount     : (s.pseudocodeCount || 0)),
                     };
                   })()}
                   metadata={{
