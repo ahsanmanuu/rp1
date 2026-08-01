@@ -158,7 +158,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       setIsSyncing(true);
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
         const res = await fetch(`/api/projects/${projectId}`, { signal: controller.signal });
         clearTimeout(timeoutId);
         if (!res.ok) throw new Error("Failed to sync from cloud");
@@ -236,9 +236,14 @@ export default function DocIDE({ projectId }: { projectId: string }) {
           
 
         }
-      } catch (err) {
-        console.error("Cloud sync failed:", err);
-        toast.error("Failed to sync workspace");
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          console.warn("Cloud sync aborted: timed out after 60s — the request may still be completing server-side");
+          toast.error("Sync timed out — please retry");
+        } else {
+          console.error("Cloud sync failed:", err);
+          toast.error("Failed to sync workspace");
+        }
       } finally {
         setIsSyncing(false);
       }
