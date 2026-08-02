@@ -227,6 +227,9 @@ export async function routeToAgent(req: GatewayRequest): Promise<GatewayResponse
     } else if (req.agent === 'structure-analyze') {
       toolName = 'doc2latex';
       action = 'structure_analysis';
+    } else if (req.agent === 'structure-latex') {
+      toolName = 'doc2latex';
+      action = 'structure_latex_generation';
     } else if (req.agent === 'citation-enrich') {
       toolName = 'citation_studio';
       action = 'enrich_citations';
@@ -276,7 +279,7 @@ export async function routeToAgent(req: GatewayRequest): Promise<GatewayResponse
   } catch (dbErr) {
     console.warn(`[AiContextConfig] Failed to fetch prompt overrides for agent ${req.agent}:`, dbErr);
   }
-  const needsJson = req.agent === 'reviewer' || req.agent === 'extract' || req.agent === 'diagram' || req.agent === 'structure-analyze' || req.agent === 'structure-frontmatter';
+  const needsJson = req.agent === 'reviewer' || req.agent === 'extract' || req.agent === 'diagram' || req.agent === 'structure-analyze' || req.agent === 'structure-frontmatter' || req.agent === 'structure-latex';
   const messages = req.messages && req.messages.length > 0
     ? [{ role: 'system' as const, content: systemContent }, ...req.messages]
     : [

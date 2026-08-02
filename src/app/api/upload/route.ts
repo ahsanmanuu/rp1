@@ -895,13 +895,18 @@ export async function POST(req: Request) {
       // files carry the corrected structure. Heuristics remain the fallback.
       try {
         const { analyzeManuscriptStructure, applyStructureCorrections } = await import('@/lib/ai-manuscript-analysis');
+        const imageNames = extractedImages
+          .filter((img: any) => !(img as any).isStructural && /\.(png|jpe?g|webp|gif|pdf|eps|svg|heic|heif|tiff?|bmp|avif)$/i.test(img.name))
+          .map((img: any) => img.name);
         const aiRes = await analyzeManuscriptStructure(deepData, {
           html: mammothResult.value,
           filename: file.name,
           userId: (session?.user as any)?.id ?? null,
+          imageFiles: imageNames,
         });
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
+          if (aiRes.aiLatex) (deepData as any).aiLatex = aiRes.aiLatex;
           console.log(`[TELEMETRY] AI structure corrections applied: ${applied.join(', ') || 'none'} (${aiRes.model})`);
         } else {
           console.warn('[TELEMETRY] AI structural analysis unavailable — keeping heuristic parse.');
@@ -1105,9 +1110,11 @@ export async function POST(req: Request) {
           pdfText,
           filename: file.name,
           userId: (session?.user as any)?.id ?? null,
+          imageFiles: [],
         });
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
+          if (aiRes.aiLatex) (deepData as any).aiLatex = aiRes.aiLatex;
           console.log(`[TELEMETRY] PDF AI structure corrections applied: ${applied.join(', ') || 'none'} (${aiRes.model})`);
         }
       } catch (aiErr: any) {

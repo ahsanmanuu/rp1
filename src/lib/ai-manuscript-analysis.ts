@@ -1,5 +1,7 @@
 import { routeToAgent } from './agent-gateway';
 import { countCitationsFromHtml } from './citationCounting';
+import { validateAiLatexFragments } from './latex-fragment-validator';
+import type { AiLatexFragments } from './latex-fragment-validator';
 import type { StructuredDocument, AuthorInfo } from './deep-parser';
 
 /**
@@ -45,6 +47,10 @@ export interface AiStructureVerdict {
 // so the upload request always completes: worst case = max(passA, passB).
 const FRONTMATTER_PASS_TIMEOUT_MS = 90000;
 const STRUCTURE_PASS_TIMEOUT_MS = 120000;
+
+// Extra budget for the scoped count re-verification pass (only fires when the
+// AI's count disagrees with the deterministic count by more than 1).
+const RECOUNT_PASS_TIMEOUT_MS = 40000;
 
 // Max characters of manuscript text sent to the AI (front + tail preserved).
 // Must be large enough to cover all figures, tables, equations, and sections
@@ -395,8 +401,8 @@ function reconcileVerdict(
  */
 export async function analyzeManuscriptStructure(
   deepData: StructuredDocument,
-  opts: { html?: string; pdfText?: string; filename: string; userId?: string | null }
-): Promise<{ verdict: AiStructureVerdict; model: string } | null> {
+  opts: { html?: string; pdfText?: string; filename: string; userId?: string | null; imageFiles?: string[] }
+): Promise<{ verdict: AiStructureVerdict; model: string; aiLatex: AiLatexFragments | null } | null> {
   try {
     const sectionTitles: string[] = [];
     const figureCaptions: string[] = [];
@@ -483,7 +489,35 @@ export async function analyzeManuscriptStructure(
       new Promise<null>(resolve => setTimeout(() => resolve(null), STRUCTURE_PASS_TIMEOUT_MS)),
     ]);
 
-    const [resA, resB] = await Promise.all([passA, passB]);
+    // Pass C — per-component modular LaTeX (figures/charts/tables/algorithms).
+    // Runs in parallel with A/B. Its output is strictly validated (balanced
+    // environments, command whitelist, image targets must exist) — any
+    // invalid fragment is discarded and the deterministic assembler output
+    // is used for that component instead.
+    const passC = Promise.race([
+      routeToAgent({
+        agent: 'structure-latex',
+        messages: [{ role: 'user', content: 'Identify the manuscript components and create modular LaTeX code for each figure, chart, table and algorithm.' }],
+        context: {
+          ...baseContext,
+          modelOverride: AI_MODEL_OVERRIDE,
+          fullText: plainText.substring(0, 80000),
+          imageMap: (opts.imageFiles || []).map((f, i) => ({ index: i + 1, filename: f })),
+          figureCaptions: figureCaptions.slice(0, 80),
+          tableCaptions: tableCaptions.slice(0, 80),
+          algorithmTitles: algorithmTitles.slice(0, 40),
+          counts: {
+            figures: deepData.stats?.imageCount || 0,
+            charts: deepData.stats?.chartCount || 0,
+            tables: (deepData.body || []).filter(n => n.type === 'table').length,
+            pseudocode: (deepData.body || []).filter(n => n.type === 'algorithm').length,
+          },
+        },
+      }),
+      new Promise<null>(resolve => setTimeout(() => resolve(null), STRUCTURE_PASS_TIMEOUT_MS)),
+    ]);
+
+    const [resA, resB, resC] = await Promise.all([passA, passB, passC]);
 
     const rawA = resA && resA.success && resA.data && !(resA.data as any)._failSafe && !(resA.data as any)._partial
       ? (resA.data as any)
@@ -518,8 +552,91 @@ export async function analyzeManuscriptStructure(
     // Deterministic verification against the actual document text.
     reconcileVerdict(verdict, deepData, plainText, opts.html);
 
-    const model = [resA?.model, resB?.model].filter(Boolean)[0] || 'unknown';
-    return { verdict, model };
+    // ── Scoped count re-verification (equations/pseudocode only) ──────────
+    // Figures/charts are clamped to real assets downstream; tables/references
+    // are containment-verified in reconcileVerdict. Equations and pseudocode
+    // counts flow straight from max(det, AI) — when the AI claims noticeably
+    // MORE than the parser found, ask it once to recount from the text. The
+    // refined answer replaces the AI count when it returns a number.
+    const detEquations = Math.max(
+      (deepData.mathBlocks || []).filter((m: any) => m && (typeof m === 'object' ? m.isDisplay : false)).length,
+      (deepData.body || []).filter(n => n.type === 'equation').length
+    );
+    const detPseudo = (deepData.body || []).filter(n => n.type === 'algorithm').length;
+    const compsNow = verdict.components || {};
+    const recountTargets: string[] = [];
+    if (typeof compsNow.equations === 'number' && detEquations > 0 && compsNow.equations > detEquations + 1) {
+      recountTargets.push(`equations: parser found ${detEquations}, you reported ${compsNow.equations}`);
+    }
+    if (typeof compsNow.pseudocode === 'number' && detPseudo > 0 && compsNow.pseudocode > detPseudo + 1) {
+      recountTargets.push(`pseudocode/algorithms: parser found ${detPseudo}, you reported ${compsNow.pseudocode}`);
+    }
+    let finalVerdict = verdict;
+    if (recountTargets.length > 0) {
+      try {
+        const recount = await Promise.race([
+          routeToAgent({
+            agent: 'structure-analyze',
+            messages: [{ role: 'user', content: 'Recount the specified components and return the full structured JSON verdict.' }],
+            context: {
+              ...baseContext,
+              modelOverride: AI_MODEL_OVERRIDE,
+              fullText: plainText.substring(0, 60000),
+              frontMatter,
+              sectionTitles: sectionTitles.slice(0, 60),
+              figureCaptions: figureCaptions.slice(0, 40),
+              tableCaptions: tableCaptions.slice(0, 40),
+              algorithmTitles: algorithmTitles.slice(0, 25),
+              equationSnippets,
+              referenceEntries: (deepData.references || []).slice(0, 80),
+              heuristic: {
+                title: deepData.title,
+                authors: (deepData.authors || []).map(a => a.name),
+                stats: deepData.stats,
+              },
+              recountInstruction:
+                'VERIFICATION MODE: your previous counts were WRONG. Recount precisely and return the complete JSON with ONLY the corrected counts. Mismatches: ' +
+                recountTargets.join('; '),
+            },
+          }),
+          new Promise<null>(resolve => setTimeout(() => resolve(null), RECOUNT_PASS_TIMEOUT_MS)),
+        ]);
+        const rawRecount =
+          recount && recount.success && recount.data && !(recount.data as any)._failSafe && !(recount.data as any)._partial
+            ? (recount.data as any)
+            : null;
+        if (rawRecount?.components && typeof rawRecount.components === 'object') {
+          const rc = rawRecount.components;
+          const merged = { ...verdict.components };
+          for (const key of ['equations', 'pseudocode'] as const) {
+            if (typeof rc[key] === 'number' && Number.isFinite(rc[key]) && rc[key] >= 0) {
+              merged[key] = Math.round(rc[key]);
+            }
+          }
+          finalVerdict = { ...verdict, components: merged };
+          console.warn(`[AI-Structure] Count re-verification applied (${recountTargets.length} mismatch(es)):`, merged);
+        }
+      } catch (recountErr: any) {
+        console.warn('[AI-Structure] Count re-verification failed (non-critical):', recountErr?.message || recountErr);
+      }
+    }
+
+    // ── Pass C: validate the AI-generated component LaTeX fragments ────────
+    let aiLatex: AiLatexFragments | null = null;
+    if (resC && resC.success && resC.data && !(resC.data as any)._failSafe && !(resC.data as any)._partial) {
+      try {
+        aiLatex = validateAiLatexFragments(resC.data, opts.imageFiles || []);
+        if (aiLatex) {
+          const total = (aiLatex.figures?.length || 0) + (aiLatex.charts?.length || 0) + (aiLatex.tables?.length || 0) + (aiLatex.algorithms?.length || 0);
+          console.log(`[AI-Structure] Validated ${total} AI component LaTeX fragment(s).`);
+        }
+      } catch (fragErr: any) {
+        console.warn('[AI-Structure] Fragment validation failed (non-critical):', fragErr?.message || fragErr);
+      }
+    }
+
+    const model = [resA?.model, resB?.model, resC?.model].filter(Boolean)[0] || 'unknown';
+    return { verdict: finalVerdict, model, aiLatex };
   } catch (err: any) {
     console.warn('[AI-Structure] Analysis failed (non-critical):', err?.message || err);
     return null;

@@ -656,6 +656,11 @@ export class LatexAssembler {
   }
 
   public static assembleNode(node: ContentNode, mathBlocks: any[]): string {
+    // AI-generated component override: validated fragments (structure-latex
+    // pass) replace the deterministic output for that component. Fragments
+    // are validated upstream — invalid ones are never attached here.
+    const aiOverride = (node as any)._aiLatex;
+    if (typeof aiOverride === 'string' && aiOverride.trim().length > 0) return aiOverride;
     switch (node.type) {
       case 'heading': {
         const rawText = node.text || "Untitled Section";
@@ -893,6 +898,8 @@ export class LatexAssembler {
   }
 
   static assembleTable(node: ContentNode, mathBlocks: any[]): string {
+    const aiOverride = (node as any)._aiLatex;
+    if (typeof aiOverride === 'string' && aiOverride.trim().length > 0) return aiOverride;
     if (!node.html) return '';
     const rowsMatch = node.html.match(/<tr[^>]*>([\s\S]*?)<\/tr>/gi);
     const rows = rowsMatch ? Array.from(rowsMatch) : [];
@@ -1030,6 +1037,8 @@ export class LatexAssembler {
   // Falls back to single figure for 1 image.
   // ──────────────────────────────────────────────────────────────
   static assembleFigureGroup(node: ContentNode, mathBlocks: any[]): string {
+    const aiOverride = (node as any)._aiLatex;
+    if (typeof aiOverride === 'string' && aiOverride.trim().length > 0) return aiOverride;
     const images = (node.images || []) as Array<{ src: string; caption: string }>;
     if (images.length === 0) return '';
 
@@ -1126,6 +1135,8 @@ export class LatexAssembler {
   }
 
   static assembleAlgorithm(node: ContentNode, mathBlocks: any[]): string {
+    const aiOverride = (node as any)._aiLatex;
+    if (typeof aiOverride === 'string' && aiOverride.trim().length > 0) return aiOverride;
     const steps = node.items || (node as any).steps || [];
     const rawTitle = (node.title || node.text || '').trim();
 
@@ -1889,6 +1900,10 @@ export class ModularLatexAssembler {
 
     const nodes = doc.body || (doc as any).nodes || [];
     let figureCounter = 0;
+    let aiFigureIdx = 0;
+    let aiChartIdx = 0;
+    let aiTableIdx = 0;
+    let aiAlgoIdx = 0;
 
     nodes.forEach((node: any, nodeIdx: number) => {
         const text = (node.text || "").trim();
@@ -1923,6 +1938,29 @@ export class ModularLatexAssembler {
         // Propagate two-column flag to table/figure nodes so assembler can choose table* vs table, figure* vs figure
         if (node.type === 'table' || node.type === 'figure-group' || node.type === 'algorithm') {
             node.twoColumn = isIeee || isAcm;
+        }
+
+        // AI component fragment override: validated structure-latex fragments
+        // are attached per component type in document order. assembleNode /
+        // assembleTable / assembleAlgorithm / assembleFigureGroup return them
+        // verbatim; fragments that failed validation are simply absent here.
+        const aiFragments = (doc as any).aiLatex;
+        if (aiFragments) {
+            let frag: string | undefined;
+            if (node.type === 'table') {
+                aiTableIdx++;
+                frag = aiFragments.tables?.find((f: any) => f.index === aiTableIdx)?.latex;
+            } else if (node.type === 'algorithm') {
+                aiAlgoIdx++;
+                frag = aiFragments.algorithms?.find((f: any) => f.index === aiAlgoIdx)?.latex;
+            } else if (node.type === 'chart') {
+                aiChartIdx++;
+                frag = aiFragments.charts?.find((f: any) => f.index === aiChartIdx)?.latex;
+            } else if (node.type === 'figure' || node.type === 'image' || node.type === 'figure-group') {
+                aiFigureIdx++;
+                frag = aiFragments.figures?.find((f: any) => f.index === aiFigureIdx)?.latex;
+            }
+            if (frag) node._aiLatex = frag;
         }
 
         currentSectionNodes.push(node);

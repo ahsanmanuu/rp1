@@ -1065,3 +1065,84 @@ Respond with ONLY the JSON object.`;
     throw new Error('AI front-matter analysis response did not contain valid JSON');
   },
 });
+
+register({
+  id: 'structure-latex',
+  name: 'Manuscript Component LaTeX Generator',
+  description: 'Identifies manuscript components (figures, charts, tables, algorithms) from the full text, counts them, and creates modular LaTeX code for each component',
+  temperature: 0.05,
+  maxTokens: 6144,
+  rateLimit: 20,
+  model: 'mimo-v2.5-free',
+  buildSystemPrompt(ctx) {
+    const fullText = String(ctx.fullText || '').substring(0, 80000);
+    const imageMap = JSON.stringify(ctx.imageMap || []);
+    const figureCaptions = (ctx.figureCaptions as string[]) || [];
+    const tableCaptions = (ctx.tableCaptions as string[]) || [];
+    const algorithmTitles = (ctx.algorithmTitles as string[]) || [];
+    const counts = JSON.stringify(ctx.counts || {});
+
+    return `You are a world-class scholarly LaTeX typesetting engine with 20 years of experience in academic publishing (IEEE, ACM, Springer LNCS, Elsevier, Nature). Your job is to identify the different components of the manuscript — figures, charts, tables, algorithms/pseudocode — count them, and create modular LaTeX code for each component.
+
+## YOUR TASK (in the user's words)
+"Please identify the different components of the manuscript like title, author, affiliations, abstract, keywords, figures, charts, tables, equations, sections, subsections, pseudocodes/algo., citations, references and count them and create modular latex codes of each components."
+For THIS pass you focus ONLY on the visual components: figures, charts, tables, algorithms/pseudocode. The other components (title, authors, abstract, keywords, equations, sections, citations, references) are handled by the deterministic engine — do NOT emit LaTeX for them.
+
+## INPUTS
+### A. FULL DOCUMENT TEXT (primary evidence — every caption, every algorithm block):
+"""TEXT
+${fullText}
+"""
+
+### B. Verified figure captions (document order):
+${figureCaptions.map((s, i) => `${i + 1}. ${s}`).join('\n') || 'none'}
+
+### C. Verified table captions (document order):
+${tableCaptions.map((s, i) => `${i + 1}. ${s}`).join('\n') || 'none'}
+
+### D. Verified algorithm/pseudocode titles (document order):
+${algorithmTitles.map((s, i) => `${i + 1}. ${s}`).join('\n') || 'none'}
+
+### E. Known component counts (deterministic + verified analysis):
+${counts}
+
+### F. Available image files mapped to document order:
+${imageMap}
+
+## OUTPUT SCHEMA
+Return ONE JSON object (no markdown, no commentary) with this EXACT schema:
+{
+  "figures":    [ { "index": 1, "latex": "\\begin{figure}[!ht]\\n\\centering\\n\\includegraphics[width=0.9\\linewidth]{rf_fig_1.png}\\n\\caption{<verbatim caption>}\\n\\label{fig:1}\\n\\end{figure}" } ],
+  "charts":     [ { "index": 1, "latex": "...same figure environment, image = <the chart filename>..." } ],
+  "tables":     [ { "index": 1, "latex": "\\begin{table}[!ht]\\n\\centering\\n\\begin{tabular}{...}\\n<rows>\\n\\end{tabular}\\n\\caption{<verbatim caption>}\\n\\label{tab:1}\\n\\end{table}" } ],
+  "algorithms": [ { "index": 1, "latex": "\\begin{algorithm}\\n\\caption{<verbatim title>}\\n\\begin{algorithmic}[1]\\n<lines>\\n\\end{algorithmic}\\n\\end{algorithm}" } ]
+}
+
+## HARD RULES
+1. index = position of that component in the document (1-based, in order). Every component gets exactly one entry; never skip or merge.
+2. Captions and titles MUST be copied VERBATIM from inputs B/C/D (exact text, no rewriting).
+3. \includegraphics/\zimg filenames MUST come EXACTLY from input F's "filename" field for the matching index. Never invent filenames.
+4. tables: reconstruct rows/columns from the text. Use tabularx/\\hline/\\multicolumn appropriately. Every table must compile standalone inside a float.
+5. algorithms: reconstruct the pseudocode lines with \\State, \\For/\\EndFor, \\While/\\EndWhile, \\If/\\Else/\\EndIf, \\Procedure, \\Function, \\Return, \\Comment. Use the algorithmic environment (algorithmicx style).
+6. Latex must be a single float/environment block per entry — no \\documentclass, \\usepackage, \\input, \\newcommand, \\def, \\bibliography, \\maketitle, or any other structural commands.
+7. Escape special characters in text (%, #, &, _ as \\%, \\#, \\&, \\_).
+8. If a component type is absent from the document, omit its key entirely (or use []).
+9. Keep every fragment under 2000 characters. JSON keys and backslashes must be exact and properly escaped.
+
+Respond with ONLY the JSON object.`;
+  },
+  parseResponse(raw) {
+    try { return JSON.parse(raw.trim()); } catch { /* continue */ }
+    const json = extractJsonBlock(raw);
+    if (json) {
+      try { return cleanAndParseJson(json); } catch { /* continue */ }
+    }
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start !== -1 && end !== -1 && end > start) {
+      try { return cleanAndParseJson(cleaned.substring(start, end + 1)); } catch { /* continue */ }
+    }
+    throw new Error('AI component LaTeX response did not contain valid JSON');
+  },
+});
