@@ -91,6 +91,7 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 import { DeepDocumentParser } from '@/lib/deep-parser';
 import { LatexAssembler, ModularLatexAssembler } from '@/lib/assembler';
+import { ensureContentSizeLimits } from '@/lib/pbContentLimits';
 
 // Simple concurrency queue for powershell execution to prevent CPU thrashing
 class PQueue {
@@ -1284,6 +1285,33 @@ export async function POST(req: Request) {
     // --- DB PERSISTENCE ---
     console.log("[TELEMETRY] Step 7: DB Persistence (Hardened Path)");
 
+    // PocketBase editor/json fields default to a 5MB content limit; large DOCX
+    // payloads (rawHtml + rawXml + parsed structure) routinely exceed it and PB
+    // rejects the create with "Failed to create record." Raise the field limits
+    // first, then defensively trim the payload to fit the effective limit.
+    const pbContentLimit = await ensureContentSizeLimits();
+    const structuredJsonBudget = pbContentLimit - 2 * 1024 * 1024;
+
+    const structuredWithXml = JSON.stringify({ ...deepData, rawHtml: mammothResult.value, rawXml: finalXml });
+    let structuredJson: string = structuredWithXml;
+    if (Buffer.byteLength(structuredWithXml, 'utf8') > structuredJsonBudget) {
+      // Pathological document: drop the raw XML (only used for template
+      // re-parses — the route falls back to LaTeX there), then cap rawHtml.
+      const withoutXml = JSON.stringify({ ...deepData, rawHtml: mammothResult.value });
+      if (Buffer.byteLength(withoutXml, 'utf8') <= structuredJsonBudget) {
+        structuredJson = withoutXml;
+      } else {
+        const baseJson = JSON.stringify({ ...deepData, rawHtml: '' });
+        const htmlBudget = Math.max(256 * 1024, structuredJsonBudget - Buffer.byteLength(baseJson, 'utf8'));
+        const fullHtml = String(mammothResult.value || '');
+        structuredJson = JSON.stringify({
+          ...deepData,
+          rawHtml: fullHtml.length > htmlBudget ? fullHtml.slice(0, htmlBudget) : fullHtml,
+        });
+      }
+      console.warn(`[TELEMETRY] structuredContent trimmed to ${Buffer.byteLength(structuredJson, 'utf8')} bytes (PB limit ${pbContentLimit})`);
+    }
+
     // SAFETY NET: Ensure the user row exists in the DB before creating a project.
     // This prevents FK constraint violations when the DB was wiped/migrated but
     // the client still holds a valid JWT with the old user ID.
@@ -1330,13 +1358,23 @@ export async function POST(req: Request) {
       }
     }
 
+    // Latex content guard: keep the assembled LaTeX under the raised PB field
+    // limit (only triggers for pathological documents; modular components
+    // remain on disk + in project_files so the editor can still open it).
+    let latexContentForDb: string = finalLatex;
+    if (Buffer.byteLength(finalLatex, 'utf8') > pbContentLimit) {
+      const budget = Math.max(1024 * 1024, pbContentLimit - 2048);
+      latexContentForDb = finalLatex.slice(0, budget) + "\n% [CONTENT TRIMMED BY LIMIT]\n";
+      console.warn(`[TELEMETRY] latexContent trimmed to ${Buffer.byteLength(latexContentForDb, 'utf8')} bytes (PB limit ${pbContentLimit})`);
+    }
+
     const project = await prisma.project.create({
       data: {
         userId: session.user.id,
         title: (deepData.title || file.name).trim(),
         originalFilename: file.name,
-        latexContent: finalLatex,
-        structuredContent: JSON.stringify({ ...deepData, rawHtml: mammothResult.value, rawXml: finalXml }),
+        latexContent: latexContentForDb,
+        structuredContent: structuredJson,
         status: "draft",
         projectType: file.name.endsWith('.docx') ? "DOC2LATEX" : "LATEX_STUDIO",
         // SANITIZE: Ensure all stats are valid non-negative integers (defensive fallback for AI reconciliation edge cases)
