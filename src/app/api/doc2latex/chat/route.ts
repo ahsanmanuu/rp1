@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
           reason: result.error?.startsWith('AI_CAP_RULE_BLOCKED:') ? parts[2] : undefined
         }, { status: 429 });
       }
-      return NextResponse.json({ error: result.error }, { status: 502 });
+      return NextResponse.json({ success: false, error: result.error || "AI response unavailable" }, { status: 200 });
     }
 
     return NextResponse.json({

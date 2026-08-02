@@ -332,11 +332,17 @@ function UploadContent() {
                   reject(new Error("Invalid JSON response"));
                 }
               } else {
-                let errorMsg = `Server Error (${xhr.status}): ${xhr.statusText || "Internal Server Error"}`;
+                if ((xhr.status === 502 || xhr.status === 503 || xhr.status === 504) && uploadAttempts < maxUploadAttempts) {
+                  if (simulatedInterval) clearInterval(simulatedInterval);
+                  reject(new Error("NETWORK_DROP"));
+                  return;
+                }
+                let errorMsg = `Server busy or unavailable (${xhr.status}). Please try again.`;
                 try {
                   if (xhr.responseText?.trim().startsWith('{')) {
                     const data = JSON.parse(xhr.responseText);
                     if (data?.error) errorMsg = String(data.error);
+                    else if (data?.message) errorMsg = String(data.message);
                   }
                 } catch { /* response was not JSON */ }
                 reject(new Error(errorMsg));
@@ -358,7 +364,7 @@ function UploadContent() {
           break; // Upload succeeded!
         } catch (networkErr: any) {
           if (networkErr?.message === "NETWORK_DROP" && uploadAttempts < maxUploadAttempts) {
-            await new Promise(r => setTimeout(r, 800 * uploadAttempts));
+            await new Promise(r => setTimeout(r, 1200 * uploadAttempts));
             continue;
           }
           if (networkErr?.message === "NETWORK_DROP") {

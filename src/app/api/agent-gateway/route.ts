@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
       if (result.error?.startsWith('AI_CAP_REACHED:') || result.error?.startsWith('AI_CAP_RULE_BLOCKED:')) {
         return NextResponse.json(result, { status: 429 });
       }
-      return NextResponse.json(result, { status: 502 });
+      return NextResponse.json(result, { status: 200 });
     }
 
     return NextResponse.json(result);

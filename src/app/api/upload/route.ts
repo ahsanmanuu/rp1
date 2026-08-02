@@ -1076,12 +1076,15 @@ export async function POST(req: Request) {
       // AI-ASSISTED STRUCTURAL VERIFICATION for PDF path (non-blocking of pipeline)
       try {
         const { analyzeManuscriptStructure, applyStructureCorrections } = await import('@/lib/ai-manuscript-analysis');
-        const aiRes = await analyzeManuscriptStructure(deepData, {
-          pdfText,
-          filename: file.name,
-          userId: (session?.user as any)?.id ?? null,
-          imageFiles: [],
-        });
+        const aiRes = await Promise.race([
+          analyzeManuscriptStructure(deepData, {
+            pdfText,
+            filename: file.name,
+            userId: (session?.user as any)?.id ?? null,
+            imageFiles: [],
+          }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 20000))
+        ]);
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
           if (aiRes.aiLatex) (deepData as any).aiLatex = aiRes.aiLatex;

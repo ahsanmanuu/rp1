@@ -46,7 +46,7 @@ async function handler(request: NextRequest) {
       method: request.method,
       headers,
       body: body || null,
-      ...(pbPath.includes('/api/realtime') ? {} : { signal: AbortSignal.timeout(30000) }),
+      ...(pbPath.includes('/api/realtime') ? {} : { signal: AbortSignal.timeout(120000) }),
     });
 
     const resHeaders = new Headers(res.headers);
@@ -108,8 +108,8 @@ async function handler(request: NextRequest) {
   } catch (err: any) {
     console.error('[PB Proxy Error]', err?.message || err);
     return new NextResponse(
-      JSON.stringify({ error: 'PocketBase proxy failed', detail: err?.message || 'Unknown' }),
-      { status: 502, headers: { 'content-type': 'application/json' } }
+      JSON.stringify({ error: 'Database proxy temporarily unavailable', detail: err?.message || 'Unknown' }),
+      { status: 503, headers: { 'content-type': 'application/json' } }
     );
   }
 }
