@@ -6,6 +6,21 @@ import {
   FileText, Image, Table, Sigma, Quote, Link2, Code2, Sparkles, BarChart3, AlertTriangle, X 
 } from 'lucide-react';
 
+// No-latex guard (Phase 3): the report surfaces must render statistics and
+// plain-text pseudocode only — never raw LaTeX source. Algorithm items come
+// from the parser as plain text, but if a LaTeX block ever slipped in, keep
+// it off the report and point the user to the LaTeX editor instead.
+const TEX_BLOCK_RE = /\\begin\s*\{[a-zA-Z]+\}[\s\S]*?\\end\s*\{[a-zA-Z]+\}/;
+const TEX_CMD_RE = /\\(documentclass|usepackage|input|include|section|subsection)\b/;
+
+function sanitizeAlgoContent(raw?: string): string {
+  if (!raw) return '';
+  if (TEX_BLOCK_RE.test(raw) || TEX_CMD_RE.test(raw)) {
+    return 'Algorithm pseudocode detected; full LaTeX source is available in the LaTeX editor.';
+  }
+  return raw;
+}
+
 interface ProjectStatsProps {
   stats: {
     wordCount: number;
@@ -350,7 +365,7 @@ export const ProjectStats: React.FC<ProjectStatsProps> = ({ stats, metadata }) =
                           <h5 className="font-bold text-[var(--strict-text)]">{algo.title || `Algorithm ${i + 1}`}</h5>
                         </div>
                         <pre className="text-xs text-[var(--strict-text)] opacity-90 bg-slate-50 dark:bg-black/40 p-4 rounded-xl overflow-x-auto font-mono leading-relaxed border border-[var(--strict-border)]">
-                          {algo.content}
+                          {sanitizeAlgoContent(algo.content)}
                         </pre>
                       </div>
                     ));
