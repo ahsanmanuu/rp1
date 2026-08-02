@@ -73,11 +73,25 @@ export default function RootLayout({
               lastReload = now;
               setTimeout(function(){ window.location.reload() }, 1500);
             }
-            function retryResource(url, tagName){
+            function extractChunkUrl(msg){
+              if (!msg) return null;
+              var m = msg.match(/\\(timeout:\\s*([^)\\s]+)\\)/);
+              if (m && m[1]) return m[1];
+              m = msg.match(/https?:\\/\\/[^\\s"'<>]+(?:\\.js|\\.css)\\b/);
+              if (m) return m[0];
+              m = msg.match(/_next\\/static\\/[^\\s"'<>]+(?:\\.js|\\.css)\\b/);
+              if (m) return m[0];
+              m = msg.match(/(?:chunk|asset)[:\\s]+([^\\s"'<>]+(?:\\.js|\\.css)\\b)/i);
+              if (m) return m[1];
+              return null;
+            }
+            function retryResource(url, tagName, attempt){
+              attempt = attempt || 0;
+              if (attempt > 2) { forceReload(); return; }
               var ts = Date.now();
               var retryUrl = url + (url.indexOf('?') === -1 ? '?' : '&') + '_rt=' + ts;
               fetch(retryUrl, { cache: 'no-store' }).then(function(r){
-                if (!r.ok) { forceReload(); return; }
+                if (!r.ok) { setTimeout(function(){ retryResource(url, tagName, attempt + 1); }, 1200); return; }
                 r.text().then(function(code){
                   if (tagName === 'SCRIPT') {
                     var s = document.createElement('script');
@@ -86,25 +100,24 @@ export default function RootLayout({
                     setTimeout(function(){ window.location.reload(); }, 500);
                   }
                 });
-              }).catch(function(){ forceReload(); });
+              }).catch(function(){ setTimeout(function(){ retryResource(url, tagName, attempt + 1); }, 1200); });
             }
 
             window.addEventListener('error', function(e) {
               var t = e.target || {};
-              if ((t.tagName === 'SCRIPT' && t.src && t.src.indexOf('/_next/static/chunks/') !== -1) || 
+              if ((t.tagName === 'SCRIPT' && t.src && t.src.indexOf('/_next/static/chunks/') !== -1) ||
                   (t.tagName === 'LINK' && t.rel === 'stylesheet' && t.href && t.href.indexOf('/_next/static/') !== -1)) {
                 e.preventDefault && e.preventDefault();
-                retryResource(t.src || t.href, t.tagName);
+                retryResource(t.src || t.href, t.tagName, 0);
               }
             }, true);
 
             window.addEventListener('unhandledrejection', function(e) {
               if (isChunkError(e.reason)) {
                 e.preventDefault();
-                // Extract chunk URL from error message for targeted retry
                 var msg = (e.reason && e.reason.message) || '';
-                var m = msg.match(/\\(timeout:\\s*([^)]+)\\)/);
-                if (m && m[1]) { retryResource(m[1], 'SCRIPT'); return; }
+                var url = extractChunkUrl(msg);
+                if (url) { retryResource(url, 'SCRIPT', 0); return; }
                 forceReload();
               }
               if (typeof ErrorEvent !== 'undefined' && e.reason instanceof ErrorEvent) {

@@ -28,14 +28,17 @@ export default function GlobalError({
   useEffect(() => {
     if (isChunkLoadError(error)) {
       const reloadKey = '__chunk_reload_' + window.location.pathname;
-      if (!sessionStorage.getItem(reloadKey)) {
-        sessionStorage.setItem(reloadKey, '1');
+      const attempts = parseInt(sessionStorage.getItem(reloadKey) || '0', 10);
+      if (attempts < 2) {
+        sessionStorage.setItem(reloadKey, String(attempts + 1));
         console.warn('[CHUNK_LOAD_ERROR] Auto-reloading...', error.message);
-        window.location.reload();
-        return;
+        // Small delay so a rebuilding dev server finishes emitting the chunk
+        // before the reload lands (avoids reloading into the same timeout).
+        const timer = setTimeout(() => window.location.reload(), 2000);
+        return () => clearTimeout(timer);
       }
       sessionStorage.removeItem(reloadKey);
-      console.warn('[CHUNK_LOAD_ERROR] Reload already attempted, showing error UI');
+      console.warn('[CHUNK_LOAD_ERROR] Reload attempts exhausted, showing error UI');
     }
     console.error('[GLOBAL_ERROR_BOUNDARY]', error);
   }, [error]);

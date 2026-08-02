@@ -22,6 +22,7 @@ import ProjectLimitModal from "@/components/ProjectLimitModal";
 import AiLimitModal from "@/components/AiLimitModal";
 const ProjectStats = dynamic(() => import("@/components/ProjectStats").then(m => m.ProjectStats), { ssr: false });
 const ChatWidget = dynamic(() => import("@/components/ChatWidget"), { ssr: false });
+import ChunkSafe from "@/components/ChunkSafe";
 import ProLoader from "@/components/ProLoader";
 import { 
   FileText, Plus, Bell, Shield, History, 
@@ -2119,7 +2120,9 @@ export default function DashboardPage() {
         }}
       />
 
-      <ChatWidget />
+      <ChunkSafe fallback={null}>
+        <ChatWidget />
+      </ChunkSafe>
       </div>
 
       {isSessionLoading && (

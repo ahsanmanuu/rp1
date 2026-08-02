@@ -5,6 +5,7 @@ import { useSession } from "@/lib/pb-auth-react";
 import Sidebar from '@/components/Sidebar';
 import dynamic from 'next/dynamic';
 const ChatWidget = dynamic(() => import('@/components/ChatWidget'), { ssr: false });
+import ChunkSafe from "@/components/ChunkSafe";
 import ProLoader from "@/components/ProLoader";
 import {
   Headphones, Plus, Send, ChevronDown, ChevronRight,
@@ -806,7 +807,9 @@ export default function SupportPage() {
             </div>
           </div>
         )}
-        <ChatWidget />
+        <ChunkSafe fallback={null}>
+          <ChatWidget />
+        </ChunkSafe>
       </div>
     </div>
   );
