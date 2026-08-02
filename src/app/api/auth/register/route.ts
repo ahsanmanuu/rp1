@@ -85,7 +85,7 @@ export async function POST(req: Request) {
     const admPb = await pbAdmin().catch(() => pb);
     let record;
     try {
-      record = await admPb.collection("users").create({
+      const userPayload: Record<string, any> = {
         email: cleanEmail,
         password,
         passwordConfirm: password,
@@ -96,10 +96,14 @@ export async function POST(req: Request) {
         membership: "free",
         role: "user",
         status: "active",
-        aiCapPlanId: freePlan?.id || null,
-      });
+      };
+      if (freePlan?.id) {
+        userPayload.aiCapPlanId = freePlan.id;
+      }
+
+      record = await admPb.collection("users").create(userPayload);
     } catch (pbErr: any) {
-      const details = pbErr?.data?.data || {};
+      const details = pbErr?.data?.data || pbErr?.response?.data || {};
       const firstError = Object.values(details)[0] as any;
       const message = firstError?.message || pbErr?.message || "Registration failed in authentication database.";
       return NextResponse.json({ error: message }, { status: 400 });
