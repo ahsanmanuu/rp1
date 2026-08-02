@@ -1916,12 +1916,33 @@ export class ModularLatexAssembler {
           .trim();
 
         // --- DYNAMIC DEDUPLICATION GATE ---
-        const isMetadataMatch = norm === normalizedTitle || 
-                                (normalizedTitle.length > 20 && (norm.includes(normalizedTitle) || normalizedTitle.includes(norm))) ||
-                                normalizedAuthors.some(a => a.length > 8 && (norm === a || norm.includes(a))) ||
-                                (normalizedAbstract.length > 30 && norm.includes(normalizedAbstract)) ||
+        // Substring matches (author names, title fragments, abstract fragments)
+        // previously erased real headings/paragraphs: a body paragraph such as
+        // "John Smith et al. observed that ..." contains an author name, and a
+        // section heading such as "Deep Learning" is a substring of the title.
+        // Only exact/whole-content matches are duplicates now.
+        const isMetadataMatch = norm === normalizedTitle ||
+                                (normalizedTitle.length > 20 && norm.includes(normalizedTitle)) ||
+                                normalizedAuthors.some(a => a.length > 8 && norm === a) ||
+                                (normalizedAbstract.length > 30 && (norm === normalizedAbstract || (norm.startsWith(normalizedAbstract) && norm.length <= normalizedAbstract.length + 80))) ||
                                 cleanLower === 'abstract' || cleanLower.startsWith('abstract ') ||
                                 cleanLower.match(/^(?:keywords|index terms|indexterms|highlights)$/);
+
+        // A paragraph that actually contains a detected math block is a missed
+        // equation (math was injected inline into body text) — reclassify it so
+        // it renders as a real equation instead of vanishing or garbling.
+        if (node.type === 'paragraph' && !isMetadataMatch) {
+            const eqEntry = mathBlocks.find((b: any) => {
+                const raw = typeof b === 'string' ? b : (b?.latex || b?.tex || '');
+                if (raw.length < 3) return false;
+                const a = normalize(text.replace(/\s+/g, ' '));
+                const bRaw = normalize(raw.replace(/\s+/g, ' '));
+                return a.includes(bRaw);
+            });
+            if (eqEntry) {
+                node = { ...node, type: 'equation', latex: typeof eqEntry === 'string' ? eqEntry : (eqEntry.latex || eqEntry.tex || ''), label: eqEntry?.label || '' };
+            }
+        }
 
         if (isMetadataMatch && !isStructural) return;
 

@@ -651,7 +651,7 @@ export class DeepDocumentParser {
       }
 
       if (foundRefs) {
-          const isPostRefHeader = (tagName.startsWith('h') || this.detectHeading(el, f.text) !== null || /^[IVXLCDM\d\.\s]+$/.test(f.text)) &&
+          const isPostRefHeader = (tagName.startsWith('h') || this.detectHeading(el, f.text, manifest) !== null || /^[IVXLCDM\d\.\s]+$/.test(f.text)) &&
               /^(?:\d+\.?\s*)?(?:acknowledgments?|declarations?|ethics\s+(?:approval|statement)|conflict\s+of\s+interest|competing\s+interests|funding|data\s+availability|authors?\s+contributions?|supplementary|appendix|appendices|supporting|biography|author\s+biography|about\s+the\s+author)/i.test(lower.trim());
           
           if (isPostRefHeader) {
@@ -764,8 +764,8 @@ export class DeepDocumentParser {
       else if (ALGO_LABEL_PATTERN.test(f.text) && f.text.length < 150) {
           nextRole = 'algorithm';
       }
-      else if (!f.text.includes('\t') && !f.text.includes('|') && (tagName.startsWith('h') || this.detectHeading(el, f.text) !== null || (tagName === 'p' && f.wordCount <= 12 && f.wordCount >= 1 && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 && !f.text.endsWith('.') && f.text.length < 120 && f.text.length > 2))) {
-          const detectedLvl = this.detectHeading(el, f.text);
+      else if (!f.text.includes('\t') && !f.text.includes('|') && (tagName.startsWith('h') || this.detectHeading(el, f.text, manifest) !== null || (tagName === 'p' && f.wordCount <= 12 && f.wordCount >= 1 && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 && !f.text.endsWith('.') && f.text.length < 120 && f.text.length > 2))) {
+          const detectedLvl = this.detectHeading(el, f.text, manifest);
           const isNumberedHeading = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(f.text);
           const isStandardSectionName = /^(?:[\d\.]+\s*)?(?:introduction|related work|background|methodology|conclusion|abstract|acknowledgments|references|overview|implementation|proposed|experimental|results|discussion|system)/i.test(f.text);
           const isSectionHeading = detectedLvl !== null || isNumberedHeading || isStandardSectionName || tagName.startsWith('h') || (tagName === 'p' && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8);
@@ -874,12 +874,12 @@ export class DeepDocumentParser {
       if (currentRole === 'abstract' && nextRole === 'paragraph' && i < currentStart + 25 && f.wordCount > 5) {
           nextRole = 'abstract';
       } else if ((currentRole as string) === 'algorithm' && ['paragraph', 'list', 'table'].includes(nextRole)) {
-          const isActualHeading = this.detectHeading(el, f.text) !== null ||
+          const isActualHeading = this.detectHeading(el, f.text, manifest) !== null ||
             tagName.startsWith('h') ||
             DeepDocumentParser.FORCED_LEVEL1.has(f.text.toLowerCase().replace(/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i, '').replace(/[.:\s]*$/, '').trim());
           if (isActualHeading) {
               nextRole = 'section';
-          } else if (nextRole === 'list' || nextRole === 'table' || this.isAlgorithmBodyLine(f.text, el) || f.text.length <= 250) {
+          }           else if (nextRole === 'list' || nextRole === 'table' || this.isAlgorithmBodyLine(f.text, el)) {
               nextRole = 'algorithm';
           }
       } else if (['idle', 'title', 'author', 'affiliation', 'paragraph'].includes(currentRole) && nextRole === 'paragraph' && !foundAbstract) {
@@ -1153,11 +1153,11 @@ export class DeepDocumentParser {
                     const afterHeading = sepIdx !== -1
                       ? text.substring(sepIdx + embeddedHeading.length).replace(/^\s*[:.]+\s*/, '').trim()
                       : '';
-                    if (afterHeading.length > 20) {
+                    if (afterHeading.length > 0) {
                       result.body.push({ type: 'paragraph', text: afterHeading });
                     }
                   } else {
-                    let level = this.detectHeading(entry.elements[0], text) || 2;
+                    let level = this.detectHeading(entry.elements[0], text, manifest) || 2;
                     // First heading in the document is always a main section —
                     // a leading "X.Y" numbered prefix does not make it a subsection.
                     if (lastHeadingLevel === 0 && level > 1) level = 1;
@@ -1172,7 +1172,7 @@ export class DeepDocumentParser {
                         // heading, keep it in the text and derive the level from it
                         // — stripping it would erase the depth signal entirely.
                         const withoutNumber = cleanText.slice(prefixMatchText[0].length).trim();
-                        if (withoutNumber && this.detectHeading(entry.elements[0], withoutNumber)) {
+                        if (withoutNumber && this.detectHeading(entry.elements[0], withoutNumber, manifest)) {
                             cleanText = withoutNumber;
                         } else {
                             const numPart = prefixMatchText[0].match(/\d+(?:\.\d+)*/)?.[0];
@@ -1249,18 +1249,20 @@ export class DeepDocumentParser {
               const textContent = el0.textContent || '';
               const chartMatch = textContent.match(/CHARTIMGX(chart_pending_\d+)XEND/);
               
-              if (chartMatch) {
-                  const src = chartMatch[1] + '.png';
-                  let figCaption = entry.caption;
-                  if (!figCaption) {
-                      let sib = el0.nextElementSibling;
-                      for (let h = 0; h < 5 && sib; h++, sib = sib.nextElementSibling) {
-                          const t = sib.textContent?.trim() || '';
-                          if (/^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\.?\s*[\d.]+/i.test(t)) {
-                              figCaption = t; break;
+                  if (chartMatch) {
+                      const src = chartMatch[1] + '.png';
+                      let figCaption = entry.caption;
+                      if (!figCaption) {
+                          let sib = el0.nextElementSibling;
+                          for (let h = 0; h < 5 && sib; h++, sib = sib.nextElementSibling) {
+                              const t = sib.textContent?.trim() || '';
+                              if (/^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\.?\s*[\d.]+/i.test(t) && !this.isFigureCaptionProse(t)) {
+                                  figCaption = t;
+                                  consumedCaptions.add(sib);
+                                  break;
+                              }
                           }
                       }
-                  }
                   result.stats.chartCount++;
                   result.body.push({ type: 'chart', id: src, caption: figCaption || '' } as any);
                   continue;
@@ -1324,8 +1326,10 @@ export class DeepDocumentParser {
                       let sib = el0.nextElementSibling;
                       for (let h = 0; h < 5 && sib; h++, sib = sib.nextElementSibling) {
                           const t = sib.textContent?.trim() || '';
-                          if (/^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\.?\s*[\d.]+/i.test(t)) {
-                              figCaption = t; break;
+                          if (/^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\.?\s*[\d.]+/i.test(t) && !this.isFigureCaptionProse(t)) {
+                              figCaption = t;
+                              consumedCaptions.add(sib);
+                              break;
                           }
                       }
                   }
@@ -1410,7 +1414,16 @@ export class DeepDocumentParser {
               result.body.push({ type: 'algorithm', title: titleText, items: steps.length ? steps : [titleText] } as any);
           }
           else if (entry.role === 'list') {
-              const items = Array.from<Element>(entry.elements[0].querySelectorAll('li')).map((li) => li.textContent?.trim() || '');
+                  const items: string[] = [];
+                  for (const listEl of entry.elements) {
+                      const tag = listEl.tagName.toLowerCase();
+                      if (tag === 'ul' || tag === 'ol') {
+                          items.push(...Array.from<Element>(listEl.querySelectorAll('li')).map((li) => li.textContent?.trim() || '').filter(Boolean));
+                      } else {
+                          const t = listEl.textContent?.trim() || '';
+                          if (t) items.push(t);
+                      }
+                  }
               result.body.push({ type: 'list', items, listType: 'itemize' });
           }
           else if (entry.role === 'reference') {
@@ -1491,7 +1504,7 @@ export class DeepDocumentParser {
     return false;
   }
 
-  private static detectHeading(el: Element, text: string): number | null {
+  private static detectHeading(el: Element, text: string, manifest?: any[]): number | null {
     if (/MATHBLOCKX\d+XMARKER/i.test(text)) return null;
     
     const tagName = el.tagName.toLowerCase();
@@ -1557,7 +1570,7 @@ export class DeepDocumentParser {
     if (f.text.length > 200 || f.text.length < 3) return null;
     // Headings never contain tab/pipe column structure (tab-stopped layout/legend lines are not headings)
     if (f.text.includes('\t') || f.text.includes('|')) return null;
-    if (f.text.endsWith('.') && !/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-z][.\s]+)/i.test(f.text) && !(f.wordCount < 6 && f.isBold)) return null;
+    if (f.text.endsWith('.') && !/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-z][.\s]+)/i.test(f.text) && !(f.isBold || f.wordCount < 3)) return null;
 
     // Guard: Exclude Author/Affiliation metadata lines that start with number indices (e.g., "1 Designation of 1st Author...", "1 Department of CS...")
     const isAuthorAffilText = /\b(?:designation|department|organization|university|faculty|institute|college|school|author|affiliation|prof\.|professor|lecturer|student)\b/i.test(f.text) ||
@@ -1570,6 +1583,18 @@ export class DeepDocumentParser {
       .replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-z][.\s]+)+\s*/i, '')
       .replace(/[.\s:]+$/, '')
       .trim();
+
+    // Guard: a "heading" that is actually an author/affiliation metadata line
+    // repeating a manifest author (e.g. numbered "4. John Smith" before the
+    // author-details block) must not hijack the role and erase the real section.
+    const authorMatch = (manifest || []).some((m: any) => {
+      if (!m || m.role !== 'author') return false;
+      const el0 = m.elements && m.elements[0];
+      const a = String(el0?.textContent || '').toLowerCase().replace(/[.,:;]+$/, '').trim();
+      if (a.split(/\s+/).length < 2) return false;
+      return normClean === a || (normClean.length <= a.length + 3 && normClean.includes(a));
+    });
+    if (authorMatch) return null;
 
     // Priority 1: Canonical Academic Section Names (always level 1)
     if (this.FORCED_LEVEL1.has(normClean)) return 1;
@@ -1621,6 +1646,15 @@ export class DeepDocumentParser {
     return /\b(?:shows?|presents|illustrates|compares|depicts|displays|demonstrates|summarizes|lists|reports|plots|gives|provides|represents|outlines|describes|highlights|overviews|contains|yields|produces|indicates|details|tabulates)\b/i.test(remainder);
   }
 
+  private static isFigureCaptionProse(t: string): boolean {
+    // A genuine figure caption does not begin running prose — "Figure 2 shows
+    // the performance comparison..." is a body sentence, not a caption. Without
+    // this guard, normal paragraphs that merely START with a figure label are
+    // consumed as captions and vanish from the document body.
+    const remainder = t.replace(/^\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo)\s*\d+(?:\.\d+)*\s*[.:.–\-\s]*/i, '').trim().slice(0, 60);
+    return /\b(?:shows?|presents|illustrates|compares|depicts|displays|demonstrates|summarizes|lists|reports|plots|gives|provides|represents|outlines|describes|highlights|overviews|contains|yields|produces|indicates|details|tabulates|is|are|was|were|uses?|used|show)\b/i.test(remainder);
+  }
+
   private static findCaption(
     el: Element,
     processed: Set<Element>,
@@ -1638,8 +1672,8 @@ export class DeepDocumentParser {
 
     const rx =
       type === 'figure'
-        ? /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo)\s*[\d.\-:A-Za-z]*/i
-        : /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]*/i;
+        ? /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo)\s*(\d+(?:\.\d+)*|[IVXLCDM]+)(?:\s*[.:.–\-])?/i
+        : /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Table|Tab\b\.?)\s*(\d+(?:\.\d+)*|[IVXLCDM]+)(?:\s*[.:.–\-])?/i;
 
     const captionOrdinal = (t: string): number | null => {
       const m = t.match(
@@ -1680,7 +1714,8 @@ export class DeepDocumentParser {
         const t = next.textContent?.trim() || '';
         // Captions are single logical lines — multi-line element text (e.g. a whole table) is never a caption
         const isTableProse = type === 'table' && this.isTableCaptionProse(t);
-        if (rx.test(t) && !t.includes('\n') && !isTableProse) {
+        const isFigureProse = type === 'figure' && this.isFigureCaptionProse(t);
+        if (rx.test(t) && !t.includes('\n') && !isTableProse && !isFigureProse) {
           // If this caption's label ordinal matches the media element that directly follows it,
           // the caption belongs to THAT media (above-caption convention), not the current one.
           const capOrdinal = captionOrdinal(t);
@@ -1703,7 +1738,10 @@ export class DeepDocumentParser {
               }
               if (nextSib && !processed.has(nextSib) && ['p', 'div'].includes(nextSib.tagName.toLowerCase())) {
                 const sibText = nextSib.textContent?.trim() || '';
-                if (sibText.length > 0 && sibText.length < 300 && !rx.test(sibText) && !/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i.test(sibText) && !this.FORCED_LEVEL1.has(sibText.toLowerCase())) {
+                // The merged continuation must READ like a caption: short, no
+                // running-prose verbs — otherwise a bare "Figure 1" would
+                // swallow the entire following paragraph into the caption.
+                if (sibText.length > 0 && sibText.length < 300 && !rx.test(sibText) && !/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i.test(sibText) && !this.FORCED_LEVEL1.has(sibText.toLowerCase()) && !this.isFigureCaptionProse(sibText) && sibText.split(/\s+/).length <= 20) {
                   processed.add(nextSib);
                   afterPrefix = sibText;
                 }
@@ -1729,7 +1767,8 @@ export class DeepDocumentParser {
         const t = prev.textContent?.trim() || '';
         // Captions are single logical lines — multi-line element text (e.g. a whole table) is never a caption
         const isTableProse = type === 'table' && this.isTableCaptionProse(t);
-        if (rx.test(t) && !t.includes('\n') && !isTableProse) {
+        const isFigureProse = type === 'figure' && this.isFigureCaptionProse(t);
+        if (rx.test(t) && !t.includes('\n') && !isTableProse && !isFigureProse) {
           // If this caption's label ordinal matches the media element that directly precedes it,
           // the caption belongs to THAT media (below-caption convention), not the current one.
           const capOrdinal = captionOrdinal(t);
@@ -1748,7 +1787,7 @@ export class DeepDocumentParser {
               while (descSib && descSib !== el) {
                 if (!processed.has(descSib) && ['p', 'div'].includes(descSib.tagName.toLowerCase())) {
                   const sibText = descSib.textContent?.trim() || '';
-                  if (sibText.length > 0 && sibText.length < 300 && !rx.test(sibText) && !/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i.test(sibText) && !this.FORCED_LEVEL1.has(sibText.toLowerCase())) {
+                  if (sibText.length > 0 && sibText.length < 300 && !rx.test(sibText) && !/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i.test(sibText) && !this.FORCED_LEVEL1.has(sibText.toLowerCase()) && !this.isFigureCaptionProse(sibText) && sibText.split(/\s+/).length <= 20) {
                     processed.add(descSib);
                     afterPrefix = sibText;
                     break;
@@ -1927,6 +1966,21 @@ export class DeepDocumentParser {
 
     // 1. Exclude lines that are clearly normal headings, captions, or list items
     if (/^(?:figure|fig\.|table|tab\.|algorithm|algo\.|section|chapter|appendix)/i.test(text)) return false;
+
+    // Numbered headings with formula-like titles ("3.1 Loss = L1 + L2") are
+    // headings, never equations — equations do not carry "X.Y" prefixes.
+    if (/^(?:\s*(?:section|chapter|appendix|part)\s+)?\d+(?:\.\d+)*\s+[A-Z]/.test(text) && text.length < 120) return false;
+
+    // Prose cross-references to numbered items ("Eq. (5)", "Figure 2", "see (3)")
+    // are not equations themselves.
+    if (/\b(?:eq|equation|fig|figure|sec|section|ref|shown|depicted|displayed|numbered|denoted|defined)\b[^.]*[\(\[]?\s*\d/i.test(text) && !text.includes('=')) return false;
+
+    // Parenthesized years are never equations ("published in (2020)").
+    if (/\(\s*(?:19|20)\d{2}\s*\)/.test(text)) return false;
+
+    // Parameter lists like "n = 100, LR = 0.001, batch = 32" are prose, never
+    // equations — reject the whole "WORD = value[, ...]" pattern up front.
+    if (/^[A-Za-z][A-Za-z0-9_\s]*\s*=\s*[\d.,+\-eE%]+\s*(?:[,;]\s*[A-Za-z][A-Za-z0-9_\s]*\s*=\s*[\d.,+\-eE%]+\s*)*$/.test(text)) return false;
     
     // 2. Explicit Math Markers
     const isStandaloneMath = /^\s*(?:MATHBLOCKX\d+XMARKER\s*|(?:\(\d+(?:\.\d+)*\)|\[\d+(?:\.\d+)*\])\s*|[,.:;]\s*)+$/i.test(text);
@@ -1942,19 +1996,38 @@ export class DeepDocumentParser {
     const isReferenceContent = /\b(?:et\s+al|vol\.|no\.|pp\.|doi:|issn|isbn|proceedings|journal|conference|trans\.|ieee|acm|springer|elsevier|wiley)\b/i.test(text) ||
                                /\b(?:19|20)\d{2}\b/.test(text); // Contains a year (1900-2099)
     const hasEquationNumber = hasParenEquationNum || (hasBracketNum && !isReferenceContent);
-    
+
+    // Prose guard FIRST: any sentence with ordinary English words is not an
+    // equation, even when it ends with "(N)" ("The loss is computed as shown
+    // in Eq. (5)", "Results are shown below (2)", "(5) The confusion matrix...").
+    const stopCount = text.split(/\s+/).filter(w => DOMAIN_STOPWORDS.has(w.toLowerCase())).length;
+    const stopwordDensity = f.wordCount > 0 ? stopCount / f.wordCount : 0;
+    if (hasEquationNumber && stopwordDensity > 0.08 && !text.includes('\\text')) {
+      return false;
+    }
+
     // Math symbols: basic operators, Greek letters, summation, integration, brackets, relations
     const mathSymbolCount = (text.match(/[=+\-*/^\\∑∫√²³α-ωΑ-Ωθλπμσδφψωηρ<>~≈≠≤≥_()\[\]{}]/g) || []).length;
     const hasRelational = /[=<>\u2248\u2260\u2264\u2265]/.test(text); // =, <, >, ≈, ≠, ≤, ≥
 
-    if (hasEquationNumber && (hasRelational || mathSymbolCount >= 2)) {
-      return true;
+    if (hasEquationNumber) {
+      // The content before/after the "(N)" must actually look like math:
+      // a real operator/relation (parens alone are NOT math) plus either a
+      // second operator or digits. Bare "(5)" / "Figure (5)" prose fails.
+      const eqBody = text
+        .replace(/[\(\[]\s*\d+(?:\.\d+)*\s*[\)\]]\s*$/, '')
+        .replace(/^\s*[\(\[]\s*\d+(?:\.\d+)*\s*[\)\]]\s*/, '')
+        .trim();
+      const realOps = (eqBody.match(/[=+\-*/^∑∫√²³<>~≈≠≤≥_α-ωΑ-Ω]/g) || []).length;
+      if (realOps >= 2 || (realOps >= 1 && /\d/.test(eqBody))) {
+        return true;
+      }
+      return false;
     }
 
     // 4. Density/Heuristic analysis for standalone equations without numbers
-    const stopCount = text.split(/\s+/).filter(w => DOMAIN_STOPWORDS.has(w.toLowerCase())).length;
-    const stopwordDensity = f.wordCount > 0 ? stopCount / f.wordCount : 0;
-    
+    // (stopCount/stopwordDensity were computed above for the numbered path)
+
     // An equation should have very low stopword density (usually 0, unless using \text{})
     if (stopwordDensity > 0.08 && !text.includes('\\text')) {
       return false;

@@ -824,8 +824,32 @@ export function applyStructureCorrections(
         }
         // Apply the AI's depth (1 = section, 2 = subsection, 3 = subsubsection)
         // to matched headings; the AI sees numbering evidence the heuristic
-        // parser may flatten.
+        // parser may flatten. EXCEPT: never let the AI DOWNGRADE a heading
+        // that structurally contains sub-headings (a numbered "3.2" prefix, or
+        // level-2+ headings following it before the next level-1). Flattening
+        // such a heading un-splits the document: the assembler splits files on
+        // level-1 headings, so its children get orphaned/absorbed and content
+        // disappears from the parent section.
         if (n.level !== s.level) {
+          const curLevel = n.level || 1;
+          if (s.level < curLevel && curLevel > 1) {
+            const prefixLevel = (() => {
+              const m = n.text.match(/^\s*(?:\[|\()?(\d+(?:\.\d+)*)(?:\]|\))?[.:\s)]/);
+              return m ? Math.min(3, m[1].split('.').length) : null;
+            })();
+            const startLevel = curLevel;
+            let hasChildren = false;
+            for (let j = bodyIdx + 1; j < body.length; j++) {
+              const c = body[j];
+              if (c.type !== 'heading' || !c.level) continue;
+              if (c.level <= startLevel) break;
+              if (c.level > startLevel) { hasChildren = true; break; }
+            }
+            if ((prefixLevel !== null && prefixLevel > 1) || hasChildren) {
+              // Keep the parser's deeper level — downgrading would un-split.
+              continue;
+            }
+          }
           n.level = s.level;
           corrected++;
         }

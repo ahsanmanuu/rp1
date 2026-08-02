@@ -597,6 +597,9 @@ export async function runHardenedPipeline(
     // SAFETY: Ensure all file content values are strings (disk reads may return Buffers)
     finalNormalized.forEach(f => { if (typeof f.content !== 'string') f.content = String(f.content || ''); });
 
+    // Pipeline-level warnings surfaced to the client (missing-file disables etc.)
+    const pipelineWarnings: string[] = [];
+
     // ── MISSING FILE RECOVERY ────────────────────────────────────────────────
     // Scan the main .tex for \input{...} and \include{...} references to files
     // that don't exist in the file list. First try to recover content from DB
@@ -666,11 +669,16 @@ export async function runHardenedPipeline(
               }
               // Attempt 3: Safe-disable the reference to prevent blank pages.
               // Use \iffalse / \fi so surrounding inline text is preserved.
+              // NOTE: this is NOT silent — the warning is surfaced to the
+              // client so the user knows content referenced by main.tex is
+              // not in the PDF (previously sections vanished without trace).
               if (!recovered) {
                 mainTex.content = mainTex.content.replace(ref,
                   `\\iffalse % DISABLED (file not found: ${cand})\n${ref}\n\\fi`
                 );
-                console.log(`[PIPELINE] Disabled missing file reference (no recovery): ${cand}`);
+                const warningMsg = `Missing file: ${cand} (referenced by ${mainFile}) — disabled during compile; its content is NOT in the PDF. Re-upload the source document to restore it.`;
+                pipelineWarnings.push(warningMsg);
+                console.warn(`[PIPELINE] Disabled missing file reference (no recovery): ${cand}`);
               }
             }
           }
@@ -1574,7 +1582,6 @@ export async function runHardenedPipeline(
     // ── PHASE 1: TECTONIC LOCAL (Primary for Scholarly/Modular) ──────────────
     let combinedLog = "";
     let bibHeadingInjected = false;
-    const pipelineWarnings: string[] = [];
     const noteWarning = (w: string | undefined) => { if (w) pipelineWarnings.push(w); };
     for (let tectonicPass = 0; tectonicPass < 2; tectonicPass++) {
         try {

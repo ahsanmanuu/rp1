@@ -386,6 +386,32 @@ export default function DocIDE({ projectId }: { projectId: string }) {
             } else {
               if (fullActive) setCode(isImage(activeMeta.path) ? fullActive.content : formatLatexCode(fullActive.content));
               if (!openTabs.includes(activeMeta.path)) setOpenTabs([activeMeta.path]);
+
+              // Stale-cache guard: the local IndexedDB snapshot is displayed,
+              // but the cloud copy may be NEWER (e.g. the manuscript was
+              // re-uploaded from another device, or a server-side heal
+              // regenerated it). Without this probe the stale local copy is
+              // treated as truth and the auto-sync below clobbers the newer
+              // server content — which is exactly how "missing sections"
+              // became permanent. Probe `updatedAt` in the background and
+              // re-sync only when the cloud copy is genuinely newer.
+              void (async () => {
+                try {
+                  const probeRes = await fetchProjectWithRetry(projectId);
+                  if (!probeRes.ok) return;
+                  const probeData = await probeRes.json();
+                  const cloudProject = probeData?.project;
+                  if (!cloudProject) return;
+                  const cloudTime = new Date(cloudProject.updatedAt).getTime();
+                  const localTime = localProj.updatedAt || 0;
+                  if (!Number.isNaN(cloudTime) && cloudTime > localTime + 5000) {
+                    console.log(`[DocIDE] Cloud copy is newer than local cache (cloud=${cloudTime} local=${localTime}). Re-syncing from cloud.`);
+                    await syncFromCloud(studioFs);
+                  }
+                } catch (probeErr) {
+                  console.warn("[DocIDE] Staleness probe failed (non-critical):", probeErr);
+                }
+              })();
             }
           }
         }

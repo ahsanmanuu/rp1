@@ -27,14 +27,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         pdfBase64: result.pdfBase64,
         log: result.log,
-        strategy: result.strategy
+        strategy: result.strategy,
+        warnings: result.warnings
       });
     } else {
       return NextResponse.json({ 
         error: result.log,
         log: result.log,
         errors: result.errors,
-        strategy: result.strategy
+        strategy: result.strategy,
+        warnings: result.warnings
       }, { status: 422 });
     }
 
