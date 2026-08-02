@@ -994,3 +994,68 @@ Respond with ONLY the JSON object.`;
     throw new Error('AI structure analysis response did not contain valid JSON');
   },
 });
+
+register({
+  id: 'structure-frontmatter',
+  name: 'Manuscript Front-Matter Analyzer',
+  description: 'AI extraction of manuscript front matter: exact title, authors with affiliations, affiliations, abstract and keywords from the title-area text',
+  temperature: 0.05,
+  maxTokens: 4096,
+  rateLimit: 20,
+  model: 'mimo-v2.5-free',
+  buildSystemPrompt(ctx) {
+    const frontMatter = String(ctx.frontMatter || '').substring(0, 6500);
+    const documentTitle = String(ctx.documentTitle || 'Untitled Document');
+    const heuristic = JSON.stringify(ctx.heuristic || {});
+
+    return `You are a world-class scholarly document front-matter extraction engine with 20 years of experience in academic publishing (IEEE, ACM, Springer LNCS, Elsevier, Nature). Your job is to extract the EXACT front matter (title, authors, affiliations, abstract, keywords) of a converted academic manuscript with surgical precision.
+
+## INPUTS
+### A. Document front matter (first ~6500 characters of the manuscript text — title area, authors, affiliations, abstract, keywords):
+"""TEXT
+${frontMatter}
+"""
+
+### B. Heuristic extraction already performed by the structural parser (for reference only - verify it against input A, do not trust it blindly):
+${heuristic}
+
+Document working title (from filename, may be wrong): "${documentTitle}"
+
+## YOUR TASK
+Return ONE JSON object (no markdown, no commentary before or after) with this EXACT schema:
+{
+  "title": { "text": "the exact manuscript title as it appears (no numbering, no surrounding quotes)", "confidence": 0-100 },
+  "authors": [ { "name": "Full Name", "affiliations": ["Department, University, Country"] } ],
+  "affiliations": ["each unique affiliation written ONCE in clean form"],
+  "abstract": { "text": "the abstract text EXACTLY as it appears (do not rewrite, shorten or summarize)", "confidence": 0-100 },
+  "keywords": ["keyword1", "keyword2"]
+}
+
+## HARD RULES
+1. Use ONLY text that actually appears in input A. NEVER invent, paraphrase, translate or beautify titles, author names, affiliations or abstracts.
+2. If a field is missing from the front matter, set it to null (or [] for arrays). Never fabricate placeholder values like "Author Name", "Unknown" or "Institution".
+3. Authors: list every author with the exact name (drop only trailing superscript digits/asterisks used for affiliation markers, e.g. "John Doe1" -> "John Doe"). Attach the matching affiliation(s) from the manuscript.
+4. Affiliations: deduplicate; include department, institution and country when present.
+5. Abstract: copy verbatim; strip a leading "Abstract" label if present.
+6. Keywords: exact terms, no numbering, no bullet prefixes.
+7. If the front matter shows only template boilerplate (e.g. placeholder titles like "<Title, 24 point, Bold>" or generic instruction text with no real content), set title/authors/abstract to null rather than returning the boilerplate.
+8. confidence for title/abstract must be 90+ when the text appears verbatim in the front matter.
+9. JSON keys must match EXACTLY. Escape backslashes and quotes properly.
+
+Respond with ONLY the JSON object.`;
+  },
+  parseResponse(raw) {
+    try { return JSON.parse(raw.trim()); } catch { /* continue */ }
+    const json = extractJsonBlock(raw);
+    if (json) {
+      try { return cleanAndParseJson(json); } catch { /* continue */ }
+    }
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start !== -1 && end !== -1 && end > start) {
+      try { return cleanAndParseJson(cleaned.substring(start, end + 1)); } catch { /* continue */ }
+    }
+    throw new Error('AI front-matter analysis response did not contain valid JSON');
+  },
+});

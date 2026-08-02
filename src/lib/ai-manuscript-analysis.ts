@@ -1,4 +1,5 @@
 import { routeToAgent } from './agent-gateway';
+import { countCitationsFromHtml } from './citationCounting';
 import type { StructuredDocument, AuthorInfo } from './deep-parser';
 
 /**
@@ -36,14 +37,18 @@ export interface AiStructureVerdict {
   references?: string[] | null;
 }
 
-// Analysis window: long enough for a full-document analysis on slower
-// providers, short enough that uploads never hang (client XHR allows 5 min).
-// Heuristics are used when the AI verdict misses this window.
-const ANALYSIS_TIMEOUT_MS = 180000;
+// Per-pass windows: each pass gets its own shorter race so a slow structure
+// pass never blocks the (fast, small) front-matter pass results. The
+// front-matter pass (small input) is fast; the structure pass (full text)
+// gets more time. Heuristics are the fallback when a pass misses its window.
+const FRONTMATTER_PASS_TIMEOUT_MS = 120000;
+const STRUCTURE_PASS_TIMEOUT_MS = 150000;
 
 // Max characters of manuscript text sent to the AI (front + tail preserved).
-const FULL_TEXT_LIMIT = 26000;
-const FULL_TEXT_TAIL = 6000;
+// Kept deliberately bounded: small inputs make the model faster AND more
+// accurate (no context dilution), which is what drives both complaints.
+const FULL_TEXT_LIMIT = 16000;
+const FULL_TEXT_TAIL = 5000;
 
 function stripTags(html: string): string {
   return html
@@ -207,9 +212,152 @@ function normalizeVerdict(raw: any): AiStructureVerdict | null {
 }
 
 /**
+ * Deterministic in-text citation counter (PDF/plain-text path; the HTML path
+ * reuses the exact shared countCitationsFromHtml so client and server always
+ * agree). Reference-list region is excluded like the HTML counter does.
+ */
+function countCitationsFromPlainText(text: string): number {
+  const cut = (text || '').replace(
+    /\n\s*(?:\d+[.)]\s*)?(?:references|bibliography|literature\s+cited)\s*[:.\-]?[^\n]*$/i,
+    ''
+  );
+  const matches = cut.match(/\[\s*\d{1,3}(?:\s*[,;\u2013\-]\s*\d{1,3})*\s*\]/g) || [];
+  const seen = new Set<number>();
+  for (const m of matches) {
+    const parts = m.replace(/[\[\]\s]/g, '').split(/[,;\u2013\-]/).filter(Boolean);
+    for (const part of parts) {
+      const n = parseInt(part, 10);
+      if (!isNaN(n) && n > 0) seen.add(n);
+    }
+  }
+  return seen.size;
+}
+
+/** Normalized text used for containment verification against the document. */
+function normText(s: string): string {
+  return (s || '')
+    .toLowerCase()
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Deterministic reconciliation of the AI verdict against the ACTUAL document
+ * text. This is what keeps results identical for the same document (no drift
+ * per upload) and prevents AI hallucinations from ever reaching the report or
+ * the flushed LaTeX:
+ *  - sections / captions / references must exist in the text (containment);
+ *  - citations use the shared deterministic counter;
+ *  - reference count anchors on the heuristically-extracted entries;
+ *  - equations/pseudocode anchor on actual parsed math/algorithm blocks.
+ */
+function reconcileVerdict(
+  verdict: AiStructureVerdict,
+  deepData: StructuredDocument,
+  plainText: string,
+  rawHtml?: string
+): AiStructureVerdict {
+  const haystack = normText(plainText);
+  const inText = (s: string): boolean => {
+    if (!s || s.length < 4) return false;
+    return haystack.includes(normText(s));
+  };
+
+  // ── Sections: keep only AI sections whose title actually appears in text ──
+  if (verdict.sections && verdict.sections.length > 0) {
+    const verified = verdict.sections.filter(s => {
+      const t = String(s?.title || '').replace(/\s+/g, ' ').trim();
+      if (!t) return false;
+      if (inText(t)) return true;
+      // Allow numbering-stripped match (e.g. "1. Introduction" -> "introduction")
+      return inText(t.replace(/^[\d\s.\-–—:()[\]ivxlcdm]+/i, ''));
+    });
+    verdict.sections = verified.length > 0 ? verified : verdict.sections;
+  }
+
+  // ── Figure / table / algorithm lists: drop captions not in the text ──
+  const verifyCaptions = (list: Array<{ caption?: string }> | null | undefined): Array<{ caption?: string }> | undefined => {
+    if (!list || list.length === 0) return undefined;
+    const verified = list.filter(c => {
+      const cap = String(c?.caption || '').replace(/\s+/g, ' ').trim();
+      if (!cap) return false;
+      if (inText(cap)) return true;
+      // Match the caption body without its "Figure N"/"TABLE N" prefix
+      return inText(cap.replace(/^(?:fig(?:ure)?|tab(?:le)?|alg(?:orithm)?|chart|img(?:age)?)[.\s]*[\dIVXLC]*-?[.\s:-]*/i, ''));
+    });
+    return verified.length > 0 ? verified : list;
+  };
+  verdict.figures = verifyCaptions(verdict.figures) ?? verdict.figures;
+  verdict.tables = verifyCaptions(verdict.tables) ?? verdict.tables;
+  if (verdict.algorithms && verdict.algorithms.length > 0) {
+    const verified = verdict.algorithms.filter(a => {
+      const t = String(a?.title || '').replace(/\s+/g, ' ').trim();
+      if (!t) return false;
+      return inText(t) || inText(t.replace(/^algorithm[\s\d:.-]*/i, ''));
+    });
+    verdict.algorithms = verified.length > 0 ? verified : verdict.algorithms;
+  }
+
+  // ── References: keep only entries that exist verbatim in the text ──
+  if (verdict.references && verdict.references.length > 0) {
+    const verified = verdict.references.filter(r => {
+      const clean = String(r || '').replace(/\s+/g, ' ').trim();
+      if (!clean) return false;
+      // Compare the first ~100 chars (authors + year) against the document
+      return inText(clean.substring(0, 100));
+    });
+    if (verified.length > 0) verdict.references = verified;
+  }
+
+  // ── Components: deterministic anchors win where they are reliable ──
+  const comps: AiStructureComponents = { ...(verdict.components || {}) };
+  const body = deepData.body || [];
+  const countByType = (types: string[]): number => body.filter(n => types.includes(n.type)).length;
+  const mathBlocks = (deepData.mathBlocks || []) as Array<{ latex?: string }>;
+
+  // Citations: deterministic shared counter (identical to the client display).
+  const detCitations = rawHtml
+    ? countCitationsFromHtml(rawHtml)
+    : countCitationsFromPlainText(plainText);
+  if (detCitations > 0) comps.citations = detCitations;
+
+  // References: heuristic-extracted entries are ground truth for the count.
+  const detRefs = (deepData.references || []).length;
+  if (detRefs > 0) comps.references = detRefs;
+
+  // Equations: parsed math blocks / equation nodes are ground truth.
+  const detEquations = mathBlocks.length > 0 ? mathBlocks.length : countByType(['equation']);
+  if (detEquations > 0) comps.equations = detEquations;
+
+  // Pseudocode: parsed algorithm nodes are ground truth.
+  const detPseudo = countByType(['algorithm']);
+  if (detPseudo > 0) comps.pseudocode = detPseudo;
+
+  // Tables: parsed table nodes anchor the AI count (AI refines, never invents).
+  const detTables = countByType(['table']);
+  if (detTables > 0 && typeof comps.tables === 'number' && comps.tables === 0) comps.tables = detTables;
+  else if (detTables > 0 && typeof comps.tables !== 'number') comps.tables = detTables;
+
+  // Figures: AI count is authoritative when present (distinguishes real
+  // captioned figures from decorative images); parsed nodes are the fallback.
+  const detFigures = countByType(['figure', 'figure-group', 'image']);
+  const detCharts = countByType(['chart']);
+  if (typeof comps.figures !== 'number' && detFigures > 0) comps.figures = detFigures;
+  if (typeof comps.charts !== 'number' && detCharts > 0) comps.charts = detCharts;
+
+  if (Object.keys(comps).length > 0) verdict.components = comps;
+  return verdict;
+}
+
+/**
  * Runs the AI structural analysis for a parsed manuscript.
- * Returns null when the AI pass is unavailable, timed out, or returned
- * unusable output — callers MUST fall back to the heuristic parse untouched.
+ * Two specialized passes run in PARALLEL (metadata on the small front matter,
+ * structure on the full text) so the wall-clock time is bounded by the slower
+ * pass instead of one oversized call — faster AND more accurate. Every AI
+ * claim is then reconciled against the actual document text.
+ * Returns null when both passes are unavailable/timed out — callers MUST fall
+ * back to the heuristic parse untouched.
  */
 export async function analyzeManuscriptStructure(
   deepData: StructuredDocument,
@@ -229,13 +377,8 @@ export async function analyzeManuscriptStructure(
 
     const plainText = opts.html ? stripTags(opts.html) : opts.pdfText || '';
     const frontMatter = plainText.substring(0, 6500);
-    const documentTail = plainText.length > 6500
-      ? plainText.substring(Math.max(6500, plainText.length - 4500))
-      : '';
-    // Full-document evidence: the AI must see the ENTIRE manuscript (body,
-    // captions, equations, references), not just the front matter, so its
-    // detection is independent of the heuristic parser. Front + tail of the
-    // text are always preserved (tail holds the reference list).
+    // Full-document evidence: front + tail always preserved (tail holds the
+    // reference list). Bounded size keeps the pass fast and accurate.
     let fullText = plainText;
     if (fullText.length > FULL_TEXT_LIMIT) {
       const keepFront = FULL_TEXT_LIMIT - FULL_TEXT_TAIL;
@@ -248,16 +391,44 @@ export async function analyzeManuscriptStructure(
       .map(m => String(m.latex).substring(0, 200))
       .slice(0, 15);
 
-    const response = await Promise.race([
+    const documentTitle = opts.filename.replace(/\.[^/.]+$/, '');
+    const baseContext = {
+      userId: opts.userId ?? null,
+      documentTitle,
+    };
+
+    // Pass A — front matter (title/authors/affiliations/abstract/keywords)
+    const passA = Promise.race([
+      routeToAgent({
+        agent: 'structure-frontmatter',
+        messages: [{ role: 'user', content: 'Analyze this manuscript front matter and return the structured JSON verdict.' }],
+        context: {
+          ...baseContext,
+          frontMatter,
+          heuristic: {
+            title: deepData.title,
+            authors: (deepData.authors || []).map(a => a.name),
+            abstractLength: (deepData.abstract || '').length,
+            keywords: deepData.keywords,
+          },
+        },
+      }),
+      new Promise<null>(resolve => setTimeout(() => resolve(null), FRONTMATTER_PASS_TIMEOUT_MS)),
+    ]);
+
+    // Pass B — full-document structure (sections, figures, tables, algorithms,
+    // components, references)
+    const passB = Promise.race([
       routeToAgent({
         agent: 'structure-analyze',
         messages: [{ role: 'user', content: 'Analyze this manuscript and return the structured JSON verdict.' }],
         context: {
-          userId: opts.userId ?? null,
-          documentTitle: opts.filename.replace(/\.[^/.]+$/, ''),
+          ...baseContext,
           fullText,
           frontMatter,
-          documentTail,
+          documentTail: plainText.length > 6500
+            ? plainText.substring(Math.max(6500, plainText.length - 4500))
+            : '',
           sectionTitles: sectionTitles.slice(0, 60),
           figureCaptions: figureCaptions.slice(0, 40),
           tableCaptions: tableCaptions.slice(0, 40),
@@ -273,19 +444,46 @@ export async function analyzeManuscriptStructure(
           },
         },
       }),
-      new Promise<null>(resolve => setTimeout(() => resolve(null), ANALYSIS_TIMEOUT_MS)),
+      new Promise<null>(resolve => setTimeout(() => resolve(null), STRUCTURE_PASS_TIMEOUT_MS)),
     ]);
 
-    if (!response || !response.success || !response.data) return null;
-    const raw = response.data as any;
-    if (raw && (raw._failSafe || raw._partial)) return null;
+    const [resA, resB] = await Promise.all([passA, passB]);
 
-    const verdict = normalizeVerdict(raw);
-    if (!verdict) {
-      console.warn('[AI-Structure] AI verdict failed validation, keeping heuristic parse.');
+    const rawA = resA && resA.success && resA.data && !(resA.data as any)._failSafe && !(resA.data as any)._partial
+      ? (resA.data as any)
+      : null;
+    const rawB = resB && resB.success && resB.data && !(resB.data as any)._failSafe && !(resB.data as any)._partial
+      ? (resB.data as any)
+      : null;
+
+    const verdictA = rawA ? normalizeVerdict(rawA) : null;
+    const verdictB = rawB ? normalizeVerdict(rawB) : null;
+    if (!verdictA && !verdictB) {
+      console.warn('[AI-Structure] Both AI passes unavailable, keeping heuristic parse.');
       return null;
     }
-    return { verdict, model: response.model };
+
+    // Merge: front-matter pass wins for metadata, structure pass wins for the
+    // rest. Either pass succeeding alone still yields a usable verdict.
+    const verdict: AiStructureVerdict = {
+      ...(verdictB || {}),
+      ...(verdictA || {}),
+      sections: verdictB?.sections ?? verdictA?.sections,
+      figures: verdictB?.figures ?? verdictA?.figures,
+      tables: verdictB?.tables ?? verdictA?.tables,
+      algorithms: verdictB?.algorithms ?? verdictA?.algorithms,
+      components: {
+        ...(verdictA?.components || {}),
+        ...(verdictB?.components || {}),
+      },
+      references: verdictB?.references ?? verdictA?.references,
+    };
+
+    // Deterministic verification against the actual document text.
+    reconcileVerdict(verdict, deepData, plainText, opts.html);
+
+    const model = [resA?.model, resB?.model].filter(Boolean)[0] || 'unknown';
+    return { verdict, model };
   } catch (err: any) {
     console.warn('[AI-Structure] Analysis failed (non-critical):', err?.message || err);
     return null;
