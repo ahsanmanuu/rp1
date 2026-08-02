@@ -12,7 +12,8 @@
     "build": "node scripts/fix-prisma-exports.js && next build --webpack",
     "start": "node start.js",
     "lint": "eslint",
-    "postinstall": "prisma generate && node scripts/fix-prisma-exports.js"
+    "postinstall": "prisma generate && node scripts/fix-prisma-exports.js",
+    "test:golden": "node scratch/golden-all.cjs"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^2.0.48",

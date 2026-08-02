@@ -19,7 +19,8 @@
     "../src/lib/ai-manuscript-analysis.ts",
     "../src/lib/assembler.ts",
     "../src/lib/agent-gateway/**/*.ts",
-    "../src/lib/deep-parser.ts"
+    "../src/lib/deep-parser.ts",
+    "../src/lib/latex-image-audit.ts"
   ],
   "exclude": ["node_modules"]
 }
