@@ -543,7 +543,7 @@ export class DeepDocumentParser {
     // Equation count = standalone equation body nodes + display math blocks
     // that appear inside paragraph MATHBLOCKX markers (accumulated during Phase4).
     const standaloneEqs = result.body.filter(n => n.type === 'equation').length;
-    result.stats.equationCount = standaloneEqs + uncountedInlineDisplayMathCount;
+    result.stats.equationCount = standaloneEqs + result.stats.equationCount;
     result.stats.pseudocodeCount = result.body.filter(n => n.type === 'algorithm').length;
     result.stats.chartCount = result.body.filter(n => n.type === 'chart').length;
     result.stats.referenceCount = result.references.length;
@@ -957,7 +957,6 @@ export class DeepDocumentParser {
       }
 
       const processedMathBlocks = new Set<number>();
-      let uncountedInlineDisplayMathCount = 0;
 
       for (let i = 0; i < manifest.length; i++) {
           const entry = manifest[i];
@@ -1114,7 +1113,7 @@ export class DeepDocumentParser {
                   processedMathBlocks.add(mbIdx);
                   const mb = _mathBlocks[mbIdx];
                   if (mb && (typeof mb === 'object' ? mb.isDisplay : false)) {
-                    uncountedInlineDisplayMathCount++;
+                    result.stats.equationCount++;
                   }
                 }
               }

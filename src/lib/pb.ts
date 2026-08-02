@@ -362,6 +362,8 @@ export async function pbAdmin(): Promise<PocketBase> {
     if (typeof window === 'undefined') {
       try {
         const os = require('os');
+        const path = require('path');
+        const fs = require('fs');
         const tokenPath = path.join(os.tmpdir(), 'rp1_admin_token.json');
         fs.mkdirSync(path.dirname(tokenPath), { recursive: true });
         fs.writeFileSync(tokenPath, JSON.stringify({
