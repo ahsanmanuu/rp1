@@ -890,8 +890,7 @@ register({
   rateLimit: 20,
   model: 'mimo-v2.5-free',
   buildSystemPrompt(ctx) {
-    const frontMatter = String(ctx.frontMatter || '').substring(0, 6500);
-    const documentTail = String(ctx.documentTail || '').substring(0, 4500);
+    const fullText = String(ctx.fullText || ctx.frontMatter || '').substring(0, 26000);
     const documentTitle = String(ctx.documentTitle || 'Untitled Document');
     const sectionTitles = (ctx.sectionTitles as string[]) || [];
     const figureCaptions = (ctx.figureCaptions as string[]) || [];
@@ -901,24 +900,19 @@ register({
     const referenceEntries = (ctx.referenceEntries as string[]) || [];
     const heuristic = JSON.stringify(ctx.heuristic || {});
 
-    return `You are a world-class scholarly document analysis engine with 20 years of experience in academic publishing (IEEE, ACM, Springer LNCS, Elsevier, Nature, and APA/IEEE reference formats). Your job is to verify and correct the STRUCTURAL ANALYSIS of a converted academic manuscript with surgical precision.
+    return `You are a world-class scholarly document analysis engine with 20 years of experience in academic publishing (IEEE, ACM, Springer LNCS, Elsevier, Nature, and APA/IEEE reference formats). Your job is to analyze a converted academic manuscript from its FULL TEXT with surgical precision and return the complete, exact structural analysis.
 
 ## INPUTS
-### A. Document front matter (first ~6500 characters of the manuscript text — title area, authors, affiliations, abstract, keywords):
+### A. FULL DOCUMENT TEXT (PRIMARY EVIDENCE - the COMPLETE manuscript text in reading order: title, authors, affiliations, abstract, keywords, every section/subsection with its body paragraphs, every figure and table caption, every equation, every algorithm/pseudocode listing, and the full reference list). Every count and every list you return MUST be derived from this text:
 """TEXT
-${frontMatter}
+${fullText}
 """
 
-### A2. Document tail (last ~4500 characters of the manuscript text — references and back-matter):
-"""TEXT
-${documentTail}
-"""
-
-### B. Heuristic extraction already performed by the structural parser (for reference only — verify it, do not trust it blindly):
+### B. Heuristic extraction already performed by the structural parser (for reference only - verify it against input A, do not trust it blindly):
 ${heuristic}
 
 ### C. Section headings detected by the parser (ordered):
-${sectionTitles.slice(0, 60).map((s, i) => `${i + 1}. "${s}"`).join('\n') || 'none'}`;
+${sectionTitles.slice(0, 60).map((s, i) => `${i + 1}. "${s}"`).join('\n') || 'none'}
 
 ### D. Figure captions detected:
 ${figureCaptions.slice(0, 30).map(s => `- ${s}`).join('\n') || 'none'}
