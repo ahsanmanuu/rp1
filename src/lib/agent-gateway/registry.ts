@@ -944,13 +944,13 @@ Analyze the manuscript and return ONE JSON object (no markdown, no commentary be
   "tables": [ { "caption": "exact table caption as it appears, e.g. \"TABLE I. Simulation Parameters\"" } ],
   "algorithms": [ { "title": "exact algorithm/pseudocode title as it appears, e.g. \"Algorithm 1\" or \"Algorithm 1: K-Means Clustering\"" } ],
   "components": {
-    "figures": <integer count of figures (images with captions)>,
-    "charts": <integer count of charts/plots/graphs>,
-    "tables": <integer count of tables>,
-    "equations": <integer count of display/math equations>,
-    "pseudocode": <integer count of algorithms/pseudocode listings>,
-    "citations": <integer count of in-text citation markers>,
-    "references": <integer count of bibliography entries>
+    "figures": <integer: count Figure/Fig./Image captions. Each "Fig. N" or "Figure N" label = 1 figure. Sub-figures (a)(b)(c) under one caption = 1 figure. Decorative images without captions do NOT count>,
+    "charts": <integer: count charts/plots/graphs (bar, line, pie, scatter, histogram, box, heatmap). If a chart has a Figure caption, count it as BOTH a figure AND a chart>,
+    "tables": <integer: count Table/Tab. captions. Each "Table N" or "TABLE N" label = 1 table. Do NOT count algorithm listings formatted as tables>,
+    "equations": <integer: count display/math equations — numbered equations like (1), (2), equation blocks, LaTeX \\begin{equation}. Do NOT count inline math, parameter assignments like 'n = 100', or value labels>,
+    "pseudocode": <integer: count Algorithm/Pseudocode/Procedure/Listing blocks. Each "Algorithm N" label = 1>,
+    "citations": <integer: count distinct in-text citation markers like [1], [2-5], (Author, 2020) in the BODY text. Do NOT count reference-list entries>,
+    "references": <integer: count bibliography entries in the References/Bibliography section. Each numbered or author-year entry = 1>
   },
   "references": ["complete bibliography entries as they appear, in order"],
   "notes": "one short sentence about anything unusual"
@@ -965,7 +965,13 @@ Analyze the manuscript and return ONE JSON object (no markdown, no commentary be
 6. Keywords: exact terms, no numbering, no bullet prefixes.
 7. Sections: the COMPLETE ordered list of every section and subsection heading visible in input A. level 1 = \\section, level 2 = \\subsection. Drop leading numbering ("1.", "1.1", "[1]", "I."). "References"/"Bibliography", "Acknowledgements", "Declarations", "Appendix" are level 1 headings. Never omit, merge or reorder sections.
 8. figures/tables/algorithms: list EVERY figure, table and algorithm visible in input A with its caption/title copied VERBATIM, in document order. Empty arrays when none exist. An image without any caption is NOT a figure - do not count or list it.
-9. Components: count them ONLY from input A (the full document text). If a count cannot be determined from the text, return null for that field - never guess 0 or random numbers. Count only figures/tables/equations/pseudocode listings that actually appear in the text.
+9. Components — COUNTING PRECISION:
+   - Count ONLY from input A. If the text is truncated ("[middle of document elided]"), extrapolate counts from the visible evidence: figure/table/algorithm numbering sequences and reference-list entries.
+   - figures: count by "Fig." or "Figure" captions. Sub-figures (a)(b)(c) under one "Fig. N" = 1 figure.
+   - tables: count by "Table" or "TABLE" captions. Do NOT count algorithm or equation tables.
+   - equations: count display equations only (numbered like (1), (2), or in \\begin{equation} blocks). Inline math and parameter assignments (e.g. "n = 100", "LR = 0.001") are NOT equations.
+   - pseudocode: count "Algorithm N" or "Pseudocode N" blocks.
+   - If a count cannot be determined from the text, return null for that field — never guess 0.
 10. Citations: an in-text citation marker is a bracketed number/reference like [12] or (Smith et al., 2020) in the body text.
 11. References: include the actual bibliography entries verbatim (up to 200). If no bibliography is visible in the text, return [].
 12. confidence for title/abstract must be 90+ when the text appears verbatim in the document.

@@ -117,6 +117,9 @@ model Project {
   collaborators      ProjectCollaborator[]
   files              ProjectFile[]
   shareLinks         ShareLink[]
+
+  @@index([userId])
+  @@index([userId, updatedAt])
 }
 
 model ProjectCollaborator {
@@ -144,6 +147,7 @@ model ProjectFile {
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, filename])
+  @@index([projectId])
 }
 
 model Template {
@@ -190,6 +194,8 @@ model CitationProject {
   updatedAt   DateTime @db.Timestamptz   @updatedAt
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   citations   Citation[]
+
+  @@index([userId])
 }
 
 model Citation {
@@ -208,6 +214,8 @@ model Citation {
   createdAt   DateTime @db.Timestamptz @default(now())
   updatedAt   DateTime @db.Timestamptz @updatedAt
   project     CitationProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
 }
 
 model PaperReview {
@@ -221,6 +229,8 @@ model PaperReview {
   status          String   @default("draft")
   createdAt       DateTime @db.Timestamptz @default(now())
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model ReportHistory {
@@ -239,6 +249,8 @@ model ReportHistory {
   createdAt         DateTime @db.Timestamptz @default(now())
   updatedAt         DateTime @db.Timestamptz @updatedAt
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model AdminUser {
@@ -634,6 +646,7 @@ model ChatSession {
 
   user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@map("chat_sessions")
 }
 

@@ -45,10 +45,11 @@ const FRONTMATTER_PASS_TIMEOUT_MS = 120000;
 const STRUCTURE_PASS_TIMEOUT_MS = 150000;
 
 // Max characters of manuscript text sent to the AI (front + tail preserved).
-// Kept deliberately bounded: small inputs make the model faster AND more
-// accurate (no context dilution), which is what drives both complaints.
-const FULL_TEXT_LIMIT = 16000;
-const FULL_TEXT_TAIL = 5000;
+// Must be large enough to cover all figures, tables, equations, and sections
+// in the middle of the document — the primary cause of inconsistent counts
+// was mid-document elision. 24K covers most 10–15 page manuscripts fully.
+const FULL_TEXT_LIMIT = 24000;
+const FULL_TEXT_TAIL = 6000;
 
 function stripTags(html: string): string {
   return html
@@ -310,13 +311,21 @@ function reconcileVerdict(
     if (verified.length > 0) verdict.references = verified;
   }
 
-  // ── Components: deterministic anchors win where they are reliable ──
+  // ── Components: deterministic anchors + AI full-text analysis ──────────
+  // Strategy: citations use the deterministic shared counter (ground truth).
+  // For all other components, we take Math.max(AI count, deterministic count)
+  // so that NEITHER the heuristic parser NOR the AI can accidentally DROP a
+  // legitimately detected component. The AI's full-text analysis catches
+  // elements the heuristic parser misses (e.g. figures/tables whose captions
+  // don't match regex patterns), while the deterministic anchors catch
+  // elements the AI misses (e.g. math blocks from OMML/MathML conversion).
   const comps: AiStructureComponents = { ...(verdict.components || {}) };
   const body = deepData.body || [];
   const countByType = (types: string[]): number => body.filter(n => types.includes(n.type)).length;
   const mathBlocks = (deepData.mathBlocks || []) as Array<{ latex?: string }>;
 
-  // Citations: deterministic shared counter (identical to the client display).
+  // Citations: deterministic shared counter is GROUND TRUTH (identical to
+  // the client display). Always overrides the AI count.
   const detCitations = rawHtml
     ? countCitationsFromHtml(rawHtml)
     : countCitationsFromPlainText(plainText);
@@ -326,25 +335,26 @@ function reconcileVerdict(
   const detRefs = (deepData.references || []).length;
   if (detRefs > 0) comps.references = detRefs;
 
-  // Equations: parsed math blocks / equation nodes are ground truth.
-  const detEquations = mathBlocks.length > 0 ? mathBlocks.length : countByType(['equation']);
-  if (detEquations > 0) comps.equations = detEquations;
+  // Equations: max of (OMML/MathML-converted blocks, body equation nodes, AI count).
+  const detDisplayMath = (mathBlocks || []).filter((m: any) => m && (typeof m === 'object' ? m.isDisplay : false)).length;
+  const detBodyEq = countByType(['equation']);
+  const detEquations = Math.max(detDisplayMath, detBodyEq);
+  comps.equations = Math.max(detEquations, typeof comps.equations === 'number' ? comps.equations : 0);
 
-  // Pseudocode: parsed algorithm nodes are ground truth.
+  // Pseudocode: max of (body algorithm nodes, AI count).
   const detPseudo = countByType(['algorithm']);
-  if (detPseudo > 0) comps.pseudocode = detPseudo;
+  comps.pseudocode = Math.max(detPseudo, typeof comps.pseudocode === 'number' ? comps.pseudocode : 0);
 
-  // Tables: parsed table nodes anchor the AI count (AI refines, never invents).
+  // Tables: max of (body table nodes, AI count).
   const detTables = countByType(['table']);
-  if (detTables > 0 && typeof comps.tables === 'number' && comps.tables === 0) comps.tables = detTables;
-  else if (detTables > 0 && typeof comps.tables !== 'number') comps.tables = detTables;
+  comps.tables = Math.max(detTables, typeof comps.tables === 'number' ? comps.tables : 0);
 
-  // Figures: AI count is authoritative when present (distinguishes real
-  // captioned figures from decorative images); parsed nodes are the fallback.
+  // Figures: max of (body figure/image nodes, AI count). AI distinguishes
+  // real captioned figures from decorative images so is often more accurate.
   const detFigures = countByType(['figure', 'figure-group', 'image']);
   const detCharts = countByType(['chart']);
-  if (typeof comps.figures !== 'number' && detFigures > 0) comps.figures = detFigures;
-  if (typeof comps.charts !== 'number' && detCharts > 0) comps.charts = detCharts;
+  comps.figures = Math.max(detFigures, typeof comps.figures === 'number' ? comps.figures : 0);
+  comps.charts = Math.max(detCharts, typeof comps.charts === 'number' ? comps.charts : 0);
 
   if (Object.keys(comps).length > 0) verdict.components = comps;
   return verdict;

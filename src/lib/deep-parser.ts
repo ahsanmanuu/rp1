@@ -540,7 +540,11 @@ export class DeepDocumentParser {
       }
       return sum;
     }, 0);
-    result.stats.equationCount = result.body.filter(n => n.type === 'equation').length;
+    // Equation count = standalone equation body nodes + display math blocks
+    // that appear inside paragraph MATHBLOCKX markers (accumulated during Phase4).
+    const standaloneEqs = result.body.filter(n => n.type === 'equation').length;
+    const inlineDisplayEqs = result.stats.equationCount; // accumulated in Phase4
+    result.stats.equationCount = standaloneEqs + inlineDisplayEqs;
     result.stats.pseudocodeCount = result.body.filter(n => n.type === 'algorithm').length;
     result.stats.chartCount = result.body.filter(n => n.type === 'chart').length;
     result.stats.referenceCount = result.references.length;
@@ -1141,7 +1145,7 @@ export class DeepDocumentParser {
               }
           }
           else if (entry.role === 'table') {
-              result.stats.tableCount++;
+              // tableCount computed in Phase5 from body nodes — no Phase4 increment needed.
               let tableCaption = entry.caption;
               
               const tableEl = entry.elements[0];
@@ -1317,7 +1321,9 @@ export class DeepDocumentParser {
               }
           }
           else if (entry.role === 'equation') {
-              result.stats.equationCount++;
+              // equationCount for standalone equations is computed in Phase5
+              // from body nodes; only display-math-inside-paragraphs needs
+              // Phase4 increment (line ~1113) since those don't create nodes.
               result.body.push({ type: 'equation', latex: text });
           }
           else if (entry.role === 'algorithm') {
@@ -1937,15 +1943,26 @@ export class DeepDocumentParser {
       return true;
     }
 
-    // Case E: Simple standalone equations (e.g., "y = x", "E = mc^2")
+    // Case E: Simple standalone equations (e.g., "E = mc^2", "F = ma")
+    // STRICT: reject parameter assignments like "n = 100", "LR = 0.001",
+    // "accuracy = 99.94%", "batch size = 32" — these are NOT display equations.
     if (hasRelational && f.wordCount < 10 && stopwordDensity === 0 && letters > 0) {
+      // Reject "WORD = number" or "WORD = number%" patterns (parameter assignments)
+      const isParamAssign = /^[A-Za-z][A-Za-z0-9\s_]{0,30}\s*=\s*[\d.,+\-eE%]+\s*$/.test(text)
+                         || /^[A-Z]{1,8}\s*=\s*[\d.,+\-eE%]+\s*$/.test(text);
+      if (isParamAssign) return false;
       // Reject text labels with multiple long plain English words: e.g. "0 = illumination failure, 1 = illumination available"
       const longPlainWords = text.split(/\s+/).filter(w => {
         const clean = w.replace(/[^a-zA-Z]/g, '');
         return clean.length >= 5 && !/\b(sin|cos|tan|log|ln|exp|lim|max|min|sqrt|sum|prod|div|grad|curl)\b/i.test(clean);
       });
       if (longPlainWords.length <= 1) {
-        return true;
+        // Must have at least one math characteristic beyond a simple '=' sign:
+        // sub/superscript, multiple operators, or math functions
+        const opCount = (text.match(/[+\-*/^]/g) || []).length;
+        if (opCount >= 1 || text.includes('_') || text.includes('^') || mathSymbolCount >= 3) {
+          return true;
+        }
       }
     }
 

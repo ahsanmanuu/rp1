@@ -240,7 +240,7 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '100mb',
     },
     proxyClientMaxBodySize: '100mb',
-    optimizePackageImports: ['pdfjs-dist', 'framer-motion'],
+    optimizePackageImports: ['pdfjs-dist', 'framer-motion', 'lucide-react', 'recharts', '@statelyai/graph'],
   },
   turbopack: {},
   webpack: (config, { isServer, webpack }) => {
