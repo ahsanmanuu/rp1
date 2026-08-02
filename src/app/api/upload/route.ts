@@ -958,6 +958,36 @@ export async function POST(req: Request) {
       finalLatex = modular.mainTex;
       // Attach modular files so asset persistence block can write them to disk + DB
       (deepData as any).modularComponents = modular.files;
+
+      // BIBLIOGRAPHY MERGE: when the DOCX carried a native references.bib AND
+      // the assembler generated its own (refN + author-year alias entries for
+      // our in-text \cite{refN}/\cite{AuthorYear} keys), the native file wins
+      // the filename at persistence — leaving our citation keys with no bib
+      // entries (renders as "[?]" with a blank references section). Append the
+      // generated entries (deduped by key) to the native file.
+      const genBibPath = modular.files && typeof modular.files['references/references.bib'] === 'string'
+        ? modular.files['references/references.bib']
+        : null;
+      const nativeBibIdx = extractedImages.findIndex((img: any) => img.name === 'references.bib');
+      if (genBibPath && nativeBibIdx !== -1) {
+        try {
+          const nativeText = extractedImages[nativeBibIdx].buffer.toString('utf-8') || '';
+          const nativeKeys = new Set(
+            (nativeText.match(/@\w+\s*\{\s*([^,\s]+)/g) || [])
+              .map((k: string) => k.replace(/@\w+\s*\{\s*/, '').trim())
+          );
+          const genEntries = (genBibPath.split('\n\n') || []).filter((e: string) => {
+            const km = e.match(/@\w+\s*\{\s*([^,\s]+)/);
+            return km && !nativeKeys.has(km[1].trim());
+          });
+          if (genEntries.length > 0) {
+            extractedImages[nativeBibIdx].buffer = Buffer.from(`${nativeText}\n\n${genEntries.join('\n\n')}`, 'utf-8');
+            console.log(`[TELEMETRY] Merged ${genEntries.length} assembler-generated bib entries into native references.bib.`);
+          }
+        } catch (bibMergeErr) {
+          console.warn('[TELEMETRY] Bibliography merge failed (non-critical):', bibMergeErr);
+        }
+      }
       console.timeEnd("[PERF] Modular LaTeX Assembly");
 
     } else if (file.name.endsWith('.txt')) {

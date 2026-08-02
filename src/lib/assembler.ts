@@ -74,6 +74,9 @@ export class LatexAssembler {
     const mathBlocks: any[] = doc.mathBlocks || [];
     const files: Record<string, string> = {};
     
+    // Parenthetical citations → numbered \cite{refN} (fixes "[?]" rendering)
+    LatexAssembler.resolveParentheticalCitations(doc);
+    
     let docClass = "\\documentclass{article}";
     let nativePreamble: string[] = [];
 
@@ -587,14 +590,21 @@ export class LatexAssembler {
         bibItems.push(`\\bibitem{${primaryKey}} ${escapedRef}`);
         seenKeys.add(primaryKey);
 
-        // Generate author-year alias key if reference contains author & year (e.g. Smith2020)
-        const authorMatch = cleanRef.match(/^([A-Z][a-zA-Z\u00C0-\u017F\-']+)/);
+        // Generate author-year alias keys matching the parenthetical citation
+        // engine in escape() exactly: "(Smith, 2020)" → Smith2020 and
+        // "(Smith et al., 2020)" → Smithetal2020 — otherwise those in-text
+        // cites render as "[?]" with no matching \bibitem. Both the first word
+        // and the surname are covered ("John Smith, ... 2021" is cited in-text
+        // as "Smith", not "John").
         const yearMatch = cleanRef.match(/\b(19|20)\d{2}\b/);
-        if (authorMatch && yearMatch) {
-          const aliasKey = `${authorMatch[1]}${yearMatch[0]}`;
-          if (!seenKeys.has(aliasKey)) {
-            bibItems.push(`\\bibitem{${aliasKey}} ${escapedRef}`);
-            seenKeys.add(aliasKey);
+        if (yearMatch) {
+          const names = LatexAssembler.surnameCandidates(cleanRef);
+          const aliasKeys = names.flatMap(name => [`${name}${yearMatch[0]}`, `${name}etal${yearMatch[0]}`]);
+          for (const aliasKey of aliasKeys) {
+            if (!seenKeys.has(aliasKey)) {
+              bibItems.push(`\\bibitem{${aliasKey}} ${escapedRef}`);
+              seenKeys.add(aliasKey);
+            }
           }
         }
       });
@@ -1248,6 +1258,62 @@ export class LatexAssembler {
     return escaped.replace(/(?<!\\)_(?![^$]*\$)/g, '\\_');
   }
 
+  // Candidate author-name forms for author-year citation aliasing. Returns the
+  // FIRST word and the SURNAME (last word before the first comma) of the
+  // reference's author segment, deduped. "John Smith, ... 2021" → ["John",
+  // "Smith"]; "Smith, J. (2020)" → ["Smith"]. In-text parenthetical citations
+  // always cite the SURNAME ("(Smith et al., 2021)"), so aliasing only the
+  // first word leaves those cites with no bibitem — the "[?]" bug.
+  static surnameCandidates(cleanRef: string): string[] {
+    const clean = cleanRef.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '').trim();
+    const authorSeg = (clean.split(',')[0] || '').replace(/\s+/g, ' ').trim();
+    const first = (authorSeg.match(/^([A-Z][a-zA-Z\u00C0-\u017F\-']+)/) || [])[1] || '';
+    const words = authorSeg.split(' ').filter(Boolean);
+    const last = words.length > 1
+      ? (words[words.length - 1].match(/^[A-Za-z\u00C0-\u017F\-']+/) || [])[0] || ''
+      : '';
+    return [...new Set([first, last].filter(Boolean))];
+  }
+
+  // Resolves parenthetical citations like "(Smith et al., 2020)" in body text
+  // to numbered \cite{refN} keys whenever the reference list contains a
+  // matching author+year entry. This is the PRIMARY citation fix: without it,
+  // the parenthetical engine in escape() emits author-year keys that have no
+  // bibitem/entry, and every such citation renders as "[?]".
+  static resolveParentheticalCitations(doc: StructuredDocument): void {
+    const refs = (doc.references || []).filter(Boolean);
+    if (refs.length === 0) return;
+    const refMeta = refs.map((ref: string, idx: number) => {
+      const year = (String(ref).match(/\b(19|20)\d{2}\b/) || [])[0] || '';
+      const authors = LatexAssembler.surnameCandidates(String(ref)).map(n => n.toLowerCase().replace(/[^\w]/g, ''));
+      return { key: `ref${idx + 1}`, authors, year };
+    }).filter(m => m.authors.length > 0 && m.year);
+    if (refMeta.length === 0) return;
+
+    const rx = /\(([A-Z][a-zA-Z\u00C0-\u017F]+(?: et al\.?)?(?:,\s*|\s+)(?:19|20)\d{2}(?:[a-z])?(?:;\s*[A-Z][a-zA-Z\u00C0-\u017F]+(?: et al\.?)?(?:,\s*|\s+)(?:19|20)\d{2}(?:[a-z])?)*)\)/g;
+    const matchRef = (part: string): string | null => {
+      const clean = part.trim();
+      const author = (clean.match(/^([A-Za-z\u00C0-\u017F]+)/) || [])[1] || '';
+      const year = (clean.match(/(?:19|20)\d{2}/) || [])[0] || '';
+      if (!author || !year) return null;
+      const a = author.toLowerCase().replace(/[^\w]/g, '');
+      const hit = refMeta.find(m => m.year === year && m.authors.includes(a));
+      return hit ? hit.key : null;
+    };
+
+    (doc.body || []).forEach((n: any) => {
+      if (!n || typeof n.text !== 'string') return;
+      if (['equation', 'table', 'figure', 'figure-group', 'chart', 'algorithm'].includes(n.type)) return;
+      n.text = n.text.replace(rx, (match: string, inner: string) => {
+        const parts = inner.split(';').map((p: string) => p.trim()).filter(Boolean);
+        const resolved = parts.map((p: string) => matchRef(p));
+        if (resolved.some((r: string | null) => r === null)) return match;
+        const unique = [...new Set(resolved as string[])];
+        return `\\cite{${unique.join(',')}}`;
+      });
+    });
+  }
+
   static escape(text: string, mathBlocks: any[], options?: { skipCitations?: boolean, isBibItem?: boolean }): string {
     if (!text) return "";
 
@@ -1451,6 +1517,9 @@ export class ModularLatexAssembler {
   static assemble(doc: StructuredDocument, templateId: string = 'generic', templateMainTex?: string | { hasBibFile?: boolean }): { mainTex: string, files: Record<string, string> } {
     const mathBlocks: any[] = doc.mathBlocks || [];
     const files: Record<string, string> = {};
+    
+    // Parenthetical citations → numbered \cite{refN} (fixes "[?]" rendering)
+    LatexAssembler.resolveParentheticalCitations(doc);
     
     // Compatibility check for 3rd argument
     let actualTemplateMainTex: string | undefined = undefined;
@@ -2039,7 +2108,7 @@ export class ModularLatexAssembler {
       header.push("\\input{metadata/acknowledgements.tex}");
     }
 
-// --- 5. BIBLIOGRAPHY ---
+    // --- 5. BIBLIOGRAPHY ---
     // Use BibTeX format for journal templates with a defined bibliography style;
     // otherwise fall back to the generic thebibliography environment.
 const useBibtex = tpl?.mapping?.bibliographyStyle || templateId.includes('ieee') || templateId.includes('acm') || templateId.includes('elsevier') || templateId.includes('springer') || templateId.includes('nature') || tpl?.category === 'Journal';
@@ -2051,13 +2120,7 @@ const useBibtex = tpl?.mapping?.bibliographyStyle || templateId.includes('ieee')
           : templateId.includes('springer') || tpl?.publisher === 'Springer' ? 'llncs'
           : (tpl?.mapping?.bibliographyStyle || 'plain');
         const bibFileName = 'references';
-        const bibEntries = (doc.references || []).map((ref: string, idx: number) => {
-          // Key MUST match the in-text citation keys (`\cite{refN}`) produced by
-          // LatexAssembler.escape — otherwise every citation renders as `[?]`
-          // and the bibliography comes out empty (destroyed PDF layout).
-          let key = `ref${idx + 1}`;
-          const numMatch = ref.match(/^\[(\d+)\]/);
-          if (numMatch && parseInt(numMatch[1]) === idx + 1) key = `ref${numMatch[1]}`;
+        const buildBibEntry = (key: string, ref: string, idx: number): string => {
           const cleanRef = ref.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '').trim();
           const authorMatch = cleanRef.match(/^([^,.]+)/);
           const authorDisplay = (authorMatch ? authorMatch[1].replace(/["']/g, '') : `Author ${idx + 1}`).replace(/\s+/g, ' ').trim();
@@ -2077,15 +2140,49 @@ const useBibtex = tpl?.mapping?.bibliographyStyle || templateId.includes('ieee')
           const pages = pagesMatch ? pagesMatch[0].replace(/\s+/g, ' ') : '';
           const volumeMatch = cleanRef.match(/\bvol(?:ume)?\.?\s*\d+/i);
           const volume = volumeMatch ? volumeMatch[0].replace(/\s+/g, ' ') : '';
-          const entry = `@article{${key},
+          return `@article{${key},
   author = {${authorDisplay}},
   title = {${title}},
   journal = {${journal}},
   year = {${year}}${volume ? `,\n  volume = {${volume.replace(/^vol(?:ume)?\.?\s*/i, '')}}` : ''}${pages ? `,\n  pages = {${pages.replace(/^pp?\.?\s*/i, '')}}` : ''}
 }`;
-          return entry;
-        }).join('\n\n');
-        files['references/sample.bib'] = bibEntries;
+        };
+        const seenBibKeys = new Set<string>();
+        const bibEntries: string[] = [];
+        (doc.references || []).forEach((ref: string, idx: number) => {
+          // Key MUST match the in-text citation keys (`\cite{refN}`) produced by
+          // LatexAssembler.escape — otherwise every citation renders as `[?]`
+          // and the bibliography comes out empty (destroyed PDF layout).
+          let key = `ref${idx + 1}`;
+          const numMatch = ref.match(/^\[(\d+)\]/);
+          if (numMatch && parseInt(numMatch[1]) === idx + 1) key = `ref${numMatch[1]}`;
+          if (!seenBibKeys.has(key)) {
+            seenBibKeys.add(key);
+            bibEntries.push(buildBibEntry(key, ref, idx));
+          }
+          // Author-year alias entries for parenthetical citations
+          // ("(Smith et al., 2020)") that the pre-pass could not map to refN.
+          const cleanRef = ref.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '').trim();
+          const yearMatch = cleanRef.match(/\b(19|20)\d{2}\b/);
+          if (yearMatch) {
+            const aliasNames = LatexAssembler.surnameCandidates(cleanRef);
+            const aliasKeys = aliasNames.flatMap(name => [`${name}${yearMatch[0]}`, `${name}etal${yearMatch[0]}`]);
+            for (const aliasKey of aliasKeys) {
+              if (!seenBibKeys.has(aliasKey)) {
+                seenBibKeys.add(aliasKey);
+                bibEntries.push(buildBibEntry(aliasKey, ref, idx));
+              }
+            }
+          }
+        });
+        const bibContent = bibEntries.join('\n\n');
+        // The .bib filename MUST match the \bibliography{references} argument —
+        // previously the file was written as references/sample.bib while the
+        // document asked for "references", so bibtex found nothing and the
+        // references section rendered BLANK. The root copy guarantees tectonic
+        // and every engine locate the database regardless of path remapping.
+        files[`references/${bibFileName}.bib`] = bibContent;
+        files[`${bibFileName}.bib`] = bibContent;
         files['references/bibliography.tex'] = `\n\\bibliographystyle{${bibKey}}\n\\bibliography{${bibFileName}}\n`;
         header.push("\\input{references/bibliography.tex}");
       } else {

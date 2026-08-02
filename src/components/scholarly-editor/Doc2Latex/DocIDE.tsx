@@ -133,6 +133,11 @@ export default function DocIDE({ projectId }: { projectId: string }) {
   const currentPdfBlob = useRef<Blob | null>(null);
   const compileRef = useRef<(() => Promise<void>) | null>(null);
   const codeRef = useRef('');
+  // Unsaved-edit tracking: set whenever the user types, cleared when the
+  // buffer is persisted. Guards the staleness probe / syncFromCloud so a
+  // background re-sync can NEVER overwrite the user's in-editor edits.
+  const dirtyRef = useRef(false);
+  const compilingRef = useRef(false);
   const shareProject = async () => {
     const tid = toast.loading("Generating share link...");
     try {
@@ -197,6 +202,13 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     const syncFromCloud = async (studioFs: StudioFS) => {
       setIsSyncing(true);
       try {
+        // Compile-wipe safety: NEVER clobber unsaved editor edits. If the user
+        // has typed since the last save, the cloud snapshot is older than the
+        // editor buffer — syncing would destroy their work.
+        if (dirtyRef.current) {
+          console.warn("[DocIDE] Cloud sync aborted: editor has unsaved changes.");
+          return;
+        }
         const res = await fetchProjectWithRetry(projectId);
         if (!res.ok) throw new Error(`Failed to sync from cloud (HTTP ${res.status})`);
         const data = await res.json();
@@ -395,6 +407,13 @@ export default function DocIDE({ projectId }: { projectId: string }) {
               // server content — which is exactly how "missing sections"
               // became permanent. Probe `updatedAt` in the background and
               // re-sync only when the cloud copy is genuinely newer.
+              //
+              // SAFETY (compile-wipe fix): the probe NEVER re-syncs while the
+              // user has unsaved edits or a compile is in flight — the
+              // compile's own autosave PUT bumps the server updatedAt, and a
+              // late probe response would otherwise wipe the user's edits via
+              // syncFromCloud's setCode. The local baseline is also re-read at
+              // response time, not the mount-time snapshot.
               void (async () => {
                 try {
                   const probeRes = await fetchProjectWithRetry(projectId);
@@ -402,9 +421,14 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                   const probeData = await probeRes.json();
                   const cloudProject = probeData?.project;
                   if (!cloudProject) return;
+                  if (dirtyRef.current || compilingRef.current) {
+                    console.log("[DocIDE] Staleness probe skipped: user edits or compile in progress.");
+                    return;
+                  }
+                  const freshLocal = await studioFs.getProject(projectId);
                   const cloudTime = new Date(cloudProject.updatedAt).getTime();
-                  const localTime = localProj.updatedAt || 0;
-                  if (!Number.isNaN(cloudTime) && cloudTime > localTime + 5000) {
+                  const localTime = (freshLocal?.updatedAt ?? localProj.updatedAt) || 0;
+                  if (!Number.isNaN(cloudTime) && cloudTime > localTime + 5000 && !dirtyRef.current && !compilingRef.current) {
                     console.log(`[DocIDE] Cloud copy is newer than local cache (cloud=${cloudTime} local=${localTime}). Re-syncing from cloud.`);
                     await syncFromCloud(studioFs);
                   }
@@ -680,6 +704,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     if (isOutOfCredits) return;
     if (!fs || !projectId) return;
     await fs.writeFile(projectId, path, content);
+    dirtyRef.current = false;
     setFiles(await fs.listFiles(projectId));
   }, [fs, projectId, isOutOfCredits]);
 
@@ -707,6 +732,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     if (!project) return;
     const val = value || '';
     setCode(val);
+    dirtyRef.current = true;
     if (saveTimer) clearTimeout(saveTimer);
     setSaveTimer(setTimeout(() => saveFile(activeFile, val), 1000));
   };
@@ -889,6 +915,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     }
     if (!fs || compiling || !project || isSyncing) return;
     const rootFile = project?.mainFile || 'main.tex';
+    compilingRef.current = true;
     setCompiling(true);
     setCompileLog(`> Compilation Started: ${rootFile}\n`);
     setErrors([]);
@@ -896,10 +923,16 @@ export default function DocIDE({ projectId }: { projectId: string }) {
 
     try {
       await fs.writeFile(projectId, activeFile, codeRef.current);
+      // The editor buffer is now persisted — safe for background syncs.
+      dirtyRef.current = false;
       const payloadMeta = await fs.listFiles(projectId);
       
       // AUTO-SYNC TO PERSISTENT STORE BEFORE COMPILING
-      setIsSyncing(true);
+      // NOTE: intentionally does NOT use the isSyncing state anymore — that
+      // flag drives the full-screen "LOADING LATEX MANUSCRIPT" overlay, which
+      // made every BUILD click look like the editor was reloading/rehydrating
+      // (and masked the probe's setCode wipe). The compile progress is shown
+      // by the `compiling` state (BUILDING… button, sidebar spinner).
       try {
         const textMetas = payloadMeta.filter((meta) => {
           const ext = meta.path.split('.').pop()?.toLowerCase() || '';
@@ -933,8 +966,6 @@ export default function DocIDE({ projectId }: { projectId: string }) {
         }
       } catch (syncErr) {
         console.error("Auto-sync to cloud failed before compilation:", syncErr);
-      } finally {
-        setIsSyncing(false);
       }
       
       const formData = new FormData();
@@ -1074,6 +1105,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
         setCompileLog(prev => prev + `> CRITICAL EXCEPTION: ${err.message}\n`);
       }
     } finally {
+      compilingRef.current = false;
       setCompiling(false);
     }
   }, [fs, compiling, projectId, activeFile, code, engine, project, isSyncing]);

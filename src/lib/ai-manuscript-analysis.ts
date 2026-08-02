@@ -762,9 +762,26 @@ export function applyStructureCorrections(
   }
 
   // ── References ───────────────────────────────────────────────────────────
+  // MERGE (not replace) AI references with the parser's: the AI may reorder or
+  // drop entries, and every in-text \cite{refN} key points at the parser's
+  // numbered list position — replacing the list breaks those citations (renders
+  // as "[?]"). AI entries that the parser missed are APPENDED after the parser's
+  // list so the numbering stays stable.
   if (verdict.references && verdict.references.length > 0) {
-    deepData.references = verdict.references.slice(0, 250);
-    applied.push('references');
+    const parserRefs = Array.isArray(deepData.references) ? deepData.references.slice() : [];
+    const parserNorms = new Set(parserRefs.map(r => String(r).replace(/\s+/g, ' ').trim().toLowerCase()));
+    const newRefs: string[] = [];
+    const seen = new Set(parserNorms);
+    for (const r of verdict.references) {
+      const t = String(r || '').replace(/\s+/g, ' ').trim();
+      if (!t || t.length < 5) continue;
+      const norm = t.toLowerCase();
+      if (seen.has(norm)) continue;
+      seen.add(norm);
+      newRefs.push(t);
+    }
+    deepData.references = [...parserRefs, ...newRefs].slice(0, 250);
+    if (newRefs.length > 0) applied.push('references');
   }
 
   // ── Section hierarchy rebuild (fix matched headings, drop parser-artifact
