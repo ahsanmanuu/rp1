@@ -1323,14 +1323,16 @@ export async function POST(req: Request) {
         structuredContent: JSON.stringify({ ...deepData, rawHtml: mammothResult.value, rawXml: finalXml }),
         status: "draft",
         projectType: file.name.endsWith('.docx') ? "DOC2LATEX" : "LATEX_STUDIO",
-        wordCount: Math.floor(deepData.stats.wordCount || 0),
-        charCount: Math.floor(deepData.stats.charCount || 0),
-        imageCount: Math.floor(deepData.stats.imageCount || 0),
-        tableCount: Math.floor(deepData.stats.tableCount || 0),
-        equationCount: Math.floor(deepData.stats.equationCount || 0),
-        citationCount: Math.floor(deepData.stats.citationCount || 0),
-        referenceCount: Math.floor(deepData.stats.referenceCount || 0),
-        pseudocodeCount: Math.floor(deepData.stats.pseudocodeCount || 0)
+        // SANITIZE: Ensure all stats are valid non-negative integers (defensive fallback for AI reconciliation edge cases)
+        wordCount: Math.max(1, Math.floor(deepData.stats?.wordCount || 0)),
+        charCount: Math.max(1, Math.floor(deepData.stats?.charCount || 0)),
+        imageCount: Math.max(0, Math.floor(deepData.stats?.imageCount || 0)),
+        tableCount: Math.max(0, Math.floor(deepData.stats?.tableCount || 0)),
+        equationCount: Math.max(0, Math.floor(deepData.stats?.equationCount || 0)),
+        citationCount: Math.max(0, Math.floor(deepData.stats?.citationCount || 0)),
+        referenceCount: Math.max(0, Math.floor(deepData.stats?.referenceCount || 0)),
+        pseudocodeCount: Math.max(0, Math.floor(deepData.stats?.pseudocodeCount || 0)),
+        chartCount: Math.max(0, Math.floor(deepData.stats?.chartCount || 0)),
       }
     });
 
