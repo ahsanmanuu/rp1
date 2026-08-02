@@ -701,12 +701,13 @@ export class DeepDocumentParser {
           const rows = Array.from(el.querySelectorAll('tr'));
           const hasMathBlock = /MATHBLOCKX\d+XMARKER/i.test(f.text);
           const mathSymbolCount = (f.text.match(/[=+\-*/^\\∑∫√²³α-ωΑ-Ωθλπμσδφψωηρ<>~≈≠≤≥_()\[\]{}]/g) || []).length;
-          const isSingleRowMath = rows.length === 1 && (hasMathBlock || (mathSymbolCount >= 2 && f.text.includes('=')));
+          const firstRowText = (el.querySelector('tr')?.textContent || '').trim();
+          const hasTableHeaders = /\b(?:parameter|value|description|method|type|name|property|metric|score|unit|variable|dataset|model|accuracy|result|feature|category)\b/i.test(firstRowText);
+          const isSingleRowMath = rows.length === 1 && !hasTableHeaders && (hasMathBlock || (mathSymbolCount >= 3 && f.text.includes('=')));
           
-          if (isSingleRowMath || (rows.length <= 2 && hasMathBlock)) {
+          if (isSingleRowMath || (rows.length <= 2 && hasMathBlock && !hasTableHeaders)) {
               nextRole = 'equation';
           } else {
-              const firstRowText = (el.querySelector('tr')?.textContent || '').trim();
               let isTableAlgo = ALGO_LABEL_PATTERN.test(firstRowText);
               if (!isTableAlgo) {
                   const firstRowCols = el.querySelector('tr')?.querySelectorAll('td, th')?.length || 0;
@@ -717,7 +718,6 @@ export class DeepDocumentParser {
                       const algoLines = bodyLines.filter(l => DeepDocumentParser.isAlgorithmBodyLine(l, el));
                       isMostlyCode = bodyLines.length >= 3 && (algoLines.length >= bodyLines.length * 0.4);
                   }
-                  const hasTableHeaders = /\b(?:parameter|value|description|method|type|name|property|metric|score)\b/i.test(firstRowText);
                   if ((hasStrongAlgoKeywords || isMostlyCode) && firstRowCols <= 2 && f.text.length < 3000 && !hasTableHeaders) {
                       isTableAlgo = true;
                   }
@@ -1108,9 +1108,12 @@ export class DeepDocumentParser {
               const markerMatches = Array.from(text.matchAll(/MATHBLOCKX(\d+)XMARKER/gi));
               for (const mm of markerMatches as RegExpExecArray[]) {
                 const mbIdx = parseInt(mm[1]);
-                const mb = _mathBlocks[mbIdx];
-                if (mb && (typeof mb === 'object' ? mb.isDisplay : false)) {
-                  result.stats.equationCount++;
+                if (!processedMathBlocks.has(mbIdx)) {
+                  processedMathBlocks.add(mbIdx);
+                  const mb = _mathBlocks[mbIdx];
+                  if (mb && (typeof mb === 'object' ? mb.isDisplay : false)) {
+                    uncountedInlineDisplayMathCount++;
+                  }
                 }
               }
 

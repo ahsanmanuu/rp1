@@ -335,19 +335,28 @@ function reconcileVerdict(
   const detRefs = (deepData.references || []).length;
   if (detRefs > 0) comps.references = detRefs;
 
-  // Equations: max of (OMML/MathML-converted blocks, body equation nodes, AI count).
+  // Equations: ground against detected display math blocks & body equation nodes.
   const detDisplayMath = (mathBlocks || []).filter((m: any) => m && (typeof m === 'object' ? m.isDisplay : false)).length;
   const detBodyEq = countByType(['equation']);
   const detEquations = Math.max(detDisplayMath, detBodyEq);
-  comps.equations = Math.max(detEquations, typeof comps.equations === 'number' ? comps.equations : 0);
+  if (detEquations > 0) {
+    comps.equations = Math.max(detEquations, typeof comps.equations === 'number' ? comps.equations : 0);
+  } else {
+    comps.equations = 0;
+  }
 
   // Pseudocode: max of (body algorithm nodes, AI count).
   const detPseudo = countByType(['algorithm']);
   comps.pseudocode = Math.max(detPseudo, typeof comps.pseudocode === 'number' ? comps.pseudocode : 0);
 
-  // Tables: max of (body table nodes, AI count).
+  // Tables: ground against verified table list and detected table body nodes.
   const detTables = countByType(['table']);
-  comps.tables = Math.max(detTables, typeof comps.tables === 'number' ? comps.tables : 0);
+  const verifiedTableCount = verdict.tables ? verdict.tables.length : 0;
+  if (verifiedTableCount > 0) {
+    comps.tables = Math.max(detTables, verifiedTableCount);
+  } else {
+    comps.tables = detTables;
+  }
 
   // Figures: max of (body figure/image nodes, AI count). AI distinguishes
   // real captioned figures from decorative images so is often more accurate.

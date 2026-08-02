@@ -355,12 +355,11 @@ function computeStats(text: string) {
 
   let tableCount = 0;
   if (tableCaptionSet.size > 0) {
-    tableCount = Math.max(...tableCaptionSet);
+    tableCount = tableCaptionSet.size;
   } else if (structuralTableCount > 0) {
     tableCount = structuralTableCount;
   } else if (tableSet.size > 0) {
-    const maxMentioned = Math.max(...tableSet);
-    tableCount = Math.min(maxMentioned, tableSet.size);
+    tableCount = tableSet.size;
   }
 
   // ── Equations in bodyText ──
@@ -425,26 +424,18 @@ function computeStats(text: string) {
     return true;
   }).length;
 
-  // Method 6: Keywords references
-  const eqKeywords = (bodyText.match(
-    /\b(?:equation|formula|loss\s*function|objective\s*function|cost\s*function|softmax|sigmoid|relu|tanh|activation\s*function|gradient|cross.?entropy|likelihood\s*function|probability\s*distribution)/gi
-  ) || []).length;
-
   let equationCount = 0;
   const numberedEstimate = Math.max(realNumberedCount + metricFormulaCount, explicitEqSet.size);
   const mathEstimate = mathLines >= 5 ? Math.min(Math.round(mathLines * 0.15), 20) : 0;
-  const keywordEstimate = eqKeywords >= 5 ? Math.round(eqKeywords / 5) : 0;
 
   if (latexEqCount > 0) {
     equationCount = latexEqCount;
   } else if (numberedEstimate >= 1) {
     equationCount = Math.max(numberedEstimate, explicitEqSet.size);
-    if (keywordEstimate > equationCount) equationCount = keywordEstimate;
-    if (mathEstimate > equationCount)    equationCount = mathEstimate;
+  } else if (displayLatexCount > 0) {
+    equationCount = displayLatexCount;
   } else if (latexMathCount > 0 || parenLatexCount > 0) {
-    equationCount = Math.max(latexMathCount, parenLatexCount);
-  } else if (keywordEstimate > 0) {
-    equationCount = mathEstimate > 0 ? Math.max(keywordEstimate, mathEstimate) : keywordEstimate;
+    equationCount = Math.max(displayLatexCount, Math.round((inlineLatexCount + parenLatexCount) / 3));
   } else if (mathEstimate > 0) {
     equationCount = mathEstimate;
   } else {
