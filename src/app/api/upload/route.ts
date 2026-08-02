@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
+import { randomBytes } from 'crypto';
 
 // Configure Sharp image processing engine cache and threadpool buffers for maximum upload throughput
 sharp.concurrency(4);
@@ -1301,15 +1302,30 @@ export async function POST(req: Request) {
         console.warn(`[TELEMETRY] Email ${sessionUserEmail} belongs to another user (id=${emailConflict.id}), using that id`);
         (session.user as any).id = emailConflict.id;
       } else {
-        await prisma.user.create({
-          data: {
-            id: sessionUserId,
-            name: sessionUserName,
-            email: sessionUserEmail,
-            points: 50,
-            theme: "dark",
-          },
-        });
+        // PB's users collection requires password + passwordConfirm on create.
+        // Generate a random unrecoverable password — the user authenticates
+        // through their original auth provider, this row only satisfies the
+        // projects.userId relation FK.
+        const generatedPassword = randomBytes(24).toString('hex');
+        try {
+          await prisma.user.create({
+            data: {
+              id: sessionUserId,
+              name: sessionUserName,
+              email: sessionUserEmail,
+              password: generatedPassword,
+              passwordConfirm: generatedPassword,
+              points: 50,
+              theme: "dark",
+            },
+          });
+        } catch (createErr: any) {
+          // The user row may have appeared between our check and this create
+          // (race or the check failed transiently) — re-verify before failing.
+          const recheck = await prisma.user.findUnique({ where: { id: sessionUserId } });
+          if (!recheck) throw createErr;
+          console.warn(`[TELEMETRY] User row for id=${sessionUserId} appeared during safety-net create, continuing`);
+        }
         console.log(`[TELEMETRY] Created missing user row for id=${sessionUserId}`);
       }
     }
