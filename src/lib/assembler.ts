@@ -1980,20 +1980,51 @@ export class ModularLatexAssembler {
       header.push("\\input{metadata/acknowledgements.tex}");
     }
 
-    // --- 5. BIBLIOGRAPHY ---
+// --- 5. BIBLIOGRAPHY ---
+    // Use BibTeX format for journal templates with a defined bibliography style;
+    // otherwise fall back to the generic thebibliography environment.
+const useBibtex = tpl?.mapping?.bibliographyStyle || templateId.includes('ieee') || templateId.includes('acm') || templateId.includes('elsevier') || templateId.includes('springer') || templateId.includes('nature') || tpl?.category === 'Journal';
     if ((doc.references || []).length > 0) {
-      const bibItems = (doc.references || []).map((ref: string, idx: number) => {
-        // Always use sequential refN keys — ensures in-text \cite{refN} always resolves
-        // regardless of whether the reference has a leading [N] label or author-year format
-        let key = `ref${idx + 1}`;
-        const numMatch = ref.match(/^\[(\d+)\]/);
-        if (numMatch && parseInt(numMatch[1]) === idx + 1) key = `ref${numMatch[1]}`; // Accept only if sequential
-        const cleanRef = ref.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '');
-        return `\\bibitem{${key}} ${LatexAssembler.escape(cleanRef, mathBlocks, { skipCitations: true, isBibItem: true })}`;
-      });
-      const bibContent = `\n\\begin{thebibliography}{99}\n${bibItems.join('\n')}\n\\end{thebibliography}`;
-      files['references/bibliography.tex'] = bibContent;
-      header.push("\\input{references/bibliography.tex}");
+      if (useBibtex) {
+        const bibKey = templateId === 'article_ieee' || (tpl?.assetFolder === 'ieee') ? 'IEEEtran'
+          : templateId.includes('acm') || (tpl?.assetFolder === 'acm') ? 'acm'
+          : templateId.includes('elsevier') || (tpl?.assetFolder === 'elsevier') ? 'elsarticle-num'
+          : templateId.includes('springer') || tpl?.publisher === 'Springer' ? 'llncs'
+          : (tpl?.mapping?.bibliographyStyle || 'plain');
+        const bibFileName = 'references';
+        const bibEntries = (doc.references || []).map((ref: string, idx: number) => {
+          const cleanRef = ref.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '').trim();
+          const authorMatch = cleanRef.match(/^([^,.]+)/);
+          const author = (authorMatch ? authorMatch[1].replace(/["']/g, '') : `Author${idx + 1}`).replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+          const yearMatch = cleanRef.match(/\b(19|20)\d{2}\b/);
+          const year = yearMatch ? yearMatch[0] : '2024';
+          const titleMatch = cleanRef.match(/["']([^"']+)["']/);
+          const title = (titleMatch ? titleMatch[1] : cleanRef).substring(0, 150);
+          const journalMatch = cleanRef.match(/(?:Journal|Proc|Conference|Rev\.|Transactions?)\s+[^,\n]+/i);
+          const journal = journalMatch ? journalMatch[0].replace(/[.:]+$/, '').replace(/\s+/g, ' ') : 'Journal';
+          const key = `${author}_${year}`;
+          return `@article{${key},
+  author = {Author and Co-Author},
+  title = {${title}},
+  journal = {${journal}},
+  year = {${year}}
+}`;
+        }).join('\n\n');
+        files['references/sample.bib'] = bibEntries;
+        files['references/bibliography.tex'] = `\n\\bibliographystyle{${bibKey}}\n\\bibliography{${bibFileName}}\n`;
+        header.push("\\input{references/bibliography.tex}");
+      } else {
+        const bibItems = (doc.references || []).map((ref: string, idx: number) => {
+          let key = `ref${idx + 1}`;
+          const numMatch = ref.match(/^\[(\d+)\]/);
+          if (numMatch && parseInt(numMatch[1]) === idx + 1) key = `ref${numMatch[1]}`;
+          const cleanRef = ref.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '');
+          return `\\bibitem{${key}} ${LatexAssembler.escape(cleanRef, mathBlocks, { skipCitations: true, isBibItem: true })}`;
+        });
+        const bibContent = `\n\\begin{thebibliography}{99}\n${bibItems.join('\n')}\n\\end{thebibliography}`;
+        files['references/bibliography.tex'] = bibContent;
+header.push("\\input{references/bibliography.tex}");
+      }
     }
 
     header.push("\\end{document}");
