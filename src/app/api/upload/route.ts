@@ -960,71 +960,6 @@ export async function POST(req: Request) {
       (deepData as any).modularComponents = modular.files;
       console.timeEnd("[PERF] Modular LaTeX Assembly");
 
-      // ===== DOC2LATEX AI ENHANCEMENT (Non-blocking fire-and-forget) =====
-      // The main upload response is NOT delayed by this AI call.
-      // Results are available via GET /api/doc2latex-agent and stored in the response payload.
-      try {
-        const { routeToAgent } = await import('@/lib/agent-gateway');
-        const sectionTitles = (deepData?.body || [])
-          .filter((n: any) => n.type === 'section' || n.type === 'subsection')
-          .map((n: any) => n.text || n.title || '')
-          .filter(Boolean)
-          .slice(0, 20);
-        const mathSnippets = (deepData?.mathData || [])
-          .filter((m: any) => m.latex)
-          .map((m: any) => m.latex)
-          .slice(0, 5);
-        const rawText = mammothResult?.value
-          ? mammothResult.value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
-          : '';
-
-        // Store enhancement promise — will be logged when resolved, not awaited
-        const doc2latexPromise = routeToAgent({
-          agent: 'doc2latex',
-          messages: [{ role: 'user', content: 'Analyze this DOCX-to-LaTeX conversion and return enhancement suggestions as JSON.' }],
-          context: {
-            userId:        session?.user?.id || null,
-            documentTitle: deepData?.title || file.name.replace(/\.[^/.]+$/, ''),
-            templateId,
-            documentText:  rawText.substring(0, 5000),
-            latexDraft:    finalLatex.substring(0, 4000),
-            sectionTitles,
-            mathSnippets,
-            figureCount:   deepData?.stats?.imageCount    || 0,
-            tableCount:    deepData?.stats?.tableCount    || 0,
-            equationCount: deepData?.stats?.equationCount || 0,
-            wordCount:     deepData?.stats?.wordCount     || 0,
-          },
-        });
-
-        // Attach promise data to the response — fire and forget
-        doc2latexPromise.then(result => {
-          if (result.success) {
-            console.log(`[doc2latex-agent] AI enhancement complete. Model: ${result.model}. Score: ${(result.data as any)?.qualityScore ?? 'n/a'}. Time: ${result.timing.total}ms`);
-          } else {
-            console.warn(`[doc2latex-agent] AI enhancement failed (non-critical):`, result.error);
-          }
-        }).catch(err => {
-          console.warn(`[doc2latex-agent] AI enhancement threw (non-critical):`, err?.message || err);
-        });
-
-        // Capture result for immediate response if it resolves quickly (< 5s)
-        const fastResult = await Promise.race([
-          doc2latexPromise,
-          new Promise<null>(resolve => setTimeout(() => resolve(null), 5000)),
-        ]);
-
-        if (fastResult && (fastResult as any).success) {
-          (deepData as any).doc2latexEnhancement = (fastResult as any).data;
-          (deepData as any).doc2latexModel = (fastResult as any).model;
-          console.log(`[doc2latex-agent] Fast-path AI enhancement captured for response.`);
-        }
-      } catch (aiErr: any) {
-        // NEVER block the upload on AI failure
-        console.warn('[doc2latex-agent] Non-blocking AI call setup failed (non-critical):', aiErr?.message || aiErr);
-      }
-      // ===== END DOC2LATEX AI ENHANCEMENT =====
-
     } else if (file.name.endsWith('.txt')) {
       const text = buffer.toString('utf-8');
       deepData = {
@@ -1581,10 +1516,6 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       projectId: project.id,
-      ...(deepData && (deepData as any).doc2latexEnhancement ? {
-        doc2latexEnhancement: (deepData as any).doc2latexEnhancement,
-        doc2latexModel: (deepData as any).doc2latexModel,
-      } : {}),
     });
 
   } catch (error: any) {

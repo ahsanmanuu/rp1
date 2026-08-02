@@ -160,6 +160,15 @@ export async function POST(req: Request) {
           if (modelToUse.authors?.length > 0) freshModel.authors = modelToUse.authors;
           if (modelToUse.abstract) freshModel.abstract = modelToUse.abstract;
           if (modelToUse.keywords?.length > 0) freshModel.keywords = modelToUse.keywords;
+          // Preserve AI-corrected section titles/levels (both models derive from
+          // the same rawHtml in the same order, so index-wise carry-over is exact).
+          const staleHeadings = (modelToUse.body || []).filter((n: any) => n.type === 'heading');
+          const freshHeadings = (freshModel.body || []).filter((n: any) => n.type === 'heading');
+          const minLen = Math.min(staleHeadings.length, freshHeadings.length);
+          for (let h = 0; h < minLen; h++) {
+            if (staleHeadings[h].level) freshHeadings[h].level = staleHeadings[h].level;
+            if (staleHeadings[h].text && staleHeadings[h].text.length >= 2) freshHeadings[h].text = staleHeadings[h].text;
+          }
           modelToUse = freshModel;
           structured = freshModel;
           console.log(`[LATEX_SYNC] Re-parse complete. Algorithm nodes after fix: ${(freshModel.body || []).filter((n: any) => n.type === 'algorithm').length}`);

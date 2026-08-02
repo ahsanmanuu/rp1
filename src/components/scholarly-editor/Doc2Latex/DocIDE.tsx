@@ -234,9 +234,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
           // Clear old local files in StudioFS to avoid stale/conflicting files in local IndexedDB
           try {
             const oldFiles = await studioFs.listFiles(projectId);
-            for (const oldFile of oldFiles) {
-              await studioFs.deleteFile(projectId, oldFile.path);
-            }
+            await Promise.all(oldFiles.map(oldFile => studioFs.deleteFile(projectId, oldFile.path)));
           } catch (clearErr) {
             console.warn("Failed to clear old local files:", clearErr);
           }
@@ -254,7 +252,10 @@ export default function DocIDE({ projectId }: { projectId: string }) {
           }
           
           if (data.project.files && data.project.files.length > 0) {
-            for (const file of data.project.files) {
+            // Parallel file hydration: text writes and binary asset fetches are
+            // independent of each other, so serializing them wastes wall-clock
+            // time on every sync (each binary asset costs a fetch + dataURL read).
+            await Promise.all(data.project.files.map(async (file: any) => {
               const ext = file.filename.split('.').pop()?.toLowerCase();
               const isText = ['tex', 'bib', 'cls', 'sty', 'bst', 'txt'].includes(ext || '');
               const isBinary = ['image', 'png', 'jpg', 'jpeg', 'pdf'].includes(file.fileType) || ['png', 'jpg', 'jpeg', 'pdf'].includes(ext || '');
@@ -280,7 +281,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                   }
                 }
               }
-            }
+            }));
           }
           
           const freshFiles = await studioFs.listFiles(projectId);
@@ -293,8 +294,11 @@ export default function DocIDE({ projectId }: { projectId: string }) {
             setOpenTabs([active.path]);
           }
           
-          // Pre-load the compiled PDF document safely as a blob URL to prevent automatic downloads
-          await loadPdfBlob(projectId);
+          // Pre-load the compiled PDF document safely as a blob URL to prevent
+          // automatic downloads. NOT awaited: the workspace must become usable
+          // immediately — the PDF viewer shows a loading state until the blob
+          // arrives in the background.
+          void loadPdfBlob(projectId);
           
           toast.success("Workspace synced from cloud");
           
@@ -355,7 +359,8 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       if (localProj && !forceSync) {
         setProject(localProj);
         setFiles(freshFiles);
-        await loadPdfBlob(projectId);
+        // Non-blocking: the editor must not wait on the PDF fetch.
+        void loadPdfBlob(projectId);
         
         const savedEngine = settings.pages?.[`doc_engine_${projectId}`] || localStorage.getItem(`doc_engine_${projectId}`);
         const savedAuto = settings.pages?.[`doc_auto_${projectId}`] || localStorage.getItem(`doc_auto_${projectId}`);
@@ -870,20 +875,16 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       // AUTO-SYNC TO PERSISTENT STORE BEFORE COMPILING
       setIsSyncing(true);
       try {
-        const textFiles = [];
-        for (const meta of payloadMeta) {
+        const textMetas = payloadMeta.filter((meta) => {
           const ext = meta.path.split('.').pop()?.toLowerCase() || '';
-          const isText = ['tex', 'bib', 'cls', 'sty', 'bst', 'txt'].includes(ext);
-          if (isText) {
+          return ['tex', 'bib', 'cls', 'sty', 'bst', 'txt'].includes(ext);
+        });
+        const textFiles = (await Promise.all(
+          textMetas.map(async (meta) => {
             const f = await fs.readFile(projectId, meta.path);
-            if (f) {
-              textFiles.push({
-                filename: f.path,
-                content: f.content
-              });
-            }
-          }
-        }
+            return f ? { filename: f.path, content: f.content } : null;
+          })
+        )).filter((f): f is { filename: string; content: string } => f !== null);
         const mainContent = textFiles.find(f => f.filename === 'main.tex')?.content || code;
         try {
           // Await the autosave so compile always runs on the just-saved source,
@@ -914,12 +915,16 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       formData.append('engine', engine);
       formData.append('mainFile', rootFile);
       if (projectId) formData.append('projectId', projectId);
-      
-      for (let i = 0; i < payloadMeta.length; i++) {
-        const fMeta = payloadMeta[i];
-        const f = await fs.readFile(projectId, fMeta.path);
-        if (!f) continue;
-        
+
+      const payloadFiles = (await Promise.all(
+        payloadMeta.map(async (fMeta) => {
+          const f = await fs.readFile(projectId, fMeta.path);
+          return f || null;
+        })
+      )).filter((f): f is StudioFile => f !== null);
+
+      for (let i = 0; i < payloadFiles.length; i++) {
+        const f = payloadFiles[i];
         formData.append(`files[${i}][path]`, f.path);
         formData.append(`files[${i}][content]`, f.content);
       }
