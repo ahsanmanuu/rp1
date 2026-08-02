@@ -940,6 +940,9 @@ Analyze the manuscript and return ONE JSON object (no markdown, no commentary be
   "abstract": { "text": "the abstract text EXACTLY as it appears (do not rewrite, shorten or summarize)", "confidence": 0-100 },
   "keywords": ["keyword1", "keyword2"],
   "sections": [ { "title": "exact heading text without numbering", "level": 1 or 2 } ],
+  "figures": [ { "caption": "exact figure caption as it appears, e.g. \"Fig. 1. Overview of the proposed framework.\"" } ],
+  "tables": [ { "caption": "exact table caption as it appears, e.g. \"TABLE I. Simulation Parameters\"" } ],
+  "algorithms": [ { "title": "exact algorithm/pseudocode title as it appears, e.g. \"Algorithm 1\" or \"Algorithm 1: K-Means Clustering\"" } ],
   "components": {
     "figures": <integer count of figures (images with captions)>,
     "charts": <integer count of charts/plots/graphs>,
@@ -954,18 +957,19 @@ Analyze the manuscript and return ONE JSON object (no markdown, no commentary be
 }
 
 ## HARD RULES
-1. Use ONLY text that actually appears in the manuscript. NEVER invent, paraphrase, translate or beautify titles, abstracts, author names, affiliations or references.
-2. If front matter is missing a field, set it to null. Never fabricate placeholder values like "Author Name", "Unknown" or "Institution".
+1. Use ONLY text that actually appears in input A (the full document text). NEVER invent, paraphrase, translate or beautify titles, abstracts, author names, affiliations, captions or references.
+2. If a field is missing from the document, set it to null (or [] for arrays). Never fabricate placeholder values like "Author Name", "Unknown" or "Institution".
 3. Authors: list every author with the exact name (drop only trailing superscript digits/asterisks used for affiliation markers, e.g. "John Doe1" -> "John Doe"). Attach the matching affiliation(s) from the manuscript.
 4. Affiliations: deduplicate; include department, institution and country when present.
 5. Abstract: copy verbatim; strip a leading "Abstract" label if present.
 6. Keywords: exact terms, no numbering, no bullet prefixes.
-7. Sections: FULL ordered list of every section and subsection heading visible in the evidence. level 1 = \\section, level 2 = \\subsection. Drop leading numbering ("1.", "1.1", "[1]", "I."). "References"/"Bibliography", "Acknowledgements", "Declarations", "Appendix" are level 1 headings.
-8. Components: count them ONLY from the actual evidence (front matter + detected captions + math snippets + reference entries). If a count cannot be determined from the given evidence, return null for that field — never guess 0 or random numbers.
-9. Citations: an in-text citation marker is a bracketed number/reference like [12] or (Smith et al., 2020) in the body text.
-10. References: include the actual bibliography entries verbatim (up to 200). If no bibliography is visible in the evidence, return [].
-11. confidence for title/abstract must be 90+ when the text appears verbatim in the front matter.
-12. JSON keys must match EXACTLY. Escape backslashes and quotes properly.
+7. Sections: the COMPLETE ordered list of every section and subsection heading visible in input A. level 1 = \\section, level 2 = \\subsection. Drop leading numbering ("1.", "1.1", "[1]", "I."). "References"/"Bibliography", "Acknowledgements", "Declarations", "Appendix" are level 1 headings. Never omit, merge or reorder sections.
+8. figures/tables/algorithms: list EVERY figure, table and algorithm visible in input A with its caption/title copied VERBATIM, in document order. Empty arrays when none exist. An image without any caption is NOT a figure - do not count or list it.
+9. Components: count them ONLY from input A (the full document text). If a count cannot be determined from the text, return null for that field - never guess 0 or random numbers. Count only figures/tables/equations/pseudocode listings that actually appear in the text.
+10. Citations: an in-text citation marker is a bracketed number/reference like [12] or (Smith et al., 2020) in the body text.
+11. References: include the actual bibliography entries verbatim (up to 200). If no bibliography is visible in the text, return [].
+12. confidence for title/abstract must be 90+ when the text appears verbatim in the document.
+13. JSON keys must match EXACTLY. Escape backslashes and quotes properly.
 
 Respond with ONLY the JSON object.`;
   },

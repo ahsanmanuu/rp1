@@ -29,14 +29,21 @@ export interface AiStructureVerdict {
   abstract?: { text?: string; confidence?: number } | null;
   keywords?: string[] | null;
   sections?: Array<{ title?: string; level?: number }> | null;
+  figures?: Array<{ caption?: string }> | null;
+  tables?: Array<{ caption?: string }> | null;
+  algorithms?: Array<{ title?: string }> | null;
   components?: AiStructureComponents | null;
   references?: string[] | null;
 }
 
-// Analysis window: long enough for a full manuscript analysis on slower
-// providers, short enough that uploads never hang. Heuristics are used when
-// the AI verdict misses this window.
-const ANALYSIS_TIMEOUT_MS = 90000;
+// Analysis window: long enough for a full-document analysis on slower
+// providers, short enough that uploads never hang (client XHR allows 5 min).
+// Heuristics are used when the AI verdict misses this window.
+const ANALYSIS_TIMEOUT_MS = 180000;
+
+// Max characters of manuscript text sent to the AI (front + tail preserved).
+const FULL_TEXT_LIMIT = 26000;
+const FULL_TEXT_TAIL = 6000;
 
 function stripTags(html: string): string {
   return html
@@ -94,6 +101,25 @@ function sanitizeStringArray(value: unknown, maxItems: number, minLen: number): 
   return out;
 }
 
+function sanitizeCaptionArray(
+  value: unknown,
+  maxItems: number,
+  key: 'caption' | 'title'
+): Array<{ caption?: string } | { title?: string }> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: Array<{ caption?: string } | { title?: string }> = [];
+  for (const item of value) {
+    let text = '';
+    if (typeof item === 'string') text = item;
+    else if (item && typeof item === 'object') text = String((item as any)[key] || '');
+    text = text.replace(/\s+/g, ' ').trim();
+    if (text.length < 3) continue;
+    out.push(key === 'title' ? { title: text } : { caption: text });
+    if (out.length >= maxItems) break;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 function normalizeVerdict(raw: any): AiStructureVerdict | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
 
@@ -143,6 +169,15 @@ function normalizeVerdict(raw: any): AiStructureVerdict | null {
     }
     if (sections.length > 0) verdict.sections = sections;
   }
+
+  const figures = sanitizeCaptionArray(raw.figures, 80, 'caption');
+  if (figures) verdict.figures = figures as Array<{ caption?: string }>;
+
+  const tables = sanitizeCaptionArray(raw.tables, 80, 'caption');
+  if (tables) verdict.tables = tables as Array<{ caption?: string }>;
+
+  const algorithms = sanitizeCaptionArray(raw.algorithms, 30, 'title');
+  if (algorithms) verdict.algorithms = algorithms as Array<{ title?: string }>;
 
   if (raw.components && typeof raw.components === 'object') {
     const c = raw.components;
@@ -197,6 +232,17 @@ export async function analyzeManuscriptStructure(
     const documentTail = plainText.length > 6500
       ? plainText.substring(Math.max(6500, plainText.length - 4500))
       : '';
+    // Full-document evidence: the AI must see the ENTIRE manuscript (body,
+    // captions, equations, references), not just the front matter, so its
+    // detection is independent of the heuristic parser. Front + tail of the
+    // text are always preserved (tail holds the reference list).
+    let fullText = plainText;
+    if (fullText.length > FULL_TEXT_LIMIT) {
+      const keepFront = FULL_TEXT_LIMIT - FULL_TEXT_TAIL;
+      fullText =
+        `${plainText.substring(0, keepFront)}\n...[middle of document elided for length]...\n` +
+        plainText.substring(plainText.length - FULL_TEXT_TAIL);
+    }
     const equationSnippets = ((deepData.mathBlocks || []) as Array<{ latex?: string }>)
       .filter(m => m.latex)
       .map(m => String(m.latex).substring(0, 200))
@@ -209,6 +255,7 @@ export async function analyzeManuscriptStructure(
         context: {
           userId: opts.userId ?? null,
           documentTitle: opts.filename.replace(/\.[^/.]+$/, ''),
+          fullText,
           frontMatter,
           documentTail,
           sectionTitles: sectionTitles.slice(0, 60),
@@ -318,33 +365,206 @@ export function applyStructureCorrections(
     applied.push('references');
   }
 
-  // ── Section hierarchy corrections (exact normalized-title match only) ────
+  // ── Section hierarchy rebuild (fix matched headings, drop parser-artifact
+  //    headings, INSERT AI-detected sections the parser missed, fix levels) ──
   if (verdict.sections && verdict.sections.length > 0) {
-    const byNorm = new Map<string, { title: string; level: number }>();
+    const body = deepData.body || [];
+    const aiSections: Array<{ title: string; level: number }> = [];
     for (const s of verdict.sections) {
       const t = String(s?.title || '').replace(/\s+/g, ' ').trim();
       if (!t || t.length < 2) continue;
-      byNorm.set(normalizeTitleKey(t), { title: t, level: s?.level === 2 ? 2 : 1 });
+      aiSections.push({ title: t, level: s?.level === 2 ? 2 : 1 });
     }
-    let corrected = 0;
-    for (const n of deepData.body || []) {
-      if (n.type !== 'heading' || !n.text) continue;
-      const match = byNorm.get(normalizeTitleKey(n.text));
-      if (!match) continue;
-      if (n.text !== match.title) {
-        n.text = match.title;
-        corrected++;
+
+    if (aiSections.length > 0) {
+      const stripArtifacts = (t: string): string =>
+        t
+          .replace(/<[^>]*>/g, '')
+          .replace(/[\d.]+\s*point\s*,?\s*[A-Za-z]*/gi, '')
+          .replace(/[:\u2013\u2014]\s*$/, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+      const aiByNorm = new Map<string, number>();
+      aiSections.forEach((s, i) => {
+        const norm = normalizeTitleKey(s.title);
+        if (!aiByNorm.has(norm)) aiByNorm.set(norm, i);
+      });
+
+      // Match body headings to AI sections (exact norm OR artifact-stripped norm).
+      const aiMatchedToBody = new Map<number, number>();
+      const bodyUsed = new Set<number>();
+      body.forEach((n, i) => {
+        if (n.type !== 'heading' || !n.text) return;
+        const norm = normalizeTitleKey(n.text);
+        const strippedNorm = normalizeTitleKey(stripArtifacts(n.text));
+        const aiIdx = aiByNorm.get(norm) ?? (strippedNorm !== norm ? aiByNorm.get(strippedNorm) : undefined);
+        if (aiIdx !== undefined) {
+          aiMatchedToBody.set(aiIdx, i);
+          bodyUsed.add(i);
+        }
+      });
+
+      // Fix text/level on matched headings.
+      let corrected = 0;
+      for (const [aiIdx, bodyIdx] of aiMatchedToBody) {
+        const s = aiSections[aiIdx];
+        const n = body[bodyIdx];
+        if (!n || !s) continue;
+        if (n.text !== s.title) {
+          n.text = s.title;
+          corrected++;
+        }
+        if (s.level === 2 && (n.level === undefined || n.level === 1)) {
+          n.level = 2;
+          corrected++;
+        } else if (s.level === 1 && n.level === 2) {
+          n.level = 1;
+          corrected++;
+        }
       }
-      if (match.level === 2 && (n.level === undefined || n.level === 1)) {
-        n.level = 2;
-        corrected++;
-      } else if (match.level === 1 && n.level === 2) {
-        n.level = 1;
-        corrected++;
+
+      // Determine insertion anchors: each unmatched AI section is placed
+      // immediately AFTER the body position of the previous matched section
+      // (preserving document order); ones before any match go to the top.
+      const inserts = new Map<number, any[]>();
+      let prevBodyIdx = -1;
+      aiSections.forEach((s, aiIdx) => {
+        const m = aiMatchedToBody.get(aiIdx);
+        if (m !== undefined) {
+          prevBodyIdx = m;
+          return;
+        }
+        const anchor = prevBodyIdx;
+        if (!inserts.has(anchor)) inserts.set(anchor, []);
+        inserts.get(anchor)!.push({
+          type: 'heading',
+          level: s.level,
+          text: s.title,
+          id: `h_ai_${aiIdx}`,
+        });
+      });
+
+      // Rebuild the body: drop parser-artifact headings (style tags, template
+      // instruction text) that no AI section confirms, apply insertions.
+      const isGarbageHeading = (n: any): boolean => {
+        if (n.type !== 'heading' || !n.text) return false;
+        return (
+          /<[^>]*>/.test(n.text) ||
+          /[\d.]+\s*point\s*,?\s*bold/i.test(n.text) ||
+          /within the text/i.test(n.text)
+        );
+      };
+      let inserted = 0;
+      let removed = 0;
+      const rebuilt: any[] = [];
+      for (let i = 0; i < body.length; i++) {
+        const n = body[i];
+        if (isGarbageHeading(n) && !bodyUsed.has(i)) {
+          removed++;
+          continue;
+        }
+        if (i === 0 && inserts.has(-1)) {
+          rebuilt.push(...inserts.get(-1)!);
+          inserted += inserts.get(-1)!.length;
+        }
+        rebuilt.push(n);
+        const ins = inserts.get(i);
+        if (ins) {
+          rebuilt.push(...ins);
+          inserted += ins.length;
+        }
+      }
+      if (inserts.has(-1) && rebuilt.length === 0) {
+        rebuilt.push(...inserts.get(-1)!);
+        inserted += inserts.get(-1)!.length;
+      }
+      if (inserted > 0 || removed > 0 || corrected > 0) {
+        if (inserted > 0 || removed > 0) deepData.body = rebuilt;
+        applied.push('sections');
       }
     }
-    if (corrected > 0) applied.push('sections');
   }
+
+  // ── Figure / table / algorithm caption fixes (verbatim from AI, matched by
+  //    normalized similarity; sequential assignment only when counts align) ──
+  const fixCaptions = (
+    aiList: Array<{ caption?: string }> | Array<{ title?: string }> | null | undefined,
+    nodeTypes: string[],
+    textKey: 'caption' | 'title',
+    label: string
+  ): void => {
+    if (!aiList || aiList.length === 0) return;
+    const nodes = (deepData.body || []).filter(n => nodeTypes.includes(n.type));
+    if (nodes.length === 0) return;
+    const texts = aiList
+      .map(a => String((a as any)[textKey] || '').replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    if (texts.length === 0) return;
+
+    const normCap = (c: string): string =>
+      c
+        .replace(/^(?:fig(?:ure)?|tab(?:le)?|alg(?:orithm)?|chart|img(?:age)?)[.\s]*\d*[.\s:-]*/i, '')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+    const similarity = (a: string, b: string): number => {
+      if (!a || !b) return 0;
+      if (a === b) return 1;
+      const grams = (s: string): Set<string> => {
+        const set = new Set<string>();
+        for (let i = 0; i + 2 < s.length; i++) set.add(s.slice(i, i + 3));
+        return set;
+      };
+      const A = grams(a);
+      const B = grams(b);
+      if (A.size === 0 && B.size === 0) return a === b ? 1 : 0;
+      let inter = 0;
+      for (const t of A) if (B.has(t)) inter++;
+      return inter / (A.size + B.size - inter);
+    };
+
+    let fixed = 0;
+    const unused = new Set(texts.map((_, i) => i));
+    for (const n of nodes) {
+      const current = String((n as any)[textKey] || '').replace(/\s+/g, ' ').trim();
+      if (!current) continue;
+      const curNorm = normCap(current);
+      let bestIdx = -1;
+      let bestScore = 0;
+      for (const i of unused) {
+        const score = similarity(curNorm, normCap(texts[i]));
+        if (score > bestScore) {
+          bestScore = score;
+          bestIdx = i;
+        }
+      }
+      if (bestIdx !== -1 && bestScore >= 0.45 && texts[bestIdx] !== current) {
+        (n as any)[textKey] = texts[bestIdx];
+        unused.delete(bestIdx);
+        fixed++;
+      }
+    }
+    // Sequential fallback ONLY when counts align exactly (1 caption per node).
+    if (texts.length === nodes.length) {
+      for (const n of nodes) {
+        if (fixed >= nodes.length) break;
+        const current = String((n as any)[textKey] || '').replace(/\s+/g, ' ').trim();
+        if (current) continue;
+        const next = [...unused].sort((a, b) => a - b)[0];
+        if (next === undefined) break;
+        (n as any)[textKey] = texts[next];
+        unused.delete(next);
+        fixed++;
+      }
+    }
+    if (fixed > 0) applied.push(label);
+  };
+
+  fixCaptions(verdict.figures, ['figure', 'chart', 'image', 'figure-group'], 'caption', 'figureCaptions');
+  fixCaptions(verdict.tables, ['table'], 'caption', 'tableCaptions');
+  fixCaptions(verdict.algorithms, ['algorithm'], 'title', 'algorithmTitles');
 
   // ── Component counts ─────────────────────────────────────────────────────
   // The report display layers (upload page, ProjectStats) prefer the AI

@@ -1251,21 +1251,33 @@ export async function POST(req: Request) {
       }
     }
 
-    const refCountFinal = Math.max(deepData.stats.referenceCount || 0, latexStats.referenceCount || 0, bibRefCount);
-    const citCountFinal = Math.max(deepData.stats.citationCount || 0, latexStats.citationCount || 0);
+    const aiComp = (deepData as any).aiStructure?.components as
+      | { figures?: number | null; charts?: number | null; tables?: number | null; equations?: number | null; pseudocode?: number | null; citations?: number | null; references?: number | null }
+      | undefined;
+    // When the AI full-document analysis ran, its verified counts are the
+    // authoritative ground truth (exact, not raise-only). Fall back to the
+    // inclusive Math.max semantics only when the AI pass did not provide a
+    // count for a given component.
+    const aiPick = (key: keyof NonNullable<typeof aiComp>, fallback: number): number => {
+      const v = aiComp ? aiComp[key] : undefined;
+      return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback;
+    };
+
+    const refCountFinal = aiPick('references', Math.max(deepData.stats.referenceCount || 0, latexStats.referenceCount || 0, bibRefCount));
+    const citCountFinal = aiPick('citations', Math.max(deepData.stats.citationCount || 0, latexStats.citationCount || 0));
 
     deepData.stats = {
       ...deepData.stats,
       wordCount:       Math.max(deepData.stats.wordCount || 0, latexStats.wordCount || 0),
       charCount:       Math.max(deepData.stats.charCount || 0, latexStats.charCount || 0),
-      imageCount:      Math.max(deepData.stats.imageCount || 0, latexStats.imageCount || 0, actualFigureFiles.length),
-      tableCount:      Math.max(deepData.stats.tableCount || 0, latexStats.tableCount || 0),
-      // Prioritize the larger, more inclusive count between the HTML parser and assembled LaTeX
-      equationCount:   Math.max(deepData.stats.equationCount || 0, latexStats.equationCount || 0),
+      imageCount:      aiPick('figures', Math.max(deepData.stats.imageCount || 0, latexStats.imageCount || 0, actualFigureFiles.length)),
+      tableCount:      aiPick('tables', Math.max(deepData.stats.tableCount || 0, latexStats.tableCount || 0)),
+      // AI-verified exact counts win over the HTML/LaTeX maxima
+      equationCount:   aiPick('equations', Math.max(deepData.stats.equationCount || 0, latexStats.equationCount || 0)),
       citationCount:   citCountFinal,
       referenceCount:  refCountFinal,
-      pseudocodeCount: Math.max(deepData.stats.pseudocodeCount || 0, latexStats.pseudocodeCount || 0),
-      chartCount:      Math.max(deepData.stats.chartCount || 0, latexStats.chartCount || 0, actualChartFiles.length),
+      pseudocodeCount: aiPick('pseudocode', Math.max(deepData.stats.pseudocodeCount || 0, latexStats.pseudocodeCount || 0)),
+      chartCount:      aiPick('charts', Math.max(deepData.stats.chartCount || 0, latexStats.chartCount || 0, actualChartFiles.length)),
     };
 
     // --- DB PERSISTENCE ---
