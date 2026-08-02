@@ -242,12 +242,12 @@ export class DeepDocumentParser {
           }
       }
 
+      let lastPdfHeadingLevel = 0;
       for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
           if (/^(?:\d+\.?\s*)?(?:REFERENCES|BIBLIOGRAPHY|WORKS CITED)\.?\s*$/i.test(line) && i > lines.length * 0.4) {
               inRefs = true; continue;
-          }
-          if (inRefs) {
+          }          if (inRefs) {
               const isPostRef = /^(?:\d+\.?\s*)?(?:acknowledgments?|declarations?|ethics\s+(?:approval|statement)|conflict\s+of\s+interest|competing\s+interests|funding|data\s+availability|authors?\s+contributions?|supplementary|appendix|appendices|supporting|biography|author\s+biography|about\s+the\s+author)s?[.:]?\s*$/i.test(line.trim());
               if (isPostRef) {
                   inRefs = false;
@@ -355,7 +355,14 @@ export class DeepDocumentParser {
                   headingText = cleanLine.substring(prefixMatch[0].length).trim();
               }
               if (!headingText) headingText = cleanLine;
-              
+
+              // Hierarchy state machine: the first heading is always a main
+              // section, and a heading may never jump more than one level
+              // deeper than its predecessor.
+              if (lastPdfHeadingLevel === 0) level = 1;
+              else if (level > lastPdfHeadingLevel + 1) level = lastPdfHeadingLevel + 1;
+              lastPdfHeadingLevel = level;
+
               result.body.push({ type: 'heading', level, text: headingText });
           } else if (line.length > 20) {
               result.body.push({ type: 'paragraph', text: line });
@@ -531,11 +538,13 @@ export class DeepDocumentParser {
 
     // Phase 5: Stats Finalization from Store
     result.stats.tableCount = result.body.filter(n => n.type === 'table').length;
+    // imageCount = figure/figure-group images only; chart nodes are counted
+    // separately as chartCount so figures and charts are never double-counted.
     result.stats.imageCount = result.body.reduce((sum, n) => {
       if (n.type === 'figure-group') {
         return sum + (n.images ? n.images.length : 0);
       }
-      if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') {
+      if (n.type === 'figure' || n.type === 'image') {
         return sum + (n.images ? n.images.length : 1);
       }
       return sum;
@@ -555,6 +564,15 @@ export class DeepDocumentParser {
     if (overrides) {
       if (overrides.tableCount) result.stats.tableCount = overrides.tableCount;
       if (overrides.equationCount) result.stats.equationCount = overrides.equationCount;
+      // AI-provided figure/chart overrides are applied only when the document
+      // actually contains that media — a hallucinated count must never inflate
+      // the stats, so we clamp to what the parser found.
+      if (overrides.imageCount) {
+        result.stats.imageCount = Math.min(overrides.imageCount, result.stats.imageCount);
+      }
+      if (overrides.chartCount) {
+        result.stats.chartCount = Math.min(overrides.chartCount, result.stats.chartCount);
+      }
     }
 
     result.algorithms = result.body.filter(n => n.type === 'algorithm').map(n => ({
@@ -958,6 +976,11 @@ export class DeepDocumentParser {
 
       const processedMathBlocks = new Set<number>();
 
+      // Heading hierarchy state: the first heading in a document is a main
+      // section (level 1) even if it carries a numbered "X.Y" prefix — a
+      // "3.1" at document start is not a subsection of a phantom section.
+      let lastHeadingLevel = 0;
+
       for (let i = 0; i < manifest.length; i++) {
           const entry = manifest[i];
           
@@ -1124,6 +1147,7 @@ export class DeepDocumentParser {
                   if (embeddedHeading) {
                     // Emit the short heading as a level-2 subsection
                     result.body.push({ type: 'heading', level: 2, text: embeddedHeading });
+                    lastHeadingLevel = 2;
                     // Emit body text (everything after the colon) as a paragraph
                     const sepIdx = text.indexOf(embeddedHeading);
                     const afterHeading = sepIdx !== -1
@@ -1133,16 +1157,30 @@ export class DeepDocumentParser {
                       result.body.push({ type: 'paragraph', text: afterHeading });
                     }
                   } else {
-                    const level = this.detectHeading(entry.elements[0], text) || 2;
+                    let level = this.detectHeading(entry.elements[0], text) || 2;
+                    // First heading in the document is always a main section —
+                    // a leading "X.Y" numbered prefix does not make it a subsection.
+                    if (lastHeadingLevel === 0 && level > 1) level = 1;
                     let cleanText = text.trim();
                     const numericPrefix = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\d+)(?:\.\d+)*\.?[.:\s)]+\s*/i;
                     const alphaRomanPrefix = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:[a-zA-Z](?:\.\d+)+|[ivxlcdm]{2,}|[a-zA-Z]|[ivxlcdm])\.?[.:)]+\s+/i;
-                    if (numericPrefix.test(cleanText)) {
-                      cleanText = cleanText.replace(numericPrefix, "").trim();
-                    } else if (alphaRomanPrefix.test(cleanText)) {
-                      cleanText = cleanText.replace(alphaRomanPrefix, "").trim();
+                    const prefixMatchText = cleanText.match(numericPrefix) ||
+                        (alphaRomanPrefix.test(cleanText) ? cleanText.match(alphaRomanPrefix) : null);
+                    if (prefixMatchText) {
+                        // "X.Y Title" numbered prefixes encode the heading depth.
+                        // If the number is the only thing that makes this line a
+                        // heading, keep it in the text and derive the level from it
+                        // — stripping it would erase the depth signal entirely.
+                        const withoutNumber = cleanText.slice(prefixMatchText[0].length).trim();
+                        if (withoutNumber && this.detectHeading(entry.elements[0], withoutNumber)) {
+                            cleanText = withoutNumber;
+                        } else {
+                            const numPart = prefixMatchText[0].match(/\d+(?:\.\d+)*/)?.[0];
+                            level = Math.min(3, numPart ? numPart.split('.').length : 1);
+                        }
                     }
                     result.body.push({ type: 'heading', level, text: cleanText || text });
+                    lastHeadingLevel = level;
                   }
               } else {
                   result.body.push({ type: 'paragraph', text: withCitations });

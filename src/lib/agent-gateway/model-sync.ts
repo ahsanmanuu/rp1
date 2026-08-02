@@ -82,15 +82,21 @@ async function syncFreeModels(): Promise<ProviderConfig[]> {
   const providers: ProviderConfig[] = [];
 
   const openCodeKey = process.env.OPENCODE_API_KEY || '';
+  const openRouterKey = process.env.OPENROUTER_API_KEY || '';
+
+  // Fetch the two remote model catalogs in parallel — a sequential pair of
+  // network round-trips on every cold start costs ~16s of wall-clock time.
+  const [openCodeModels, openRouterModels] = await Promise.all([
+    openCodeKey ? fetchOpenCodeFreeModels(openCodeKey) : Promise.resolve<string[]>([]),
+    openRouterKey ? fetchOpenRouterFreeModels() : Promise.resolve<string[]>([]),
+  ]);
+
   if (openCodeKey) {
-    const models = await fetchOpenCodeFreeModels(openCodeKey);
-    providers.push({ name: 'opencode', apiKey: openCodeKey, baseUrl: 'https://opencode.ai/zen/v1', models });
+    providers.push({ name: 'opencode', apiKey: openCodeKey, baseUrl: 'https://opencode.ai/zen/v1', models: openCodeModels });
   }
 
-  const openRouterKey = process.env.OPENROUTER_API_KEY || '';
   if (openRouterKey) {
-    const models = await fetchOpenRouterFreeModels();
-    providers.push({ name: 'openrouter', apiKey: openRouterKey, baseUrl: 'https://openrouter.ai/api/v1', models });
+    providers.push({ name: 'openrouter', apiKey: openRouterKey, baseUrl: 'https://openrouter.ai/api/v1', models: openRouterModels });
   }
 
   const geminiKey = process.env.GEMINI_API_KEY || '';

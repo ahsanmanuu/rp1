@@ -886,7 +886,7 @@ register({
   name: 'Manuscript Structure Analyzer',
   description: 'AI-driven structural verification of converted manuscripts: exact title, authors, affiliations, abstract, keywords, section hierarchy, component counts (figures/charts/tables/equations/pseudocode/citations/references) and reference list',
   temperature: 0.05,
-  maxTokens: 9216,
+  maxTokens: 4096,
   rateLimit: 20,
   model: 'mimo-v2.5-free',
   buildSystemPrompt(ctx) {
@@ -939,13 +939,13 @@ Analyze the manuscript and return ONE JSON object (no markdown, no commentary be
   "affiliations": ["each unique affiliation written ONCE in clean form"],
   "abstract": { "text": "the abstract text EXACTLY as it appears (do not rewrite, shorten or summarize)", "confidence": 0-100 },
   "keywords": ["keyword1", "keyword2"],
-  "sections": [ { "title": "exact heading text without numbering", "level": 1 or 2 } ],
+  "sections": [ { "title": "exact heading text without numbering", "level": 1, 2 or 3 } ],
   "figures": [ { "caption": "exact figure caption as it appears, e.g. \"Fig. 1. Overview of the proposed framework.\"" } ],
   "tables": [ { "caption": "exact table caption as it appears, e.g. \"TABLE I. Simulation Parameters\"" } ],
   "algorithms": [ { "title": "exact algorithm/pseudocode title as it appears, e.g. \"Algorithm 1\" or \"Algorithm 1: K-Means Clustering\"" } ],
   "components": {
-    "figures": <integer: count Figure/Fig./Image captions. Each "Fig. N" or "Figure N" label = 1 figure. Sub-figures (a)(b)(c) under one caption = 1 figure. Decorative images without captions do NOT count>,
-    "charts": <integer: count charts/plots/graphs (bar, line, pie, scatter, histogram, box, heatmap). If a chart has a Figure caption, count it as BOTH a figure AND a chart>,
+    "figures": <integer: count captioned figure images (photos, illustrations, architecture diagrams) in the BODY text. Each "Fig. N" or "Figure N" caption = 1 figure. Sub-figures (a)(b)(c) under one caption = 1 figure. Decorative images without captions do NOT count. Charts/plots NEVER count as figures — they go under "charts">,
+    "charts": <integer: count charts/plots/graphs (bar, line, pie, scatter, histogram, box, heatmap). A chart with a "Fig." caption is STILL a chart — count it under charts ONLY, never under figures>,
     "tables": <integer: count Table/Tab. captions. Each "Table N" or "TABLE N" label = 1 table. Do NOT count algorithm listings formatted as tables>,
     "equations": <integer: count display/math equations — numbered equations like (1), (2), equation blocks, LaTeX \\begin{equation}. Do NOT count inline math, parameter assignments like 'n = 100', or value labels>,
     "pseudocode": <integer: count Algorithm/Pseudocode/Procedure/Listing blocks. Each "Algorithm N" label = 1>,
@@ -963,11 +963,12 @@ Analyze the manuscript and return ONE JSON object (no markdown, no commentary be
 4. Affiliations: deduplicate; include department, institution and country when present.
 5. Abstract: copy verbatim; strip a leading "Abstract" label if present.
 6. Keywords: exact terms, no numbering, no bullet prefixes.
-7. Sections: the COMPLETE ordered list of every section and subsection heading visible in input A. level 1 = \\section, level 2 = \\subsection. Drop leading numbering ("1.", "1.1", "[1]", "I."). "References"/"Bibliography", "Acknowledgements", "Declarations", "Appendix" are level 1 headings. Never omit, merge or reorder sections.
+7. Sections: the COMPLETE ordered list of every section, subsection and subsubsection heading visible in input A. level 1 = \\section, level 2 = \\subsection, level 3 = \\subsubsection. Drop leading numbering ("1.", "1.1", "1.1.2", "[1]", "I."). "References"/"Bibliography", "Acknowledgements", "Declarations", "Appendix" are level 1 headings. Never omit, merge or reorder sections. Keep every heading's implied depth: a "3.2" heading belongs at level 2, "3.2.1" at level 3 — never flatten them to level 1.
 8. figures/tables/algorithms: list EVERY figure, table and algorithm visible in input A with its caption/title copied VERBATIM, in document order. Empty arrays when none exist. An image without any caption is NOT a figure - do not count or list it.
 9. Components — COUNTING PRECISION:
-   - Count ONLY from input A. If the text is truncated ("[middle of document elided]"), extrapolate counts from the visible evidence: figure/table/algorithm numbering sequences and reference-list entries.
-   - figures: count by "Fig." or "Figure" captions. Sub-figures (a)(b)(c) under one "Fig. N" = 1 figure.
+   - Count EXACTLY what you can see in input A. If the text contains an elision marker ("[middle of document elided]" or similar), you MUST NOT extrapolate or guess: count only the items visible in the window you were given and set any count you could not fully determine to null — never a guessed number.
+   - figures: count by "Fig." or "Figure" captions, excluding charts/plots. Sub-figures (a)(b)(c) under one "Fig. N" = 1 figure.
+   - charts: count chart/plot images only (a chart with a "Fig." caption counts here, not under figures).
    - tables: count by "Table" or "TABLE" captions. Do NOT count algorithm or equation tables.
    - equations: count display equations only (numbered like (1), (2), or in \\begin{equation} blocks). Inline math and parameter assignments (e.g. "n = 100", "LR = 0.001") are NOT equations.
    - pseudocode: count "Algorithm N" or "Pseudocode N" blocks.
@@ -976,6 +977,7 @@ Analyze the manuscript and return ONE JSON object (no markdown, no commentary be
 11. References: include the actual bibliography entries verbatim (up to 150). If no bibliography is visible in the text, return [].
 12. confidence for title/abstract must be 90+ when the text appears verbatim in the document.
 13. JSON keys must match EXACTLY. Escape backslashes and quotes properly.
+14. RESPONSE BUDGET: be maximally economical. Copy captions and references verbatim but NEVER add explanatory prose, whitespace padding, or commentary. Keep "notes" under 15 words. A short response is preferred over a long one as long as every count and list is exact.
 
 Respond with ONLY the JSON object.`;
   },
@@ -1071,11 +1073,11 @@ register({
   name: 'Manuscript Component LaTeX Generator',
   description: 'Identifies manuscript components (figures, charts, tables, algorithms) from the full text, counts them, and creates modular LaTeX code for each component',
   temperature: 0.05,
-  maxTokens: 6144,
+  maxTokens: 4096,
   rateLimit: 20,
   model: 'mimo-v2.5-free',
   buildSystemPrompt(ctx) {
-    const fullText = String(ctx.fullText || '').substring(0, 80000);
+    const fullText = String(ctx.fullText || '').substring(0, 24000);
     const imageMap = JSON.stringify(ctx.imageMap || []);
     const figureCaptions = (ctx.figureCaptions as string[]) || [];
     const tableCaptions = (ctx.tableCaptions as string[]) || [];
@@ -1128,6 +1130,8 @@ Return ONE JSON object (no markdown, no commentary) with this EXACT schema:
 7. Escape special characters in text (%, #, &, _ as \\%, \\#, \\&, \\_).
 8. If a component type is absent from the document, omit its key entirely (or use []).
 9. Keep every fragment under 2000 characters. JSON keys and backslashes must be exact and properly escaped.
+10. COUNTS: your counts MUST match input E exactly — the counts there are ground truth. Do not recount or re-derive them from the truncated text window; if input E shows figures: 3, emit EXACTLY 3 figure entries.
+11. RESPONSE BUDGET: return ONLY the JSON object — no commentary, no markdown fences, no trailing text. Be economical: captions and pseudocode lines must be verbatim and complete, but add no prose or padding.
 
 Respond with ONLY the JSON object.`;
   },

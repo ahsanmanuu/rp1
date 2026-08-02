@@ -52,6 +52,26 @@ const STRUCTURE_PASS_TIMEOUT_MS = 120000;
 // AI's count disagrees with the deterministic count by more than 1).
 const RECOUNT_PASS_TIMEOUT_MS = 40000;
 
+// Races an AI pass against a deadline. When the deadline wins, the underlying
+// request is ABORTED (via AbortSignal) instead of being left to run as a
+// zombie — the orchestrator forwards the signal to the provider call, freeing
+// the worker/queue slot and cutting wall-clock time on slow passes.
+function withAbortableTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  controller: AbortController
+): Promise<T | null> {
+  return Promise.race([
+    promise,
+    new Promise<null>((resolve) => {
+      setTimeout(() => {
+        controller.abort();
+        resolve(null);
+      }, ms);
+    }),
+  ]);
+}
+
 // Max characters of manuscript text sent to the AI (front + tail preserved).
 // Must be large enough to cover all figures, tables, equations, and sections
 // in the middle of the document — the primary cause of inconsistent counts
@@ -351,16 +371,19 @@ function reconcileVerdict(
 
   // ── Components: deterministic anchors + AI full-text analysis ──────────
   // Strategy: citations use the deterministic shared counter (ground truth).
-  // For all other components, we take Math.max(AI count, deterministic count)
-  // so that NEITHER the heuristic parser NOR the AI can accidentally DROP a
-  // legitimately detected component. The AI's full-text analysis catches
-  // elements the heuristic parser misses (e.g. figures/tables whose captions
-  // don't match regex patterns), while the deterministic anchors catch
-  // elements the AI misses (e.g. math blocks from OMML/MathML conversion).
+  // For all other components we keep the maximum of (deterministic count, AI
+  // count) so NEITHER side can accidentally DROP a legitimately detected
+  // component, but every AI count is BOUNDED above by a multiple of the
+  // parser's evidence — a count with no corresponding body node is a
+  // hallucination, and hallucinations must never inflate the stats.
   const comps: AiStructureComponents = { ...(verdict.components || {}) };
   const body = deepData.body || [];
   const countByType = (types: string[]): number => body.filter(n => types.includes(n.type)).length;
   const mathBlocks = (deepData.mathBlocks || []) as Array<{ latex?: string }>;
+  // AI may report at most 2x the parser's evidence (+5 slack for genuinely
+  // missed nodes) — beyond that the number is treated as unreliable.
+  const bound = (det: number, ai: number): number =>
+    Math.min(Math.max(det, ai), det * 2 + 5);
 
   // Citations: deterministic shared counter is GROUND TRUTH (identical to
   // the client display). Always overrides the AI count.
@@ -378,30 +401,32 @@ function reconcileVerdict(
   const detBodyEq = countByType(['equation']);
   const detEquations = Math.max(detDisplayMath, detBodyEq);
   if (detEquations > 0) {
-    comps.equations = Math.max(detEquations, typeof comps.equations === 'number' ? comps.equations : 0);
+    comps.equations = bound(detEquations, typeof comps.equations === 'number' ? comps.equations : 0);
   } else {
+    // Parser found no equation evidence; the AI's count is unverifiable.
     comps.equations = 0;
   }
 
-  // Pseudocode: max of (body algorithm nodes, AI count).
+  // Pseudocode: bounded max of (body algorithm nodes, AI count).
   const detPseudo = countByType(['algorithm']);
-  comps.pseudocode = Math.max(detPseudo, typeof comps.pseudocode === 'number' ? comps.pseudocode : 0);
+  comps.pseudocode = bound(detPseudo, typeof comps.pseudocode === 'number' ? comps.pseudocode : 0);
 
   // Tables: ground against verified table list and detected table body nodes.
   const detTables = countByType(['table']);
   const verifiedTableCount = verdict.tables ? verdict.tables.length : 0;
-  if (verifiedTableCount > 0) {
-    comps.tables = Math.max(detTables, verifiedTableCount);
+  if (detTables > 0) {
+    comps.tables = bound(detTables, verifiedTableCount > 0 ? verifiedTableCount : (typeof comps.tables === 'number' ? comps.tables : 0));
   } else {
     comps.tables = detTables;
   }
 
-  // Figures: max of (body figure/image nodes, AI count). AI distinguishes
-  // real captioned figures from decorative images so is often more accurate.
+  // Figures: bounded max of (body figure/image nodes, AI count). Charts are a
+  // separate component (counted by their own body nodes) so figures and charts
+  // can never double-count.
   const detFigures = countByType(['figure', 'figure-group', 'image']);
   const detCharts = countByType(['chart']);
-  comps.figures = Math.max(detFigures, typeof comps.figures === 'number' ? comps.figures : 0);
-  comps.charts = Math.max(detCharts, typeof comps.charts === 'number' ? comps.charts : 0);
+  comps.figures = bound(detFigures, typeof comps.figures === 'number' ? comps.figures : 0);
+  comps.charts = bound(detCharts, typeof comps.charts === 'number' ? comps.charts : 0);
 
   if (Object.keys(comps).length > 0) verdict.components = comps;
   return verdict;
@@ -455,7 +480,8 @@ export async function analyzeManuscriptStructure(
     };
 
     // Pass A — front matter (title/authors/affiliations/abstract/keywords)
-    const passA = Promise.race([
+    const passAController = new AbortController();
+    const passA = withAbortableTimeout(
       routeToAgent({
         agent: 'structure-frontmatter',
         messages: [{ role: 'user', content: 'Analyze this manuscript front matter and return the structured JSON verdict.' }],
@@ -470,13 +496,14 @@ export async function analyzeManuscriptStructure(
             keywords: deepData.keywords,
           },
         },
+        signal: passAController.signal,
       }),
-      new Promise<null>(resolve => setTimeout(() => resolve(null), FRONTMATTER_PASS_TIMEOUT_MS)),
-    ]);
+      FRONTMATTER_PASS_TIMEOUT_MS,
+      passAController
+    );
 
-    // Pass B — full-document structure (sections, figures, tables, algorithms,
-    // components, references)
-    const passB = Promise.race([
+    const passBController = new AbortController();
+    const passB = withAbortableTimeout(
       routeToAgent({
         agent: 'structure-analyze',
         messages: [{ role: 'user', content: 'Analyze this manuscript and return the structured JSON verdict.' }],
@@ -502,23 +529,21 @@ export async function analyzeManuscriptStructure(
             stats: deepData.stats,
           },
         },
+        signal: passBController.signal,
       }),
-      new Promise<null>(resolve => setTimeout(() => resolve(null), STRUCTURE_PASS_TIMEOUT_MS)),
-    ]);
+      STRUCTURE_PASS_TIMEOUT_MS,
+      passBController
+    );
 
-    // Pass C — per-component modular LaTeX (figures/charts/tables/algorithms).
-    // Runs in parallel with A/B. Its output is strictly validated (balanced
-    // environments, command whitelist, image targets must exist) — any
-    // invalid fragment is discarded and the deterministic assembler output
-    // is used for that component instead.
-    const passC = Promise.race([
+    const passCController = new AbortController();
+    const passC = withAbortableTimeout(
       routeToAgent({
         agent: 'structure-latex',
         messages: [{ role: 'user', content: 'Identify the manuscript components and create modular LaTeX code for each figure, chart, table and algorithm.' }],
         context: {
           ...baseContext,
           modelOverride: AI_MODEL_OVERRIDE || AI_CHEAP_FALLBACK_MODEL,
-          fullText: plainText.substring(0, 80000),
+          fullText: plainText.substring(0, 24000),
           imageMap: (opts.imageFiles || []).map((f, i) => ({ index: i + 1, filename: f })),
           figureCaptions: figureCaptions.slice(0, 80),
           tableCaptions: tableCaptions.slice(0, 80),
@@ -530,9 +555,11 @@ export async function analyzeManuscriptStructure(
             pseudocode: (deepData.body || []).filter(n => n.type === 'algorithm').length,
           },
         },
+        signal: passCController.signal,
       }),
-      new Promise<null>(resolve => setTimeout(() => resolve(null), STRUCTURE_PASS_TIMEOUT_MS)),
-    ]);
+      STRUCTURE_PASS_TIMEOUT_MS,
+      passCController
+    );
 
     const [resA, resB, resC] = await Promise.all([passA, passB, passC]);
 
@@ -591,14 +618,15 @@ export async function analyzeManuscriptStructure(
     let finalVerdict = verdict;
     if (recountTargets.length > 0) {
       try {
-        const recount = await Promise.race([
+        const recountController = new AbortController();
+        const recount = await withAbortableTimeout(
           routeToAgent({
             agent: 'structure-analyze',
             messages: [{ role: 'user', content: 'Recount the specified components and return the full structured JSON verdict.' }],
             context: {
               ...baseContext,
               modelOverride: AI_MODEL_OVERRIDE || AI_CHEAP_FALLBACK_MODEL,
-              fullText: plainText.substring(0, 60000),
+              fullText: plainText.substring(0, 24000),
               frontMatter,
               sectionTitles: sectionTitles.slice(0, 60),
               figureCaptions: figureCaptions.slice(0, 40),
@@ -615,9 +643,11 @@ export async function analyzeManuscriptStructure(
                 'VERIFICATION MODE: your previous counts were WRONG. Recount precisely and return the complete JSON with ONLY the corrected counts. Mismatches: ' +
                 recountTargets.join('; '),
             },
+            signal: recountController.signal,
           }),
-          new Promise<null>(resolve => setTimeout(() => resolve(null), RECOUNT_PASS_TIMEOUT_MS)),
-        ]);
+          RECOUNT_PASS_TIMEOUT_MS,
+          recountController
+        );
         const rawRecount =
           recount && recount.success && recount.data && !(recount.data as any)._failSafe && !(recount.data as any)._partial
             ? (recount.data as any)
@@ -627,7 +657,11 @@ export async function analyzeManuscriptStructure(
           const merged = { ...verdict.components };
           for (const key of ['equations', 'pseudocode'] as const) {
             if (typeof rc[key] === 'number' && Number.isFinite(rc[key]) && rc[key] >= 0) {
-              merged[key] = Math.round(rc[key]);
+              // Clamp the AI's recount to a sane bound above the deterministic
+              // count — a "verified" count that triples the parser's evidence
+              // is a hallucination, not a correction.
+              const detBound = key === 'equations' ? Math.max(detEquations * 2, detEquations + 5) : Math.max(detPseudo * 2, detPseudo + 5);
+              merged[key] = Math.min(Math.round(rc[key]), detBound);
             }
           }
           finalVerdict = { ...verdict, components: merged };
@@ -738,10 +772,15 @@ export function applyStructureCorrections(
   if (verdict.sections && verdict.sections.length > 0) {
     const body = deepData.body || [];
     const aiSections: Array<{ title: string; level: number }> = [];
+    const seenAiNorms = new Set<string>();
     for (const s of verdict.sections) {
       const t = String(s?.title || '').replace(/\s+/g, ' ').trim();
       if (!t || t.length < 2) continue;
-      aiSections.push({ title: t, level: s?.level === 2 ? 2 : 1 });
+      const norm = normalizeTitleKey(t);
+      if (seenAiNorms.has(norm)) continue; // dedupe duplicated AI headings
+      seenAiNorms.add(norm);
+      const lv = s?.level;
+      aiSections.push({ title: t, level: lv === 2 || lv === 3 ? lv : 1 });
     }
 
     if (aiSections.length > 0) {
@@ -783,11 +822,11 @@ export function applyStructureCorrections(
           n.text = s.title;
           corrected++;
         }
-        if (s.level === 2 && (n.level === undefined || n.level === 1)) {
-          n.level = 2;
-          corrected++;
-        } else if (s.level === 1 && n.level === 2) {
-          n.level = 1;
+        // Apply the AI's depth (1 = section, 2 = subsection, 3 = subsubsection)
+        // to matched headings; the AI sees numbering evidence the heuristic
+        // parser may flatten.
+        if (n.level !== s.level) {
+          n.level = s.level;
           corrected++;
         }
       }
@@ -797,17 +836,24 @@ export function applyStructureCorrections(
       // (preserving document order); ones before any match go to the top.
       const inserts = new Map<number, any[]>();
       let prevBodyIdx = -1;
+      let prevLevel = 1;
       aiSections.forEach((s, aiIdx) => {
         const m = aiMatchedToBody.get(aiIdx);
         if (m !== undefined) {
+          const bn = body[m];
+          if (bn && bn.level) prevLevel = bn.level;
           prevBodyIdx = m;
           return;
         }
         const anchor = prevBodyIdx;
+        // Clamp inserted depth: a heading can never be deeper than one level
+        // below its predecessor (no orphan subsubsections at the document top).
+        const clampedLevel = anchor === -1 ? 1 : Math.min(s.level, prevLevel + 1);
+        prevLevel = clampedLevel;
         if (!inserts.has(anchor)) inserts.set(anchor, []);
         inserts.get(anchor)!.push({
           type: 'heading',
-          level: s.level,
+          level: clampedLevel,
           text: s.title,
           id: `h_ai_${aiIdx}`,
         });
