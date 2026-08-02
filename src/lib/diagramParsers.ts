@@ -1,6 +1,6 @@
 /* src/lib/diagramParsers.ts */
 
-import type { NodeColor, NodeType, ConnType, Arrowhead, DiagramNode, DiagramConnection } from '@/lib/diagramTypes';
+import type { NodeColor, NodeType, ConnType, Arrowhead, DiagramNode, DiagramConnection } from './diagramTypes';
 
 export type { NodeColor, NodeType, ConnType, Arrowhead, DiagramNode, DiagramConnection };
 

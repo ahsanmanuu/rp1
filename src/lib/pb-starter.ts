@@ -74,7 +74,11 @@ async function ensureBinary(): Promise<string | null> {
         extracted = true;
       } catch {
         log('System unzip failed or not installed. Extracting with adm-zip JS module...');
-        const AdmZipModule = await import('adm-zip');
+        // NOTE: `any` here is intentional — adm-zip is a CJS module and the
+        // dynamic-import interop shape (`module.default || module`) cannot be
+        // statically proven constructable under both `node` and `bundler`
+        // module resolution settings.
+        const AdmZipModule: any = await import('adm-zip');
         const AdmZip = AdmZipModule.default || AdmZipModule;
         const zip = new AdmZip(zipPath);
         zip.extractAllTo(process.cwd(), true);

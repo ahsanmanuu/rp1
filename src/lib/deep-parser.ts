@@ -407,7 +407,7 @@ export class DeepDocumentParser {
       .replace(/[\u202F\u00A0]/g, ' ').trim();
     if (!cleanHtml) return result;
 
-    let dom; try { dom = new JSDOM(cleanHtml); } catch { return result; }
+    let dom: JSDOM; try { dom = new JSDOM(cleanHtml); } catch { return result; }
     const doc = dom.window.document;
 
     // Break apart <p> elements that contain <br> so that Title/Author/Affiliation on soft-returns are evaluated independently.

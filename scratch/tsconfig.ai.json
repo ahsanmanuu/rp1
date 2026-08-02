@@ -13,7 +13,12 @@
     "outDir": "compiled-ai",
     "rootDir": "../src",
     "resolveJsonModule": true,
-    "types": []
+    "types": [],
+    "baseUrl": "../",
+    "paths": {
+      "@/*": ["src/*"],
+      "@statelyai/graph/mermaid": ["node_modules/@statelyai/graph/dist/formats/mermaid/index.d.mts"]
+    }
   },
   "include": [
     "../src/lib/ai-manuscript-analysis.ts",
