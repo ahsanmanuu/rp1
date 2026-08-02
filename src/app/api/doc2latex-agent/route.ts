@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
       if (result.error?.startsWith('AI_CAP_REACHED:') || result.error?.startsWith('AI_CAP_RULE_BLOCKED:')) {
         return NextResponse.json({ error: result.error }, { status: 429 });
       }
-      return NextResponse.json(result, { status: 502 });
+      return NextResponse.json({ success: false, error: result.error || 'AI enhancement unavailable' }, { status: 200 });
     }
 
     console.log(`[doc2latex-agent] AI enhancement complete for project ${projectId}. Model: ${result.model}. Time: ${result.timing.total}ms`);

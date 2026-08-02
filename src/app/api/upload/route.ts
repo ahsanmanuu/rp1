@@ -898,12 +898,15 @@ export async function POST(req: Request) {
         const imageNames = extractedImages
           .filter((img: any) => !(img as any).isStructural && /\.(png|jpe?g|webp|gif|pdf|eps|svg|heic|heif|tiff?|bmp|avif)$/i.test(img.name))
           .map((img: any) => img.name);
-        const aiRes = await analyzeManuscriptStructure(deepData, {
-          html: mammothResult.value,
-          filename: file.name,
-          userId: (session?.user as any)?.id ?? null,
-          imageFiles: imageNames,
-        });
+        const aiRes = await Promise.race([
+          analyzeManuscriptStructure(deepData, {
+            html: mammothResult.value,
+            filename: file.name,
+            userId: (session?.user as any)?.id ?? null,
+            imageFiles: imageNames,
+          }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 20000))
+        ]);
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
           if (aiRes.aiLatex) (deepData as any).aiLatex = aiRes.aiLatex;
@@ -911,7 +914,7 @@ export async function POST(req: Request) {
           (deepData as any).aiModel = aiRes.model;
           console.log(`[TELEMETRY] AI structure corrections applied: ${applied.join(', ') || 'none'} (${aiRes.model})`);
         } else {
-          console.warn('[TELEMETRY] AI structural analysis unavailable — keeping heuristic parse.');
+          console.warn('[TELEMETRY] AI structural analysis timed out or unavailable — keeping heuristic parse.');
         }
       } catch (aiErr: any) {
         console.warn('[AI-STRUCTURE] AI structural analysis failed (non-critical):', aiErr?.message || aiErr);

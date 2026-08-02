@@ -45,12 +45,12 @@ export interface AiStructureVerdict {
 // gets more time. Heuristics are the fallback when a pass misses its window.
 // Windows are kept well under the platform request cap (Render starter ~300s)
 // so the upload request always completes: worst case = max(passA, passB).
-const FRONTMATTER_PASS_TIMEOUT_MS = 90000;
-const STRUCTURE_PASS_TIMEOUT_MS = 120000;
+const FRONTMATTER_PASS_TIMEOUT_MS = 20000;
+const STRUCTURE_PASS_TIMEOUT_MS = 25000;
 
 // Extra budget for the scoped count re-verification pass (only fires when the
 // AI's count disagrees with the deterministic count by more than 1).
-const RECOUNT_PASS_TIMEOUT_MS = 40000;
+const RECOUNT_PASS_TIMEOUT_MS = 15000;
 
 // Races an AI pass against a deadline. When the deadline wins, the underlying
 // request is ABORTED (via AbortSignal) instead of being left to run as a
