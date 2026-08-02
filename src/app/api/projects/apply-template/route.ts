@@ -353,6 +353,34 @@ export async function POST(req: Request) {
     const mainTexPath = path.join(projectDir, 'main.tex');
     fs.writeFileSync(mainTexPath, healedLatex, 'utf-8');
 
+    // Include-graphics audit (Phase 4): every image referenced by the
+    // re-assembled latex must resolve to a real file on disk — missing
+    // references (image loss, template collisions) must never be silent.
+    try {
+      const { auditLatexImageReferences } = await import('@/lib/latex-image-audit');
+      const diskFiles: string[] = [];
+      const walkImages = (dir: string) => {
+        if (!fs.existsSync(dir)) return;
+        for (const entry of fs.readdirSync(dir)) {
+          const full = path.join(dir, entry);
+          if (fs.statSync(full).isDirectory()) walkImages(full);
+          else diskFiles.push(full.slice(projectDir.length + 1).replace(/\\/g, '/'));
+        }
+      };
+      walkImages(projectDir);
+      const audit = auditLatexImageReferences(healedLatex, diskFiles);
+      if (audit.total > 0 && audit.missing.length > 0) {
+        const shown = audit.missing.slice(0, 10).join(', ');
+        console.warn(
+          `[IMAGE-AUDIT] ${audit.missing.length} of ${audit.total} referenced image(s) MISSING for project ${projectId}: ${shown}${audit.missing.length > 10 ? '...' : ''}`
+        );
+      } else if (audit.total > 0) {
+        console.log(`[IMAGE-AUDIT] All ${audit.total} referenced image(s) resolve for project ${projectId}.`);
+      }
+    } catch (auditErr: any) {
+      console.warn('[IMAGE-AUDIT] Image reference audit failed (non-critical):', auditErr?.message || auditErr);
+    }
+
     // CRITICAL: Sync main.tex to ProjectFile table so IDEs can sync
     const existingFile = await prisma.projectFile.findFirst({
       where: { 

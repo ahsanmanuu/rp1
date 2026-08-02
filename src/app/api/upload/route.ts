@@ -1546,7 +1546,30 @@ export async function POST(req: Request) {
       console.warn('[TELEMETRY] Local-first harvest failed (non-critical):', localErr?.message || localErr);
     }
 
-    // 5. Executing single bulk DB transaction to prevent SQLite connection locks
+    // 5. Include-graphics audit (Phase 4): every image referenced by the
+    //    assembled latex must resolve to a real file — missing references
+    //    indicate image loss and must never be silent.
+    try {
+      const { auditLatexImageReferences } = await import('@/lib/latex-image-audit');
+      const audit = auditLatexImageReferences(
+        finalLatex,
+        extractedImages.filter((img: any) => !(img as any).isStructural).map((img: any) => img.name)
+      );
+      if (audit.total === 0) {
+        console.log('[IMAGE-AUDIT] Assembled latex references no images.');
+      } else if (audit.missing.length === 0) {
+        console.log(`[IMAGE-AUDIT] All ${audit.total} referenced image(s) resolve for project ${project.id}.`);
+      } else {
+        const shown = audit.missing.slice(0, 10).join(', ');
+        console.warn(
+          `[IMAGE-AUDIT] ${audit.missing.length} of ${audit.total} referenced image(s) MISSING for project ${project.id}: ${shown}${audit.missing.length > 10 ? '...' : ''}`
+        );
+      }
+    } catch (auditErr: any) {
+      console.warn('[IMAGE-AUDIT] Image reference audit failed (non-critical):', auditErr?.message || auditErr);
+    }
+
+    // 6. Executing single bulk DB transaction to prevent SQLite connection locks
     if (filesToCreate.length > 0) {
       console.log(`[TELEMETRY] Executing single-batch DB insertion for ${filesToCreate.length} project files...`);
       await prisma.projectFile.createMany({
