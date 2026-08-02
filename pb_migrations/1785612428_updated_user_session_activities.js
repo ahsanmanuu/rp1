@@ -1,6 +1,16 @@
 /// <reference path="../pb_data/types.d.ts" />
 migrate((app) => {
-  const collection = app.findCollectionByNameOrId("pbc_2825467173")
+  let collection;
+  try {
+    collection = app.findCollectionByNameOrId("pbc_2825467173");
+  } catch (_) {
+    try {
+      collection = app.findCollectionByNameOrId("user_session_activities");
+    } catch (_) {
+      return;
+    }
+  }
+  if (!collection) return;
 
   // add field
   collection.fields.addAt(7, new Field({
@@ -32,7 +42,17 @@ migrate((app) => {
 
   return app.save(collection)
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("pbc_2825467173")
+  let collection;
+  try {
+    collection = app.findCollectionByNameOrId("pbc_2825467173");
+  } catch (_) {
+    try {
+      collection = app.findCollectionByNameOrId("user_session_activities");
+    } catch (_) {
+      return;
+    }
+  }
+  if (!collection) return;
 
   // remove field
   collection.fields.removeById("number1092145443")
