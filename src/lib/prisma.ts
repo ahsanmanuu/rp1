@@ -311,10 +311,9 @@ function collectionProxy(collectionName: string) {
             // ──────────────────────────────────────────────
             case 'findUnique': {
               const id = args?.where?.id;
-              const rkSuffix = Math.random().toString(36).slice(2, 6);
               if (id) {
                 const expand = toExpand(args?.include, args?.select);
-                const opts: Record<string, any> = { requestKey: `${collectionName}_findUnique_${id}_${rkSuffix}` };
+                const opts: Record<string, any> = { requestKey: null };
                 if (expand) opts.expand = expand;
                 try {
                   const r = await col.getOne(id, opts);
@@ -323,9 +322,9 @@ function collectionProxy(collectionName: string) {
                   return null;
                 }
               }
-                // fallback to findFirst
+              // fallback to findFirst
               const filter = toFilter(args?.where);
-              const opts2: Record<string, any> = { requestKey: `${collectionName}_findUnique_filter_${rkSuffix}` };
+              const opts2: Record<string, any> = { requestKey: null };
               if (filter) opts2.filter = filter;
               const expand2 = toExpand(args?.include, args?.select);
               if (expand2) opts2.expand = expand2;
@@ -341,8 +340,7 @@ function collectionProxy(collectionName: string) {
             case 'findFirst': {
               const filter = toFilter(args?.where);
               const sort = toSort(args?.orderBy);
-              const rk = `${collectionName}_findFirst_${filter || 'all'}_${Math.random().toString(36).slice(2, 6)}`;
-              const opts: Record<string, any> = { requestKey: rk };
+              const opts: Record<string, any> = { requestKey: null };
               if (filter) opts.filter = filter;
               if (sort) opts.sort = sort;
               const expand = toExpand(args?.include, args?.select);
@@ -361,8 +359,7 @@ function collectionProxy(collectionName: string) {
               const page = Math.floor(skip / take) + 1;
               const filter = toFilter(args?.where);
               const sort = toSort(args?.orderBy);
-              const rk = `${collectionName}_findMany_${filter || 'all'}_${page}_${take}_${Math.random().toString(36).slice(2, 6)}`;
-              const opts: Record<string, any> = { requestKey: rk };
+              const opts: Record<string, any> = { requestKey: null };
               if (filter) opts.filter = filter;
               if (sort) opts.sort = sort;
               const expand = toExpand(args?.include, args?.select);
@@ -378,7 +375,7 @@ function collectionProxy(collectionName: string) {
             // ──────────────────────────────────────────────
             case 'create': {
               const r = await col.create(mapWriteData(args?.data), {
-                requestKey: `${collectionName}_create`,
+                requestKey: null,
               });
               return mapRecord(r as any);
             }
@@ -389,7 +386,7 @@ function collectionProxy(collectionName: string) {
               const results = [];
               for (const item of dataArr) {
                 const r = await col.create(mapWriteData(item), {
-                  requestKey: `${collectionName}_createMany_${item.id}`,
+                  requestKey: null,
                 });
                 results.push(mapRecord(r as any));
               }
@@ -413,7 +410,7 @@ function collectionProxy(collectionName: string) {
                   }
                 }
                 if (hasNumericOp) {
-                  const current = await col.getOne(id);
+                  const current = await col.getOne(id, { requestKey: null });
                   finalData = { ...args.data };
                   for (const [key, val] of Object.entries(finalData)) {
                     if (val && typeof val === 'object') {
@@ -428,7 +425,7 @@ function collectionProxy(collectionName: string) {
                   }
                 }
                 const r = await col.update(id, mapWriteData(finalData), {
-                  requestKey: `${collectionName}_update_${id}_${attempt}`,
+                  requestKey: null,
                 });
                 return mapRecord(r as any);
               } catch (e: any) {
@@ -445,7 +442,7 @@ function collectionProxy(collectionName: string) {
               for (let attempt = 0; attempt < 3; attempt++) {
               try {
                 const uFilter = toFilter(args?.where);
-                const uOpts: Record<string, any> = { requestKey: `${collectionName}_upsert_check_${attempt}` };
+                const uOpts: Record<string, any> = { requestKey: null };
                 if (uFilter) uOpts.filter = uFilter;
                 const existing = await col.getList(1, 1, uOpts);
                 if (existing.items.length) {
@@ -476,12 +473,12 @@ function collectionProxy(collectionName: string) {
                     }
                   }
                   const r = await col.update(recordId, mapWriteData(finalUpdate), {
-                    requestKey: `${collectionName}_upsert_update_${recordId}`,
+                    requestKey: null,
                   });
                   return mapRecord(r as any);
                 }
                 const r = await col.create(args?.create, {
-                  requestKey: `${collectionName}_upsert_create_${attempt}`,
+                  requestKey: null,
                 });
                 return mapRecord(r as any);
               } catch (e: any) {
@@ -499,7 +496,7 @@ function collectionProxy(collectionName: string) {
               const id = args?.where?.id;
               if (!id) throw new Error(`delete requires where.id for collection ${collectionName}`);
               await col.delete(id, {
-                requestKey: `${collectionName}_delete_${id}`,
+                requestKey: null,
               });
               return { id };
             }
@@ -507,13 +504,13 @@ function collectionProxy(collectionName: string) {
             // ──────────────────────────────────────────────
             case 'deleteMany': {
               const dmFilter = toFilter(args?.where);
-              const dmOpts: Record<string, any> = { requestKey: `${collectionName}_deleteMany_list` };
+              const dmOpts: Record<string, any> = { requestKey: null };
               if (dmFilter) dmOpts.filter = dmFilter;
               // PB has no bulk delete — fetch matching IDs then delete one by one
               const list = await col.getFullList(dmOpts);
               for (const item of list) {
                 await col.delete(item.id, {
-                  requestKey: `${collectionName}_deleteMany_${item.id}`,
+                  requestKey: null,
                 });
               }
               return { count: list.length };
