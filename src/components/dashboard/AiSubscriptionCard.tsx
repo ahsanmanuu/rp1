@@ -97,7 +97,7 @@ export default function AiSubscriptionCard({
         <div className="absolute top-4 left-4 right-4 z-20 bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-2.5 flex items-center gap-2">
           <span className="material-symbols-outlined text-rose-500 text-[18px]">error_outline</span>
           <span className="text-[11px] font-bold text-rose-500 flex-1">{error}</span>
-          <button onClick={onRetry} className="text-[11px] font-black text-rose-500 uppercase tracking-wider hover:underline">Retry</button>
+          <button type="button" suppressHydrationWarning onClick={onRetry} className="text-[11px] font-black text-rose-500 uppercase tracking-wider hover:underline">Retry</button>
         </div>
       )}
 
@@ -296,6 +296,8 @@ export default function AiSubscriptionCard({
               Expires in {remainingDays} day{remainingDays !== 1 ? 's' : ''} ({fmtDate(plan.expiresAt)})
             </span>
             <button
+              type="button"
+              suppressHydrationWarning
               onClick={onTakeSubscription}
               className="text-[10px] font-black uppercase tracking-wider bg-amber-500 text-white px-2.5 py-1 rounded-md hover:bg-amber-600 transition-colors shrink-0"
             >
@@ -317,6 +319,8 @@ export default function AiSubscriptionCard({
 
       {/* Subscription-taking CTA */}
       <button
+        type="button"
+        suppressHydrationWarning
         onClick={onTakeSubscription}
         className="mt-6 w-full py-3.5 bg-tertiary hover:brightness-110 active:scale-[0.98] text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-md transition-all cursor-pointer border-none flex items-center justify-center gap-2"
       >

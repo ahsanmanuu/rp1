@@ -982,6 +982,8 @@ export default function DashboardPage() {
 
                   {/* Upgrade CTA */}
                   <button 
+                    type="button"
+                    suppressHydrationWarning
                     onClick={() => setShowUpgradeModal(true)} 
                     className="w-full py-3.5 bg-tertiary hover:brightness-110 active:scale-[0.98] text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-md transition-all cursor-pointer border-none flex items-center justify-center gap-2"
                   >
@@ -991,14 +993,14 @@ export default function DashboardPage() {
 
                 {/* Sub-row: Customer Life Cycle Stats */}
                   {(membership.joiningDate || membership.memberSince) && (
-                  <div className="mt-6 pt-4 border-t border-outline/10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10 text-xs font-semibold text-secondary">
+                  <div suppressHydrationWarning className="mt-6 pt-4 border-t border-outline/10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10 text-xs font-semibold text-secondary">
                     <div className="flex items-center gap-2">
                       <span className="material-symbols-outlined text-primary text-[18px] shrink-0">calendar_month</span>
-                      <span>Joined: <strong className="text-on-surface">{new Date(membership.joiningDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</strong></span>
+                      <span suppressHydrationWarning>Joined: <strong className="text-on-surface">{new Date(membership.joiningDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</strong></span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="material-symbols-outlined text-primary text-[18px] shrink-0">verified</span>
-                      <span>Plan activated: <strong className="text-on-surface">{new Date(membership.memberSince).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</strong> ({membership.totalDays} day{membership.totalDays > 1 ? 's' : ''} active)</span>
+                      <span suppressHydrationWarning>Plan activated: <strong className="text-on-surface">{new Date(membership.memberSince).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</strong> ({membership.totalDays} day{membership.totalDays > 1 ? 's' : ''} active)</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="material-symbols-outlined text-primary text-[18px] shrink-0">autorenew</span>
