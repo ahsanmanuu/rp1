@@ -203,6 +203,33 @@ export default function DocIDE({ projectId }: { projectId: string }) {
         
         if (data.project) {
           setProject(data.project);
+
+          // Local-first recovery (Phase 2): if the server response lacks the
+          // AI snapshot (aiLatex/aiVerdict) — PocketBase content was trimmed
+          // or lost — re-inject it from the localStorage copy stashed by the
+          // upload page, so the in-memory project still carries the validated
+          // component fragments for template re-application.
+          try {
+            const sc = (data.project as any)?.structuredContent;
+            const parsedSc = sc ? (typeof sc === 'string' ? JSON.parse(sc) : sc) : null;
+            const lacksAi = !parsedSc || !parsedSc.aiLatex;
+            if (lacksAi) {
+              const cachedRaw = localStorage.getItem(`ai_verdict_${projectId}`);
+              if (cachedRaw) {
+                const cached = JSON.parse(cachedRaw);
+                if (cached?.aiLatex || cached?.aiVerdict) {
+                  if (parsedSc && typeof parsedSc === 'object') {
+                    if (cached.aiLatex) parsedSc.aiLatex = cached.aiLatex;
+                    if (cached.aiVerdict) parsedSc.aiVerdict = cached.aiVerdict;
+                    (data.project as any).structuredContent = JSON.stringify(parsedSc);
+                  }
+                  console.log(`[DocIDE] Restored AI snapshot from localStorage for project ${projectId}.`);
+                }
+              }
+            }
+          } catch (verdictErr) {
+            console.warn('AI snapshot localStorage restore failed (non-critical):', verdictErr);
+          }
           
           // Clear old local files in StudioFS to avoid stale/conflicting files in local IndexedDB
           try {

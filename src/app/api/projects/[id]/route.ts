@@ -74,6 +74,57 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       }
     }
 
+    // Local-first self-heal (Phase 2): if the AI snapshot (aiLatex/verdict)
+    // is missing from structuredContent — PB record caps trimmed it or the
+    // record was recreated — restore it from the ai-verdict.json file the
+    // upload route persists to server disk.
+    if (project.structuredContent) {
+      try {
+        const sc = JSON.parse(project.structuredContent);
+        const lacksAiLatex = sc && typeof sc === 'object' && !(sc as any).aiLatex;
+        if (lacksAiLatex) {
+          const { readAiVerdictSnapshot } = await import('@/lib/local-project-fs');
+          const snapshot = readAiVerdictSnapshot(id);
+          if (snapshot && (snapshot.aiLatex || snapshot.aiVerdict)) {
+            if (snapshot.aiLatex) (sc as any).aiLatex = snapshot.aiLatex;
+            if (snapshot.aiVerdict) (sc as any).aiVerdict = snapshot.aiVerdict;
+            if (snapshot.aiModel) (sc as any).aiModel = snapshot.aiModel;
+            project.structuredContent = JSON.stringify(sc);
+            console.log(`[API_PROJECT_HEAL] Restored AI snapshot (ai-verdict.json) for project ${id}.`);
+            prisma.project.update({
+              where: { id },
+              data: { structuredContent: project.structuredContent }
+            }).catch((err: any) => console.error('[API_PROJECT_HEAL] Failed to persist restored structuredContent:', err));
+          }
+        }
+      } catch (healErr: any) {
+        console.warn('[API_PROJECT_HEAL] AI snapshot self-heal failed (non-critical):', healErr?.message || healErr);
+      }
+    }
+
+    // Local-first self-heal: main.tex missing from both DB and ProjectFile but
+    // present on server disk (upload harvest) — restore it so the editor and
+    // compilers can still open the project after DB content loss.
+    if ((!project.latexContent || project.latexContent.trim().length < 50) && (!mainFile || !mainFile.content || mainFile.content.trim().length < 50)) {
+      try {
+        const { readLocalProjectFile } = await import('@/lib/local-project-fs');
+        const diskMain = readLocalProjectFile(id, 'main.tex');
+        if (diskMain) {
+          const diskContent = diskMain.toString('utf-8');
+          if (diskContent.trim().length >= 50) {
+            project.latexContent = diskContent;
+            console.log(`[API_PROJECT_HEAL] main.tex restored from server disk for project ${id}.`);
+            prisma.project.update({
+              where: { id },
+              data: { latexContent: diskContent }
+            }).catch((err: any) => console.error('[API_PROJECT_HEAL] Failed to persist restored latexContent:', err));
+          }
+        }
+      } catch (diskErr: any) {
+        console.warn('[API_PROJECT_HEAL] Disk main.tex self-heal failed (non-critical):', diskErr?.message || diskErr);
+      }
+    }
+
     // Universal Metadata Healing for Visual Assets
     // Ensures that no matter which workflow created the file, images are always properly typed and addressable
     if (project.files) {

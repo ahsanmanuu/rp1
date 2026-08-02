@@ -424,6 +424,28 @@ function UploadContent() {
         setAnalysisProgress(100);
         setProjectData(projDataResponse.project);
 
+        // Local-first recovery copy (Phase 2): stash the AI snapshot
+        // (aiLatex fragments + verdict) in localStorage so the DocIDE can
+        // re-inject it if the PocketBase record content is ever trimmed or
+        // lost. The server GET route self-heals from ai-verdict.json on disk;
+        // this is the client-side belt-and-suspenders copy.
+        try {
+          const scRaw = (projDataResponse.project as any)?.structuredContent;
+          if (scRaw && uploadData?.projectId) {
+            const sc = typeof scRaw === 'string' ? JSON.parse(scRaw) : scRaw;
+            if (sc && (sc.aiLatex || sc.aiVerdict)) {
+              localStorage.setItem(`ai_verdict_${uploadData.projectId}`, JSON.stringify({
+                savedAt: Date.now(),
+                aiLatex: sc.aiLatex || null,
+                aiVerdict: sc.aiVerdict || null,
+                aiModel: sc.aiModel || null,
+              }));
+            }
+          }
+        } catch (verdictErr) {
+          console.warn('Failed to stash AI snapshot in localStorage (non-critical):', verdictErr);
+        }
+
         // Generate report_history record when analysis completes
         (() => {
           let stats: any = {};

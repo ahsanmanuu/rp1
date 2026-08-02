@@ -907,6 +907,8 @@ export async function POST(req: Request) {
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
           if (aiRes.aiLatex) (deepData as any).aiLatex = aiRes.aiLatex;
+          (deepData as any).aiVerdict = aiRes.verdict;
+          (deepData as any).aiModel = aiRes.model;
           console.log(`[TELEMETRY] AI structure corrections applied: ${applied.join(', ') || 'none'} (${aiRes.model})`);
         } else {
           console.warn('[TELEMETRY] AI structural analysis unavailable — keeping heuristic parse.');
@@ -1115,6 +1117,8 @@ export async function POST(req: Request) {
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
           if (aiRes.aiLatex) (deepData as any).aiLatex = aiRes.aiLatex;
+          (deepData as any).aiVerdict = aiRes.verdict;
+          (deepData as any).aiModel = aiRes.model;
           console.log(`[TELEMETRY] PDF AI structure corrections applied: ${applied.join(', ') || 'none'} (${aiRes.model})`);
         }
       } catch (aiErr: any) {
@@ -1512,7 +1516,37 @@ export async function POST(req: Request) {
       console.warn("[TELEMETRY] Template asset injection failed during upload (non-critical):", err);
     }
 
-    // 4. Executing single bulk DB transaction to prevent SQLite connection locks
+    // 4. Local-first harvest: persist the full project (main.tex, images,
+    //    modular components, AI snapshot) to server disk so recompiles and
+    //    recovery never depend on PocketBase record caps or DB content alone.
+    try {
+      const { persistProjectToLocalFs } = await import('@/lib/local-project-fs');
+      const localFiles: any[] = [];
+      if (finalLatex) localFiles.push({ filename: 'main.tex', content: finalLatex });
+      extractedImages.forEach((img: any) => {
+        if ((img as any).isStructural) return;
+        localFiles.push({ filename: img.name, buffer: img.buffer });
+      });
+      const modularEntries = Object.entries(modularComponents || {}) as [string, string][];
+      for (const [filename, content] of modularEntries) {
+        if (!localFiles.some((f: any) => f.filename === filename)) {
+          localFiles.push({ filename, content });
+        }
+      }
+      const written = persistProjectToLocalFs(project.id, localFiles, {
+        savedAt: Date.now(),
+        aiLatex: (deepData as any).aiLatex || null,
+        aiVerdict: (deepData as any).aiVerdict || null,
+        aiModel: (deepData as any).aiModel || null,
+      });
+      if (written.length > 0) {
+        console.log(`[TELEMETRY] Local-first harvest: ${written.length} artifact(s) persisted to server disk.`);
+      }
+    } catch (localErr: any) {
+      console.warn('[TELEMETRY] Local-first harvest failed (non-critical):', localErr?.message || localErr);
+    }
+
+    // 5. Executing single bulk DB transaction to prevent SQLite connection locks
     if (filesToCreate.length > 0) {
       console.log(`[TELEMETRY] Executing single-batch DB insertion for ${filesToCreate.length} project files...`);
       await prisma.projectFile.createMany({
