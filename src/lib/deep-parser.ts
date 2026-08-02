@@ -543,8 +543,7 @@ export class DeepDocumentParser {
     // Equation count = standalone equation body nodes + display math blocks
     // that appear inside paragraph MATHBLOCKX markers (accumulated during Phase4).
     const standaloneEqs = result.body.filter(n => n.type === 'equation').length;
-    const inlineDisplayEqs = result.stats.equationCount; // accumulated in Phase4
-    result.stats.equationCount = standaloneEqs + inlineDisplayEqs;
+    result.stats.equationCount = standaloneEqs + uncountedInlineDisplayMathCount;
     result.stats.pseudocodeCount = result.body.filter(n => n.type === 'algorithm').length;
     result.stats.chartCount = result.body.filter(n => n.type === 'chart').length;
     result.stats.referenceCount = result.references.length;
@@ -957,6 +956,9 @@ export class DeepDocumentParser {
           }
       }
 
+      const processedMathBlocks = new Set<number>();
+      let uncountedInlineDisplayMathCount = 0;
+
       for (let i = 0; i < manifest.length; i++) {
           const entry = manifest[i];
           
@@ -1324,9 +1326,10 @@ export class DeepDocumentParser {
               }
           }
           else if (entry.role === 'equation') {
-              // equationCount for standalone equations is computed in Phase5
-              // from body nodes; only display-math-inside-paragraphs needs
-              // Phase4 increment (line ~1113) since those don't create nodes.
+              const mmMatches = Array.from(text.matchAll(/MATHBLOCKX(\d+)XMARKER/gi));
+              for (const mm of mmMatches as RegExpExecArray[]) {
+                processedMathBlocks.add(parseInt(mm[1]));
+              }
               result.body.push({ type: 'equation', latex: text });
           }
           else if (entry.role === 'algorithm') {
