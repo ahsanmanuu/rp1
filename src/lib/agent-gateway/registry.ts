@@ -886,11 +886,11 @@ register({
   name: 'Manuscript Structure Analyzer',
   description: 'AI-driven structural verification of converted manuscripts: exact title, authors, affiliations, abstract, keywords, section hierarchy, component counts (figures/charts/tables/equations/pseudocode/citations/references) and reference list',
   temperature: 0.05,
-  maxTokens: 8192,
+  maxTokens: 16384,
   rateLimit: 20,
   model: 'mimo-v2.5-free',
   buildSystemPrompt(ctx) {
-    const fullText = String(ctx.fullText || ctx.frontMatter || '').substring(0, 26000);
+    const fullText = String(ctx.fullText || ctx.frontMatter || '').substring(0, 300000);
     const documentTitle = String(ctx.documentTitle || 'Untitled Document');
     const sectionTitles = (ctx.sectionTitles as string[]) || [];
     const figureCaptions = (ctx.figureCaptions as string[]) || [];
@@ -912,22 +912,22 @@ ${fullText}
 ${heuristic}
 
 ### C. Section headings detected by the parser (ordered):
-${sectionTitles.slice(0, 60).map((s, i) => `${i + 1}. "${s}"`).join('\n') || 'none'}
+${sectionTitles.slice(0, 200).map((s, i) => `${i + 1}. "${s}"`).join('\n') || 'none'}
 
 ### D. Figure captions detected:
-${figureCaptions.slice(0, 30).map(s => `- ${s}`).join('\n') || 'none'}
+${figureCaptions.slice(0, 120).map(s => `- ${s}`).join('\n') || 'none'}
 
 ### E. Table captions detected:
-${tableCaptions.slice(0, 30).map(s => `- ${s}`).join('\n') || 'none'}
+${tableCaptions.slice(0, 120).map(s => `- ${s}`).join('\n') || 'none'}
 
 ### F. Algorithm/pseudocode titles detected:
-${algorithmTitles.slice(0, 15).map(s => `- ${s}`).join('\n') || 'none'}
+${algorithmTitles.slice(0, 60).map(s => `- ${s}`).join('\n') || 'none'}
 
 ### G. Math snippets detected:
-${equationSnippets.slice(0, 8).map(s => `- ${s}`).join('\n') || 'none'}
+${equationSnippets.slice(0, 40).map(s => `- ${s}`).join('\n') || 'none'}
 
 ### H. Reference entries detected:
-${referenceEntries.slice(0, 40).map((s, i) => `${i + 1}. ${s}`).join('\n') || 'none'}
+${referenceEntries.slice(0, 250).map((s, i) => `${i + 1}. ${s}`).join('\n') || 'none'}
 
 Document working title (from filename, may be wrong): "${documentTitle}"
 
@@ -1006,18 +1006,18 @@ register({
   name: 'Manuscript Front-Matter Analyzer',
   description: 'AI extraction of manuscript front matter: exact title, authors with affiliations, affiliations, abstract and keywords from the title-area text',
   temperature: 0.05,
-  maxTokens: 4096,
+  maxTokens: 8192,
   rateLimit: 20,
   model: 'mimo-v2.5-free',
   buildSystemPrompt(ctx) {
-    const frontMatter = String(ctx.frontMatter || '').substring(0, 6500);
+    const frontMatter = String(ctx.frontMatter || '').substring(0, 12000);
     const documentTitle = String(ctx.documentTitle || 'Untitled Document');
     const heuristic = JSON.stringify(ctx.heuristic || {});
 
     return `You are a world-class scholarly document front-matter extraction engine with 20 years of experience in academic publishing (IEEE, ACM, Springer LNCS, Elsevier, Nature). Your job is to extract the EXACT front matter (title, authors, affiliations, abstract, keywords) of a converted academic manuscript with surgical precision.
 
 ## INPUTS
-### A. Document front matter (first ~6500 characters of the manuscript text — title area, authors, affiliations, abstract, keywords):
+### A. Document front matter (first ~12000 characters of the manuscript text — title area, authors, affiliations, abstract, keywords):
 """TEXT
 ${frontMatter}
 """

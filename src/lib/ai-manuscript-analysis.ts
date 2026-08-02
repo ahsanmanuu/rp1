@@ -47,9 +47,21 @@ const STRUCTURE_PASS_TIMEOUT_MS = 150000;
 // Max characters of manuscript text sent to the AI (front + tail preserved).
 // Must be large enough to cover all figures, tables, equations, and sections
 // in the middle of the document — the primary cause of inconsistent counts
-// was mid-document elision. 24K covers most 10–15 page manuscripts fully.
-const FULL_TEXT_LIMIT = 24000;
-const FULL_TEXT_TAIL = 6000;
+// was mid-document elision. With a strong provider (OpenRouter/Gemini key
+// configured) the full document up to 280K chars is sent, eliminating
+// mid-document elision; otherwise fall back to a compact 24K window that
+// fits free-tier model contexts.
+const HAS_STRONG_PROVIDER = !!(process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
+const FULL_TEXT_LIMIT = HAS_STRONG_PROVIDER ? 280000 : 24000;
+const FULL_TEXT_TAIL = HAS_STRONG_PROVIDER ? 12000 : 6000;
+
+// Strongest configured provider for structure passes (fallback via provider
+// chain in callLLM). null → registry default model.
+const AI_MODEL_OVERRIDE = process.env.OPENROUTER_API_KEY
+  ? 'google/gemini-2.5-flash-001'
+  : process.env.GEMINI_API_KEY
+    ? 'gemini-2.5-flash'
+    : null;
 
 function stripTags(html: string): string {
   return html
@@ -395,7 +407,7 @@ export async function analyzeManuscriptStructure(
     }
 
     const plainText = opts.html ? stripTags(opts.html) : opts.pdfText || '';
-    const frontMatter = plainText.substring(0, 6500);
+    const frontMatter = plainText.substring(0, 12000);
     // Full-document evidence: front + tail always preserved (tail holds the
     // reference list). Bounded size keeps the pass fast and accurate.
     let fullText = plainText;
@@ -408,7 +420,7 @@ export async function analyzeManuscriptStructure(
     const equationSnippets = ((deepData.mathBlocks || []) as Array<{ latex?: string }>)
       .filter(m => m.latex)
       .map(m => String(m.latex).substring(0, 200))
-      .slice(0, 15);
+      .slice(0, 40);
 
     const documentTitle = opts.filename.replace(/\.[^/.]+$/, '');
     const baseContext = {
@@ -423,6 +435,7 @@ export async function analyzeManuscriptStructure(
         messages: [{ role: 'user', content: 'Analyze this manuscript front matter and return the structured JSON verdict.' }],
         context: {
           ...baseContext,
+          modelOverride: AI_MODEL_OVERRIDE,
           frontMatter,
           heuristic: {
             title: deepData.title,
@@ -443,17 +456,18 @@ export async function analyzeManuscriptStructure(
         messages: [{ role: 'user', content: 'Analyze this manuscript and return the structured JSON verdict.' }],
         context: {
           ...baseContext,
+          modelOverride: AI_MODEL_OVERRIDE,
           fullText,
           frontMatter,
-          documentTail: plainText.length > 6500
-            ? plainText.substring(Math.max(6500, plainText.length - 4500))
+          documentTail: plainText.length > 12000
+            ? plainText.substring(Math.max(12000, plainText.length - 8000))
             : '',
-          sectionTitles: sectionTitles.slice(0, 60),
-          figureCaptions: figureCaptions.slice(0, 40),
-          tableCaptions: tableCaptions.slice(0, 40),
-          algorithmTitles: algorithmTitles.slice(0, 25),
+          sectionTitles: sectionTitles.slice(0, 200),
+          figureCaptions: figureCaptions.slice(0, 120),
+          tableCaptions: tableCaptions.slice(0, 120),
+          algorithmTitles: algorithmTitles.slice(0, 60),
           equationSnippets,
-          referenceEntries: (deepData.references || []).slice(0, 60),
+          referenceEntries: (deepData.references || []).slice(0, 250),
           heuristic: {
             title: deepData.title,
             authors: (deepData.authors || []).map(a => a.name),

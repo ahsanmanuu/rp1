@@ -1993,22 +1993,38 @@ const useBibtex = tpl?.mapping?.bibliographyStyle || templateId.includes('ieee')
           : (tpl?.mapping?.bibliographyStyle || 'plain');
         const bibFileName = 'references';
         const bibEntries = (doc.references || []).map((ref: string, idx: number) => {
+          // Key MUST match the in-text citation keys (`\cite{refN}`) produced by
+          // LatexAssembler.escape — otherwise every citation renders as `[?]`
+          // and the bibliography comes out empty (destroyed PDF layout).
+          let key = `ref${idx + 1}`;
+          const numMatch = ref.match(/^\[(\d+)\]/);
+          if (numMatch && parseInt(numMatch[1]) === idx + 1) key = `ref${numMatch[1]}`;
           const cleanRef = ref.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '').trim();
           const authorMatch = cleanRef.match(/^([^,.]+)/);
-          const author = (authorMatch ? authorMatch[1].replace(/["']/g, '') : `Author${idx + 1}`).replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+          const authorDisplay = (authorMatch ? authorMatch[1].replace(/["']/g, '') : `Author ${idx + 1}`).replace(/\s+/g, ' ').trim();
           const yearMatch = cleanRef.match(/\b(19|20)\d{2}\b/);
           const year = yearMatch ? yearMatch[0] : '2024';
           const titleMatch = cleanRef.match(/["']([^"']+)["']/);
-          const title = (titleMatch ? titleMatch[1] : cleanRef).substring(0, 150);
+          let title = titleMatch ? titleMatch[1] : '';
+          if (!title) {
+            const afterAuthor = cleanRef.replace(/^[^,]+,\s*/, '');
+            const journalIdx = afterAuthor.search(/(?:Journal|Proc|Conference|Rev\.|Transactions?)\s+[^,\n]+/i);
+            title = (journalIdx > 0 ? afterAuthor.substring(0, journalIdx) : afterAuthor).trim();
+          }
+          title = title.replace(/[.,;:]+$/, '').substring(0, 200);
           const journalMatch = cleanRef.match(/(?:Journal|Proc|Conference|Rev\.|Transactions?)\s+[^,\n]+/i);
           const journal = journalMatch ? journalMatch[0].replace(/[.:]+$/, '').replace(/\s+/g, ' ') : 'Journal';
-          const key = `${author}_${year}`;
-          return `@article{${key},
-  author = {Author and Co-Author},
+          const pagesMatch = cleanRef.match(/\bpp?\.\s*\d+[\d–-]*\b/i);
+          const pages = pagesMatch ? pagesMatch[0].replace(/\s+/g, ' ') : '';
+          const volumeMatch = cleanRef.match(/\bvol(?:ume)?\.?\s*\d+/i);
+          const volume = volumeMatch ? volumeMatch[0].replace(/\s+/g, ' ') : '';
+          const entry = `@article{${key},
+  author = {${authorDisplay}},
   title = {${title}},
   journal = {${journal}},
-  year = {${year}}
+  year = {${year}}${volume ? `,\n  volume = {${volume.replace(/^vol(?:ume)?\.?\s*/i, '')}}` : ''}${pages ? `,\n  pages = {${pages.replace(/^pp?\.?\s*/i, '')}}` : ''}
 }`;
+          return entry;
         }).join('\n\n');
         files['references/sample.bib'] = bibEntries;
         files['references/bibliography.tex'] = `\n\\bibliographystyle{${bibKey}}\n\\bibliography{${bibFileName}}\n`;

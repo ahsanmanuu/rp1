@@ -276,7 +276,7 @@ export async function routeToAgent(req: GatewayRequest): Promise<GatewayResponse
   } catch (dbErr) {
     console.warn(`[AiContextConfig] Failed to fetch prompt overrides for agent ${req.agent}:`, dbErr);
   }
-  const needsJson = req.agent === 'reviewer' || req.agent === 'extract' || req.agent === 'diagram' || req.agent === 'structure-analyze';
+  const needsJson = req.agent === 'reviewer' || req.agent === 'extract' || req.agent === 'diagram' || req.agent === 'structure-analyze' || req.agent === 'structure-frontmatter';
   const messages = req.messages && req.messages.length > 0
     ? [{ role: 'system' as const, content: systemContent }, ...req.messages]
     : [
@@ -302,7 +302,7 @@ export async function routeToAgent(req: GatewayRequest): Promise<GatewayResponse
       );
 
       try {
-        const chosenModel = agentConfig.model || GATEWAY_CONFIG.model;
+        const chosenModel = (req.context?.modelOverride as string | undefined) || agentConfig.model || GATEWAY_CONFIG.model;
         const response = await callLLM({
           messages,
           temperature: agentConfig.temperature,

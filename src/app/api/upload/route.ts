@@ -1272,14 +1272,14 @@ export async function POST(req: Request) {
       ...deepData.stats,
       wordCount:       Math.max(deepData.stats.wordCount || 0, latexStats.wordCount || 0),
       charCount:       Math.max(deepData.stats.charCount || 0, latexStats.charCount || 0),
-      imageCount:      aiPick('figures', Math.max(deepData.stats.imageCount || 0, latexStats.imageCount || 0, actualFigureFiles.length)),
+      imageCount:      Math.min(aiPick('figures', Math.max(deepData.stats.imageCount || 0, latexStats.imageCount || 0, actualFigureFiles.length)), actualFigureFiles.length),
       tableCount:      aiPick('tables', Math.max(deepData.stats.tableCount || 0, latexStats.tableCount || 0)),
       // AI-verified exact counts win over the HTML/LaTeX maxima
       equationCount:   aiPick('equations', Math.max(deepData.stats.equationCount || 0, latexStats.equationCount || 0)),
       citationCount:   citCountFinal,
       referenceCount:  refCountFinal,
       pseudocodeCount: aiPick('pseudocode', Math.max(deepData.stats.pseudocodeCount || 0, latexStats.pseudocodeCount || 0)),
-      chartCount:      aiPick('charts', Math.max(deepData.stats.chartCount || 0, latexStats.chartCount || 0, actualChartFiles.length)),
+      chartCount:      Math.min(aiPick('charts', Math.max(deepData.stats.chartCount || 0, latexStats.chartCount || 0, actualChartFiles.length)), actualChartFiles.length),
     };
 
     // --- DB PERSISTENCE ---
