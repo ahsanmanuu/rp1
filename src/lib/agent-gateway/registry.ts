@@ -886,11 +886,11 @@ register({
   name: 'Manuscript Structure Analyzer',
   description: 'AI-driven structural verification of converted manuscripts: exact title, authors, affiliations, abstract, keywords, section hierarchy, component counts (figures/charts/tables/equations/pseudocode/citations/references) and reference list',
   temperature: 0.05,
-  maxTokens: 16384,
+  maxTokens: 9216,
   rateLimit: 20,
   model: 'mimo-v2.5-free',
   buildSystemPrompt(ctx) {
-    const fullText = String(ctx.fullText || ctx.frontMatter || '').substring(0, 300000);
+    const fullText = String(ctx.fullText || ctx.frontMatter || '').substring(0, 200000);
     const documentTitle = String(ctx.documentTitle || 'Untitled Document');
     const sectionTitles = (ctx.sectionTitles as string[]) || [];
     const figureCaptions = (ctx.figureCaptions as string[]) || [];
@@ -912,22 +912,22 @@ ${fullText}
 ${heuristic}
 
 ### C. Section headings detected by the parser (ordered):
-${sectionTitles.slice(0, 200).map((s, i) => `${i + 1}. "${s}"`).join('\n') || 'none'}
+${sectionTitles.slice(0, 150).map((s, i) => `${i + 1}. "${s}"`).join('\n') || 'none'}
 
 ### D. Figure captions detected:
-${figureCaptions.slice(0, 120).map(s => `- ${s}`).join('\n') || 'none'}
+${figureCaptions.slice(0, 80).map(s => `- ${s}`).join('\n') || 'none'}
 
 ### E. Table captions detected:
-${tableCaptions.slice(0, 120).map(s => `- ${s}`).join('\n') || 'none'}
+${tableCaptions.slice(0, 80).map(s => `- ${s}`).join('\n') || 'none'}
 
 ### F. Algorithm/pseudocode titles detected:
-${algorithmTitles.slice(0, 60).map(s => `- ${s}`).join('\n') || 'none'}
+${algorithmTitles.slice(0, 40).map(s => `- ${s}`).join('\n') || 'none'}
 
 ### G. Math snippets detected:
-${equationSnippets.slice(0, 40).map(s => `- ${s}`).join('\n') || 'none'}
+${equationSnippets.slice(0, 30).map(s => `- ${s}`).join('\n') || 'none'}
 
 ### H. Reference entries detected:
-${referenceEntries.slice(0, 250).map((s, i) => `${i + 1}. ${s}`).join('\n') || 'none'}
+${referenceEntries.slice(0, 150).map((s, i) => `${i + 1}. ${s}`).join('\n') || 'none'}
 
 Document working title (from filename, may be wrong): "${documentTitle}"
 
@@ -973,7 +973,7 @@ Analyze the manuscript and return ONE JSON object (no markdown, no commentary be
    - pseudocode: count "Algorithm N" or "Pseudocode N" blocks.
    - If a count cannot be determined from the text, return null for that field — never guess 0.
 10. Citations: an in-text citation marker is a bracketed number/reference like [12] or (Smith et al., 2020) in the body text.
-11. References: include the actual bibliography entries verbatim (up to 200). If no bibliography is visible in the text, return [].
+11. References: include the actual bibliography entries verbatim (up to 150). If no bibliography is visible in the text, return [].
 12. confidence for title/abstract must be 90+ when the text appears verbatim in the document.
 13. JSON keys must match EXACTLY. Escape backslashes and quotes properly.
 
@@ -1006,7 +1006,7 @@ register({
   name: 'Manuscript Front-Matter Analyzer',
   description: 'AI extraction of manuscript front matter: exact title, authors with affiliations, affiliations, abstract and keywords from the title-area text',
   temperature: 0.05,
-  maxTokens: 8192,
+  maxTokens: 6144,
   rateLimit: 20,
   model: 'mimo-v2.5-free',
   buildSystemPrompt(ctx) {

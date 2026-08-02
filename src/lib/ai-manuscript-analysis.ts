@@ -41,19 +41,22 @@ export interface AiStructureVerdict {
 // pass never blocks the (fast, small) front-matter pass results. The
 // front-matter pass (small input) is fast; the structure pass (full text)
 // gets more time. Heuristics are the fallback when a pass misses its window.
-const FRONTMATTER_PASS_TIMEOUT_MS = 120000;
-const STRUCTURE_PASS_TIMEOUT_MS = 150000;
+// Windows are kept well under the platform request cap (Render starter ~300s)
+// so the upload request always completes: worst case = max(passA, passB).
+const FRONTMATTER_PASS_TIMEOUT_MS = 90000;
+const STRUCTURE_PASS_TIMEOUT_MS = 120000;
 
 // Max characters of manuscript text sent to the AI (front + tail preserved).
 // Must be large enough to cover all figures, tables, equations, and sections
 // in the middle of the document — the primary cause of inconsistent counts
 // was mid-document elision. With a strong provider (OpenRouter/Gemini key
-// configured) the full document up to 280K chars is sent, eliminating
-// mid-document elision; otherwise fall back to a compact 24K window that
+// configured) most of the document up to 160K chars is sent, eliminating
+// mid-document elision for typical manuscripts while keeping the prompt
+// within the pass budget; otherwise fall back to a compact 24K window that
 // fits free-tier model contexts.
 const HAS_STRONG_PROVIDER = !!(process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
-const FULL_TEXT_LIMIT = HAS_STRONG_PROVIDER ? 280000 : 24000;
-const FULL_TEXT_TAIL = HAS_STRONG_PROVIDER ? 12000 : 6000;
+const FULL_TEXT_LIMIT = HAS_STRONG_PROVIDER ? 160000 : 24000;
+const FULL_TEXT_TAIL = HAS_STRONG_PROVIDER ? 10000 : 6000;
 
 // Strongest configured provider for structure passes (fallback via provider
 // chain in callLLM). null → registry default model.
@@ -420,7 +423,7 @@ export async function analyzeManuscriptStructure(
     const equationSnippets = ((deepData.mathBlocks || []) as Array<{ latex?: string }>)
       .filter(m => m.latex)
       .map(m => String(m.latex).substring(0, 200))
-      .slice(0, 40);
+      .slice(0, 30);
 
     const documentTitle = opts.filename.replace(/\.[^/.]+$/, '');
     const baseContext = {
@@ -462,12 +465,12 @@ export async function analyzeManuscriptStructure(
           documentTail: plainText.length > 12000
             ? plainText.substring(Math.max(12000, plainText.length - 8000))
             : '',
-          sectionTitles: sectionTitles.slice(0, 200),
-          figureCaptions: figureCaptions.slice(0, 120),
-          tableCaptions: tableCaptions.slice(0, 120),
-          algorithmTitles: algorithmTitles.slice(0, 60),
+          sectionTitles: sectionTitles.slice(0, 150),
+          figureCaptions: figureCaptions.slice(0, 80),
+          tableCaptions: tableCaptions.slice(0, 80),
+          algorithmTitles: algorithmTitles.slice(0, 40),
           equationSnippets,
-          referenceEntries: (deepData.references || []).slice(0, 250),
+          referenceEntries: (deepData.references || []).slice(0, 150),
           heuristic: {
             title: deepData.title,
             authors: (deepData.authors || []).map(a => a.name),
