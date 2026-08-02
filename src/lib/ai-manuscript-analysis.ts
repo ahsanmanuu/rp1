@@ -72,6 +72,23 @@ const AI_MODEL_OVERRIDE = process.env.OPENROUTER_API_KEY
     ? 'gemini-2.5-flash'
     : null;
 
+// Cost-sensitive passes (component-latex generation, count re-verification):
+// when no paid override is configured, route them to the cheapest available
+// model (free providers first) instead of the registry default — the output
+// of these passes is strictly validated upstream, so cheap is safe here.
+const AI_CHEAP_FALLBACK_MODEL = (() => {
+  try {
+    const { getCheapestModel } = require('./agent-gateway/model-costs');
+    const { GATEWAY_CONFIG } = require('./agent-gateway/config');
+    return getCheapestModel(GATEWAY_CONFIG.providers, { minTier: 1 });
+  } catch {
+    return null;
+  }
+})();
+if (AI_CHEAP_FALLBACK_MODEL) {
+  console.log(`[AI-Structure] Cheapest-model fallback for cost-sensitive passes: ${AI_CHEAP_FALLBACK_MODEL}`);
+}
+
 function stripTags(html: string): string {
   return html
     .replace(/<[^>]*>/g, ' ')
@@ -500,7 +517,7 @@ export async function analyzeManuscriptStructure(
         messages: [{ role: 'user', content: 'Identify the manuscript components and create modular LaTeX code for each figure, chart, table and algorithm.' }],
         context: {
           ...baseContext,
-          modelOverride: AI_MODEL_OVERRIDE,
+          modelOverride: AI_MODEL_OVERRIDE || AI_CHEAP_FALLBACK_MODEL,
           fullText: plainText.substring(0, 80000),
           imageMap: (opts.imageFiles || []).map((f, i) => ({ index: i + 1, filename: f })),
           figureCaptions: figureCaptions.slice(0, 80),
@@ -580,7 +597,7 @@ export async function analyzeManuscriptStructure(
             messages: [{ role: 'user', content: 'Recount the specified components and return the full structured JSON verdict.' }],
             context: {
               ...baseContext,
-              modelOverride: AI_MODEL_OVERRIDE,
+              modelOverride: AI_MODEL_OVERRIDE || AI_CHEAP_FALLBACK_MODEL,
               fullText: plainText.substring(0, 60000),
               frontMatter,
               sectionTitles: sectionTitles.slice(0, 60),
