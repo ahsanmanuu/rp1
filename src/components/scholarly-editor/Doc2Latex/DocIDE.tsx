@@ -861,6 +861,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     setCompiling(true);
     setCompileLog(`> Compilation Started: ${rootFile}\n`);
     setErrors([]);
+    let autoSyncFailed = false;
 
     try {
       await fs.writeFile(projectId, activeFile, codeRef.current);
@@ -884,14 +885,25 @@ export default function DocIDE({ projectId }: { projectId: string }) {
           }
         }
         const mainContent = textFiles.find(f => f.filename === 'main.tex')?.content || code;
-        await fetch(`/api/projects/${projectId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            latexContent: mainContent,
-            files: textFiles
-          })
-        }).then(r => { if (!r.ok) console.error("Auto-sync PUT failed:", r.status); });
+        try {
+          // Await the autosave so compile always runs on the just-saved source,
+          // and surface the failure (Phase 5) instead of logging silently.
+          const syncRes = await fetch(`/api/projects/${projectId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              latexContent: mainContent,
+              files: textFiles
+            })
+          });
+          if (!syncRes.ok) {
+            autoSyncFailed = true;
+            console.error("Auto-sync PUT failed:", syncRes.status);
+          }
+        } catch (syncPutErr) {
+          autoSyncFailed = true;
+          console.error("Auto-sync to cloud failed before compilation:", syncPutErr);
+        }
       } catch (syncErr) {
         console.error("Auto-sync to cloud failed before compilation:", syncErr);
       } finally {
@@ -999,6 +1011,19 @@ export default function DocIDE({ projectId }: { projectId: string }) {
         } else {
           toast.error(result.message || result.error || 'Compilation Error');
         }
+      }
+
+      // Phase 5: surface degraded compiles — auto-generated package/class
+      // stubs, ghost-inking failures, strategy warnings, cloud autosave
+      // failures — instead of letting a degraded PDF look like a clean build.
+      const surfacedWarnings: string[] = [];
+      if (Array.isArray(result.warnings)) surfacedWarnings.push(...result.warnings);
+      if (result.warning) surfacedWarnings.push(result.warning);
+      if (autoSyncFailed) surfacedWarnings.push('Cloud autosave failed — recent changes may not be persisted.');
+      if (surfacedWarnings.length > 0) {
+        const unique = [...new Set(surfacedWarnings)];
+        setCompileLog(prev => prev + '> WARNINGS: ' + unique.join(' | ') + '\n');
+        toast.error(unique[0], { icon: '⚠️' });
       }
     } catch (err: any) {
       console.error("Compilation failed:", err);

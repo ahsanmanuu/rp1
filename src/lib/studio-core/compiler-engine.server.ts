@@ -455,6 +455,12 @@ export interface CompileResult {
   errors: any[];
   strategy?: string;
   suggestion?: string;
+  /** Human-readable degradation notes surfaced to the client (Phase 5). */
+  warning?: string;
+  /** True when the PDF was produced under degraded conditions. */
+  degraded?: boolean;
+  /** Pipeline-level warnings (ghost-inking failures, strategy warnings). */
+  warnings?: string[];
 }
 
 const YTOTECH_URL = 'https://latex.ytotech.com/builds/sync';
@@ -1156,7 +1162,11 @@ export async function runHardenedPipeline(
             const tectonicPath = path.join(process.cwd(), 'bin', tectonicBin);
 
             if (!fs.existsSync(tectonicPath)) {
-                return { pdfBase64: null, log: `Tectonic Local: ${tectonicBin} binary missing.` };
+                return {
+                    pdfBase64: null,
+                    log: `Tectonic Local: ${tectonicBin} binary missing.`,
+                    warning: `Local tectonic binary (bin/${tectonicBin}) is not installed — falling back to remote compilers.`
+                };
             }
 
             const os = require('os');
@@ -1261,6 +1271,13 @@ export async function runHardenedPipeline(
                 return null;
             };
 
+            // Surfaced degradation (Phase 5): whenever the auto-healer had to
+            // stub a missing package/class/file, the compile is degraded — the
+            // client must be told instead of seeing a "success" silently.
+            const stubWarning = () => generatedStubs.length > 0
+                ? `Compiled with ${generatedStubs.length} auto-generated stub(s): ${generatedStubs.join(', ')} — missing packages/classes may render incompletely.`
+                : undefined;
+
             // ── Run tectonic ASYNC (non-blocking execFile) ────────────────────
             const { execFile } = require('child_process');
             const { promisify } = require('util');
@@ -1277,6 +1294,7 @@ export async function runHardenedPipeline(
             let compileResultObj: any = null;
             const maxTries = 3;
             let currentTry = 1;
+            const generatedStubs: string[] = [];
 
             while (currentTimeout <= MAX_TIMEOUT && currentTry <= maxTries) {
                 try {
@@ -1308,6 +1326,7 @@ export async function runHardenedPipeline(
                         
                         const stubPath = path.join(compileTempDir, missingPkgName);
                         require('fs').writeFileSync(stubPath, Buffer.from(stubContent, 'utf8'));
+                        generatedStubs.push(missingPkgName);
                         
                         healed = true;
                     }
@@ -1329,6 +1348,7 @@ export async function runHardenedPipeline(
                             
                             const stubPath = path.join(compileTempDir, missingFileName);
                             require('fs').writeFileSync(stubPath, Buffer.from(stubContent, 'utf8'));
+                            generatedStubs.push(missingFileName);
                             
                             healed = true;
                         }
@@ -1344,6 +1364,7 @@ export async function runHardenedPipeline(
                                 console.log(`[TECTONIC] Auto-Healer: Missing file detected: ${missingFileName}. Generating empty stub...`);
                                 const stubPath = path.join(compileTempDir, missingFileName);
                                 require('fs').writeFileSync(stubPath, Buffer.from(`% Auto-generated empty stub for ${missingFileName}\n`, 'utf8'));
+                                generatedStubs.push(missingFileName);
                                 healed = true;
                             }
                         }
@@ -1420,6 +1441,8 @@ export async function runHardenedPipeline(
                             pdfUrl: `/api/projects/${projectId}/pdf?t=${Date.now()}`,
                             syncTex,
                             log: `Compilation finished with warnings/errors.\n${logOutput}`,
+                            warning: stubWarning() || 'Compilation finished with errors/warnings — the PDF may be incomplete.',
+                            degraded: true,
                         };
                         break;
                     }
@@ -1470,6 +1493,8 @@ export async function runHardenedPipeline(
                     pdfUrl: `/api/projects/${projectId}/pdf?t=${Date.now()}`,
                     syncTex,
                     log: `Compilation finished successfully.\n${logOutput}`,
+                    warning: stubWarning(),
+                    degraded: generatedStubs.length > 0,
                 };
             }
 
@@ -1497,6 +1522,8 @@ export async function runHardenedPipeline(
                             pdfUrl: `/api/projects/${projectId}/pdf?t=${Date.now()}`,
                             syncTex: fallbackSyncTex,
                             log: `Compilation finished with warnings/errors (PDF: ${anyPdf}).\n${logOutput}`,
+                            warning: stubWarning() || 'Compilation finished with errors/warnings — the PDF may be incomplete.',
+                            degraded: true,
                         };
                     }
                 }
@@ -1547,9 +1574,12 @@ export async function runHardenedPipeline(
     // ── PHASE 1: TECTONIC LOCAL (Primary for Scholarly/Modular) ──────────────
     let combinedLog = "";
     let bibHeadingInjected = false;
+    const pipelineWarnings: string[] = [];
+    const noteWarning = (w: string | undefined) => { if (w) pipelineWarnings.push(w); };
     for (let tectonicPass = 0; tectonicPass < 2; tectonicPass++) {
         try {
             const res = (await strategies[0].fn()) as any;
+            noteWarning(res.warning);
             if (res.pdfBase64 || res.pdfUrl) {
                 let finalPdf = res.pdfBase64;
                 // Ghost Inking: composite real images onto the ghost PDF
@@ -1559,6 +1589,7 @@ export async function runHardenedPipeline(
                         console.log(`[PIPELINE] Ghost inking completed: ${fullAssets.length} assets`);
                     } catch (inkErr: any) {
                         console.warn(`[PIPELINE] Ghost inking failed (PDF still returned): ${inkErr.message}`);
+                        noteWarning(`Ghost inking failed (${inkErr.message}) — the PDF may be missing embedded figures.`);
                     }
                 }
                 if (finalPdf) {
@@ -1581,7 +1612,8 @@ export async function runHardenedPipeline(
                     pdfUrl: `/api/projects/${projectId}/pdf?t=${Date.now()}`,
                     log: res.log,
                     errors: parseLog(res.log || ""),
-                    strategy: 'TECTONIC_LOCAL'
+                    strategy: 'TECTONIC_LOCAL',
+                    warnings: pipelineWarnings
                 };
             }
             combinedLog += `--- TECTONIC LOCAL FAILED ---\n${res.log}\n`;
@@ -1602,6 +1634,7 @@ export async function runHardenedPipeline(
     for (const strat of remoteStrategies) {
         try {
             const res = (await strat.fn()) as any;
+            noteWarning(res.warning);
             if (res.pdfBase64 || res.pdfUrl) {
                 let finalPdf = res.pdfBase64;
                 // Ghost Inking: composite real images onto the ghost PDF
@@ -1611,6 +1644,7 @@ export async function runHardenedPipeline(
                         console.log(`[PIPELINE] Ghost inking completed (${strat.name}): ${fullAssets.length} assets`);
                     } catch (inkErr: any) {
                         console.warn(`[PIPELINE] Ghost inking failed (${strat.name}, PDF still returned): ${inkErr.message}`);
+                        noteWarning(`Ghost inking failed (${inkErr.message}) — the PDF may be missing embedded figures.`);
                     }
                 }
                 if (finalPdf) {
@@ -1622,7 +1656,8 @@ export async function runHardenedPipeline(
                     pdfUrl: `/api/projects/${projectId}/pdf?t=${Date.now()}`,
                     log: res.log,
                     errors: parseLog(res.log || ""),
-                    strategy: strat.name
+                    strategy: strat.name,
+                    warnings: pipelineWarnings
                 };
             }
             combinedLog += `--- ${strat.name} FAILED ---\n${res.log}\n`;
@@ -1637,6 +1672,7 @@ export async function runHardenedPipeline(
         log: combinedLog, 
         errors: parseLog(combinedLog), 
         strategy: 'FAIL',
+        warnings: pipelineWarnings,
         suggestion: `The current engine (${selectedEngine}) failed. Try switching to ${recommendation} in the project settings.`
     };
 
