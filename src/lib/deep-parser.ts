@@ -802,31 +802,36 @@ export class DeepDocumentParser {
               const isLocationAffil = isAlreadyTitleStarted && !foundAbstract &&
                 (/(?:\b\d{5,6}\b|\b(?:India|USA|UK|China|Japan|Germany|France|Australia|Canada|Brazil|Korea|Italy|Spain|Netherlands|Switzerland|Singapore|Malaysia|Iran|Egypt|Pakistan|Indonesia|Thailand|Turkey|Russia|Mexico|Colombia|Nigeria|Kenya|Ethiopia|South\s+Africa)\b)/i.test(f.text) || /orcid/i.test(f.text)) &&
                 f.wordCount < 15 && f.text.length < 200;
+              const isAffilOrDesignation = EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil ||
+                /\b(?:librarian|professor|assistant|associate|lecturer|department|dept|polytechnic|university|institute|college|faculty)\b/i.test(f.text);
+              const startsWithDrOrProf = /^(?:dr\.|prof\.|professor)\b/i.test(f.text.trim());
 
-              if ((EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil) && isAlreadyTitleStarted) {
-                  nextRole = 'affiliation';
+              if ((isAffilOrDesignation || EMAIL_RE.test(f.text)) && isAlreadyTitleStarted) {
+                  if (startsWithDrOrProf && !AFFIL_KEYWORDS.test(f.text)) {
+                      nextRole = 'author';
+                  } else {
+                      nextRole = 'affiliation';
+                  }
               } else if (looksLikeAuthor && isAlreadyTitleStarted) {
                   nextRole = 'author';
               } else if (!isAlreadyTitleStarted) {
                   nextRole = 'title';
               } else if (currentRole === 'title') {
-                  if (looksLikeAuthor || EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil || /#/.test(f.text) || f.text.includes(',') || f.text.match(/\d/)) {
-                      if (looksLikeAuthor) {
-                          nextRole = 'author';
-                      } else if (EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil) {
-                          nextRole = 'affiliation';
-                      } else {
-                          nextRole = 'author';
-                      }
+                  if (startsWithDrOrProf || looksLikeAuthor) {
+                      nextRole = 'author';
+                  } else if (isAffilOrDesignation) {
+                      nextRole = 'affiliation';
                   } else if (f.text.length < 200 && f.wordCount < 25 && !foundAbstract && !/^(?:abstract|introduction|related work)/i.test(f.text)) {
                       nextRole = 'title';
                   } else {
-                      nextRole = 'section';
+                      nextRole = 'author';
                   }
               } else {
-                  if (looksLikeAuthor) {
+                  if (startsWithDrOrProf || looksLikeAuthor) {
                       nextRole = 'author';
-                  } else if (EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil) {
+                  } else if (isAffilOrDesignation) {
+                      nextRole = 'affiliation';
+                  } else if (!foundAbstract && i < 20 && f.text.length < 150) {
                       nextRole = 'affiliation';
                   } else {
                       nextRole = 'section';
