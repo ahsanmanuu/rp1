@@ -46,7 +46,7 @@ export interface AiStructureVerdict {
 // Windows are kept well under the platform request cap (Render starter ~300s)
 // so the upload request always completes: worst case = max(passA, passB).
 const FRONTMATTER_PASS_TIMEOUT_MS = 20000;
-const STRUCTURE_PASS_TIMEOUT_MS = 25000;
+const STRUCTURE_PASS_TIMEOUT_MS = 40000;
 
 // Extra budget for the scoped count re-verification pass (only fires when the
 // AI's count disagrees with the deterministic count by more than 1).
@@ -76,13 +76,12 @@ function withAbortableTimeout<T>(
 // Must be large enough to cover all figures, tables, equations, and sections
 // in the middle of the document — the primary cause of inconsistent counts
 // was mid-document elision. With a strong provider (OpenRouter/Gemini key
-// configured) most of the document up to 160K chars is sent, eliminating
-// mid-document elision for typical manuscripts while keeping the prompt
-// within the pass budget; otherwise fall back to a compact 24K window that
-// fits free-tier model contexts.
+// configured) a balanced 45K window is sent to ensure prompt execution stays
+// under the pass budget for 5-50 page manuscripts; otherwise fall back to a
+// compact 24K window that fits free-tier model contexts.
 const HAS_STRONG_PROVIDER = !!(process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
-const FULL_TEXT_LIMIT = HAS_STRONG_PROVIDER ? 160000 : 24000;
-const FULL_TEXT_TAIL = HAS_STRONG_PROVIDER ? 10000 : 6000;
+const FULL_TEXT_LIMIT = HAS_STRONG_PROVIDER ? 45000 : 24000;
+const FULL_TEXT_TAIL = HAS_STRONG_PROVIDER ? 15000 : 6000;
 
 // Strongest configured provider for structure passes (fallback via provider
 // chain in callLLM). null → registry default model.
@@ -747,14 +746,31 @@ export function applyStructureCorrections(
   if (verdict.references && verdict.references.length > 0) {
     const parserRefs = Array.isArray(deepData.references) ? deepData.references.slice() : [];
     const parserNorms = new Set(parserRefs.map(r => String(r).replace(/\s+/g, ' ').trim().toLowerCase()));
+    
+    // Extract signature (first author surname + 4-digit year) from reference string
+    const refSignature = (s: string): string => {
+      const clean = s.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '').trim();
+      const authorMatch = clean.match(/^([A-Za-z\u00C0-\u017F]+)/);
+      const yearMatch = clean.match(/\b(19|20)\d{2}\b/);
+      const surname = authorMatch ? authorMatch[1].toLowerCase() : '';
+      const year = yearMatch ? yearMatch[0] : '';
+      return surname && year ? `${surname}_${year}` : clean.substring(0, 50).toLowerCase();
+    };
+
+    const seenSignatures = new Set(parserRefs.map(refSignature));
     const newRefs: string[] = [];
-    const seen = new Set(parserNorms);
+    
     for (const r of verdict.references) {
       const t = String(r || '').replace(/\s+/g, ' ').trim();
       if (!t || t.length < 5) continue;
       const norm = t.toLowerCase();
-      if (seen.has(norm)) continue;
-      seen.add(norm);
+      if (parserNorms.has(norm)) continue;
+      
+      const sig = refSignature(t);
+      if (seenSignatures.has(sig)) continue;
+      
+      parserNorms.add(norm);
+      seenSignatures.add(sig);
       newRefs.push(t);
     }
     deepData.references = [...parserRefs, ...newRefs].slice(0, 250);

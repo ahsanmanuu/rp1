@@ -1997,16 +1997,21 @@ export class ModularLatexAssembler {
                                 cleanLower === 'abstract' || cleanLower.startsWith('abstract ') ||
                                 cleanLower.match(/^(?:keywords|index terms|indexterms|highlights)$/);
 
-        // A paragraph that actually contains a detected math block is a missed
-        // equation (math was injected inline into body text) — reclassify it so
+        // A paragraph that consists primarily of a detected display math block is a missed
+        // equation (math was injected into body text) — reclassify it so
         // it renders as a real equation instead of vanishing or garbling.
+        // GUARD: Only reclassify if the math block is the DOMINANT content of the paragraph
+        // (>60% of length or short node <100 chars), avoiding converting long prose paragraphs
+        // that merely contain an inline math fragment ($x$).
         if (node.type === 'paragraph' && !isMetadataMatch) {
             const eqEntry = mathBlocks.find((b: any) => {
                 const raw = typeof b === 'string' ? b : (b?.latex || b?.tex || '');
                 if (raw.length < 3) return false;
                 const a = normalize(text.replace(/\s+/g, ' '));
                 const bRaw = normalize(raw.replace(/\s+/g, ' '));
-                return a.includes(bRaw);
+                if (!a || !bRaw) return false;
+                const ratio = bRaw.length / Math.max(1, a.length);
+                return a.includes(bRaw) && (ratio >= 0.6 || a.length < 100);
             });
             if (eqEntry) {
                 node = { ...node, type: 'equation', latex: typeof eqEntry === 'string' ? eqEntry : (eqEntry.latex || eqEntry.tex || ''), label: eqEntry?.label || '' };

@@ -363,7 +363,7 @@ export async function POST(req: Request) {
     console.log("[TELEMETRY] Starting upload processing for:", file.name);
     let deepData: any = null;
     let mammothResult = { value: "" };
-    let templateId = 'article_lncs'; // Default — may be overridden in docx block
+    let templateId = (formData.get('templateId') || formData.get('template') || 'article_lncs') as string;
     let groundTruth: { imageCount?: number; tableCount: number; equationCount: number } | null = null;
 
     if (file.name.endsWith('.docx')) {
@@ -906,7 +906,7 @@ export async function POST(req: Request) {
             imageFiles: imageNames,
             templateId: templateId,
           }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 20000))
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 45000))
         ]);
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
@@ -1083,8 +1083,9 @@ export async function POST(req: Request) {
             filename: file.name,
             userId: (session?.user as any)?.id ?? null,
             imageFiles: [],
+            templateId: templateId,
           }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 20000))
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 45000))
         ]);
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
@@ -1098,7 +1099,22 @@ export async function POST(req: Request) {
       }
 
       const { ModularLatexAssembler: PdfAssembler } = await import('@/lib/assembler');
-      const pdfModular = PdfAssembler.assemble(deepData as any, 'article_lncs', { hasBibFile: false });
+      let pdfTemplateMainTex: string | undefined = undefined;
+      try {
+        const { getTemplateById, mapLegacyTemplateId } = require('@/lib/templates/registry');
+        const tpl = getTemplateById(mapLegacyTemplateId(templateId));
+        if (tpl && tpl.assetFolder) {
+          const mainPath = path.join(process.cwd(), 'src', 'assets', 'templates', tpl.assetFolder, 'main.tex');
+          if (fs.existsSync(mainPath)) {
+            pdfTemplateMainTex = fs.readFileSync(mainPath, 'utf-8');
+            console.log(`[TELEMETRY] Native PDF template preamble found for ${templateId} (${tpl.assetFolder})`);
+          }
+        }
+      } catch (err) {
+        console.warn("[TELEMETRY] Failed to load template registry for PDF upload:", err);
+      }
+
+      const pdfModular = PdfAssembler.assemble(deepData as any, templateId, pdfTemplateMainTex || { hasBibFile: false });
       finalLatex = pdfModular.mainTex;
       // CRITICAL FIX: attach modular files so they are persisted to disk + DB
       (deepData as any).modularComponents = pdfModular.files;

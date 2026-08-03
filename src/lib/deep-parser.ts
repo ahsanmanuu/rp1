@@ -295,40 +295,47 @@ export class DeepDocumentParser {
           }
 
           // Equation detection for PDF text lines.
-          // STRICT: require actual mathematical content — not just any alphanumeric line with '='.
-          // The previous broad condition caused parameter assignments ("accuracy = 99.94",
-          // "LR = 0.0001", table cell values) to be tagged as equations, inflating counts.
+          // STRICT: require strong mathematical content (multiple signals) — not just any line with '=' or math ops.
+          // Rejects parameter assignments, table rows, and prose text containing minor math characters.
           {
-            const hasGreek = /[∑∫≈≤≥≠≡α-ωΑ-Ωθλπμσδφψωηρ±×÷√∞∂∇]/.test(line);
-            const opCount = (line.match(/[+\-*\/^]/g) || []).length;
+            const clean = line.trim();
+            const words = clean.split(/\s+/);
+            // Count prose-like dictionary words (long alphabetic words without numbers/symbols)
+            const proseWordCount = words.filter(w => /^[a-zA-Z]{3,}$/.test(w) && !/^(sin|cos|tan|log|ln|exp|sqrt|lim|max|min|sum|prod|det|softmax|sigmoid|relu|tanh)$/i.test(w)).length;
+            const isProseHeavy = words.length > 4 && (proseWordCount / words.length) > 0.55;
+            // Reject table data rows: multiple columns of numbers/percentages/units
+            const isTableDataRow = /^[\d.,\s\-\+%±\(\)\/a-zA-Z]{5,}$/.test(clean) && (clean.match(/\s{2,}|\t/g) || []).length >= 2;
+
+            const hasGreek = /[∑∫≈≤≥≠≡α-ωΑ-Ωθλπμσδφψωηρ±×÷√∞∂∇]/.test(clean);
+            const opCount = (clean.match(/[+\-*\/^]/g) || []).length;
             const hasMultiOps = opCount >= 2;
-            const hasMathFn = /\b(sin|cos|tan|log|ln|exp|sqrt|lim|max|min|sum|prod|det|softmax|sigmoid|relu|tanh)\b/i.test(line);
-            const hasSubSuper = /[_^][{\w]/.test(line) || /\{[a-zA-Z0-9]+\}/.test(line);
-            // Trailing equation number "(N)" paired with a relational operator
-            const hasEqNum = /\(\d{1,3}\)\s*$/.test(line);
-            const hasRelOp = /[=<>]/.test(line);
-            // Reject pure parameter-assignment patterns: "Word(s) = scalar" or "ABBR = value"
-            const isParamAssign = /^[A-Za-z][A-Za-z0-9\s_]{0,35}\s*=\s*[\d.,+\-eE%]+\s*$/.test(line.trim())
-                                || /^[A-Z]{1,6}\s*=\s*[\d.,+\-eE%]+\s*$/.test(line.trim());
-            const isRealEquation = !isParamAssign && (
-              hasGreek ||
-              hasMultiOps ||
-              hasMathFn ||
-              hasSubSuper ||
-              (hasEqNum && hasRelOp && opCount >= 1)
+            const hasMathFn = /\b(sin|cos|tan|log|ln|exp|sqrt|lim|max|min|sum|prod|det|softmax|sigmoid|relu|tanh)\b/i.test(clean);
+            const hasSubSuper = /[_^][{\w]/.test(clean) || /\{[a-zA-Z0-9]+\}/.test(clean);
+            const hasEqNum = /\(\d{1,3}\)\s*$/.test(clean);
+            const hasRelOp = /[=<>]/.test(clean);
+            const isParamAssign = /^[A-Za-z][A-Za-z0-9\s_]{0,35}\s*=\s*[\d.,+\-eE%]+\s*$/.test(clean)
+                                || /^[A-Z]{1,6}\s*=\s*[\d.,+\-eE%]+\s*$/.test(clean);
+
+            // Require AT LEAST TWO distinct math signals (or explicit equation number with relational operator)
+            const signalCount = (hasGreek ? 1 : 0) + (hasMultiOps ? 1 : 0) + (hasMathFn ? 1 : 0) + (hasSubSuper ? 1 : 0) + (hasRelOp ? 1 : 0);
+            const isRealEquation = !isParamAssign && !isProseHeavy && !isTableDataRow && (
+              signalCount >= 2 || (hasEqNum && hasRelOp && opCount >= 1)
             );
-            if (isRealEquation && line.length < 120) {
-              result.body.push({ type: 'equation', text: line });
+            if (isRealEquation && clean.length < 140) {
+              result.body.push({ type: 'equation', text: clean });
               continue;
             }
           }
           const cleanLine = line.trim();
           const isSection = sectionRx.test(cleanLine) && cleanLine.length < 120;
           
-          // Universal dynamic hierarchical prefix scan: e.g. "1.", "1.1", "1.1.1", "A.1", "I.A.1"
+          // Universal dynamic hierarchical prefix scan: e.g. "1.", "1.1", "1.1.1", "A.1", "I.A.1", "Section 3:"
           const prefixMatch = cleanLine.match(/^(?:\s*(?:(?:section|chapter|appendix|part)\s+)?((?:\d+|[ivxlcdm]+|[A-Za-z])(?:\.(?:\d+|[ivxlcdm]+|[A-Za-z]))*)(?:\.?[.:\s)]+))/i);
           const isNumberedHeading = prefixMatch !== null && cleanLine.length < 120 && !cleanLine.endsWith('.');
-          const isShortTitleCase = cleanLine.length < 80 && cleanLine.length > 5 && !cleanLine.endsWith('.') && !cleanLine.includes(',') && cleanLine.split(' ').every(w => /^[A-Z]/.test(w) || STOPWORDS.has(w.toLowerCase()));
+          // Support Title Case AND ALL CAPS headings (e.g. "RESULTS AND DISCUSSION", "EXPERIMENTAL SETUP")
+          const isShortTitleCase = cleanLine.length < 80 && cleanLine.length > 3 && !cleanLine.endsWith('.') && !cleanLine.includes(',') && 
+            (cleanLine.split(' ').every(w => /^[A-Z]/.test(w) || STOPWORDS.has(w.toLowerCase())) ||
+             (/^[A-Z0-9\s_\-&:\(\)]+$/.test(cleanLine) && cleanLine.split(' ').length <= 8));
           
           if (isSection || isNumberedHeading || isShortTitleCase) {
               let level = 1;
@@ -356,11 +363,16 @@ export class DeepDocumentParser {
               }
               if (!headingText) headingText = cleanLine;
 
-              // Hierarchy state machine: the first heading is always a main
-              // section, and a heading may never jump more than one level
-              // deeper than its predecessor.
-              if (lastPdfHeadingLevel === 0) level = 1;
-              else if (level > lastPdfHeadingLevel + 1) level = lastPdfHeadingLevel + 1;
+              // Hierarchy state machine: the first heading is always a main section.
+              // Allow explicit multi-part prefixes (e.g. 3.2.1) to set level 3 directly.
+              if (lastPdfHeadingLevel === 0) {
+                  level = 1;
+              } else if (prefixMatch && prefixMatch[1].includes('.')) {
+                  // Explicit dot count in prefix gives authoritative level (e.g. 1.2 -> 2, 1.2.3 -> 3)
+                  level = Math.min(3, prefixMatch[1].split('.').length);
+              } else if (level > lastPdfHeadingLevel + 1) {
+                  level = lastPdfHeadingLevel + 1;
+              }
               lastPdfHeadingLevel = level;
 
               result.body.push({ type: 'heading', level, text: headingText });
