@@ -101,7 +101,9 @@ export async function proxy(request: NextRequest) {
     return res;
   }
 
-  const isAdminPath = pathname.startsWith('/admin') && !pathname.startsWith('/admin/login');
+  // Admin recovery pages must be reachable WITHOUT an admin session (the reset
+  // link from the recovery email points there).
+  const isAdminPath = pathname.startsWith('/admin') && !pathname.startsWith('/admin/login') && !pathname.startsWith('/admin/recovery');
   const isAdminApi = pathname.startsWith('/api/admin') && !pathname.startsWith('/api/admin/auth');
 
   // --- Admin Route Protection, Token Refresh, and Sliding Session ---

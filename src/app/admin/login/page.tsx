@@ -268,7 +268,7 @@ export default function AdminLoginPage() {
           <div className="space-y-1.5">
             <div className="flex justify-between items-center px-1">
               <label className="block text-xs font-medium transition-colors duration-500" style={{ color: textSecondary }} htmlFor="password">Password</label>
-              <Link href="#" className="text-[10px] font-bold hover:underline decoration-current transition-colors" style={{ color: colors.primary }}>Forgot password?</Link>
+              <Link href="/admin/recovery" className="text-[10px] font-bold hover:underline decoration-current transition-colors" style={{ color: colors.primary }}>Forgot password?</Link>
             </div>
             <div className="relative group">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 transition-colors" style={{ color: password ? colors.primary : textMuted }} size={18} />

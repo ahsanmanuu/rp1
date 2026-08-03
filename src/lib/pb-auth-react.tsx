@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createPb } from "@/lib/pb";
+import { pbSubscribe } from "@/lib/pbRealtime";
 
 export interface PbSessionUser {
   id: string;
@@ -134,44 +135,33 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
   useEffect(() => {
     if (status !== "authenticated" || !sessionTokenRef.current) return;
 
-    let unsub: (() => void) | null = null;
     let mounted = true;
+    const currentToken = sessionTokenRef.current;
 
-    const setupSubscription = async () => {
+    const unsub = pbSubscribe("user_sessions", "*", (e) => {
       try {
-        const pb = createPb();
-        const token = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
-        if (token) pb.authStore.save(token, null);
-        const currentToken = sessionTokenRef.current;
-
-        unsub = await pb.collection("user_sessions").subscribe("*", (e) => {
-          try {
-            if (!mounted) return;
-            // If session was deleted (force logout from another device)
-            if (e.action === "delete") {
-              const deletedToken = e.record?.sessionToken;
-              if (deletedToken === currentToken) {
-                setData(null);
-                setStatus("unauthenticated");
-                sessionTokenRef.current = null;
-                // Clear cookie via logout endpoint
-                fetch("/api/auth/pb-logout", { method: "POST", signal: AbortSignal.timeout(10000) }).catch(() => {});
-              }
-            }
-          } catch (subErr) {
-            console.warn("[PB Session Provider] Subscription callback error:", subErr);
+        if (!mounted) return;
+        // If session was deleted (force logout from another device)
+        if (e.action === "delete") {
+          const deletedToken = e.record?.sessionToken;
+          if (deletedToken === currentToken) {
+            setData(null);
+            setStatus("unauthenticated");
+            sessionTokenRef.current = null;
+            // Clear cookie via logout endpoint
+            fetch("/api/auth/pb-logout", { method: "POST", signal: AbortSignal.timeout(10000) }).catch(() => {});
           }
-        });
-      } catch {
-        // Subscription failed — fallback to polling
+        }
+      } catch (subErr) {
+        console.warn("[PB Session Provider] Subscription callback error:", subErr);
       }
-    };
-
-    setupSubscription();
+    }, {
+      tokenProvider: () => (typeof window !== "undefined" ? localStorage.getItem("auth-token") : null),
+    });
 
     return () => {
       mounted = false;
-      if (unsub) try { unsub(); } catch {}
+      unsub();
     };
   }, [status]);
 

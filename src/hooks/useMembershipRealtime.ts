@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { createPb } from '@/lib/pb';
+import { pbSubscribe } from '@/lib/pbRealtime';
 
 export interface MembershipData {
   membership: string;
@@ -149,41 +149,28 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
     }, pollIntervalMs);
 
     // PB Realtime subscription to users + membership_transactions
+    // (via the shared realtime client manager)
     if (typeof window !== 'undefined' && userIdRef.current) {
-      const setupSubscription = async () => {
-        try {
-          const pb = createPb();
-          const tokenCookie = document.cookie.split('; ').find(c => c.startsWith('pb_token='));
-          if (tokenCookie) {
-            const token = tokenCookie.split('=')[1];
-            pb.authStore.save(token, null);
-          }
-
-          const unsubFns: (() => void)[] = [];
-          const onEvent = () => {
-            if (mountedRef.current) {
-              fetchRef.current?.(true);
-            }
-          };
-
-          // Subscribe to user record changes
-          try {
-            const unsubUser = await pb.collection('users').subscribe(userIdRef.current!, () => { onEvent(); });
-            unsubFns.push(unsubUser);
-          } catch {}
-
-          // Subscribe to membership_transactions for this user
-          try {
-            const unsubTx = await pb.collection('membership_transactions').subscribe('*', () => { onEvent(); }, {
-              filter: `userId = "${userIdRef.current}"`,
-            });
-            unsubFns.push(unsubTx);
-          } catch {}
-
-          unsubRef.current = () => { for (const fn of unsubFns) { try { fn(); } catch {} } };
-        } catch {}
+      const unsubFns: (() => void)[] = [];
+      const onEvent = () => {
+        if (mountedRef.current) {
+          fetchRef.current?.(true);
+        }
       };
-      setupSubscription();
+
+      // Subscribe to user record changes
+      try {
+        unsubFns.push(pbSubscribe('users', userIdRef.current!, onEvent));
+      } catch {}
+
+      // Subscribe to membership_transactions for this user
+      try {
+        unsubFns.push(pbSubscribe('membership_transactions', '*', onEvent, {
+          filter: `userId = "${userIdRef.current}"`,
+        }));
+      } catch {}
+
+      unsubRef.current = () => { for (const fn of unsubFns) { try { fn(); } catch {} } };
     }
 
     return () => {

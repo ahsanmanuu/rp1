@@ -18,6 +18,9 @@ export default function LoginPage() {
   const [showDupModal, setShowDupModal] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
   const [dupSessionDetails, setDupSessionDetails] = useState<any[]>([]);
+  const [showOtpSection, setShowOtpSection] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [otpId, setOtpId] = useState("");
   const router = useRouter();
   const { status, update } = useSession();
 
@@ -83,6 +86,53 @@ export default function LoginPage() {
     }
   };
 
+  const handleOtpRequest = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/auth/otp-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || "Failed to send verification code");
+      } else {
+        setOtpId(data.otpId || "");
+        setShowOtpSection(true);
+      }
+    } catch (e: any) {
+      setError(e.message || "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/auth/otp-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otpId, otp: otpCode, machineId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || "Invalid or expired code");
+      } else {
+        await update({ user: data.user, token: data.token });
+        router.push("/dashboard");
+      }
+    } catch (e: any) {
+      setError(e.message || "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -111,6 +161,12 @@ export default function LoginPage() {
         return;
       }
       const data = await res.json().catch(() => ({}));
+      if (data.locked) {
+        setShowOtpSection(true);
+        setError(data.error);
+        setLoading(false);
+        return;
+      }
       setError(data.error || "Invalid credentials. Ensure data accuracy.");
       setLoading(false);
     } else {
@@ -230,6 +286,48 @@ export default function LoginPage() {
             {loading ? <Loader2 size={24} className="animate-spin" /> : <><span>Enter Studio</span><LogIn size={20} /></>}
           </button>
         </form>
+
+        {showOtpSection && (
+          <div className="space-y-4 mt-4">
+            {!otpCode ? (
+              <button
+                type="button"
+                disabled={loading}
+                onClick={handleOtpRequest}
+                className="w-full py-3 font-semibold rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+              >
+                {loading ? <Loader2 size={20} className="animate-spin mx-auto" /> : "Send unlock code to email"}
+              </button>
+            ) : (
+              <form onSubmit={handleOtpSubmit} className="space-y-3">
+                <input
+                  type="text"
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value)}
+                  placeholder="6-digit code"
+                  maxLength={6}
+                  className="w-full py-3 rounded-xl text-center text-2xl font-bold tracking-wider bg-slate-100 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--accent-primary)]"
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 font-black rounded-xl text-white shadow-xl hover:shadow-2xl transition-all"
+                  style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))' }}
+                >
+                  {loading ? <Loader2 size={20} className="animate-spin mx-auto" /> : "Verify"}
+                </button>
+              </form>
+            )}
+            <button
+              type="button"
+              onClick={() => { setShowOtpSection(false); setOtpCode(""); setError(""); }}
+              className="w-full text-sm text-slate-500 dark:text-slate-400 hover:text-[var(--accent-primary)] transition-colors"
+            >
+              Back to login
+            </button>
+          </div>
+        )}
 
         <div className="text-center text-[11px] font-black mt-5 pt-4 border-t border-slate-200 dark:border-white/10 uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
           <span className="opacity-90">New Explorer?</span>{" "}

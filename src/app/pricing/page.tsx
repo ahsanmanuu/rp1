@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { CheckCircle2, ArrowRight, Loader2, Sparkles, Star, Zap, Shield, Infinity, Brain } from 'lucide-react';
 import { createPb } from '@/lib/pb';
+import { pbSubscribe } from '@/lib/pbRealtime';
 import LoginPromptModal from '@/components/LoginPromptModal';
 import SiteFooter from '@/components/SiteFooter';
 
@@ -91,9 +92,9 @@ export default function PricingPage() {
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [billing, setBilling] = useState<'monthly' | 'annual'>('monthly');
+  const unsubRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    let unsub: (() => void) | undefined;
     async function fetchAndSubscribe() {
       try {
         const res = await fetch('/api/plans');
@@ -104,8 +105,7 @@ export default function PricingPage() {
         }
       } catch (e) { console.warn('Failed to fetch plans', e); }
       try {
-        const pb = createPb();
-        unsub = await pb.collection('membership_plans').subscribe('*', () => {
+        unsubRef.current = pbSubscribe('membership_plans', '*', () => {
           fetch('/api/plans').then(r => r.json()).then(data => {
             if (data.success && data.plans) {
               const sorted = [...data.plans].sort((a, b) => a.priceINR - b.priceINR);
@@ -117,7 +117,7 @@ export default function PricingPage() {
       setLoading(false);
     }
     fetchAndSubscribe();
-    return () => { unsub?.(); };
+    return () => { unsubRef.current?.(); };
   }, []);
 
   if (loading) {

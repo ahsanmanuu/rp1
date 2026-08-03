@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { createPb } from '@/lib/pb';
+import { pbSubscribe } from '@/lib/pbRealtime';
 
 export function usePbRealtime<T = any>(
   collection: string,
@@ -22,42 +22,22 @@ export function usePbRealtime<T = any>(
   useEffect(() => {
     if (options?.enabled === false) return;
 
-    let cancelled = false;
-
-    async function setup() {
-      try {
-        const pb = createPb();
-        const unsub = await pb.collection(collection).subscribe('*', (e) => {
-          if (!cancelled) {
-            const handler = onEventRef.current as any;
-            if (typeof handler.length === 'number' && handler.length === 0) {
-              handler();
-            } else {
-              onEventRef.current(e.action, e.record as unknown as T);
-            }
-          }
-        }, options?.filter ? { filter: options.filter } : undefined);
-        if (!cancelled) {
-          unsubRef.current = unsub;
-        } else {
-          unsub();
-        }
-      } catch (err) {
-        if (!cancelled) {
-          console.warn(`PB realtime subscribe failed for ${collection}:`, err);
-        }
+    // Shared realtime client manager — one SSE connection per auth token,
+    // auto re-subscribe on token change.
+    unsubRef.current = pbSubscribe(collection, '*', (e) => {
+      const handler = onEventRef.current as any;
+      if (typeof handler.length === 'number' && handler.length === 0) {
+        handler();
+      } else {
+        onEventRef.current(e.action, e.record as unknown as T);
       }
-    }
-
-    setup();
+    }, options?.filter ? { filter: options.filter } : undefined);
 
     return () => {
-      cancelled = true;
       unsubRef.current?.();
       unsubRef.current = null;
     };
-  // Only re-subscribe when the collection, filter, or enabled flag actually changes.
-  // onEvent intentionally omitted — it is captured via onEventRef above.
-   
+    // Only re-subscribe when the collection, filter, or enabled flag actually changes.
+    // onEvent intentionally omitted — it is captured via onEventRef above.
   }, [collection, options?.filter, options?.enabled]);
 }

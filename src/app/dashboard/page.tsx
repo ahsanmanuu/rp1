@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useSession } from "@/lib/pb-auth-react";
 import { createPb } from "@/lib/pb";
+import { pbSubscribe } from "@/lib/pbRealtime";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -526,32 +527,25 @@ export default function DashboardPage() {
       pb.authStore.save(session.token, null);
     }
 
-    // ── PB Realtime Subscriptions ──
+    // ── PB Realtime Subscriptions (shared client manager) ──
     const unsubFns: (() => void)[] = [];
 
     // Subscribe to announcements and offers
-    pb.collection('announcements').subscribe('*', () => {
-      fetchAnnouncements();
-    }).then(u => unsubFns.push(u)).catch(() => {});
+    try { unsubFns.push(pbSubscribe('announcements', '*', () => { fetchAnnouncements(); })); } catch {}
 
-    pb.collection('offers').subscribe('*', () => {
-      fetchUserOffers();
-    }).then(u => unsubFns.push(u)).catch(() => {});
+    try { unsubFns.push(pbSubscribe('offers', '*', () => { fetchUserOffers(); })); } catch {}
 
     // Realtime AI plan updates (admin edits to caps/prices refresh instantly)
-    pb.collection('ai_cap_plans').subscribe('*', () => {
-      refetchSubscriptions();
-    }).then(u => unsubFns.push(u)).catch(() => {});
+    try { unsubFns.push(pbSubscribe('ai_cap_plans', '*', () => { refetchSubscriptions(); })); } catch {}
 
     // Subscribe to citation_projects and paper_reviews for realtime counter updates
     if (session?.user?.id) {
-      pb.collection('citation_projects').subscribe('*', () => {
-        refetchMembership();
-      }, { filter: `userId = "${session?.user?.id}"` }).then(u => unsubFns.push(u)).catch(() => {});
-
-      pb.collection('paper_reviews').subscribe('*', () => {
-        refetchMembership();
-      }, { filter: `userId = "${session?.user?.id}"` }).then(u => unsubFns.push(u)).catch(() => {});
+      try {
+        unsubFns.push(pbSubscribe('citation_projects', '*', () => { refetchMembership(); }, { filter: `userId = "${session?.user?.id}"` }));
+      } catch {}
+      try {
+        unsubFns.push(pbSubscribe('paper_reviews', '*', () => { refetchMembership(); }, { filter: `userId = "${session?.user?.id}"` }));
+      } catch {}
     }
 
     // Background refresh for offers and announcements

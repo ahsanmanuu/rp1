@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { createPb } from '@/lib/pb';
+import { pbSubscribe } from '@/lib/pbRealtime';
 
 export interface BillingMetrics {
   monthlyRevenue: number;
@@ -164,53 +164,22 @@ export function useBillingRealtime(options: UseBillingOptions = {}) {
       fetchRef.current?.(true);
     }, pollIntervalMs);
 
-    // PB Realtime subscriptions for billing data
+    // PB Realtime subscriptions for billing data (shared client manager)
     if (typeof window !== 'undefined') {
-      const setupSubscription = async () => {
-        try {
-          const pb = createPb();
-          const tokenCookie = document.cookie.split('; ').find(c => c.startsWith('pb_token='));
-          if (tokenCookie) {
-            const token = tokenCookie.split('=')[1];
-            pb.authStore.save(token, null);
-          }
-
-          const unsubFns: (() => void)[] = [];
-          const triggerRefresh = () => {
-            if (mountedRef.current) {
-              fetchRef.current?.(true);
-            }
-          };
-
-          try {
-            const unsubPt = await pb.collection('point_transactions').subscribe('*', triggerRefresh);
-            unsubFns.push(unsubPt);
-          } catch {}
-
-          try {
-            const unsubMt = await pb.collection('membership_transactions').subscribe('*', triggerRefresh);
-            unsubFns.push(unsubMt);
-          } catch {}
-
-          try {
-            const unsubPlans = await pb.collection('membership_plans').subscribe('*', triggerRefresh);
-            unsubFns.push(unsubPlans);
-          } catch {}
-
-          try {
-            const unsubOffers = await pb.collection('offers').subscribe('*', triggerRefresh);
-            unsubFns.push(unsubOffers);
-          } catch {}
-
-          try {
-            const unsubUsers = await pb.collection('users').subscribe('*', triggerRefresh);
-            unsubFns.push(unsubUsers);
-          } catch {}
-
-          unsubRef.current = () => { for (const fn of unsubFns) { try { fn(); } catch {} } };
-        } catch {}
+      const unsubFns: (() => void)[] = [];
+      const triggerRefresh = () => {
+        if (mountedRef.current) {
+          fetchRef.current?.(true);
+        }
       };
-      setupSubscription();
+
+      for (const col of ['point_transactions', 'membership_transactions', 'membership_plans', 'offers', 'users']) {
+        try {
+          unsubFns.push(pbSubscribe(col, '*', triggerRefresh));
+        } catch {}
+      }
+
+      unsubRef.current = () => { for (const fn of unsubFns) { try { fn(); } catch {} } };
     }
 
     return () => {

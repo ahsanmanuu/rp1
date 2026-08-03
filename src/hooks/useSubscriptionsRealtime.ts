@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { createPb } from '@/lib/pb';
+import { pbSubscribe } from '@/lib/pbRealtime';
 
 export interface SubscriptionSnapshot {
   membership: any;
@@ -124,50 +124,36 @@ export function useSubscriptionsRealtime(options: UseSubscriptionsOptions = {}) 
     }, pollIntervalMs);
 
     // PB Realtime: user record + AI cap plans + daily usage summaries
+    // (via the shared realtime client manager)
     if (typeof window !== 'undefined') {
-      const setupSubscription = async () => {
-        try {
-          const pb = createPb();
-          const tokenCookie = document.cookie.split('; ').find(c => c.startsWith('pb_token='));
-          if (tokenCookie) {
-            const token = tokenCookie.split('=')[1];
-            pb.authStore.save(token, null);
-          }
-
-          const unsubFns: (() => void)[] = [];
-          const onEvent = () => {
-            if (mountedRef.current) fetchRef.current?.(true, true);
-          };
-
-          try {
-            if (userIdRef.current) {
-              const unsubUser = await pb.collection('users').subscribe(userIdRef.current, onEvent);
-              unsubFns.push(unsubUser);
-            }
-          } catch {}
-
-          try {
-            const unsubPlans = await pb.collection('ai_cap_plans').subscribe('*', onEvent);
-            unsubFns.push(unsubPlans);
-          } catch {}
-
-          try {
-            if (userIdRef.current) {
-              const unsubUsage = await pb.collection('ai_usage_daily_summaries').subscribe('*', onEvent, {
-                filter: `userId = "${userIdRef.current}"`,
-              });
-              unsubFns.push(unsubUsage);
-            }
-          } catch {}
-
-          unsubRef.current = () => {
-            for (const fn of unsubFns) {
-              try { fn(); } catch {}
-            }
-          };
-        } catch {}
+      const unsubFns: (() => void)[] = [];
+      const onEvent = () => {
+        if (mountedRef.current) fetchRef.current?.(true, true);
       };
-      setupSubscription();
+
+      try {
+        if (userIdRef.current) {
+          unsubFns.push(pbSubscribe('users', userIdRef.current, onEvent));
+        }
+      } catch {}
+
+      try {
+        unsubFns.push(pbSubscribe('ai_cap_plans', '*', onEvent));
+      } catch {}
+
+      try {
+        if (userIdRef.current) {
+          unsubFns.push(pbSubscribe('ai_usage_daily_summaries', '*', onEvent, {
+            filter: `userId = "${userIdRef.current}"`,
+          }));
+        }
+      } catch {}
+
+      unsubRef.current = () => {
+        for (const fn of unsubFns) {
+          try { fn(); } catch {}
+        }
+      };
     }
 
     return () => {

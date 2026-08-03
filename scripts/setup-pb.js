@@ -745,6 +745,26 @@ export async function setupPocketBase() {
     return;
   }
 
+  // ── Step 2.5: Set meta.appURL so PB-generated emails (OTP codes, PB's own
+  // password-reset links) point to the public app instead of localhost ────────
+  try {
+    const appURL = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL;
+    if (appURL) {
+      const currentSettings = await pb.settings.getAll();
+      const currentMeta = currentSettings?.meta || {};
+      if (currentMeta.appURL !== appURL) {
+        await pb.settings.update({ meta: { ...currentMeta, appURL } });
+        console.log(`[PB Setup] meta.appURL set to ${appURL}`);
+      } else {
+        console.log(`[PB Setup] meta.appURL already ${appURL}`);
+      }
+    } else {
+      console.warn('[PB Setup] No NEXTAUTH_URL/NEXT_PUBLIC_APP_URL/APP_URL found; leaving meta.appURL unchanged.');
+    }
+  } catch (metaErr) {
+    console.warn('[PB Setup] Failed to set meta.appURL:', metaErr?.message || metaErr);
+  }
+
   // Get existing collections
   const existing = await pb.collections.getFullList();
   const existingNames = new Set(existing.map(c => c.name));

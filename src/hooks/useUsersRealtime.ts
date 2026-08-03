@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { createPb } from '@/lib/pb';
+import { pbSubscribe } from '@/lib/pbRealtime';
 
 export interface AdminUser {
   id: string;
@@ -149,35 +149,23 @@ export function useUsersRealtime(options: UseUsersOptions = {}) {
     }, pollIntervalMs);
 
     if (typeof window !== 'undefined') {
-      const setupSubscriptions = async () => {
-        try {
-          const pb = createPb();
-          const tokenCookie = document.cookie.split('; ').find(c => c.startsWith('pb_token='));
-          if (tokenCookie) {
-            const token = tokenCookie.split('=')[1];
-            pb.authStore.save(token, null);
-          }
-
-          const unsubFns: (() => void)[] = [];
-          const triggerRefresh = () => {
-            if (mountedRef.current) fetchUsers(true);
-          };
-
-          for (const col of ['users', 'projects', 'blacklist_records', 'membership_transactions', 'notifications']) {
-            try {
-              const unsub = await pb.collection(col).subscribe('*', triggerRefresh);
-              unsubFns.push(unsub);
-            } catch {}
-          }
-
-          unsubRef.current = () => {
-            for (const fn of unsubFns) {
-              try { fn(); } catch {}
-            }
-          };
-        } catch {}
+      const unsubFns: (() => void)[] = [];
+      const triggerRefresh = () => {
+        if (mountedRef.current) fetchUsers(true);
       };
-      setupSubscriptions();
+
+      for (const col of ['users', 'projects', 'blacklist_records', 'membership_transactions', 'notifications']) {
+        try {
+          const unsub = pbSubscribe(col, '*', triggerRefresh);
+          unsubFns.push(unsub);
+        } catch {}
+      }
+
+      unsubRef.current = () => {
+        for (const fn of unsubFns) {
+          try { fn(); } catch {}
+        }
+      };
     }
 
     return () => {

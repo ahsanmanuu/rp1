@@ -13,6 +13,25 @@ function getClientIp(req: NextRequest): string {
   return "unknown";
 }
 
+function isTransientAuthError(e: any): boolean {
+  const status = e?.status;
+  if (status === 400 || status === 401 || status === 403) return false;
+  if (typeof status === "number" && status >= 500) return true;
+  const msg = String(e?.message || e || "").toLowerCase();
+  return (
+    msg.includes("failed to fetch") ||
+    msg.includes("econnrefused") ||
+    msg.includes("fetch failed") ||
+    msg.includes("unreachable") ||
+    msg.includes("timed out") ||
+    msg.includes("abort") ||
+    msg.includes("canceled")
+  );
+}
+
+const lockRecoveryAt = new Map<string, number>();
+const LOCK_RECOVERY_WINDOW_MS = 30 * 60 * 1000;
+
 export async function POST(req: NextRequest) {
   try {
     const { email, password, machineId } = await req.json();
@@ -20,34 +39,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing email or password" }, { status: 400 });
     }
 
-    // Normalise email to lower case, matching the register route.
     const cleanEmail = email.trim().toLowerCase();
-
     const pb = createPb();
 
-    // Retry authWithPassword once for transient PocketBase hiccups (WAL lock,
-    // cold-start latency, etc.) before surfacing the error to the client.
     let authData;
     let lastAuthErr: any;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        authData = await pb.collection("users").authWithPassword(cleanEmail, password);
-        lastAuthErr = null;
-        break;
-      } catch (e: any) {
-        lastAuthErr = e;
-        if (attempt === 0) {
-          console.warn(`[AUTH pb-login] authWithPassword attempt ${attempt + 1} failed:`, e?.message || e);
-          // Wait 500 ms before retrying (PocketBase may be checkpointing WAL).
-          await new Promise(r => setTimeout(r, 500));
+    try {
+      authData = await pb.collection("users").authWithPassword(cleanEmail, password);
+    } catch (e: any) {
+      lastAuthErr = e;
+      if (isTransientAuthError(e)) {
+        console.warn(`[AUTH pb-login] authWithPassword failed transiently, retrying once:`, e?.message || e);
+        await new Promise(r => setTimeout(r, 500));
+        try {
+          authData = await pb.collection("users").authWithPassword(cleanEmail, password);
+          lastAuthErr = null;
+        } catch (e2: any) {
+          lastAuthErr = e2;
         }
       }
     }
 
     if (!authData) {
-      // Self-healing attempt: If initial auth failed with 400,
-      // 1. Check if PocketBase has a user account with un-normalized email or verified=false
-      // 2. Or check if user exists in Prisma DB but was lost from PocketBase due to Render container restart
+      let userExists = false;
       if (lastAuthErr?.status === 400) {
         try {
           const { pbAdmin } = await import("@/lib/pb");
@@ -56,50 +70,56 @@ export async function POST(req: NextRequest) {
           const matchedUser = allUsers.find(
             (u: any) => u.email && u.email.trim().toLowerCase() === cleanEmail
           );
+          userExists = !!matchedUser;
 
-          if (matchedUser) {
-            const updates: Record<string, any> = {};
-            if (matchedUser.email !== cleanEmail) updates.email = cleanEmail;
-            if (!matchedUser.verified) updates.verified = true;
+          if (!matchedUser) {
+            throw lastAuthErr;
+          }
 
-            if (Object.keys(updates).length > 0) {
-              console.log(`[AUTH pb-login] Self-healing user ${matchedUser.id}: applying fixes`, updates);
+          const updates: Record<string, any> = {};
+          if (matchedUser.email !== cleanEmail) updates.email = cleanEmail;
+          if (!matchedUser.verified) updates.verified = true;
+          if (Object.keys(updates).length > 0) {
+            try {
+              console.log(`[AUTH pb-login] Normalising user ${matchedUser.id}:`, updates);
               await admPb.collection("users").update(matchedUser.id, updates);
-              authData = await pb.collection("users").authWithPassword(cleanEmail, password);
-              lastAuthErr = null;
-            }
-          } else {
-            // Check if user exists in Prisma DB (persisted across container restarts)
-            const dbUser = await prisma.user.findUnique({ where: { email: cleanEmail } });
-            if (dbUser) {
-              console.log(`[AUTH pb-login] User ${cleanEmail} exists in DB but missing in PocketBase. Restoring in PocketBase...`);
-              const userPayload: Record<string, any> = {
-                id: dbUser.id,
-                email: cleanEmail,
-                password,
-                passwordConfirm: password,
-                verified: true,
-                emailVisibility: true,
-                name: dbUser.name || cleanEmail.split("@")[0],
-                points: dbUser.points ?? 50,
-                theme: dbUser.theme || "dark",
-                membership: dbUser.membership || "free",
-                role: dbUser.role || "user",
-                status: "active",
-              };
-              await admPb.collection("users").create(userPayload);
-              authData = await pb.collection("users").authWithPassword(cleanEmail, password);
-              lastAuthErr = null;
-            }
+            } catch {}
+          }
+
+          const activeSession = await prisma.userSession.findFirst({
+            where: { userId: matchedUser.id, expiresAt: { gte: new Date() } },
+            select: { id: true },
+          }).catch(() => null);
+
+          const recoveryKey = `lock:${matchedUser.id}`;
+          const lastRecovery = lockRecoveryAt.get(recoveryKey);
+          const canRunRecovery = activeSession && (!lastRecovery || Date.now() - lastRecovery > LOCK_RECOVERY_WINDOW_MS);
+
+          if (canRunRecovery) {
+            lockRecoveryAt.set(recoveryKey, Date.now());
+            console.log(`[AUTH pb-login] Unlocking account for ${cleanEmail} (active session verified).`);
+            await admPb.collection("users").update(matchedUser.id, {
+              password,
+              passwordConfirm: password,
+            });
+            authData = await pb.collection("users").authWithPassword(cleanEmail, password);
+            lastAuthErr = null;
           }
         } catch (healErr: any) {
-          console.warn("[AUTH pb-login] Self-healing attempt failed:", healErr.message);
+          console.warn("[AUTH pb-login] Self-healing attempt failed:", healErr?.message || healErr);
         }
       }
-    }
 
-    if (!authData) {
-      throw lastAuthErr || new Error("Authentication failed after retry");
+      if (!authData && !userExists) {
+        throw lastAuthErr || new Error("Authentication failed after retry");
+      }
+
+      if (!authData) {
+        return NextResponse.json(
+          { error: "Account temporarily locked. Verify via email code below.", locked: true },
+          { status: 400 }
+        );
+      }
     }
 
     const record = authData.record;
@@ -117,7 +137,6 @@ export async function POST(req: NextRequest) {
       clientMachineId = "fp_" + crypto.createHash("md5").update(`${ipAddress}-${userAgent}`).digest("hex");
     }
 
-    // Check for existing active sessions from OTHER machines
     const existingSessions = await prisma.userSession.findMany({
       where: {
         userId,
@@ -127,7 +146,6 @@ export async function POST(req: NextRequest) {
     });
 
     if (existingSessions.length > 0) {
-      // Return 2 most recent other sessions
       const recentTwo = existingSessions
         .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         .slice(0, 2);
@@ -148,9 +166,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // No duplicate: create a new session record (best-effort — login still
-    // succeeds if the adapter has a transient issue; the next session check
-    // heals or recreates the record).
     try {
       const { ensurePbSessionCollectionFields } = await import("@/lib/pb-sync");
       await ensurePbSessionCollectionFields();
@@ -159,8 +174,7 @@ export async function POST(req: NextRequest) {
     }
 
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    
-    // Ensure Prisma user table has matching user record before creating userSession
+
     try {
       await prisma.user.upsert({
         where: { id: userId },
@@ -169,9 +183,9 @@ export async function POST(req: NextRequest) {
           id: userId,
           email: cleanEmail,
           name: record.name || cleanEmail.split("@")[0] || "",
-          membership: record.membership || "free",
-          role: record.role || "user",
-          points: record.points ?? 50,
+          membership: "free",
+          role: "user",
+          points: 50,
         }
       });
     } catch (uErr: any) {
@@ -221,13 +235,10 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("[AUTH pb-login] Login error:", err?.status, err?.message || err, err?.data ? JSON.stringify(err.data) : "");
     const msg = err?.message || String(err);
-    const isConnError = msg.includes('Failed to fetch') || msg.includes('ECONNREFUSED') || msg.includes('fetch failed') || msg.includes('unreachable');
+    const isConnError = msg.includes("Failed to fetch") || msg.includes("ECONNREFUSED") || msg.includes("fetch failed") || msg.includes("unreachable");
     if (isConnError) {
-      return NextResponse.json({ error: 'Authentication service is temporarily unavailable. Please try again later.' }, { status: 503 });
+      return NextResponse.json({ error: "Authentication service is temporarily unavailable. Please try again later." }, { status: 503 });
     }
-    // PocketBase's authWithPassword returns a 400 ClientResponseError for
-    // "record not found" or "password doesn't match".  Our own 400s (missing
-    // email/password) are thrown before authWithPassword is called.
     const message = err?.status === 400 ? "Invalid credentials" : msg || "Login failed";
     return NextResponse.json({ error: message }, { status: err?.status || 500 });
   }

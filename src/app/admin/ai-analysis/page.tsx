@@ -10,6 +10,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
 import { createPb } from '@/lib/pb';
+import { pbSubscribe, adminTokenProvider } from '@/lib/pbRealtime';
 import { Theme, themes, getAccentColor } from "@/components/AdminThemeStyles";
 import { useAdminTheme } from '@/contexts/AdminThemeContext';
 
@@ -104,23 +105,12 @@ export default function AdminAiAnalysisPage() {
 
   // ── PB Realtime Subscriptions ──
   useEffect(() => {
-    const pb = createPb();
     const unsubFns: (() => void)[] = [];
-    const setup = async () => {
+    for (const col of ['ai_usage_logs', 'membership_transactions', 'users']) {
       try {
-        const unsub1 = await pb.collection('ai_usage_logs').subscribe('*', () => { fetchStats(true); });
-        unsubFns.push(unsub1);
+        unsubFns.push(pbSubscribe(col, '*', () => { fetchStats(true); }, { tokenProvider: adminTokenProvider }));
       } catch {}
-      try {
-        const unsub2 = await pb.collection('membership_transactions').subscribe('*', () => { fetchStats(true); });
-        unsubFns.push(unsub2);
-      } catch {}
-      try {
-        const unsub3 = await pb.collection('users').subscribe('*', () => { fetchStats(true); });
-        unsubFns.push(unsub3);
-      } catch {}
-    };
-    setup();
+    }
     return () => { for (const fn of unsubFns) { try { fn(); } catch {} } };
   }, [fetchStats]);
 

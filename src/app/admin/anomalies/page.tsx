@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import AdminSidebar from "@/components/AdminSidebar";
 import { createPb } from "@/lib/pb";
+import { pbSubscribe, adminTokenProvider } from "@/lib/pbRealtime";
 import { Theme, themes, getAccentColor } from "@/components/AdminThemeStyles";
 import { useAdminTheme } from '@/contexts/AdminThemeContext';
 
@@ -141,19 +142,12 @@ export default function AdminAnomaliesPage() {
   }, [fetchAlerts]);
 
   useEffect(() => {
-    const pb = createPb();
     const unsubFns: (() => void)[] = [];
-    const setup = async () => {
+    for (const col of ["anomaly_alerts", "audit_log"]) {
       try {
-        const unsub = await pb.collection("anomaly_alerts").subscribe("*", () => fetchAlerts(true));
-        unsubFns.push(unsub);
+        unsubFns.push(pbSubscribe(col, "*", () => fetchAlerts(true), { tokenProvider: adminTokenProvider }));
       } catch {}
-      try {
-        const unsub2 = await pb.collection("audit_log").subscribe("*", () => fetchAlerts(true));
-        unsubFns.push(unsub2);
-      } catch {}
-    };
-    setup();
+    }
     return () => { for (const fn of unsubFns) { try { fn(); } catch {} } };
   }, [fetchAlerts]);
 

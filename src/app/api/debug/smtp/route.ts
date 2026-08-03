@@ -27,7 +27,9 @@ export async function POST(req: NextRequest) {
     const { to } = await req.json();
     const recipient = to || process.env.ADMIN_EMAIL || "";
 
-    await sendRecoveryEmail(recipient, "https://latexify.io/auth/recovery?token=test", "Test User");
+    const origin = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const demoLink = `${origin}/recovery/reset?token=test-token&email=${encodeURIComponent(recipient)}`;
+    await sendRecoveryEmail(recipient, demoLink, "Test User");
 
     const lastLog = await prisma.emailLog.findFirst({
       where: { to: recipient },

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPb } from '@/lib/pb';
+import { pbSubscribe } from '@/lib/pbRealtime';
 
 export interface UserLocation {
   id: string;
@@ -167,23 +168,9 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
     }, pollIntervalMs);
 
     if (typeof window !== 'undefined') {
-      const setupSubscription = async () => {
-        try {
-          const pb = createPb();
-          const tokenCookie = document.cookie.split('; ').find(c => c.startsWith('pb_token='));
-          if (tokenCookie) {
-            const token = tokenCookie.split('=')[1];
-            pb.authStore.save(token, null);
-          }
-
-          const unsub = await pb.collection('user_session_activities').subscribe('*', () => {
-            if (mountedRef.current) fetchLocation(true);
-          });
-
-          unsubRef.current = unsub;
-        } catch {}
-      };
-      setupSubscription();
+      unsubRef.current = pbSubscribe('user_session_activities', '*', () => {
+        if (mountedRef.current) fetchLocation(true);
+      });
     }
 
     return () => {

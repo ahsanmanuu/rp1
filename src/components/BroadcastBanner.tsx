@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPb } from '@/lib/pb';
+import { pbSubscribe } from '@/lib/pbRealtime';
 
 interface Announcement {
   id: string;
@@ -64,16 +65,8 @@ export default function BroadcastBanner() {
 
     fetchAnnouncements();
 
-    const pb = createPb();
-    let unsubAnnouncements: (() => void) | null = null;
-
-    // Subscribe to announcements in real-time — store unsub ref for cleanup
-    pb.collection('announcements').subscribe('*', () => {
+    const unsubAnnouncements = pbSubscribe('announcements', '*', () => {
       fetchAnnouncements();
-    }).then(unsub => {
-      unsubAnnouncements = unsub;
-    }).catch(err => {
-      console.warn('[PB Realtime Broadcast] Failed to subscribe to announcements, falling back to polling:', err);
     });
 
     // Poll every 5 minutes as fallback (PB realtime handles instant updates)
@@ -81,11 +74,7 @@ export default function BroadcastBanner() {
 
     return () => {
       clearInterval(interval);
-      if (unsubAnnouncements) {
-        unsubAnnouncements();
-      } else {
-        pb.collection('announcements').unsubscribe('*').catch(() => {});
-      }
+      unsubAnnouncements();
     };
   }, []);
 

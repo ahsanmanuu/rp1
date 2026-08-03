@@ -6,6 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { createPb } from "@/lib/pb";
+import { pbSubscribe, adminTokenProvider } from "@/lib/pbRealtime";
 import AdminSidebar from "@/components/AdminSidebar";
 import { Theme, themes, getAccentColor } from "@/components/AdminThemeStyles";
 import { useAdminTheme } from "@/contexts/AdminThemeContext";
@@ -677,13 +678,11 @@ export default function AdminDashboardPage() {
   useEffect(() => { fetchSocialMediaStats(); }, [fetchSocialMediaStats]);
 
   useEffect(() => {
-    const pb = createPb();
     const unsubFns: (() => void)[] = [];
-    (async () => {
-      for (const c of CONTENT_COLLECTIONS) {
-        try { const u = await pb.collection(c.name).subscribe('*', () => { fetchSocialMediaStats(); }); unsubFns.push(u); } catch {}
-      }
-    })();
+    const opts = { tokenProvider: adminTokenProvider };
+    for (const c of CONTENT_COLLECTIONS) {
+      try { unsubFns.push(pbSubscribe(c.name, '*', () => { fetchSocialMediaStats(); }, opts)); } catch {}
+    }
     return () => { for (const fn of unsubFns) { try { fn(); } catch {} } };
   }, [fetchSocialMediaStats]);
 

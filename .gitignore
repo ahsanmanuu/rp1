@@ -80,5 +80,6 @@ settings.local.json
 pocketbase.exe
 pb_data/*
 !pb_data/storage/
+admin_creds.json
 pb_hooks/
 scripts/migrate-session-imports.ps1

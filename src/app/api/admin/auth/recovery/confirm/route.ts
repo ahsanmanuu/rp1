@@ -14,9 +14,11 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Password must be at least 8 characters long" }, { status: 400 });
     }
 
+    const cleanEmail = String(email).trim().toLowerCase();
+
     // Look up the verification token
     const verificationToken = await prisma.verificationToken.findUnique({
-      where: { identifier_token: { identifier: email, token } },
+      where: { identifier_token: { identifier: cleanEmail, token } },
     });
 
     if (!verificationToken) {
@@ -24,9 +26,9 @@ export async function PUT(req: Request) {
     }
 
     // Check expiry
-    if (verificationToken.expires < new Date()) {
+    if (new Date(verificationToken.expires) < new Date()) {
       await prisma.verificationToken.delete({
-        where: { identifier_token: { identifier: email, token } },
+        where: { id: verificationToken.id },
       });
       return NextResponse.json({ error: "Recovery token has expired" }, { status: 400 });
     }
@@ -34,7 +36,7 @@ export async function PUT(req: Request) {
     // Find admin in PocketBase _superusers
     const adminPb = await pbAdmin();
     const records = await adminPb.collection("_superusers").getFullList({
-      filter: `email = "${email}"`,
+      filter: `email = "${cleanEmail}"`,
     });
 
     if (records.length === 0) {
@@ -47,9 +49,9 @@ export async function PUT(req: Request) {
       passwordConfirm: password,
     });
 
-    // Delete the verification token
+    // Delete the verification token (adapter delete requires where.id)
     await prisma.verificationToken.delete({
-      where: { identifier_token: { identifier: email, token } },
+      where: { id: verificationToken.id },
     });
 
     // Log the event

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from '@/lib/pb-auth-react';
+import { pbSubscribe } from '@/lib/pbRealtime';
 
 export interface LayoutSettingsData {
   pages: Record<string, any>;
@@ -153,59 +154,44 @@ export function useLayoutSync(isAdmin: boolean = false) {
     };
   }, [fetchSettings]);
 
-  // Realtime PocketBase layout settings subscription
+  // Realtime PocketBase layout settings subscription (shared client manager)
   useEffect(() => {
     if (!activeUserId || !token) return;
 
-    let isSubscribed = false;
-    let pbClient: any = null;
+    const unsub = pbSubscribe('layout_settings', '*', (e) => {
+      if (e.action === 'update' || e.action === 'create') {
+        const record = e.record;
+        const targetUserId = isAdmin ? 'admin' : activeUserId;
+        if (record.userId === targetUserId) {
+          const remoteSettings: LayoutSettingsData = {
+            pages: record.pages || {},
+            windows: record.windows || {},
+            panels: record.panels || {},
+            cards: record.cards || {},
+          };
 
-    const setupSubscription = async () => {
-      try {
-        const { createPb } = await import('@/lib/pb');
-        pbClient = createPb();
-        pbClient.authStore.save(token, null);
-        
-        await pbClient.collection('layout_settings').subscribe('*', (e: any) => {
-          if (e.action === 'update' || e.action === 'create') {
-            const record = e.record;
-            const targetUserId = isAdmin ? 'admin' : activeUserId;
-            if (record.userId === targetUserId) {
-              const remoteSettings: LayoutSettingsData = {
-                pages: record.pages || {},
-                windows: record.windows || {},
-                panels: record.panels || {},
-                cards: record.cards || {},
-              };
-              
-              setSettings((current) => {
-                const currentStr = JSON.stringify(current);
-                const remoteStr = JSON.stringify(remoteSettings);
-                if (currentStr !== remoteStr) {
-                  prevSettingsRef.current = remoteStr;
-                  if (typeof window !== 'undefined') {
-                    localStorage.setItem(localKey, remoteStr);
-                  }
-                  return remoteSettings;
-                }
-                return current;
-              });
+          setSettings((current) => {
+            const currentStr = JSON.stringify(current);
+            const remoteStr = JSON.stringify(remoteSettings);
+            if (currentStr !== remoteStr) {
+              prevSettingsRef.current = remoteStr;
+              if (typeof window !== 'undefined') {
+                localStorage.setItem(localKey, remoteStr);
+              }
+              return remoteSettings;
             }
-          }
-        });
-        isSubscribed = true;
-        console.log('[useLayoutSync] Subscribed to realtime layout_settings updates');
-      } catch (err) {
-        console.warn('[useLayoutSync] Failed to subscribe to realtime updates:', err);
+            return current;
+          });
+        }
       }
-    };
+    }, {
+      tokenProvider: () => token,
+    });
 
-    setupSubscription();
+    console.log('[useLayoutSync] Subscribed to realtime layout_settings updates');
 
     return () => {
-      if (isSubscribed && pbClient) {
-        pbClient.collection('layout_settings').unsubscribe('*').catch(() => {});
-      }
+      unsub();
     };
   }, [activeUserId, token, localKey, isAdmin]);
 

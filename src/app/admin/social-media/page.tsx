@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { createPb } from '@/lib/pb';
+import { pbSubscribe, adminTokenProvider } from '@/lib/pbRealtime';
 import { useSiteLogo } from '@/lib/useSiteLogo';
 import ProLoader from '@/components/ProLoader';
 import AdminSidebar from '@/components/AdminSidebar';
@@ -205,24 +206,19 @@ export default function AdminSocialMediaPage() {
   }, [fetchGeneric]);
 
   useEffect(() => {
-    const pb = createPb();
     const unsubFns: (() => void)[] = [];
-    (async () => {
+    const opts = { tokenProvider: adminTokenProvider };
+    try {
+      unsubFns.push(pbSubscribe('banners', '*', () => { fetchBanners(); }, opts));
+    } catch {}
+    try {
+      unsubFns.push(pbSubscribe('testimonials', '*', () => { fetchTestimonials(); }, opts));
+    } catch {}
+    for (const [key, cfg] of Object.entries(COLLECTION_CONFIGS)) {
       try {
-        const ub = await pb.collection('banners').subscribe('*', () => { fetchBanners(); });
-        unsubFns.push(ub);
+        unsubFns.push(pbSubscribe(cfg.pbCollection, '*', () => { fetchGeneric(key); }, opts));
       } catch {}
-      try {
-        const ut = await pb.collection('testimonials').subscribe('*', () => { fetchTestimonials(); });
-        unsubFns.push(ut);
-      } catch {}
-      for (const [key, cfg] of Object.entries(COLLECTION_CONFIGS)) {
-        try {
-          const u = await pb.collection(cfg.pbCollection).subscribe('*', () => { fetchGeneric(key); });
-          unsubFns.push(u);
-        } catch {}
-      }
-    })();
+    }
     return () => { for (const fn of unsubFns) { try { fn(); } catch {} } };
   }, [fetchBanners, fetchTestimonials, fetchGeneric]);
 

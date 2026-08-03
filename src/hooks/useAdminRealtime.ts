@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
-import { createPb } from '@/lib/pb';
+import { pbSubscribe, adminTokenProvider } from '@/lib/pbRealtime';
 
 type PbEvent = { action: string; record?: any };
 
@@ -60,45 +60,28 @@ export function useAdminRealtime(options: UseAdminRealtimeOptions = {}) {
     }
 
     if (typeof window !== 'undefined') {
-      const setupSubscriptions = async () => {
+      const unsubFns: (() => void)[] = [];
+
+      for (const col of triggerCollections) {
         try {
-          const pb = createPb();
-
-          const tokenCookie = document.cookie.split('; ').find(c => c.startsWith('pb_token='));
-          const adminToken = localStorage.getItem('latexify-admin-token');
-          if (adminToken) {
-            pb.authStore.save(adminToken, null);
-          } else if (tokenCookie) {
-            pb.authStore.save(tokenCookie.split('=')[1], null);
-          }
-
-          const unsubFns: (() => void)[] = [];
-
-          for (const col of triggerCollections) {
-            try {
-              const unsub = await pb.collection(col).subscribe('*', triggerRefresh);
-              unsubFns.push(unsub);
-            } catch {}
-          }
-
-          for (const sub of customSubscriptions) {
-            try {
-              const handler = (e: PbEvent) => {
-                if (mountedRef.current) sub.onEvent?.(e);
-              };
-              const unsub = await pb.collection(sub.collection).subscribe(sub.filter || '*', handler as any);
-              unsubFns.push(unsub);
-            } catch {}
-          }
-
-          unsubRef.current = () => {
-            for (const fn of unsubFns) {
-              try { fn(); } catch {}
-            }
-          };
+          unsubFns.push(pbSubscribe(col, '*', triggerRefresh, { tokenProvider: adminTokenProvider }));
         } catch {}
+      }
+
+      for (const sub of customSubscriptions) {
+        try {
+          const handler = (e: PbEvent) => {
+            if (mountedRef.current) sub.onEvent?.(e);
+          };
+          unsubFns.push(pbSubscribe(sub.collection, sub.filter || '*', handler as any, { tokenProvider: adminTokenProvider }));
+        } catch {}
+      }
+
+      unsubRef.current = () => {
+        for (const fn of unsubFns) {
+          try { fn(); } catch {}
+        }
       };
-      setupSubscriptions();
     }
 
     return () => {

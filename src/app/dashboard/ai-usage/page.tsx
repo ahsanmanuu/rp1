@@ -14,6 +14,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
 import { createPb } from '@/lib/pb';
+import { pbSubscribe } from '@/lib/pbRealtime';
 import Sidebar from '@/components/Sidebar';
 import ProLoader from "@/components/ProLoader";
 
@@ -131,28 +132,26 @@ export default function AiUsagePage() {
     // Auto-poll every 15s
     const pollInterval = setInterval(refreshAll, 15000);
 
-    // PocketBase real-time subscription
-    let unsubSummaries: (() => void) | null = null;
-    let unsubUsers: (() => void) | null = null;
+    // PocketBase real-time subscription (shared client manager)
+    const unsubFns: (() => void)[] = [];
 
     try {
-      const pb = createPb();
-      const token = typeof window !== 'undefined' ? localStorage.getItem('auth-token') : null;
-      if (token) pb.authStore.save(token, null);
-
       const triggerRefresh = () => {
         if (mountedRef.current) refreshAll();
       };
 
-      pb.collection('ai_usage_daily_summaries').subscribe('*', triggerRefresh).then(u => { unsubSummaries = u; }).catch(() => {});
-      pb.collection('users').subscribe('*', triggerRefresh).then(u => { unsubUsers = u; }).catch(() => {});
+      unsubFns.push(pbSubscribe('ai_usage_daily_summaries', '*', triggerRefresh, {
+        tokenProvider: () => (typeof window !== 'undefined' ? localStorage.getItem('auth-token') : null),
+      }));
+      unsubFns.push(pbSubscribe('users', '*', triggerRefresh, {
+        tokenProvider: () => (typeof window !== 'undefined' ? localStorage.getItem('auth-token') : null),
+      }));
     } catch {}
 
     return () => {
       mountedRef.current = false;
       clearInterval(pollInterval);
-      if (unsubSummaries) try { unsubSummaries(); } catch {}
-      if (unsubUsers) try { unsubUsers(); } catch {}
+      for (const fn of unsubFns) { try { fn(); } catch {} }
     };
   }, [status, fetchStatus, fetchHistory]);
 

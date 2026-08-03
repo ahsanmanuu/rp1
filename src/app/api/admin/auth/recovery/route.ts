@@ -1,6 +1,19 @@
 import { NextResponse } from "next/server";
-import { createPb } from "@/lib/pb";
+import crypto from "crypto";
+import { pbAdmin } from "@/lib/pb";
 import { sendRecoveryEmail } from "@/lib/mailer";
+
+function getOrigin(req: Request): string {
+  const host = req.headers.get("host");
+  const forwardedProto = req.headers.get("x-forwarded-proto");
+  const proto = forwardedProto ? forwardedProto.split(",")[0].trim() : "http";
+  let origin = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "";
+  if (!origin || !origin.startsWith("http")) {
+    origin = host ? `${proto}://${host}` : "http://localhost:3000";
+  }
+  if (origin.endsWith("/")) origin = origin.slice(0, -1);
+  return origin;
+}
 
 export async function POST(req: Request) {
   try {
@@ -8,41 +21,40 @@ export async function POST(req: Request) {
     if (!email) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
     }
+    const cleanEmail = String(email).trim().toLowerCase();
 
-    const pb = createPb();
-
-    // Check if admin exists in _superusers collection
-    let adminExists = false;
+    // Check if admin exists in _superusers — must use pbAdmin() because
+    // _superusers listRule is null (superuser-only access).
+    const adminPb = await pbAdmin();
+    let adminRecord: any = null;
     try {
-      const records = await pb.collection("_superusers").getFullList({
-        filter: `email = "${email}"`,
+      const records = await adminPb.collection("_superusers").getFullList({
+        filter: `email = "${cleanEmail}"`,
       });
-      adminExists = records.length > 0;
-    } catch {
-      // If we can't check, still return success to prevent enumeration
+      adminRecord = records[0] || null;
+    } catch (lookupErr: any) {
+      console.warn("[Admin Recovery] Superuser lookup failed:", lookupErr?.message || lookupErr);
     }
 
-    if (!adminExists) {
+    if (!adminRecord) {
       // Return success even if admin not found (prevent enumeration)
       return NextResponse.json({ message: "Recovery link sent if account exists" });
     }
 
-    // Use PB's built-in admin password reset
-    try {
-      await pb.collection("_superusers").requestPasswordReset(email);
-    } catch (pbErr: any) {
-      console.warn("[Admin Recovery] PB requestPasswordReset failed, using custom flow:", pbErr?.message);
+    // App-managed token flow (never use PB's built-in requestPasswordReset:
+    // its emails link to settings meta.appURL, which is localhost in production).
+    const token = crypto.randomBytes(32).toString("hex");
+    const expires = new Date(Date.now() + 3600000); // 1 hour
 
-      // Fallback: generate custom token and send via our email service
-      const crypto = await import("crypto");
-      const token = crypto.randomBytes(32).toString("hex");
-      const expires = new Date(Date.now() + 3600000); // 1 hour
+    const { prisma } = await import("@/lib/prisma");
+    await prisma.verificationToken.create({
+      data: { identifier: cleanEmail, token, expires },
+    });
 
-      const origin = req.headers.get("origin") || process.env.NEXTAUTH_URL || "https://latexify.io";
-      const resetLink = `${origin}/admin/recovery/reset?token=${token}&email=${encodeURIComponent(email)}`;
+    const origin = getOrigin(req);
+    const resetLink = `${origin}/admin/recovery/reset?token=${token}&email=${encodeURIComponent(cleanEmail)}`;
 
-      await sendRecoveryEmail(email, resetLink, "Admin", undefined);
-    }
+    await sendRecoveryEmail(cleanEmail, resetLink, "Admin", adminRecord.id);
 
     return NextResponse.json({ message: "Recovery link sent if account exists" });
   } catch (error: any) {

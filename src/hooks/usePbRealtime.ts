@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPb } from '@/lib/pb';
+import { pbSubscribe } from '@/lib/pbRealtime';
 
 export type PbRealtimeEvent = 'create' | 'update' | 'delete';
 
@@ -125,17 +126,12 @@ export function usePbRealtime<T = any>(options: PbRealtimeOptions<T>) {
         await fetchRecords();
       }, pollIntervalMs);
 
-      // PB Realtime subscription (in addition to polling)
+      // PB Realtime subscription (in addition to polling) — via the shared
+      // realtime client manager (one SSE connection per auth token)
       if (subscribeRealtime && typeof window !== 'undefined') {
         try {
-          const pb = createPb();
-          const tokenCookie = document.cookie.split('; ').find(c => c.startsWith('pb_token='));
-          if (tokenCookie) {
-            const token = tokenCookie.split('=')[1];
-            pb.authStore.save(token, null);
-          }
           const subFilter = subscribeFilter || (userId ? `userId = "${userId}"` : undefined);
-          const unsub = await pb.collection(collection).subscribe('*', (e: any) => {
+          subRef.current = pbSubscribe(collection, '*', (e) => {
             try {
               if (!mountedRef.current) return;
               fetchRecords();
@@ -147,7 +143,6 @@ export function usePbRealtime<T = any>(options: PbRealtimeOptions<T>) {
               console.warn(`[usePbRealtime] Subscription callback error for ${collection}:`, subErr);
             }
           }, subFilter ? { filter: subFilter } : undefined);
-          subRef.current = unsub;
         } catch (err) {
           // PB subscription silently fails (e.g., no permission, unauthenticated)
           // polling fallback still works
