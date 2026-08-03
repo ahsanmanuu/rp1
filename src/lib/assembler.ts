@@ -1958,6 +1958,12 @@ export class ModularLatexAssembler {
             }
             dedupedNodes.push(n);
         }
+        const isRefSection = /^(?:[\d\.]+\s*)?(?:references?|bibliography|works cited|literature cited)\b/i.test(currentSectionTitle.trim());
+        if (isRefSection && (doc.references || []).length > 0) {
+          currentSectionNodes = [];
+          return;
+        }
+
         const sectionContent = dedupedNodes.map(n => LatexAssembler.assembleNode({ ...n, sectionStyle: mapping.sectionStyle } as any, mathBlocks)).join("\n\n");
         const safeTitle = currentSectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20);
         const fileName = `sections/${sectionIdx.toString().padStart(2, '0')}_${safeTitle}.tex`;

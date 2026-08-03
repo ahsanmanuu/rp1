@@ -474,11 +474,15 @@ export async function analyzeManuscriptStructure(
 
     const frontMatter = plainText.substring(0, 12000);
     let fullText = plainText;
-    if (fullText.length > FULL_TEXT_LIMIT) {
-      const keepFront = FULL_TEXT_LIMIT - FULL_TEXT_TAIL;
-      fullText =
-        `${plainText.substring(0, keepFront)}\n...[middle of document elided for length]...\n` +
-        plainText.substring(plainText.length - FULL_TEXT_TAIL);
+    if (fullText.length > 25000) {
+      // Build a compact structural skeleton preserving frontmatter, outline landmarks, and tail
+      const skeletonHeadings = sectionTitles.slice(0, 40).map(t => `[SECTION]: ${t}`).join('\n');
+      const skeletonFigures = figureCaptions.slice(0, 20).map(c => `[FIGURE]: ${c}`).join('\n');
+      const skeletonTables = tableCaptions.slice(0, 20).map(c => `[TABLE]: ${c}`).join('\n');
+      const skeletonAlgos = algorithmTitles.slice(0, 10).map(a => `[ALGORITHM]: ${a}`).join('\n');
+      const skeletonLandmarks = [skeletonHeadings, skeletonFigures, skeletonTables, skeletonAlgos].filter(Boolean).join('\n');
+
+      fullText = `${plainText.substring(0, 10000)}\n\n--- DOCUMENT LANDMARK SKELETON ---\n${skeletonLandmarks}\n--- END SKELETON ---\n\n${plainText.substring(plainText.length - 8000)}`;
     }
     const equationSnippets = ((deepData.mathBlocks || []) as Array<{ latex?: string }>)
       .filter(m => m.latex)

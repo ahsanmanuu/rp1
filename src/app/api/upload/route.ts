@@ -1052,18 +1052,88 @@ export async function POST(req: Request) {
         const pdfDoc = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise;
         for (let i = 1; i <= pdfDoc.numPages; i++) {
           const page = await pdfDoc.getPage(i);
+          const viewport = page.getViewport({ scale: 1.0 });
+          const pageWidth = viewport.width || 612;
           const content = await page.getTextContent();
-          const pageLines: Map<number, string[]> = new Map();
+          
+          interface PdfItem { str: string; x: number; y: number; width: number }
+          const items: PdfItem[] = [];
           content.items.forEach((item: any) => {
-            if (!('str' in item)) return;
-            const y = Math.round(item.transform?.[5] || 0);
-            if (!pageLines.has(y)) pageLines.set(y, []);
-            pageLines.get(y)!.push(item.str);
+            if (!('str' in item) || !item.str.trim()) return;
+            const x = item.transform?.[4] || 0;
+            const y = item.transform?.[5] || 0;
+            items.push({ str: item.str, x, y, width: item.width || 0 });
           });
-          // Sort by Y descending (top to bottom) then join
-          const sortedYs = Array.from(pageLines.keys()).sort((a, b) => b - a);
-          sortedYs.forEach(y => { pdfText += pageLines.get(y)!.join(' ') + '\n'; });
-          pdfText += '\n';
+
+          if (items.length === 0) continue;
+
+          // Group items into baseline lines (Y tolerance = 3.5 points)
+          const lines: { y: number; items: PdfItem[] }[] = [];
+          items.sort((a, b) => b.y - a.y);
+          for (const item of items) {
+            let placed = false;
+            for (const line of lines) {
+              if (Math.abs(line.y - item.y) <= 3.5) {
+                line.items.push(item);
+                placed = true;
+                break;
+              }
+            }
+            if (!placed) {
+              lines.push({ y: item.y, items: [item] });
+            }
+          }
+
+          // Sort items in each line left-to-right (X ascending)
+          lines.forEach(l => l.items.sort((a, b) => a.x - b.x));
+
+          // Detect two-column layout: items present on both left and right sides of page center
+          const midX = pageWidth / 2;
+          const leftItems = items.filter(it => it.x < midX - 20);
+          const rightItems = items.filter(it => it.x > midX + 20);
+          const isTwoColumn = leftItems.length > 10 && rightItems.length > 10;
+
+          if (isTwoColumn) {
+            // Classify lines into Header, Left Column, Right Column, Footer
+            const headerLines: string[] = [];
+            const leftColLines: string[] = [];
+            const rightColLines: string[] = [];
+            const footerLines: string[] = [];
+
+            const maxY = Math.max(...lines.map(l => l.y));
+            const minY = Math.min(...lines.map(l => l.y));
+
+            lines.forEach(l => {
+              const lineText = l.items.map(it => it.str).join(' ');
+              const lineMinX = Math.min(...l.items.map(it => it.x));
+              const lineMaxX = Math.max(...l.items.map(it => it.x + it.width));
+              const isFullWidth = (lineMaxX - lineMinX) > (pageWidth * 0.6);
+
+              if (isFullWidth || l.y > maxY - 72) {
+                // Top header / full-width title / abstract
+                headerLines.push(lineText);
+              } else if (l.y < minY + 36) {
+                // Bottom footer / page numbers
+                footerLines.push(lineText);
+              } else {
+                // Determine column: if all items are on the left side vs right side
+                const avgX = l.items.reduce((s, it) => s + it.x, 0) / l.items.length;
+                if (avgX < midX) {
+                  leftColLines.push(lineText);
+                } else {
+                  rightColLines.push(lineText);
+                }
+              }
+            });
+
+            // Reassemble in reading order: Header -> Left Column -> Right Column -> Footer
+            const pageTextOrder = [...headerLines, ...leftColLines, ...rightColLines, ...footerLines];
+            pdfText += pageTextOrder.join('\n') + '\n\n';
+          } else {
+            // Single column: top-to-bottom lines
+            const pageTextOrder = lines.map(l => l.items.map(it => it.str).join(' '));
+            pdfText += pageTextOrder.join('\n') + '\n\n';
+          }
         }
       } catch (e: any) {
         console.error('[PDF_EXTRACT]', e.message);
