@@ -13,6 +13,8 @@ services:
         value: 20.19.0
       - key: HOSTNAME
         value: 0.0.0.0
+      - key: PORT
+        value: "10000"
       - key: NEXTAUTH_SECRET
         sync: false
       - key: NEXTAUTH_URL

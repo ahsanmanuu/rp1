@@ -182,7 +182,7 @@ async function startPocketBase() {
     }
 
     function spawnPocketBase() {
-      pbProcess = spawn(pbBinary, ['serve', '--http=0.0.0.0:8090', `--dir=${pbDataDir}`, `--migrationsDir=${migrationsDir}`], {
+      pbProcess = spawn(pbBinary, ['serve', '--http=127.0.0.1:8090', `--dir=${pbDataDir}`, `--migrationsDir=${migrationsDir}`], {
         stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env },
       });

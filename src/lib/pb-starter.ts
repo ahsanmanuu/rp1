@@ -151,7 +151,7 @@ export async function ensureAndStartPocketBase(): Promise<boolean> {
       }
 
       log(`Spawning PocketBase process from ${binaryPath}...`);
-      pbProcessInstance = spawn(binaryPath, ['serve', '--http=0.0.0.0:8090', `--dir=${pbDataDir}`, `--migrationsDir=${migrationsDir}`], {
+      pbProcessInstance = spawn(binaryPath, ['serve', '--http=127.0.0.1:8090', `--dir=${pbDataDir}`, `--migrationsDir=${migrationsDir}`], {
         stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env },
       });
