@@ -674,7 +674,6 @@ export async function runHardenedPipeline(
     const mainTex = finalNormalized.find(f => normalizePath(f.path) === normalizePath(cleanMain));
     if (mainTex && typeof mainTex.content === 'string') {
       const fileSet = new Set(finalNormalized.map(f => normalizePath(f.path)));
-      let structuredContentRecovery: Record<string, string> | null = null;
       const texRefs = mainTex.content.match(/\\(?:include|input)\s*\{([^}]+)\}/gi);
       if (texRefs) {
         for (const ref of texRefs) {
@@ -686,37 +685,15 @@ export async function runHardenedPipeline(
             const norm = normalizePath(cand);
             if (!fileSet.has(norm)) {
               let recovered = false;
-              // Attempt 1: Recover from DB structuredContent.modularComponents
-              if (projectId && !structuredContentRecovery) {
-                try {
-                  const { prisma } = require('@/lib/prisma');
-                  const project = await prisma.project.findUnique({
-                    where: { id: projectId },
-                    select: { structuredContent: true }
-                  });
-                  if (project?.structuredContent) {
-                    const parsed = JSON.parse(project.structuredContent);
-                    if (parsed?.modularComponents && typeof parsed.modularComponents === 'object') {
-                      structuredContentRecovery = parsed.modularComponents;
-                    }
-                  }
-                } catch (scErr) {
-                  console.warn('[PIPELINE] structuredContent recovery error:', scErr);
-                }
-              }
-              if (structuredContentRecovery) {
-                const contentKey = Object.keys(structuredContentRecovery).find(k =>
-                  normalizePath(k) === norm || normalizePath(k) === normalizePath(target)
-                );
-                if (contentKey) {
-                  const recoveredContent = structuredContentRecovery[contentKey];
-                  finalNormalized.push({ path: cand, content: recoveredContent });
-                  fileSet.add(norm);
-                  recovered = true;
-                  console.log(`[PIPELINE] Recovered missing file from structuredContent: ${cand} (${recoveredContent.length}b)`);
-                }
-              }
-              // Attempt 2: Recover from ProjectFile records
+              // NOTE (delete fix): the structuredContent.modularComponents
+              // snapshot is NEVER updated when a file is deleted from the IDE —
+              // it is the frozen assembly-time copy of every section. Recovering
+              // missing files from it RESURRECTED deleted files forever: the
+              // user deletes sections/section1.tex, main.tex still \input's it,
+              // and this block pulled the stale copy back into every compile.
+              // The editor session payload is the source of truth — recovery is
+              // limited to the delete-aware ProjectFile rows below.
+              // Attempt 1: Recover from ProjectFile records
               if (!recovered && projectId) {
                 try {
                   const { prisma } = require('@/lib/prisma');
@@ -733,7 +710,6 @@ export async function runHardenedPipeline(
                   console.warn('[PIPELINE] ProjectFile recovery error:', pfErr);
                 }
               }
-              // Attempt 3: Safe-disable the reference to prevent blank pages.
               // Use \iffalse / \fi so surrounding inline text is preserved.
               // NOTE: this is NOT silent — the warning is surfaced to the
               // client so the user knows content referenced by main.tex is
@@ -749,6 +725,34 @@ export async function runHardenedPipeline(
             }
           }
         }
+      }
+    }
+
+    // ── DUPLICATE REFERENCES HEADING STRIP ───────────────────────────────────
+    // When an inline (thebibliography) bibliography is present, its generated
+    // source already carries its own \section*{References} heading. Empty body
+    // sections whose heading is exactly "References" (AI-forced section
+    // insertion, legacy per-section files, template leftovers) render a SECOND
+    // "References" heading in the PDF. Strip those headings when the next
+    // structural element is another section/input (i.e. the heading is empty),
+    // but NEVER touch the bibliography file's own heading (it is followed by
+    // \begin{thebibliography} which the lookahead excludes).
+    const hasInlineBibliography = finalNormalized.some(f =>
+      typeof f.content === 'string' && f.content.includes('\\begin{thebibliography}')
+    );
+    if (hasInlineBibliography) {
+      const refHeadingStrip = /\\section\*?\{References\}[^\S\r\n]*(?=(?:\s*(?:\\section|\\subsection|\\subsubsection|\\chapter|\\input|\\include|\\end\{document\})|\s*$))/gi;
+      let stripped = 0;
+      for (const f of finalNormalized) {
+        if (typeof f.content !== 'string' || !/\\section\*?\{References\}/i.test(f.content)) continue;
+        const cleaned = f.content.replace(refHeadingStrip, '');
+        if (cleaned !== f.content) {
+          f.content = cleaned;
+          stripped++;
+        }
+      }
+      if (stripped > 0) {
+        console.log(`[PIPELINE] Stripped ${stripped} duplicate empty "References" section heading(s) (inline bibliography owns the heading).`);
       }
     }
 
@@ -2110,6 +2114,15 @@ export async function hardenedDiscovery(projectId: string | null, files: FilePay
   });
   const { files: normalized, mainFile: cleanMain } = prepareStructuredPayload(sanitized, mainFile);
   
+  const normCleanMain = normalizePath(cleanMain);
+  const mainInSession = normalized.find(f => normalizePath(f.path) === normCleanMain);
+  // DELETE FIX: the editor session is authoritative when it carries a real
+  // main.tex with a documentclass. Files the user deleted from the IDE are
+  // absent from the session — they must NOT be resurrected from stale DB rows
+  // or the disk cache below. (When main.tex itself is missing/corrupt the
+  // DB-fallback below may still restore it — that path stays intentional.)
+  const sessionComplete = !!mainInSession?.content && typeof mainInSession.content === 'string' && mainInSession.content.includes('\\documentclass');
+
   if (!projectId) return normalized;
 
   // ── UNIVERSAL DB FALLBACK: Restore main.tex from DB if missing/empty ─────
@@ -2188,7 +2201,14 @@ export async function hardenedDiscovery(projectId: string | null, files: FilePay
         if (!dbFile.filename || !dbFile.content) continue;
         const normPath = normalizePath(dbFile.filename);
         if (!sessionPaths.has(normPath) && !normalized.some(f => normalizePath(f.path) === normPath)) {
-          const ext = dbFile.fileType || (dbFile.filename.split('.').pop() || 'tex').toLowerCase();
+          const fileExt = (dbFile.filename.split('.').pop() || '').toLowerCase();
+          // DELETE FIX: never resurrect deleted .tex/.bib source files from
+          // stale DB rows when the session carries a real main.tex.
+          if (sessionComplete && /^(tex|bib)$/i.test(fileExt)) {
+            console.log(`[PIPELINE] Skipping DB recovery of deleted file: ${dbFile.filename}`);
+            continue;
+          }
+          const ext = dbFile.fileType || fileExt;
           const isBinary = /^(png|jpg|jpeg|webp|gif|pdf|eps|otf|ttf|woff|woff2|tfm|pfb|afm|heic|heif|tiff|tif|bmp|avif|svg)$/i.test(ext);
           normalized.push({
             path: dbFile.filename,
@@ -2322,6 +2342,13 @@ export async function hardenedDiscovery(projectId: string | null, files: FilePay
     if (!isStructural && !isBinary) continue;
 
     const existingIdx = normalized.findIndex(f => normalizePath(f.path) === normalizePath(relPath));
+    // DELETE FIX: never resurrect deleted .tex/.bib source files from the disk
+    // cache when the session carries a real main.tex (the IDE delete already
+    // removed them from disk + DB; stale copies here must not win).
+    if (sessionComplete && existingIdx === -1 && /^(tex|bib)$/i.test(ext.slice(1))) {
+      console.log(`[PIPELINE] Skipping disk recovery of deleted file: ${relPath}`);
+      continue;
+    }
     if (existingIdx !== -1) {
         if (isBinary) {
             // Prioritize pristine disk buffer for binary files to fix frontend data URI corruption

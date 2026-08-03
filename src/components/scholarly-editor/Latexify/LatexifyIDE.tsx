@@ -912,7 +912,15 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
 
   const switchTab = async (path: string) => {
     if (path === activeFile) return;
-    if (fs && !isImage(activeFile)) await fs.writeFile(projectId, activeFile, code);
+    // CRITICAL (delete fix): never write the outgoing file back to the FS if it
+    // no longer exists there. handleDeleteFile() deletes the file and THEN calls
+    // switchTab() — the unconditional writeFile below re-created the deleted
+    // file in IndexedDB with its old content, so the very next compile sent it
+    // to the server and the "deleted" file kept rendering in the PDF.
+    if (fs && !isImage(activeFile)) {
+      const stillExists = await fs.readFile(projectId, activeFile);
+      if (stillExists) await fs.writeFile(projectId, activeFile, code);
+    }
     setActiveFile(path);
     if (!openTabs.includes(path)) setOpenTabs(t => [...t, path]);
     let content = '';

@@ -844,9 +844,23 @@ export function applyStructureCorrections(
     const aiSections: Array<{ title: string; level: number }> = [];
     const seenAiNorms = new Set<string>();
     const isAuthorOrAffilNoise = (title: string): boolean => isFrontMatterNoiseSection(title);
+    // REFERENCES DEDUPE: when the parser extracted real \bibitem references,
+    // the bibliography file renders the "References" heading. The AI is
+    // prompt-forced to list "References"/"Bibliography" as a section even when
+    // the body never contains it — inserting it renders a SECOND, empty
+    // "References" heading in the PDF. Skip ref-section titles here; body
+    // "References" sections that the parser DID find are dropped at assembly
+    // time (assembler isRefSection guard).
+    const hasRealRefs = (deepData.references?.length ?? 0) > 0;
+    const isRefSectionTitle = (title: string): boolean =>
+      /^(?:[\d\.]+\s*)?(?:references?|bibliography|works cited|literature cited)\b/i.test(title.trim());
     for (const s of verdict.sections) {
       const t = String(s?.title || '').replace(/\s+/g, ' ').trim();
       if (!t || t.length < 2 || isAuthorOrAffilNoise(t)) continue;
+      if (hasRealRefs && isRefSectionTitle(t)) {
+        console.log(`[AI-STRUCT] Skipped forced section insertion: "${t}" (real references extracted — heading owned by the bibliography).`);
+        continue;
+      }
       const norm = normalizeTitleKey(t);
       if (seenAiNorms.has(norm)) continue; // dedupe duplicated AI headings
       seenAiNorms.add(norm);
