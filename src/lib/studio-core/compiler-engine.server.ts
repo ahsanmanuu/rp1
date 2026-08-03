@@ -440,6 +440,72 @@ function applyUniversalBibliographyFix(activeFiles: FilePayload[], cleanMain: st
       console.log(`[BIBFIX] Injected \\usepackage{natbib} before \\setcitestyle`);
     }
   }
+
+  // 9) UNIVERSAL INLINE BIBLIOGRAPHY: convert \\bibliography{...} + .bib files
+  // into an inline \\begin{thebibliography} environment. The compile services
+  // used on Render are SINGLE-PASS and never run bibtex/biber — a project that
+  // relies on \\bibliography{...} renders an EMPTY reference list and every
+  // citation as "[?]". Inlining the entries with their original keys into the
+  // main .tex makes references + citations work on EVERY compiler in one pass.
+  const finalTex = mainObj.content || tex;
+  if (/\\bibliography\s*\{/.test(finalTex) && !finalTex.includes('\\begin{thebibliography}')) {
+    try {
+      const bibBaseNames = [...finalTex.matchAll(/\\bibliography\s*\{([^}]*)\}/gi)]
+        .flatMap(m => (m[1] || '').split(','))
+        .map(s => path.basename(s.trim()).replace(/\.bib$/i, '').toLowerCase())
+        .filter(Boolean);
+      const entries: string[] = [];
+      const seenKeys = new Set<string>();
+      for (const base of bibBaseNames) {
+        const bibFile = activeFiles.find(f => {
+          const norm = normalizePath(f.path);
+          return norm === `${base}.bib` ||
+            norm === `references/${base}.bib` ||
+            norm.endsWith(`/${base}.bib`);
+        });
+        if (!bibFile) continue;
+        const bibText = String(bibFile.content || '');
+        const bibMatches = [...bibText.matchAll(/@\s*\w+\s*\{\s*([^,\s]+)\s*,([\s\S]*?)(?=\n\s*@\s*\w+\s*\{|\s*$)/gi)];
+        for (const bm of bibMatches) {
+          const key = bm[1].trim();
+          if (!key || seenKeys.has(key)) continue;
+          seenKeys.add(key);
+          const body = bm[2] || '';
+          const field = (name: string): string => {
+            const fm = body.match(new RegExp(`(?:^|[,\\s])${name}\\s*=\\s*[{"]((?:[^}"]|\\{[^}]*\\})*)[}"]`, 'i'));
+            if (!fm) return '';
+            return (fm[1] || '').replace(/\s+/g, ' ').trim();
+          };
+          const author = field('author') || field('editor') || 'Anonymous';
+          const title = field('title');
+          const journal = field('journal') || field('booktitle') || '';
+          const year = field('year');
+          const vol = field('volume');
+          const pages = field('pages');
+          const parts = [author, title ? `\`\`${title}.' '` : '', journal, vol ? `vol. ${vol}` : '', pages ? `pp. ${pages}` : '', year ? `(${year})` : ''].filter(Boolean);
+          const entryText = parts.join(', ').replace(/\s{2,}/g, ' ').replace(/,\s*\.$/, '.');
+          // Escape LaTeX specials SAFELY: backslashes via placeholder FIRST
+          // (their expansion adds braces), then braces, then the rest — wrong
+          // ordering would corrupt the \textbackslash{} command itself.
+          const escapedEntry = entryText
+            .replace(/\\/g, '@@BS@@')
+            .replace(/[{}]/g, (c) => (c === '{' ? '\\{' : '\\}'))
+            .replace(/([%$#&_^~])/g, '\\$1')
+            .replace(/@@BS@@/g, '\\textbackslash{}');
+          entries.push(`\\bibitem{${key}} ${escapedEntry}`);
+        }
+      }
+      if (entries.length > 0) {
+        const inlineBib = `\n\\begin{thebibliography}{99}\n${entries.join('\n')}\n\\end{thebibliography}\n`;
+        mainObj.content = finalTex
+          .replace(/\\bibliographystyle\s*\{[^}]*\}\s*\n?/gi, '')
+          .replace(/\\bibliography\s*\{[^}]*\}/gi, (mm, idx) => (idx === 0 ? inlineBib : ''));
+        console.log(`[BIBFIX] Inlined ${entries.length} bibliography entries as thebibliography (single-pass safe).`);
+      }
+    } catch (inlineErr) {
+      console.warn('[BIBFIX] Inline bibliography conversion failed (non-critical):', inlineErr);
+    }
+  }
 }
 
 

@@ -10,7 +10,15 @@ sharp.cache({ memory: 256, items: 200, files: 0 });
 
 const IMAGE_ENHANCE_CACHE = new Map<string, Buffer>();
 
+// Big-document guard: sharp re-encoding of EVERY image (3000-dpi density tagging)
+// is the dominant CPU cost for large DOCX files and a top cause of the Render
+// ~300s request kill. After ENHANCE_IMAGE_CAP images, images pass through
+// untouched — sharp work is skipped entirely for the rest of the document.
+let enhanceImageCount = 0;
+const ENHANCE_IMAGE_CAP = 60;
+
 async function enhanceImageFor3000Dpi(buffer: Buffer): Promise<Buffer> {
+  if (enhanceImageCount >= ENHANCE_IMAGE_CAP) return buffer;
   try {
     if (!buffer || buffer.length === 0 || buffer.length > 5 * 1024 * 1024) return buffer;
     
@@ -44,6 +52,7 @@ async function enhanceImageFor3000Dpi(buffer: Buffer): Promise<Buffer> {
 
     if (IMAGE_ENHANCE_CACHE.size > 100) IMAGE_ENHANCE_CACHE.clear();
     IMAGE_ENHANCE_CACHE.set(bufKey, result);
+    enhanceImageCount++;
     return result;
   } catch (err) {
     return buffer;
@@ -324,6 +333,9 @@ function ommlToLatex(mathNode: Element, isDisplay: boolean): string {
   return isDisplay ? `\\begin{equation}\n${rawLatex}\n\\end{equation}` : `$${rawLatex}$`;
 }
 
+export const maxDuration = 300;
+export const runtime = "nodejs";
+
 export async function POST(req: Request) {
   try {
     const session = await getServerSession();
@@ -419,7 +431,16 @@ export async function POST(req: Request) {
             const mathText = (node.textContent || '').trim();
             const nonMathText = pText.replace(mathText, '').trim();
             if (nonMathText.length === 0 || /^\s*[\(\d\.\-\s\)]+\s*$/.test(nonMathText)) {
-              isDisplay = true;
+              // PARAM-ASSIGNMENT GUARD (false positive): a standalone paragraph
+              // like "LR = 0.001" or "n = 100" typed in Word's equation editor
+              // is a parameter assignment, NOT a display equation. Without this,
+              // every such line inflates the equation count in the report.
+              const isParamAssign = /^[A-Za-z][A-Za-z0-9\s_]{0,35}\s*=\s*-?[\d.,+\-eE%×x*]+\s*$/i.test(mathText) ||
+                                    /^[A-Z]{1,6}\s*=\s*-?[\d.,+\-eE%]+$/i.test(mathText) ||
+                                    (mathText.replace(/[A-Za-z0-9\s=.\-+_×*x%,()]/g, '').length === 0 && mathText.length < 40 && /^[A-Za-z][A-Za-z0-9_]*\s*=\s*[\d]/.test(mathText));
+              if (!isParamAssign) {
+                isDisplay = true;
+              }
             }
           }
           parent = parent.parentNode;
@@ -937,6 +958,20 @@ export async function POST(req: Request) {
       } catch (aiErr: any) {
         console.warn('[AI-STRUCTURE] AI structural analysis failed (non-critical):', aiErr?.message || aiErr);
       }
+
+      // XML GROUND-TRUTH OVERRIDE: the DOCX XML table/equation counts (validTables,
+      // finalEquationCount) are exact — layout/metadata tables and parameter
+      // assignments are already excluded there. Body-walk counts can over-count
+      // (comma-separated numeric lines parsed as tables, headings wrapped in
+      // OMML counted as equations), so the XML ground truth wins when present.
+      if (typeof validTables === 'number' && validTables > 0) {
+        deepData.stats.tableCount = validTables;
+      }
+      if (typeof finalEquationCount === 'number' && finalEquationCount > 0) {
+        // XML display-math count is exact (heading-like OMML and parameter
+        // assignments are excluded upstream) — it wins over any AI/heuristic count.
+        deepData.stats.equationCount = finalEquationCount;
+      }
       // --- END AI-ASSISTED STRUCTURAL VERIFICATION ---
 
       // --- BIBLIOGRAPHY EXTRACTION ---
@@ -1313,8 +1348,8 @@ export async function POST(req: Request) {
     const latexStats = calculateDocumentStats(consolidatedLatex);
     // Count only true binary image files (not .bib/.cls/.sty structural files)
     const actualImageFiles = extractedImages.filter(img => !(img as any).isStructural && /\.(png|jpe?g|webp|gif|pdf|eps|svg|heic|heif|tiff|tif|bmp|avif)$/i.test(img.name));
-    const actualChartFiles = actualImageFiles.filter(img => /rf_chart_/i.test(img.name));
-    const actualFigureFiles = actualImageFiles.filter(img => !/rf_chart_/i.test(img.name));
+    const actualChartFiles = actualImageFiles.filter(img => /rf_chart_|chart_pending_/i.test(img.name));
+    const actualFigureFiles = actualImageFiles.filter(img => !/rf_chart_|chart_pending_/i.test(img.name));
 
     let bibRefCount = 0;
     if (extractedImages && extractedImages.length > 0) {
@@ -1566,6 +1601,10 @@ export async function POST(req: Request) {
 
                 const ext = '.' + (name.split('.').pop() || '');
                 if (!LATEX_EXTS.has(ext.toLowerCase())) continue;
+                // Do NOT copy template .bib files (e.g. sample.bib) into generated
+                // projects — the assembler emits the bibliography inline and stray
+                // .bib files only confuse the project directory and downloads.
+                if (ext.toLowerCase() === '.bib') continue;
 
                 const content = fs.readFileSync(srcPath, 'utf-8');
                 if (!fs.existsSync(destPath)) fs.writeFileSync(destPath, content);

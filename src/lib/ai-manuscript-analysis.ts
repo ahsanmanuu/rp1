@@ -300,6 +300,30 @@ function normText(s: string): string {
     .trim();
 }
 
+// ── UNIVERSAL FRONT-MATTER / AUTHOR-LINE NOISE GUARD ─────────────────────────
+// Author names, designations, emails and affiliations must never appear in the
+// AI "sections" verdict (or the parser's section skeleton sent to the AI).
+// The probe strips leading numbering ("1. Dr. Mohammad Aadil Khan") and trailing
+// superscript affiliation digits ("Mohammad Aadil Khan1") which previously
+// defeated every ^-anchored regex in the pipeline.
+function isFrontMatterNoiseSection(title: string): boolean {
+  const t = String(title || '').replace(/\s+/g, ' ').trim();
+  if (!t || t.length < 2) return false;
+  if (/@/.test(t)) return true;
+  const probe = t
+    .replace(/^\s*(?:\[|\()?(?:\d+(?:st|nd|rd|th)?(?:\.\d+)*|[ivxlcdm]+|[A-Za-z])[\).:.\s-]+\s*/i, '')
+    .replace(/[\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070*†‡\d]+$/g, '')
+    .trim();
+  if (!probe) return true;
+  if (/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of|head of department|researcher|research scholar|phd scholar|scholar|librarian|bibliographer|fellow|senior research fellow|technical assistant|mr\.|ms\.|mrs\.|md)\b/i.test(probe)) return true;
+  if (/^(?:email|e-mail|mail|phone|tel|orcid|corresponding author)\b/i.test(probe)) return true;
+  if (/\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy)\b/i.test(probe.toLowerCase())) return true;
+  if (/\b(?:librarian|professor|scholar|fellow|lecturer|assistant|associate|researcher)\b/i.test(probe.toLowerCase()) && probe.length < 80) return true;
+  // Figure/Table/Algorithm caption lines are captions, never sections.
+  if (/^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(probe) && probe.length < 120) return true;
+  return false;
+}
+
 /**
  * Deterministic reconciliation of the AI verdict against the ACTUAL document
  * text. This is what keeps results identical for the same document (no drift
@@ -324,16 +348,7 @@ function reconcileVerdict(
 
   // ── Sections: keep only AI sections whose title actually appears in text ──
   // Also filter out author/affiliation noise that should never be sections.
-  const isAuthorOrAffilNoise = (title: string): boolean => {
-    if (/@/.test(title)) return true;
-    if (/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|head of|researcher|mr\.|ms\.|mrs\.|md)\b/i.test(title)) return true;
-    if (/^(?:email|e-mail|mail|phone|tel|orcid)\b/i.test(title)) return true;
-    if (/\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|center for|centre for|hospital|foundation)\b/i.test(title.toLowerCase())) return true;
-    if (/\b(?:designations?|librarian|professor|assistant|associate|lecturer)\b/i.test(title.toLowerCase()) && title.length < 80) return true;
-    // Figure/table/algorithm caption lines are captions, never sections.
-    if (/^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(title) && title.length < 120) return true;
-    return false;
-  };
+  const isAuthorOrAffilNoise = (title: string): boolean => isFrontMatterNoiseSection(title);
   if (verdict.sections && verdict.sections.length > 0) {
     const verified = verdict.sections.filter(s => {
       const t = String(s?.title || '').replace(/\s+/g, ' ').trim();
@@ -343,10 +358,14 @@ function reconcileVerdict(
       // Allow numbering-stripped match (e.g. "1. Introduction" -> "introduction")
       return inText(t.replace(/^[\d\s.\-–—:()[\]ivxlcdm]+/i, ''));
     });
-    verdict.sections = verified.length > 0 ? verified : verdict.sections;
+    // Keep the FILTERED list even when it becomes empty — falling back to the
+    // unfiltered list resurrects author-name/affiliation headings as sections.
+    verdict.sections = verified;
   }
 
   // ── Figure / table / algorithm lists: drop captions not in the text ──
+  // Returns UNDEFINED when NO entry passes containment — a fully hallucinated
+  // list must not be kept (it would inflate counts and render fake floats).
   const verifyCaptions = (list: Array<{ caption?: string }> | null | undefined): Array<{ caption?: string }> | undefined => {
     if (!list || list.length === 0) return undefined;
     const verified = list.filter(c => {
@@ -356,17 +375,18 @@ function reconcileVerdict(
       // Match the caption body without its "Figure N"/"TABLE N" prefix
       return inText(cap.replace(/^(?:fig(?:ure)?|tab(?:le)?|alg(?:orithm)?|chart|img(?:age)?)[.\s]*[\dIVXLC]*-?[.\s:-]*/i, ''));
     });
-    return verified.length > 0 ? verified : list;
+    return verified.length > 0 ? verified : undefined;
   };
-  verdict.figures = verifyCaptions(verdict.figures) ?? verdict.figures;
-  verdict.tables = verifyCaptions(verdict.tables) ?? verdict.tables;
+  verdict.figures = verifyCaptions(verdict.figures);
+  verdict.tables = verifyCaptions(verdict.tables);
   if (verdict.algorithms && verdict.algorithms.length > 0) {
     const verified = verdict.algorithms.filter(a => {
       const t = String(a?.title || '').replace(/\s+/g, ' ').trim();
       if (!t) return false;
       return inText(t) || inText(t.replace(/^algorithm[\s\d:.-]*/i, ''));
     });
-    verdict.algorithms = verified.length > 0 ? verified : verdict.algorithms;
+    // Same rule as captions: an unverifiable algorithm list is dropped entirely.
+    verdict.algorithms = verified.length > 0 ? verified : undefined;
   }
 
   // ── References: keep only entries that exist verbatim in the text ──
@@ -427,21 +447,30 @@ function reconcileVerdict(
   const detPseudo = countByType(['algorithm']);
   comps.pseudocode = bound(detPseudo, typeof comps.pseudocode === 'number' ? comps.pseudocode : 0);
 
-  // Tables: ground against verified table list and detected table body nodes.
+  // Tables: the VERIFIED AI caption list is ground truth when it exists;
+  // otherwise anchor on detected table body nodes.
   const detTables = countByType(['table']);
-  const verifiedTableCount = verdict.tables ? verdict.tables.length : 0;
-  if (detTables > 0) {
-    comps.tables = bound(detTables, verifiedTableCount > 0 ? verifiedTableCount : (typeof comps.tables === 'number' ? comps.tables : 0));
+  if (verdict.tables !== undefined) {
+    comps.tables = verdict.tables.length;
+  } else if (detTables > 0) {
+    comps.tables = bound(detTables, typeof comps.tables === 'number' ? comps.tables : 0);
   } else {
     comps.tables = detTables;
   }
 
-  // Figures: bounded max of (body figure/image nodes, AI count). Charts are a
-  // separate component (counted by their own body nodes) so figures and charts
-  // can never double-count.
+  // Figures: the VERIFIED AI caption list is the ground truth when it exists
+  // (containment-verified against the real text — the AI can subtract heuristic
+  // false positives like logos counted as figures). Without a verified list,
+  // fall back to the bounded max of (body figure/image nodes, AI count).
+  // Charts are a separate component (counted by their own body nodes) so
+  // figures and charts can never double-count.
   const detFigures = countByType(['figure', 'figure-group', 'image']);
   const detCharts = countByType(['chart']);
-  comps.figures = bound(detFigures, typeof comps.figures === 'number' ? comps.figures : 0);
+  if (verdict.figures !== undefined) {
+    comps.figures = verdict.figures.length;
+  } else {
+    comps.figures = bound(detFigures, typeof comps.figures === 'number' ? comps.figures : 0);
+  }
   comps.charts = bound(detCharts, typeof comps.charts === 'number' ? comps.charts : 0);
 
   if (Object.keys(comps).length > 0) verdict.components = comps;
@@ -467,7 +496,11 @@ export async function analyzeManuscriptStructure(
     const tableCaptions: string[] = [];
     const algorithmTitles: string[] = [];
     for (const n of deepData.body || []) {
-      if (n.type === 'heading' && n.text) sectionTitles.push(n.text);
+      // FEEDBACK-LOOP GUARD: never send parser-misdetected author/affiliation/
+      // caption headings to the AI as [SECTION] evidence — the AI would confirm
+      // them, and the containment check would then "verify" them against the
+      // text, legitimizing the false positive.
+      if (n.type === 'heading' && n.text && !isFrontMatterNoiseSection(n.text)) sectionTitles.push(n.text);
       else if ((n.type === 'figure' || n.type === 'image' || n.type === 'chart') && n.caption) figureCaptions.push(n.caption);
       else if (n.type === 'table' && n.caption) tableCaptions.push(n.caption);
       else if (n.type === 'algorithm' && n.title) algorithmTitles.push(n.title);
@@ -485,21 +518,31 @@ export async function analyzeManuscriptStructure(
     }
 
     const frontMatter = plainText.substring(0, 12000);
+    // BALANCED FULL-TEXT WINDOW: the structure-analyze agent must see the ACTUAL
+    // mid-document content (figures, tables, equations, algorithms), not a
+    // compressed skeleton of only the FIRST 40 headings/20 captions. Previously
+    // the middle of every >25K-char manuscript was elided — the AI literally
+    // could not see mid-document components, so it under-counted what the
+    // heuristic over-counted (this was the root cause of the accuracy gap vs.
+    // pasting the whole document into DeepSeek directly). Head + tail windows
+    // preserve the balanced context; the skeleton is dropped entirely (it also
+    // polluted containment checks by injecting synthetic "[FIGURE]:" lines).
     let fullText = plainText;
-    if (fullText.length > 25000) {
-      // Build a compact structural skeleton preserving frontmatter, outline landmarks, and tail
-      const skeletonHeadings = sectionTitles.slice(0, 40).map(t => `[SECTION]: ${t}`).join('\n');
-      const skeletonFigures = figureCaptions.slice(0, 20).map(c => `[FIGURE]: ${c}`).join('\n');
-      const skeletonTables = tableCaptions.slice(0, 20).map(c => `[TABLE]: ${c}`).join('\n');
-      const skeletonAlgos = algorithmTitles.slice(0, 10).map(a => `[ALGORITHM]: ${a}`).join('\n');
-      const skeletonLandmarks = [skeletonHeadings, skeletonFigures, skeletonTables, skeletonAlgos].filter(Boolean).join('\n');
-
-      fullText = `${plainText.substring(0, 10000)}\n\n--- DOCUMENT LANDMARK SKELETON ---\n${skeletonLandmarks}\n--- END SKELETON ---\n\n${plainText.substring(plainText.length - 8000)}`;
+    if (fullText.length > FULL_TEXT_LIMIT + FULL_TEXT_TAIL) {
+      fullText = `${plainText.substring(0, FULL_TEXT_LIMIT)}\n\n[... middle of the document elided for context budget ...]\n\n${plainText.substring(plainText.length - FULL_TEXT_TAIL)}`;
+      console.log(`[AI-STRUCTURE] Using balanced window: head ${FULL_TEXT_LIMIT} + tail ${FULL_TEXT_TAIL} (${fullText.length} chars of ${plainText.length}).`);
     }
     const equationSnippets = ((deepData.mathBlocks || []) as Array<{ latex?: string }>)
       .filter(m => m.latex)
       .map(m => String(m.latex).substring(0, 200))
       .slice(0, 30);
+
+    // Figure-vs-chart classification ground truth from the conversion engine:
+    // filename patterns (rf_chart_* / chart_pending_* = chart, rf_fig_* = figure)
+    // tell the AI how to split figures vs charts without seeing the images.
+    const imageClassifications = (opts.imageFiles || [])
+      .filter(n => /\.(png|jpe?g|webp|gif|pdf|eps|svg|heic|heif|tiff|tif|bmp|avif)$/i.test(n))
+      .map(n => `[IMAGE] file=${n} type=${/rf_chart_|chart_pending_/i.test(n) ? 'chart' : 'figure'}`);
 
     const documentTitle = opts.filename.replace(/\.[^/.]+$/, '');
     const baseContext = {
@@ -549,6 +592,7 @@ export async function analyzeManuscriptStructure(
           tableCaptions: tableCaptions.slice(0, 80),
           algorithmTitles: algorithmTitles.slice(0, 40),
           equationSnippets,
+          imageClassifications,
           referenceEntries: (deepData.references || []).slice(0, 150),
           heuristic: {
             title: deepData.title,
@@ -632,13 +676,14 @@ export async function analyzeManuscriptStructure(
             context: {
               ...baseContext,
               modelOverride: AI_MODEL_OVERRIDE || AI_CHEAP_FALLBACK_MODEL,
-              fullText: plainText.substring(0, 24000),
+              fullText: fullText,
               frontMatter,
               sectionTitles: sectionTitles.slice(0, 60),
               figureCaptions: figureCaptions.slice(0, 40),
               tableCaptions: tableCaptions.slice(0, 40),
               algorithmTitles: algorithmTitles.slice(0, 25),
               equationSnippets,
+              imageClassifications,
               referenceEntries: (deepData.references || []).slice(0, 80),
               heuristic: {
                 title: deepData.title,
@@ -798,17 +843,7 @@ export function applyStructureCorrections(
     const body = deepData.body || [];
     const aiSections: Array<{ title: string; level: number }> = [];
     const seenAiNorms = new Set<string>();
-    const isAuthorOrAffilNoise = (title: string): boolean => {
-      const lower = title.toLowerCase();
-      if (/@/.test(title)) return true;
-      if (/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|head of|researcher|mr\.|ms\.|mrs\.|md)\b/i.test(title)) return true;
-      if (/\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|center for|centre for|hospital|foundation)\b/i.test(lower)) return true;
-      if (/^(?:email|e-mail|mail|phone|tel|orcid)\b/i.test(title)) return true;
-      if (/\b(?:designations?|librarian|professor|assistant|associate|lecturer)\b/i.test(lower) && title.length < 80) return true;
-      // Figure/table/algorithm caption lines are captions, never sections.
-      if (/^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(title) && title.length < 120) return true;
-      return false;
-    };
+    const isAuthorOrAffilNoise = (title: string): boolean => isFrontMatterNoiseSection(title);
     for (const s of verdict.sections) {
       const t = String(s?.title || '').replace(/\s+/g, ' ').trim();
       if (!t || t.length < 2 || isAuthorOrAffilNoise(t)) continue;

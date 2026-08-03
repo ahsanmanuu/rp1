@@ -66,6 +66,38 @@ const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/;
 // Narrow AFFIL_KEYWORDS: remove generic words (research, systems, lab, group, etc.)
 const AFFIL_KEYWORDS = /(?:^|\b|\d|_|\W)(?:department|dept|university|institute|college|school|center|centre|organization|institution|corporation|inc|co\.|ltd|association|academy|laboratory|lab|division|faculty|campus|polytechnic|univ|inst|state|national)\b/i;
 
+// ── UNIVERSAL FRONT-MATTER / AUTHOR-LINE GUARD ───────────────────────────────
+// Word/PDF author blocks are frequently styled as Heading paragraphs
+// ("Dr. Mohammad Aadil Khan", "1. Dr. Md. Abdullah", "Deputy Librarian",
+// "Maulana Azad National Urdu University", "adilkabir30@gmail.com"). Every
+// heading-classification site MUST run the same probe so names/designations/
+// affiliations/emails never become \section/\subsection. The probe strips
+// leading numbering + trailing superscript affiliation digits (which defeated
+// every ^-anchored regex before) before matching.
+const DESIGNATION_RE = /^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of|head of department|researcher|research scholar|phd scholar|scholar|librarian|bibliographer|fellow|senior research fellow|technical assistant|mr\.|ms\.|mrs\.|md)\b/i;
+const EMAIL_PREFIX_RE = /^(?:email|e-mail|mail|phone|tel|orcid|corresponding author)\b/i;
+
+function stripFrontMatterPrefix(text: string): string {
+  return text
+    .replace(/^\s*(?:\[|\()?(?:\d+(?:st|nd|rd|th)?(?:\.\d+)*|[ivxlcdm]+|[A-Za-z])[\).:.\s-]+\s*/i, '')
+    .replace(/[\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070*†‡\d]+$/g, '')
+    .trim();
+}
+
+function isFrontMatterNoise(text: string): boolean {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!t || t.length < 2) return false;
+  if (EMAIL_RE.test(t)) return true;
+  const probe = stripFrontMatterPrefix(t);
+  if (!probe) return true;
+  if (DESIGNATION_RE.test(probe) || EMAIL_PREFIX_RE.test(probe)) return true;
+  if (/\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy|campus)\b/i.test(probe)) return true;
+  if (/\b(?:librarian|professor|scholar|fellow|lecturer|assistant|associate|researcher)\b/i.test(probe) && probe.length < 80) return true;
+  // Figure/Table/Algorithm caption lines are captions, never sections.
+  if (/^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(probe) && probe.length < 120) return true;
+  return false;
+}
+
 
 // Algorithm label: match lines that START with Algorithm/Procedure/etc keyword
 // The word-count guard in the SCAP loop handles mid-sentence false positives
@@ -217,7 +249,7 @@ export class DeepDocumentParser {
           const isAffil = AFFIL_KEYWORDS.test(line);
           const wordCount = line.split(/\s+/).length;
           const isAuthorLike = wordCount >= 2 && wordCount <= 30 &&
-                               (line.includes(',') || /\b(and|&)\b/i.test(line) || /^[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,3}$/.test(line)) &&
+                               (line.includes(',') || /\b(and|&)\b/i.test(line) || /^[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,3}[\d*†‡¹²³⁴⁵⁶⁷⁸⁹⁰]?$/.test(line)) &&
                                !isAffil && !isEmail &&
                                !STOPWORDS.has(line.split(' ')[0].toLowerCase());
           
@@ -337,7 +369,7 @@ export class DeepDocumentParser {
             (cleanLine.split(' ').every(w => /^[A-Z]/.test(w) || STOPWORDS.has(w.toLowerCase())) ||
              (/^[A-Z0-9\s_\-&:\(\)]+$/.test(cleanLine) && cleanLine.split(' ').length <= 8));
           
-          const isPdfAuthorAffil = /@/.test(cleanLine) || /^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|head of|researcher)\b/i.test(cleanLine) || /\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|center for|centre for|hospital|foundation)\b/i.test(cleanLine);
+          const isPdfAuthorAffil = isFrontMatterNoise(cleanLine);
 
           if (!isPdfAuthorAffil && (isSection || isNumberedHeading || isShortTitleCase)) {
               let level = 1;
@@ -782,7 +814,7 @@ export class DeepDocumentParser {
           const detectedLvl = this.detectHeading(el, f.text, manifest);
           const isNumberedHeading = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(f.text);
           const isStandardSectionName = /^(?:[\d\.]+\s*)?(?:introduction|related work|background|methodology|conclusion|abstract|acknowledgments|references|overview|implementation|proposed|experimental|results|discussion|system)/i.test(f.text);
-          const isAuthorAffilText = /@/.test(f.text) || /^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|head of|researcher)\b/i.test(f.text) || /\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|center for|centre for|hospital|foundation)\b/i.test(f.text);
+          const isAuthorAffilText = isFrontMatterNoise(f.text);
           const isSectionHeading = !isAuthorAffilText && (detectedLvl !== null || isNumberedHeading || isStandardSectionName || tagName.startsWith('h') || (tagName === 'p' && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8));
 
           if (isSectionHeading) {
@@ -1159,7 +1191,22 @@ export class DeepDocumentParser {
                   processedMathBlocks.add(mbIdx);
                   const mb = _mathBlocks[mbIdx];
                   if (mb && (typeof mb === 'object' ? mb.isDisplay : false)) {
-                    result.stats.equationCount++;
+                    // HEADING-LIKE MATH GUARD (same as the equation-role branch):
+                    // Word wraps section headings in OMML display math — counting
+                    // them as equations inflates the equation count (false positive).
+                    const rawM = typeof mb === 'string' ? mb : (mb.latex || mb.tex || '');
+                    const cleanM = rawM
+                      .replace(/^\\begin\{equation\*?\}/, '').replace(/\\end\{equation\*?\}$/, '')
+                      .replace(/\\(?:mathrm|text|mathbf|mathit|textrm)\s*\{([^}]*)\}/g, '$1')
+                      .replace(/[{}^_]/g, ' ')
+                      .replace(/\s+/g, ' ').trim();
+                    const isHeadingLikeMath = cleanM.length > 4 && (
+                      /^\d+(?:\.\d+)*[.\s:]+[A-Za-z]/.test(cleanM) ||
+                      /^[A-Z][A-Za-z'\-]*(?:\s+[A-Za-z'\-]+){2,10}$/.test(cleanM)
+                    ) && !/[=+<>\u2264\u2265\u2248\u2260\u2211\u222B]/.test(cleanM);
+                    if (!isHeadingLikeMath) {
+                      result.stats.equationCount++;
+                    }
                   }
                 }
               }
@@ -1168,6 +1215,12 @@ export class DeepDocumentParser {
                   // UNIVERSAL: Check for embedded heading flag set in Phase2
                   const embeddedHeading = entry.elements[0] && (entry.elements[0] as any).__embeddedHeading;
                   if (embeddedHeading) {
+                    // GUARD: never emit an author/affiliation line as a subsection —
+                    // "1.1 Dr. Mohammad Aadil Khan: Deputy Librarian, ..." is front
+                    // matter metadata, not a numbered sub-heading.
+                    if (isFrontMatterNoise(embeddedHeading) || /^[^:.]{1,12}$/.test(embeddedHeading)) {
+                      result.body.push({ type: 'paragraph', text });
+                    } else {
                     // Emit the short heading as a level-2 subsection
                     result.body.push({ type: 'heading', level: 2, text: embeddedHeading });
                     lastHeadingLevel = 2;
@@ -1178,6 +1231,7 @@ export class DeepDocumentParser {
                       : '';
                     if (afterHeading.length > 0) {
                       result.body.push({ type: 'paragraph', text: afterHeading });
+                    }
                     }
                   } else {
                     let level = this.detectHeading(entry.elements[0], text, manifest) || 2;
@@ -1355,6 +1409,18 @@ export class DeepDocumentParser {
                               break;
                           }
                       }
+                  }
+
+                  // FALSE-POSITIVE GUARD: an image with NO caption and NO
+                  // descriptive alt/title is almost always decorative (university
+                  // logo, bullet graphic, background, icon, watermark). It must
+                  // NOT be emitted as a figure node — otherwise it inflates the
+                  // figure count, the AI skeleton, and renders a fake "Figure N"
+                  // float in the PDF. The image file is still written to the
+                  // project directory, so nothing else is lost.
+                  if (!figCaption) {
+                      const decoHint = /logo|icon|header|banner|bullet|background|watermark|divider|spacer|signature|qr|qrcode/i.test(src);
+                      if (decoHint || imgs.length > 1) continue;
                   }
                   
                   let subCaption = '';
@@ -1625,9 +1691,12 @@ export class DeepDocumentParser {
     if (f.text.endsWith('.') && !/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-z][.\s]+)/i.test(f.text) && !(f.isBold || f.wordCount < 3)) return null;
 
     // Guard: Exclude Author/Affiliation metadata lines that start with number indices (e.g., "1 Designation of 1st Author...", "1 Department of CS...")
-    const isAuthorAffilText = /\b(?:designation|department|organization|university|faculty|institute|college|school|author|affiliation|prof\.|professor|lecturer|student)\b/i.test(f.text) ||
-                             /^\d+\s*(?:st|nd|rd|th)?\s*(?:author|designation|department|organization|university|faculty|institute|college|school)/i.test(f.text);
-    if (isAuthorAffilText && !/\b(?:introduction|methods|results|discussion|conclusion|references)\b/i.test(f.text)) {
+    // Uses the shared UNIVERSAL isFrontMatterNoise probe: strips leading numbering
+    // and trailing superscript affiliation digits so "1. Dr. Mohammad Aadil Khan",
+    // "Deputy Librarian", "Maulana Azad National Urdu University" can never be
+    // classified as headings.
+    const isAuthorAffilText = isFrontMatterNoise(f.text);
+    if (isAuthorAffilText && !/\b(?:introduction|methods|results|discussion|conclusion|references|related work|literature review)\b/i.test(f.text)) {
       return null;
     }
 

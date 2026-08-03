@@ -781,6 +781,19 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     setFiles(prev => prev.filter(f => f.path !== path));
     if (openTabs.includes(path)) setOpenTabs(t => t.filter(x => x !== path));
     if (activeFile === path) switchTab(openTabs[0] || 'main.tex');
+    // PROPAGATE THE DELETE TO THE CLOUD: without this, the stale ProjectFile
+    // row + disk copy are resurrected by hardenedDiscovery on the next compile
+    // and the deleted file keeps appearing in the PDF.
+    try {
+      const delRes = await fetch(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deleteFiles: [path] })
+      });
+      if (!delRes.ok) console.error("Delete propagation failed:", delRes.status);
+    } catch (delErr) {
+      console.error("Delete propagation error:", delErr);
+    }
   };
 
   const renameFile = async (oldPath: string) => {
@@ -944,7 +957,11 @@ export default function DocIDE({ projectId }: { projectId: string }) {
             return f ? { filename: f.path, content: f.content } : null;
           })
         )).filter((f): f is { filename: string; content: string } => f !== null);
-        const mainContent = textFiles.find(f => f.filename === 'main.tex')?.content || code;
+        // CRITICAL: send the ACTUAL root file content as latexContent — never
+        // the active editor buffer. When main.tex was deleted, sending `code`
+        // here would overwrite Project.latexContent with an arbitrary fragment
+        // (no \documentclass) and corrupt every future compile.
+        const mainContent = textFiles.find(f => f.filename === rootFile)?.content ?? '';
         try {
           // Await the autosave so compile always runs on the just-saved source,
           // and surface the failure (Phase 5) instead of logging silently.

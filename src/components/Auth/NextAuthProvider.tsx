@@ -19,7 +19,11 @@ function AutoLogoutWatcher() {
     if (
       prevStatus.current === "authenticated" &&
       status === "unauthenticated" &&
-      !(typeof window !== "undefined" && (window as any).__latexy_signOutInProgress)
+      !(typeof window !== "undefined" && (window as any).__latexy_signOutInProgress) &&
+      // Never auto-logout while a long upload/analysis XHR is running — a
+      // transient session hiccup mid-upload would otherwise destroy the user's
+      // 10-30 minute upload with a redirect to the login page.
+      !(typeof window !== "undefined" && (window as any).__uploadInFlight)
     ) {
       router.push("/");
     }

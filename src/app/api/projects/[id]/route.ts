@@ -231,6 +231,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         }
       }
     }
+
+    // DELETE PROPAGATION: the editor tells the server which files were deleted
+    // from the local IndexedDB VFS. Without this, stale ProjectFile rows and
+    // disk copies are resurrected by hardenedDiscovery on the next compile —
+    // deleted .tex files keep compiling into the PDF forever.
+    const deleteFiles: string[] = Array.isArray(body.deleteFiles) ? body.deleteFiles.map((p: unknown) => String(p)) : [];
     const resolvedLatex = resolveLatexInputs(latexContent || project.latexContent || "", files);
     const stats = calculateDocumentStats(resolvedLatex);
 
@@ -323,6 +329,26 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
             }
           });
         }
+      }
+
+      // Apply requested deletions to BOTH the SQLite store and the disk copy,
+      // so no stale file can be resurrected by hardenedDiscovery at compile.
+      if (deleteFiles.length > 0) {
+        await prisma.projectFile.deleteMany({
+          where: { projectId: id, filename: { in: deleteFiles } }
+        });
+        const projectDirForDelete = path.join(process.cwd(), 'public', 'uploads', 'projects', id);
+        const rootPrefix = projectDirForDelete.toLowerCase().replace(/[\\/]$/, '');
+        for (const delPath of deleteFiles) {
+          if (!delPath || delPath.includes('..')) continue;
+          const destPath = path.join(projectDirForDelete, delPath.replace(/^[/\\]+/, ''));
+          if (destPath.toLowerCase().startsWith(rootPrefix + path.sep.toLowerCase()) || destPath.toLowerCase() === rootPrefix) {
+            try { fs.rmSync(destPath, { force: true }); } catch (delErr) {
+              console.error(`[DISK_SYNC_ERROR] Could not delete ${delPath}:`, delErr);
+            }
+          }
+        }
+        console.log(`[PROJECT] Deleted ${deleteFiles.length} file(s) from project ${id}: ${deleteFiles.join(', ')}`);
       }
     } catch (prismaErr: any) {
        console.error("[PRISMA_UPDATE_ERROR]", prismaErr);

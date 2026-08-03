@@ -803,6 +803,19 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
     
     if (fs && projectId) {
         await fs.deleteFile(projectId, path);
+        // PROPAGATE THE DELETE TO THE CLOUD: without this, the stale ProjectFile
+        // row + disk copy are resurrected by hardenedDiscovery on the next
+        // compile and the deleted file keeps appearing in the PDF.
+        try {
+            const delRes = await fetch(`/api/projects/${projectId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ deleteFiles: [path] })
+            });
+            if (!delRes.ok) console.error("Delete propagation failed:", delRes.status);
+        } catch (delErr) {
+            console.error("Delete propagation error:", delErr);
+        }
         const newList = await fs.listFiles(projectId);
         setFiles(newList);
         if (activeFile === path) {

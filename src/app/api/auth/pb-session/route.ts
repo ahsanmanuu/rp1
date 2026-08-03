@@ -114,10 +114,18 @@ export async function GET(req: NextRequest) {
       }
       const userAgent = req.headers.get("user-agent") || "Unknown";
 
-      // Always update session in DB
+      // Always update session in DB — and ROLL the expiry window forward so a
+      // long-running operation (e.g. a big DOCX upload + AI analysis that takes
+      // 10-30 minutes) can never expire the session mid-flight. The client polls
+      // this endpoint every 30s, so this is effectively a sliding 7-day session.
       prisma.userSession.update({
         where: { id: sessionRecord.id },
-        data: { ipAddress: nextIp, location: nextLoc, lastActiveAt: new Date() }
+        data: {
+          ipAddress: nextIp,
+          location: nextLoc,
+          lastActiveAt: new Date(),
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        }
       }).catch(() => null);
 
       // Always log activity

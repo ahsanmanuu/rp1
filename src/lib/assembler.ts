@@ -372,6 +372,27 @@ export class LatexAssembler {
     const normalizedTitle = normalize(doc.title || "");
     const normalizedAuthors = (doc.authors || []).map(a => normalize(typeof a.name === 'string' ? a.name : (a as any).text || ""));
 
+    // UNIVERSAL FRONT-MATTER HEADING PROBE (mirrors deep-parser's isFrontMatterNoise):
+    // strips leading numbering / superscript affiliation digits so author names,
+    // designations, emails and affiliations styled as headings can NEVER become
+    // \section/\subsection. All regexes below run on the PROBED text.
+    const frontMatterProbe = (t: string): string => t
+      .replace(/^\s*(?:\[|\()?(?:\d+(?:st|nd|rd|th)?(?:\.\d+)*|[ivxlcdm]+|[A-Za-z])[\).:.\s-]+\s*/i, '')
+      .replace(/[\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070*†‡\d]+$/g, '')
+      .trim();
+    // Exact author-name match with trailing affiliation digits stripped:
+    // "Mohammad Aadil Khan1" (superscript 1) must match author "Mohammad Aadil Khan".
+    const matchesAnyAuthor = (normText: string): boolean => {
+      const stripped = normText.replace(/\d+$/, '');
+      return normalizedAuthors.some(a => a.length > 8 && (normText === a || stripped === a || (normText.length > a.length && normText.startsWith(a) && /^\d+$/.test(normText.slice(a.length)))));
+    };
+    const isDesignationLine = (probe: string): boolean =>
+      /^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of|head of department|researcher|research scholar|phd scholar|scholar|librarian|bibliographer|fellow|senior research fellow|technical assistant|mr\.|ms\.|mrs\.|md)\b/i.test(probe) ||
+      /^(?:email|e-mail|mail|phone|tel|orcid|corresponding author)\b/i.test(probe);
+    const isAffiliationLine = (probe: string): boolean =>
+      /\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy)\b/i.test(probe) ||
+      (/\b(?:librarian|professor|scholar|fellow|lecturer|assistant|associate|researcher)\b/i.test(probe) && probe.length < 80);
+
     // Canonical section names — same set as FORCED_L1 in assembleNode
     const FORCED_L1_ASSEMBLER = new Set([
       'abstract','introduction','background','related work','literature review',
@@ -459,7 +480,7 @@ export class LatexAssembler {
         // Strip metadata duplicate content from front matter
         if (nodeIdx < 20) {
             if (norm === normalizedTitle || (normalizedTitle.length > 10 && norm.includes(normalizedTitle)) || (norm.length > 5 && normalizedTitle.includes(norm))) return;
-            if (normalizedAuthors.some(a => a.length > 8 && norm === a)) return;
+            if (matchesAnyAuthor(norm)) return;
             if (node.type === 'heading') {
                 const cleanLower = text.toLowerCase().replace(/[:.\-\s]*$/, '').trim();
                 if (cleanLower.includes('keywords') || cleanLower.includes('index terms')) return;
@@ -477,18 +498,20 @@ export class LatexAssembler {
         // names, designations, emails, affiliations styled as headings must never
         // become \section/\subsection. Designation/email headings are dropped
         // anywhere; university-ish lines only before the first real section.
+        // All checks run on the PROBED text (leading numbering + trailing
+        // superscript digits stripped) so "1. Dr. Mohammad Aadil Khan" and
+        // "Mohammad Aadil Khan1" are caught too.
         if (node.type === 'heading') {
-            const isDesignationHeading = /^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|head of|researcher|mr\.|ms\.|mrs\.|md)\b/i.test(text) ||
-                /^(?:email|e-mail|mail|phone|tel|orcid|corresponding author)\b/i.test(text);
-            const isEmailHeading = /^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(text);
-            const isAffiliationHeading = !frontMatterDone && text.length < 70 &&
-                /\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy)\b/i.test(text) &&
-                !/\b(?:of|and|for|in|the|a|an)\b.{0,20}\b(?:research|study|model|framework|approach|system|survey)\b/i.test(text);
-            const isCaptionHeading = /^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(text) && text.length < 120;
-            if (isDesignationHeading || isEmailHeading || isAffiliationHeading || isCaptionHeading) {
+            const probe = frontMatterProbe(text);
+            const isDesignationHeading = isDesignationLine(probe);
+            const isEmailHeading = /^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(probe);
+            const isAuthorNameHeading = matchesAnyAuthor(norm);
+            const isAffiliationHeading = !frontMatterDone && probe.length < 160 && isAffiliationLine(probe);
+            const isCaptionHeading = /^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(probe) && probe.length < 120;
+            if (isDesignationHeading || isEmailHeading || isAuthorNameHeading || isAffiliationHeading || isCaptionHeading) {
                 return;
             }
-            const isRealSectionHeading = /^(?:introduction|abstract|keywords|related work|literature review|background|methodology|method|conclusion|conclusions|discussion|references|bibliography|acknowledgements|acknowledgments|appendix|future work|overview|results|implementation|experimental|evaluation)\b/i.test(text) || node.level === 1;
+            const isRealSectionHeading = /^(?:introduction|abstract|keywords|related work|literature review|background|methodology|method|conclusion|conclusions|discussion|references|bibliography|acknowledgements|acknowledgments|appendix|future work|overview|results|implementation|experimental|evaluation)\b/i.test(probe) || (node.level === 1 && !isAuthorNameHeading && probe.length >= 3);
             if (isRealSectionHeading) frontMatterDone = true;
         }
 
@@ -1943,6 +1966,25 @@ export class ModularLatexAssembler {
     const normalizedAuthors = (doc.authors || []).map(a => normalize(typeof a.name === 'string' ? a.name : (a as any).text || ""));
     const normalizedAbstract = normalize(doc.abstract || "").substring(0, 100);
 
+    // UNIVERSAL FRONT-MATTER HEADING PROBE (mirrors the standard path and
+    // deep-parser's isFrontMatterNoise): strips leading numbering + trailing
+    // superscript affiliation digits so author blocks styled as headings can
+    // never become \section/\subsection.
+    const frontMatterProbe = (t: string): string => t
+      .replace(/^\s*(?:\[|\()?(?:\d+(?:st|nd|rd|th)?(?:\.\d+)*|[ivxlcdm]+|[A-Za-z])[\).:.\s-]+\s*/i, '')
+      .replace(/[\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070*†‡\d]+$/g, '')
+      .trim();
+    const matchesAnyAuthor = (normText: string): boolean => {
+      const stripped = normText.replace(/\d+$/, '');
+      return normalizedAuthors.some(a => a.length > 8 && (normText === a || stripped === a || (normText.length > a.length && normText.startsWith(a) && /^\d+$/.test(normText.slice(a.length)))));
+    };
+    const isDesignationLine = (probe: string): boolean =>
+      /^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of|head of department|researcher|research scholar|phd scholar|scholar|librarian|bibliographer|fellow|senior research fellow|technical assistant|mr\.|ms\.|mrs\.|md)\b/i.test(probe) ||
+      /^(?:email|e-mail|mail|phone|tel|orcid|corresponding author)\b/i.test(probe);
+    const isAffiliationLine = (probe: string): boolean =>
+      /\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy)\b/i.test(probe) ||
+      (/\b(?:librarian|professor|scholar|fellow|lecturer|assistant|associate|researcher)\b/i.test(probe) && probe.length < 80);
+
     let currentSectionNodes: any[] = [];
     let currentSectionTitle = "introduction";
     let sectionIdx = 1;
@@ -2037,7 +2079,7 @@ export class ModularLatexAssembler {
         // Only exact/whole-content matches are duplicates now.
         const isMetadataMatch = norm === normalizedTitle ||
                                 (normalizedTitle.length > 20 && norm.includes(normalizedTitle)) ||
-                                normalizedAuthors.some(a => a.length > 8 && norm === a) ||
+                                matchesAnyAuthor(norm) ||
                                 (normalizedAbstract.length > 30 && (norm === normalizedAbstract || (norm.startsWith(normalizedAbstract) && norm.length <= normalizedAbstract.length + 80))) ||
                                 cleanLower === 'abstract' || cleanLower.startsWith('abstract ') ||
                                 cleanLower.match(/^(?:keywords|index terms|indexterms|highlights)$/);
@@ -2088,20 +2130,19 @@ export class ModularLatexAssembler {
         // section heading), so a genuine section like "The Role of University
         // Libraries" is never harmed.
         if (node.type === 'heading') {
-            const isDesignationHeading = /^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|head of|researcher|mr\.|ms\.|mrs\.|md|prof\.)\b/i.test(text) ||
-                /^(?:email|e-mail|mail|phone|tel|orcid|corresponding author)\b/i.test(text);
-            const isEmailHeading = /^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(text);
-            const isAffiliationHeading = !frontMatterDone && text.length < 70 &&
-                /\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy)\b/i.test(text) &&
-                !/\b(?:of|and|for|in|the|a|an)\b.{0,20}\b(?:research|study|model|framework|approach|system|survey)\b/i.test(text);
+            const probe = frontMatterProbe(text);
+            const isDesignationHeading = isDesignationLine(probe);
+            const isEmailHeading = /^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(probe);
+            const isAuthorNameHeading = matchesAnyAuthor(norm);
+            const isAffiliationHeading = !frontMatterDone && probe.length < 160 && isAffiliationLine(probe);
             // FIGURE/TABLE CAPTION HEADING GUARD: "Figure 1: Architecture of ..."
             // or "Table 2 ..." as a heading is always a caption artifact, never
             // a section — the real caption is rendered by the figure/table node.
-            const isCaptionHeading = /^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(text) && text.length < 120;
-            if (isDesignationHeading || isEmailHeading || isAffiliationHeading || isCaptionHeading) {
+            const isCaptionHeading = /^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(probe) && probe.length < 120;
+            if (isDesignationHeading || isEmailHeading || isAuthorNameHeading || isAffiliationHeading || isCaptionHeading) {
                 return;
             }
-            const isRealSectionHeading = /^(?:introduction|abstract|keywords|related work|literature review|background|methodology|method|conclusion|conclusions|discussion|references|bibliography|acknowledgements|acknowledgments|appendix|future work|overview|results|implementation|experimental|evaluation)\b/i.test(text) || node.level === 1;
+            const isRealSectionHeading = /^(?:introduction|abstract|keywords|related work|literature review|background|methodology|method|conclusion|conclusions|discussion|references|bibliography|acknowledgements|acknowledgments|appendix|future work|overview|results|implementation|experimental|evaluation)\b/i.test(probe) || (node.level === 1 && !isAuthorNameHeading && probe.length >= 3);
             if (isRealSectionHeading) frontMatterDone = true;
         }
 
@@ -2196,9 +2237,16 @@ export class ModularLatexAssembler {
     }
 
     // --- 5. BIBLIOGRAPHY ---
-    // Use BibTeX format for journal templates with a defined bibliography style;
-    // otherwise fall back to the generic thebibliography environment.
-const useBibtex = tpl?.mapping?.bibliographyStyle || templateId.includes('ieee') || templateId.includes('acm') || templateId.includes('elsevier') || templateId.includes('springer') || templateId.includes('nature') || tpl?.category === 'Journal';
+    // UNIVERSAL: always emit the generic thebibliography environment with
+    // \bibitem{refN} keys matching the \cite{refN} keys generated in escape().
+    // BibTeX mode (\bibliography{...} + .bib + .bst) is NEVER used for converted
+    // documents because the remote compile services used on Render run a single
+    // LaTeX pass and never execute bibtex — the bibliography came out EMPTY and
+    // every citation rendered as "[?]". The thebibliography environment renders
+    // the entries inline, so references + citations work on every compiler in a
+    // single pass. This also eliminates the duplicate references.bib /
+    // references/references.bib files that confused project directories.
+    const useBibtex = false;
     if ((doc.references || []).length > 0) {
       if (useBibtex) {
         const bibKey = templateId === 'article_ieee' || (tpl?.assetFolder === 'ieee') ? 'IEEEtran'

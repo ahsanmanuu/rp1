@@ -261,6 +261,14 @@ function UploadContent() {
     setError("");
     let simulatedInterval: any = null;
 
+    // SESSION-PRESERVATION FLAG: while the upload/analysis XHR is in flight
+    // (potentially 10-30 minutes for big files), the 30s session poll may
+    // transiently report unauthenticated (cookie hiccup, session row churn).
+    // The login panel and the global auto-logout redirect must NOT fire while
+    // a long upload is running — the upload UI stays visible and the user
+    // keeps their work. The flag is cleared when the flow settles.
+    if (typeof window !== 'undefined') (window as any).__uploadInFlight = true;
+
     // Pre-fetch templates in parallel with the upload
     const templatesPromise = fetch('/api/templates', { cache: 'no-store' })
       .then(res => res.json())
@@ -568,6 +576,10 @@ function UploadContent() {
         clearInterval(simulatedInterval);
         simulatedInterval = null;
       }
+      // Long upload settled (success or error) — allow the session UI to react
+      // normally again. Success keeps the user on the page; failures surface
+      // their error message instead of the login panel.
+      if (typeof window !== 'undefined') (window as any).__uploadInFlight = false;
       if (!delayedLoadingRef.current) {
         setLoading(false);
       }
@@ -857,8 +869,11 @@ function UploadContent() {
     return <ScholarlySplashScreen />;
   }
 
-  // 2. Unauthenticated state
-  if (status === "unauthenticated" || (!session && !wasVerified && status !== "loading")) {
+  // 2. Unauthenticated state — EXCEPT while an upload/analysis is in flight:
+  // a transient 401 from the 30s session poll must never yank the user to the
+  // login panel mid-upload (big files take 10-30 minutes).
+  if ((status === "unauthenticated" || (!session && !wasVerified && status !== "loading")) &&
+      !(typeof window !== "undefined" && (window as any).__uploadInFlight)) {
     return (
       <div style={{ height: 'calc(100vh - 80px)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--background)' }}>
         <div className="card glass" style={{ padding: '3rem', maxWidth: '450px', textAlign: 'center', borderRadius: '32px' }}>

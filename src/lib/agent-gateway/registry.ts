@@ -886,7 +886,7 @@ register({
   name: 'Manuscript Structure Analyzer',
   description: 'AI-driven structural verification of converted manuscripts: exact title, authors, affiliations, abstract, keywords, section hierarchy, component counts (figures/charts/tables/equations/pseudocode/citations/references) and reference list',
   temperature: 0.05,
-  maxTokens: 6144,
+  maxTokens: 8192,
   rateLimit: 20,
   buildSystemPrompt(ctx) {
     const fullText = String(ctx.fullText || ctx.frontMatter || '').substring(0, 200000);
@@ -897,6 +897,7 @@ register({
     const algorithmTitles = (ctx.algorithmTitles as string[]) || [];
     const equationSnippets = (ctx.equationSnippets as string[]) || [];
     const referenceEntries = (ctx.referenceEntries as string[]) || [];
+    const imageClassifications = (ctx.imageClassifications as string[]) || [];
     const heuristic = JSON.stringify(ctx.heuristic || {});
 
     return `You are a world-class scholarly document analysis engine with 20 years of experience in academic publishing (IEEE, ACM, Springer LNCS, Elsevier, Nature, and APA/IEEE reference formats). Your job is to analyze a converted academic manuscript from its FULL TEXT with surgical precision and return the complete, exact structural analysis.
@@ -927,6 +928,9 @@ ${equationSnippets.slice(0, 30).map(s => `- ${s}`).join('\n') || 'none'}
 
 ### H. Reference entries detected:
 ${referenceEntries.slice(0, 150).map((s, i) => `${i + 1}. ${s}`).join('\n') || 'none'}
+
+### I. Image classification ground truth (from the conversion engine's filename analysis — TRUST IT for the figures-vs-charts split; you only verify captions):
+${imageClassifications && imageClassifications.length > 0 ? imageClassifications.join('\n') : 'none'}
 
 Document working title (from filename, may be wrong): "${documentTitle}"
 
@@ -968,7 +972,7 @@ Analyze the manuscript and return ONE JSON object (no markdown, no commentary be
    - FRONTMATTER METADATA ONLY: Author names, academic designations (e.g., 'Assistant Professor', 'Deputy Librarian', 'Lecturer', 'Dr.', 'Prof.'), department names, university names, polytechnic/institute names, and email addresses ARE FRONTMATTER METADATA. They MUST NEVER be placed in the "sections" array or counted as sections/headings — even if they are visually styled as headings in the converted text (a Word author block often is). Put them ONLY in the "authors"/"affiliations" fields.
    - SECTION HEADINGS ARE NOT EQUATIONS: Section and subsection titles (e.g. "6. AI-Assisted Responsible Citation (ARC) Framework", "3.1 Methods") ARE HEADINGS ONLY. They MUST NEVER be included in "equations" or classified as math, even when they appear inside equation-looking delimiters or math markup in the converted text. An "equation" MUST contain real math operators (=, <, >, sums, integrals, Greek letters, exponents) — pure words are never an equation.
    - FIGURE CAPTIONS ARE NOT SECTIONS: "Figure N: <caption>" / "Table N: <caption>" lines are CAPTIONS, never headings — do not put them in "sections".
-   - FIGURES & CHARTS: Count by "Fig." or "Figure" captions ONLY, excluding charts/plots. Sub-figures (a)(b)(c) under one "Fig. N" = 1 figure. Do NOT count images without captions.
+   - FIGURES & CHARTS: Count by "Fig." or "Figure" captions ONLY, excluding charts/plots. Sub-figures (a)(b)(c) under one "Fig. N" = 1 figure. Do NOT count images without captions. When input I classifies an image file as a chart (filename contains "rf_chart" or "chart_pending"), it is a CHART even if its caption reads "Fig. N" — report it under "charts" only.
    - CHARTS: Count chart/plot images only (a chart with a "Fig." caption counts here, not under figures).
    - TABLES: Count by "Table" or "TABLE" captions. Do NOT count algorithm or equation tables. A 2-column key-value table IS a table. A layout table used for author affiliations is NOT a table.
    - EQUATIONS: Count ONLY display equations — numbered equations like (1), (2), or explicit equation/align/gather blocks. Inline math ($x$), parameter assignments ("n = 100"), inequality constraints, section titles, and simple expressions in prose are NOT equations. When in doubt, do NOT count it.
