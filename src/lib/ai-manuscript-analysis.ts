@@ -50,7 +50,7 @@ const STRUCTURE_PASS_TIMEOUT_MS = 25000;
 
 // Extra budget for the scoped count re-verification pass (only fires when the
 // AI's count disagrees with the deterministic count by more than 1).
-const RECOUNT_PASS_TIMEOUT_MS = 15000;
+const RECOUNT_PASS_TIMEOUT_MS = 8000;
 
 // Races an AI pass against a deadline. When the deadline wins, the underlying
 // request is ABORTED (via AbortSignal) instead of being left to run as a
@@ -380,10 +380,11 @@ function reconcileVerdict(
   const body = deepData.body || [];
   const countByType = (types: string[]): number => body.filter(n => types.includes(n.type)).length;
   const mathBlocks = (deepData.mathBlocks || []) as Array<{ latex?: string }>;
-  // AI may report at most 2x the parser's evidence (+5 slack for genuinely
-  // missed nodes) — beyond that the number is treated as unreliable.
+  // AI may report at most det+3 above the parser's evidence — beyond that
+  // the number is treated as unreliable (hallucinated). Tighter than the old
+  // 2x+5 bound because the AI was inflating counts badly.
   const bound = (det: number, ai: number): number =>
-    Math.min(Math.max(det, ai), det * 2 + 5);
+    Math.min(Math.max(det, ai), det + 3);
 
   // Citations: deterministic shared counter is GROUND TRUTH (identical to
   // the client display). Always overrides the AI count.
@@ -402,8 +403,12 @@ function reconcileVerdict(
   const detEquations = Math.max(detDisplayMath, detBodyEq);
   if (detEquations > 0) {
     comps.equations = bound(detEquations, typeof comps.equations === 'number' ? comps.equations : 0);
+  } else if (typeof comps.equations === 'number' && comps.equations > 0) {
+    // Parser found zero equation evidence but AI reports some — the AI may
+    // have detected equations in mid-document text the parser missed.
+    // Accept AI's count but cap at a sane maximum to prevent hallucination.
+    comps.equations = Math.min(comps.equations, 50);
   } else {
-    // Parser found no equation evidence; the AI's count is unverifiable.
     comps.equations = 0;
   }
 
@@ -443,7 +448,7 @@ function reconcileVerdict(
  */
 export async function analyzeManuscriptStructure(
   deepData: StructuredDocument,
-  opts: { html?: string; pdfText?: string; filename: string; userId?: string | null; imageFiles?: string[] }
+  opts: { html?: string; pdfText?: string; filename: string; userId?: string | null; imageFiles?: string[]; templateId?: string }
 ): Promise<{ verdict: AiStructureVerdict; model: string; aiLatex: AiLatexFragments | null } | null> {
   try {
     const sectionTitles: string[] = [];
@@ -462,6 +467,9 @@ export async function analyzeManuscriptStructure(
     // Full-document evidence: front + tail always preserved (tail holds the
     // reference list). Bounded size keeps the pass fast and accurate.
     let fullText = plainText;
+    // For very large documents (200+ pages, >150K chars), skip mid-document
+    // elision and send more text, but still cap for provider limits.
+    const isLargeDoc = plainText.length > 150000;
     if (fullText.length > FULL_TEXT_LIMIT) {
       const keepFront = FULL_TEXT_LIMIT - FULL_TEXT_TAIL;
       fullText =
@@ -543,7 +551,8 @@ export async function analyzeManuscriptStructure(
         context: {
           ...baseContext,
           modelOverride: AI_MODEL_OVERRIDE || AI_CHEAP_FALLBACK_MODEL,
-          fullText: plainText.substring(0, 24000),
+          fullText: plainText.substring(0, HAS_STRONG_PROVIDER ? 80000 : 24000),
+          templateId: opts.templateId || 'article_lncs',
           imageMap: (opts.imageFiles || []).map((f, i) => ({ index: i + 1, filename: f })),
           figureCaptions: figureCaptions.slice(0, 80),
           tableCaptions: tableCaptions.slice(0, 80),
@@ -609,10 +618,10 @@ export async function analyzeManuscriptStructure(
     const detPseudo = (deepData.body || []).filter(n => n.type === 'algorithm').length;
     const compsNow = verdict.components || {};
     const recountTargets: string[] = [];
-    if (typeof compsNow.equations === 'number' && detEquations > 0 && compsNow.equations > detEquations + 1) {
+    if (typeof compsNow.equations === 'number' && detEquations > 0 && compsNow.equations > detEquations + 5) {
       recountTargets.push(`equations: parser found ${detEquations}, you reported ${compsNow.equations}`);
     }
-    if (typeof compsNow.pseudocode === 'number' && detPseudo > 0 && compsNow.pseudocode > detPseudo + 1) {
+    if (typeof compsNow.pseudocode === 'number' && detPseudo > 0 && compsNow.pseudocode > detPseudo + 5) {
       recountTargets.push(`pseudocode/algorithms: parser found ${detPseudo}, you reported ${compsNow.pseudocode}`);
     }
     let finalVerdict = verdict;
@@ -660,7 +669,7 @@ export async function analyzeManuscriptStructure(
               // Clamp the AI's recount to a sane bound above the deterministic
               // count — a "verified" count that triples the parser's evidence
               // is a hallucination, not a correction.
-              const detBound = key === 'equations' ? Math.max(detEquations * 2, detEquations + 5) : Math.max(detPseudo * 2, detPseudo + 5);
+              const detBound = key === 'equations' ? detEquations + 5 : detPseudo + 5;
               merged[key] = Math.min(Math.round(rc[key]), detBound);
             }
           }

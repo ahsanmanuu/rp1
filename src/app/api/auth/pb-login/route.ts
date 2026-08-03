@@ -46,7 +46,8 @@ export async function POST(req: NextRequest) {
 
     if (!authData) {
       // Self-healing attempt: If initial auth failed with 400,
-      // check if PocketBase has a user account with an un-normalized email (e.g. mixed case or trailing spaces)
+      // 1. Check if PocketBase has a user account with un-normalized email or verified=false
+      // 2. Or check if user exists in Prisma DB but was lost from PocketBase due to Render container restart
       if (lastAuthErr?.status === 400) {
         try {
           const { pbAdmin } = await import("@/lib/pb");
@@ -55,15 +56,44 @@ export async function POST(req: NextRequest) {
           const matchedUser = allUsers.find(
             (u: any) => u.email && u.email.trim().toLowerCase() === cleanEmail
           );
-          if (matchedUser && matchedUser.email !== cleanEmail) {
-            console.log(`[AUTH pb-login] Self-healing user ${matchedUser.id}: normalizing email from "${matchedUser.email}" to "${cleanEmail}"`);
-            await admPb.collection("users").update(matchedUser.id, { email: cleanEmail });
-            // Retry authWithPassword with newly normalized email
-            authData = await pb.collection("users").authWithPassword(cleanEmail, password);
-            lastAuthErr = null;
+
+          if (matchedUser) {
+            const updates: Record<string, any> = {};
+            if (matchedUser.email !== cleanEmail) updates.email = cleanEmail;
+            if (!matchedUser.verified) updates.verified = true;
+
+            if (Object.keys(updates).length > 0) {
+              console.log(`[AUTH pb-login] Self-healing user ${matchedUser.id}: applying fixes`, updates);
+              await admPb.collection("users").update(matchedUser.id, updates);
+              authData = await pb.collection("users").authWithPassword(cleanEmail, password);
+              lastAuthErr = null;
+            }
+          } else {
+            // Check if user exists in Prisma DB (persisted across container restarts)
+            const dbUser = await prisma.user.findUnique({ where: { email: cleanEmail } });
+            if (dbUser) {
+              console.log(`[AUTH pb-login] User ${cleanEmail} exists in DB but missing in PocketBase. Restoring in PocketBase...`);
+              const userPayload: Record<string, any> = {
+                id: dbUser.id,
+                email: cleanEmail,
+                password,
+                passwordConfirm: password,
+                verified: true,
+                emailVisibility: true,
+                name: dbUser.name || cleanEmail.split("@")[0],
+                points: dbUser.points ?? 50,
+                theme: dbUser.theme || "dark",
+                membership: dbUser.membership || "free",
+                role: dbUser.role || "user",
+                status: "active",
+              };
+              await admPb.collection("users").create(userPayload);
+              authData = await pb.collection("users").authWithPassword(cleanEmail, password);
+              lastAuthErr = null;
+            }
           }
         } catch (healErr: any) {
-          console.warn("[AUTH pb-login] Email self-healing attempt failed:", healErr.message);
+          console.warn("[AUTH pb-login] Self-healing attempt failed:", healErr.message);
         }
       }
     }

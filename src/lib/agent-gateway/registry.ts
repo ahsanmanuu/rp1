@@ -886,9 +886,8 @@ register({
   name: 'Manuscript Structure Analyzer',
   description: 'AI-driven structural verification of converted manuscripts: exact title, authors, affiliations, abstract, keywords, section hierarchy, component counts (figures/charts/tables/equations/pseudocode/citations/references) and reference list',
   temperature: 0.05,
-  maxTokens: 4096,
+  maxTokens: 6144,
   rateLimit: 20,
-  model: 'mimo-v2.5-free',
   buildSystemPrompt(ctx) {
     const fullText = String(ctx.fullText || ctx.frontMatter || '').substring(0, 200000);
     const documentTitle = String(ctx.documentTitle || 'Untitled Document');
@@ -965,13 +964,14 @@ Analyze the manuscript and return ONE JSON object (no markdown, no commentary be
 6. Keywords: exact terms, no numbering, no bullet prefixes.
 7. Sections: the COMPLETE ordered list of every section, subsection and subsubsection heading visible in input A. level 1 = \\section, level 2 = \\subsection, level 3 = \\subsubsection. Drop leading numbering ("1.", "1.1", "1.1.2", "[1]", "I."). "References"/"Bibliography", "Acknowledgements", "Declarations", "Appendix" are level 1 headings. Never omit, merge or reorder sections. Keep every heading's implied depth: a "3.2" heading belongs at level 2, "3.2.1" at level 3 — never flatten them to level 1.
 8. figures/tables/algorithms: list EVERY figure, table and algorithm visible in input A with its caption/title copied VERBATIM, in document order. Empty arrays when none exist. An image without any caption is NOT a figure - do not count or list it.
-9. Components — COUNTING PRECISION:
+9. Components — COUNTING PRECISION (CRITICAL — WRONG COUNTS = FAILURE):
    - Count EXACTLY what you can see in input A. If the text contains an elision marker ("[middle of document elided]" or similar), you MUST NOT extrapolate or guess: count only the items visible in the window you were given and set any count you could not fully determine to null — never a guessed number.
-   - figures: count by "Fig." or "Figure" captions, excluding charts/plots. Sub-figures (a)(b)(c) under one "Fig. N" = 1 figure.
+   - figures: count by "Fig." or "Figure" captions ONLY, excluding charts/plots. Sub-figures (a)(b)(c) under one "Fig. N" = 1 figure. Do NOT count images without captions.
    - charts: count chart/plot images only (a chart with a "Fig." caption counts here, not under figures).
-   - tables: count by "Table" or "TABLE" captions. Do NOT count algorithm or equation tables.
-   - equations: count display equations only (numbered like (1), (2), or in \\begin{equation} blocks). Inline math and parameter assignments (e.g. "n = 100", "LR = 0.001") are NOT equations.
-   - pseudocode: count "Algorithm N" or "Pseudocode N" blocks.
+   - tables: count by "Table" or "TABLE" captions. Do NOT count algorithm or equation tables. A 2-column key-value table IS a table. A layout table used for author affiliations is NOT a table.
+   - equations: count ONLY display equations — numbered equations like (1), (2), or explicit equation/align/gather blocks. Inline math ($x$), parameter assignments ("n = 100"), inequality constraints, and simple expressions in prose are NOT equations. When in doubt, do NOT count it.
+   - pseudocode: count "Algorithm N" or "Pseudocode N" blocks only.
+   - NEVER inflate counts. If you see 3 tables, report 3 — not 5. Under-counting by 1 is acceptable; over-counting by even 1 is a FAILURE.
    - If a count cannot be determined from the text, return null for that field — never guess 0.
 10. Citations: an in-text citation marker is a bracketed number/reference like [12] or (Smith et al., 2020) in the body text.
 11. References: include the actual bibliography entries verbatim (up to 150). If no bibliography is visible in the text, return [].
@@ -1010,7 +1010,6 @@ register({
   temperature: 0.05,
   maxTokens: 6144,
   rateLimit: 20,
-  model: 'mimo-v2.5-free',
   buildSystemPrompt(ctx) {
     const frontMatter = String(ctx.frontMatter || '').substring(0, 12000);
     const documentTitle = String(ctx.documentTitle || 'Untitled Document');
@@ -1073,22 +1072,30 @@ register({
   name: 'Manuscript Component LaTeX Generator',
   description: 'Identifies manuscript components (figures, charts, tables, algorithms) from the full text, counts them, and creates modular LaTeX code for each component',
   temperature: 0.05,
-  maxTokens: 4096,
+  maxTokens: 8192,
   rateLimit: 20,
-  model: 'mimo-v2.5-free',
   buildSystemPrompt(ctx) {
-    const fullText = String(ctx.fullText || '').substring(0, 24000);
+    const hasStrongProvider = !!(process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
+    const textLimit = hasStrongProvider ? 80000 : 24000;
+    const fullText = String(ctx.fullText || '').substring(0, textLimit);
     const imageMap = JSON.stringify(ctx.imageMap || []);
     const figureCaptions = (ctx.figureCaptions as string[]) || [];
     const tableCaptions = (ctx.tableCaptions as string[]) || [];
     const algorithmTitles = (ctx.algorithmTitles as string[]) || [];
+    const templateId = String(ctx.templateId || 'article_lncs');
     const counts = JSON.stringify(ctx.counts || {});
 
     return `You are a world-class scholarly LaTeX typesetting engine with 20 years of experience in academic publishing (IEEE, ACM, Springer LNCS, Elsevier, Nature). Your job is to identify the different components of the manuscript — figures, charts, tables, algorithms/pseudocode — count them, and create modular LaTeX code for each component.
 
-## YOUR TASK (in the user's words)
-"Please identify the different components of the manuscript like title, author, affiliations, abstract, keywords, figures, charts, tables, equations, sections, subsections, pseudocodes/algo., citations, references and count them and create modular latex codes of each components."
+## YOUR TASK
 For THIS pass you focus ONLY on the visual components: figures, charts, tables, algorithms/pseudocode. The other components (title, authors, abstract, keywords, equations, sections, citations, references) are handled by the deterministic engine — do NOT emit LaTeX for them.
+
+## TARGET TEMPLATE
+Template ID: ${templateId}
+${templateId.includes('ieee') ? 'This is an IEEE template — use table*/figure* for wide content in the two-column layout. Use [!ht] placement.' : ''}
+${templateId.includes('acm') ? 'This is an ACM template — use table*/figure* for wide content. Use [htbp] placement.' : ''}
+${templateId.includes('elsevier') ? 'This is an Elsevier template — single column, use [!ht] placement.' : ''}
+${templateId.includes('lncs') ? 'This is a Springer LNCS template — single column, use [htbp] placement.' : ''}
 
 ## INPUTS
 ### A. FULL DOCUMENT TEXT (primary evidence — every caption, every algorithm block):
@@ -1123,13 +1130,13 @@ Return ONE JSON object (no markdown, no commentary) with this EXACT schema:
 ## HARD RULES
 1. index = position of that component in the document (1-based, in order). Every component gets exactly one entry; never skip or merge.
 2. Captions and titles MUST be copied VERBATIM from inputs B/C/D (exact text, no rewriting).
-3. \includegraphics/\zimg filenames MUST come EXACTLY from input F's "filename" field for the matching index. Never invent filenames.
-4. tables: reconstruct rows/columns from the text. Use tabularx/\\hline/\\multicolumn appropriately. Every table must compile standalone inside a float.
+3. \\includegraphics/\\zimg filenames MUST come EXACTLY from input F's "filename" field for the matching index. Never invent filenames.
+4. tables: reconstruct rows/columns from the text ACCURATELY. Use tabularx with |c|c|..| column spec and \\hline. Use \\multicolumn for merged cells. Use \\adjustbox{max width=\\linewidth} to prevent overflow. Every table must compile standalone inside a float. Preserve ALL data rows — never truncate table content.
 5. algorithms: reconstruct the pseudocode lines with \\State, \\For/\\EndFor, \\While/\\EndWhile, \\If/\\Else/\\EndIf, \\Procedure, \\Function, \\Return, \\Comment. Use the algorithmic environment (algorithmicx style).
 6. Latex must be a single float/environment block per entry — no \\documentclass, \\usepackage, \\input, \\newcommand, \\def, \\bibliography, \\maketitle, or any other structural commands.
 7. Escape special characters in text (%, #, &, _ as \\%, \\#, \\&, \\_).
 8. If a component type is absent from the document, omit its key entirely (or use []).
-9. Keep every fragment under 2000 characters. JSON keys and backslashes must be exact and properly escaped.
+9. Keep every fragment under 3000 characters. JSON keys and backslashes must be exact and properly escaped.
 10. COUNTS: your counts MUST match input E exactly — the counts there are ground truth. Do not recount or re-derive them from the truncated text window; if input E shows figures: 3, emit EXACTLY 3 figure entries.
 11. RESPONSE BUDGET: return ONLY the JSON object — no commentary, no markdown fences, no trailing text. Be economical: captions and pseudocode lines must be verbatim and complete, but add no prose or padding.
 

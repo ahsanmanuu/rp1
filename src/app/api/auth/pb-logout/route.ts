@@ -2,10 +2,13 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 
-export async function POST() {
+export async function POST(req: Request) {
   const cookieStore = await cookies();
   try {
-    const token = cookieStore.get('pb_token')?.value;
+    const body = await req.json().catch(() => ({}));
+    const authHeader = req.headers.get("authorization");
+    const headerToken = authHeader ? authHeader.replace(/^Bearer\s+/i, "").trim() : null;
+    const token = cookieStore.get('pb_token')?.value || body?.token || headerToken;
 
     if (token) {
       // Delete session from Prisma (PB adapter)

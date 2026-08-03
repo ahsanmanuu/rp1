@@ -749,7 +749,7 @@ export class LatexAssembler {
         }
 
         // 3. CAPTION-ONLY PARAGRAPH (Rescue missed table/figure titles)
-        if (/^(?:Table|Figure|Fig\.|Algorithm)\s+\d+/i.test(text) && text.length < 200) {
+        if (/^(?:Table|Figure|Fig\.|Algorithm)\s+\d+[:.\s-]/i.test(text) && text.length < 120 && !text.includes('\n')) {
              return `\n\\begin{center}\\small\\textit{${LatexAssembler.escapeText(text, mathBlocks)}}\\end{center}\n`;
         }
 

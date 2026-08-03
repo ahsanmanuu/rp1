@@ -89,6 +89,7 @@ export async function POST(req: Request) {
         email: cleanEmail,
         password,
         passwordConfirm: password,
+        verified: true,
         emailVisibility: true,
         name: cleanName || cleanEmail.split("@")[0],
         points: 50,

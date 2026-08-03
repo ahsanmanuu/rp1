@@ -379,8 +379,153 @@ export const TEMPLATE_REGISTRY: TemplateMetadata[] = [
   { id: 'thesis_yale', label: 'Yale', icon: '📄', category: 'Thesis', subCategory: 'Global', desc: 'Yale Dissertation.', publisher: 'Yale', assetFolder: 'thesis_yale', fileExtensions: [".tex",".bib",".cls",".sty",".bst"] },
 ];
 
-export function getTemplateById(id: string) {
-  return TEMPLATE_REGISTRY.find(t => t.id === id);
+export const PUBLISHER_MAPPINGS: Record<string, TemplateMapping> = {
+  ieee: {
+    authorStyle: 'ieee',
+    keywordsCmd: 'IEEEkeywords',
+    citationStyle: 'numeric',
+    bibliographyStyle: 'IEEEtran',
+    columnLayout: 'double',
+    floatPlacement: '[!ht]',
+    algorithmPackage: 'algorithmicx',
+  },
+  elsevier: {
+    authorStyle: 'elsevier',
+    keywordsCmd: 'keyword',
+    citationStyle: 'numeric',
+    bibliographyStyle: 'elsarticle-num',
+    columnLayout: 'single',
+    floatPlacement: '[!ht]',
+    algorithmPackage: 'algorithmicx',
+  },
+  springer: {
+    authorStyle: 'standard',
+    keywordsCmd: 'keywords',
+    citationStyle: 'numeric',
+    bibliographyStyle: 'spbasic',
+    columnLayout: 'single',
+    floatPlacement: '[htbp]',
+    algorithmPackage: 'algorithmicx',
+  },
+  acm: {
+    authorStyle: 'acm',
+    keywordsCmd: 'keywords',
+    citationStyle: 'numeric',
+    bibliographyStyle: 'acm',
+    columnLayout: 'double',
+    algorithmPackage: 'algorithmicx',
+  },
+  mdpi: {
+    authorStyle: 'standard',
+    keywordsCmd: 'keyword',
+    citationStyle: 'numeric',
+    bibliographyStyle: 'mdpi',
+    columnLayout: 'single',
+    floatPlacement: '[H]',
+  },
+  wiley: {
+    authorStyle: 'standard',
+    keywordsCmd: 'keywords',
+    citationStyle: 'numeric',
+    bibliographyStyle: 'wileyNJD',
+    columnLayout: 'single',
+    floatPlacement: '[htbp]',
+  },
+  cambridge: {
+    authorStyle: 'standard',
+    keywordsCmd: 'keywords',
+    citationStyle: 'numeric',
+    bibliographyStyle: 'cambridge700',
+    columnLayout: 'single',
+    floatPlacement: '[htbp]',
+  },
+  oxford: {
+    authorStyle: 'standard',
+    keywordsCmd: 'keywords',
+    citationStyle: 'numeric',
+    bibliographyStyle: 'oxford',
+    columnLayout: 'single',
+    floatPlacement: '[htbp]',
+  },
+  tf: {
+    authorStyle: 'standard',
+    keywordsCmd: 'keywords',
+    citationStyle: 'numeric',
+    bibliographyStyle: 'tfN',
+    columnLayout: 'single',
+    floatPlacement: '[htbp]',
+  },
+  nature: {
+    authorStyle: 'nature',
+    sectionStyle: 'starred',
+    citationStyle: 'superscript',
+    bibliographyStyle: 'naturemag',
+    columnLayout: 'single',
+    floatPlacement: '[htbp]',
+  },
+  aps: {
+    authorStyle: 'standard',
+    citationStyle: 'numeric',
+    bibliographyStyle: 'apsrev4-2',
+    columnLayout: 'double',
+    floatPlacement: '[!ht]',
+  },
+  thesis: {
+    authorStyle: 'standard',
+    sectionStyle: 'numbered',
+    citationStyle: 'numeric',
+    bibliographyStyle: 'plain',
+    columnLayout: 'single',
+    floatPlacement: '[htbp]',
+  },
+  conference: {
+    authorStyle: 'standard',
+    keywordsCmd: 'keywords',
+    citationStyle: 'numeric',
+    bibliographyStyle: 'plain',
+    columnLayout: 'double',
+    floatPlacement: '[!ht]',
+    algorithmPackage: 'algorithmicx',
+  },
+};
+
+export function getDefaultMappingForTemplate(t: TemplateMetadata): TemplateMapping {
+  if (t.mapping && Object.keys(t.mapping).length > 0) return t.mapping;
+  const pub = (t.publisher || '').toLowerCase();
+  const id = t.id.toLowerCase();
+
+  if (pub.includes('ieee') || id.startsWith('ieee_')) return PUBLISHER_MAPPINGS.ieee;
+  if (pub.includes('elsevier') || id.startsWith('elsevier_')) return PUBLISHER_MAPPINGS.elsevier;
+  if (pub.includes('springer') || id.startsWith('springer_')) return PUBLISHER_MAPPINGS.springer;
+  if (pub.includes('mdpi') || id.startsWith('mdpi_')) return PUBLISHER_MAPPINGS.mdpi;
+  if (pub.includes('acm') || id.startsWith('acm_')) return PUBLISHER_MAPPINGS.acm;
+  if (pub.includes('wiley') || id.startsWith('wiley_')) return PUBLISHER_MAPPINGS.wiley;
+  if (pub.includes('cambridge') || id.startsWith('cambridge_')) return PUBLISHER_MAPPINGS.cambridge;
+  if (pub.includes('oxford') || id.startsWith('oxford_')) return PUBLISHER_MAPPINGS.oxford;
+  if (pub.includes('taylor') || id.startsWith('tf_')) return PUBLISHER_MAPPINGS.tf;
+  if (pub.includes('nature') || id.startsWith('nature_')) return PUBLISHER_MAPPINGS.nature;
+  if (pub.includes('aps') || id.startsWith('aps_')) return PUBLISHER_MAPPINGS.aps;
+  if (t.category === 'Thesis' || id.startsWith('thesis_')) return PUBLISHER_MAPPINGS.thesis;
+  if (t.category === 'Conference' || id.startsWith('conf_')) return PUBLISHER_MAPPINGS.conference;
+
+  return {
+    authorStyle: 'standard',
+    keywordsCmd: 'keywords',
+    citationStyle: 'numeric',
+    bibliographyStyle: 'plain',
+    columnLayout: 'single',
+    floatPlacement: '[htbp]',
+    algorithmPackage: 'algorithmicx',
+  };
+}
+
+export function getTemplateById(id: string): TemplateMetadata | undefined {
+  const t = TEMPLATE_REGISTRY.find(t => t.id === id);
+  if (!t) return undefined;
+  return {
+    ...t,
+    mapping: getDefaultMappingForTemplate(t),
+  };
 }
 
 export function mapLegacyTemplateId(id: string): string {

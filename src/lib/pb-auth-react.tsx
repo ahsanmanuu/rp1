@@ -206,27 +206,40 @@ export function useSession(options?: { required?: boolean; onUnauthenticated?: (
 export async function signOut(options?: { callbackUrl?: string }) {
   if (typeof window !== "undefined") {
     (window as any).__latexy_signOutInProgress = true;
-    try {
-      localStorage.removeItem("auth-token");
-      sessionStorage.clear();
-      document.cookie = "pb_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
-      document.cookie = "admin_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
-      document.cookie = "next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
-      document.cookie = "__Secure-next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
-    } catch {}
   }
+
+  // Get token before clearing cookies to send in body if needed
+  let existingToken = "";
+  if (typeof window !== "undefined") {
+    const match = document.cookie.match(/(?:^|;\s*)pb_token=([^;]*)/);
+    if (match) existingToken = match[1];
+  }
+
   try {
     await fetch("/api/auth/pb-logout", {
       method: "POST",
-      headers: { "Cache-Control": "no-cache, no-store, must-revalidate" },
+      headers: { 
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache, no-store, must-revalidate" 
+      },
+      body: JSON.stringify({ token: existingToken }),
       cache: "no-store",
       signal: AbortSignal.timeout(10000),
     });
   } catch (err) {
     console.error("[signOut] Error calling pb-logout API:", err);
-  }
-  if (typeof window !== "undefined") {
-    window.location.href = options?.callbackUrl || "/login";
+  } finally {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("auth-token");
+        sessionStorage.clear();
+        document.cookie = "pb_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
+        document.cookie = "admin_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
+        document.cookie = "next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
+        document.cookie = "__Secure-next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
+      } catch {}
+      window.location.href = options?.callbackUrl || "/login";
+    }
   }
 }
 

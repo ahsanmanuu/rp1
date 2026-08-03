@@ -25,7 +25,7 @@ async function enhanceImageFor3000Dpi(buffer: Buffer): Promise<Buffer> {
 
     let result: Buffer;
     // Fast high-DPI density tagging: avoid heavy CPU thrashing & proxy timeouts on Render
-    if (origWidth >= 1600) {
+    if (origWidth >= 1200 || buffer.length > 500 * 1024) {
       result = await sharp(buffer)
         .withMetadata({ density: 3000 })
         .toBuffer();
@@ -649,10 +649,10 @@ export async function POST(req: Request) {
       const allTbls = Array.from(dom.window.document.getElementsByTagName('w:tbl'));
       const validTables = allTbls.filter((tbl, idx) => {
         const text = (tbl.textContent || "").toLowerCase();
-        // Rule 1: Structural Integrity (must be a grid)
+        // Rule 1: Structural Integrity (must be a table with content)
         const rows = tbl.getElementsByTagName('w:tr').length;
         const cells = tbl.getElementsByTagName('w:tc').length;
-        const isGrid = (rows >= 2 && cells >= 4);
+        const isGrid = (rows >= 1 && cells >= 2);
 
         // Rule 2: Semantic Exclusion (remove Title/Author tables)
         const hasEmailContext = (text.includes('@') && /\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/i.test(text));
@@ -904,6 +904,7 @@ export async function POST(req: Request) {
             filename: file.name,
             userId: (session?.user as any)?.id ?? null,
             imageFiles: imageNames,
+            templateId: templateId,
           }),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 20000))
         ]);

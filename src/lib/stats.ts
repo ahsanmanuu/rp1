@@ -113,8 +113,13 @@ export function calculateDocumentStats(latex: string): DocumentStats {
       return count;
     })(),
     citationCount,
-    referenceCount: (noComments.match(/\\bibitem\s*(?:\[[^\]]*\])?\s*\{/g) || []).length ||
-                    (noComments.match(/\\addbibresource|\\bibliography(?!\{[^}]*bib[^}]*style)/g) || []).length,
+    referenceCount: (() => {
+      const bibitems = (noComments.match(/\\bibitem\s*(?:\[[^\]]*\])?\s*\{/g) || []).length;
+      if (bibitems > 0) return bibitems;
+      const bibEntries = (noComments.match(/@\w+\s*\{/g) || []).length;
+      if (bibEntries > 0) return bibEntries;
+      return (noComments.match(/\\addbibresource|\\bibliography(?!\{[^}]*bib[^}]*style)/g) || []).length;
+    })(),
     pseudocodeCount: (() => {
       let temp = noComments;
       const outerCount = (temp.match(/\\begin\{(?:algorithm|lstlisting|procedure|listing|program)\*?\}/g) || []).length;
