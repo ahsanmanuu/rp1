@@ -1394,7 +1394,36 @@ export class DeepDocumentParser {
               for (const mm of mmMatches as RegExpExecArray[]) {
                 processedMathBlocks.add(parseInt(mm[1]));
               }
-              result.body.push({ type: 'equation', latex: text });
+              // HEADING-LIKE MATH GUARD: Word sometimes wraps a section heading in an
+              // OMML math element ("6. AI-Assisted Responsible Citation (ARC)
+              // Framework"). Its MATHBLOCKX content reads as English prose, not math.
+              // Emit it as a heading so it never becomes \begin{equation} in the PDF.
+              const resolvedMathText = text.replace(/MATHBLOCKX(\d+)XMARKER/gi, (_m: string, idxStr: string) => {
+                const mb = _mathBlocks[parseInt(idxStr)];
+                if (!mb) return '';
+                const raw = typeof mb === 'string' ? mb : (mb?.latex || mb?.tex || '');
+                return raw
+                  .replace(/^\\begin\{equation\*?\}/, '').replace(/\\end\{equation\*?\}$/, '')
+                  .replace(/^\\begin\{align\*?\}/, '').replace(/\\end\{align\*?\}$/, '')
+                  .replace(/^\$\$/, '').replace(/\$\$$/, '')
+                  .replace(/^\$/, '').replace(/\$$/, '')
+                  .replace(/\\(?:mathrm|text|mathbf|mathit|textrm)\s*\{([^}]*)\}/g, '$1')
+                  .replace(/[{}^_]/g, ' ')
+                  .trim();
+              }).trim();
+              const cleanResolved = resolvedMathText.replace(/\s+/g, ' ').trim();
+              const looksLikeHeadingMath =
+                cleanResolved.length > 4 && (
+                  /^(?:\s*(?:section|chapter|appendix|part)\s+)?\d+(?:\.\d+)*[.\s:]+[A-Za-z]/.test(cleanResolved) ||
+                  /^[A-Z][A-Za-z'\-]*(?:\s+[A-Za-z'\-]+){2,10}$/.test(cleanResolved) ||
+                  /^(?:introduction|abstract|conclusion|references|acknowledg|discussion|bibliography|related work|methodology|literature review|future work|results|overview|background)\b/i.test(cleanResolved)
+                ) &&
+                !/[=+<>\u2264\u2265\u2248\u2260\u2211\u222B]/.test(cleanResolved);
+              if (looksLikeHeadingMath) {
+                result.body.push({ type: 'heading', level: 1, text: cleanResolved });
+              } else {
+                result.body.push({ type: 'equation', latex: text });
+              }
           }
           else if (entry.role === 'algorithm') {
               let steps: string[] = [];

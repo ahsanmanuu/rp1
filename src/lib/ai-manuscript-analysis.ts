@@ -326,9 +326,12 @@ function reconcileVerdict(
   // Also filter out author/affiliation noise that should never be sections.
   const isAuthorOrAffilNoise = (title: string): boolean => {
     if (/@/.test(title)) return true;
-    if (/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|head of|researcher)\b/i.test(title)) return true;
+    if (/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|head of|researcher|mr\.|ms\.|mrs\.|md)\b/i.test(title)) return true;
+    if (/^(?:email|e-mail|mail|phone|tel|orcid)\b/i.test(title)) return true;
     if (/\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|center for|centre for|hospital|foundation)\b/i.test(title.toLowerCase())) return true;
     if (/\b(?:designations?|librarian|professor|assistant|associate|lecturer)\b/i.test(title.toLowerCase()) && title.length < 80) return true;
+    // Figure/table/algorithm caption lines are captions, never sections.
+    if (/^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(title) && title.length < 120) return true;
     return false;
   };
   if (verdict.sections && verdict.sections.length > 0) {
@@ -798,8 +801,12 @@ export function applyStructureCorrections(
     const isAuthorOrAffilNoise = (title: string): boolean => {
       const lower = title.toLowerCase();
       if (/@/.test(title)) return true;
-      if (/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|head of|researcher)\b/i.test(title)) return true;
+      if (/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|head of|researcher|mr\.|ms\.|mrs\.|md)\b/i.test(title)) return true;
       if (/\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|center for|centre for|hospital|foundation)\b/i.test(lower)) return true;
+      if (/^(?:email|e-mail|mail|phone|tel|orcid)\b/i.test(title)) return true;
+      if (/\b(?:designations?|librarian|professor|assistant|associate|lecturer)\b/i.test(lower) && title.length < 80) return true;
+      // Figure/table/algorithm caption lines are captions, never sections.
+      if (/^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(title) && title.length < 120) return true;
       return false;
     };
     for (const s of verdict.sections) {

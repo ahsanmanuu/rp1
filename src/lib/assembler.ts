@@ -401,6 +401,8 @@ export class LatexAssembler {
     let currentSectionTitle = "introduction";
     let sectionIdx = 1;
     let figureCounter = 0; // Sequential auto-caption counter for unnamed figures
+    const headerInputs = new Set<string>(); // dedupe \input{...} lines in main.tex
+    let frontMatterDone = false; // true once the first real section heading is seen
 
     const flushSection = () => {
       if (currentSectionNodes.length === 0) return;
@@ -433,9 +435,18 @@ export class LatexAssembler {
       }
       const sectionContent = dedupedNodes.map(n => LatexAssembler.assembleNode(n, mathBlocks)).join("\n\n");
       const safeTitle = currentSectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20);
-      const fileName = `sections/${sectionIdx.toString().padStart(2, '0')}_${safeTitle}.tex`;
+      // UNIQUE FILE NAME GUARD: never overwrite a previous flush with the same slug.
+      let fileName = `sections/${sectionIdx.toString().padStart(2, '0')}_${safeTitle}.tex`;
+      let fileSuffix = 2;
+      while (files[fileName] !== undefined) {
+        fileName = `sections/${sectionIdx.toString().padStart(2, '0')}_${safeTitle}_${fileSuffix}.tex`;
+        fileSuffix++;
+      }
       files[fileName] = sectionContent;
-      header.push(`\\input{${fileName}}`);
+      if (!headerInputs.has(`\\input{${fileName}}`)) {
+        headerInputs.add(`\\input{${fileName}}`);
+        header.push(`\\input{${fileName}}`);
+      }
       currentSectionNodes = [];
       sectionIdx++;
     };
@@ -460,6 +471,25 @@ export class LatexAssembler {
         if (node.type === 'heading' || node.type === 'paragraph') {
             const headingText = text.toLowerCase().replace(/[:.\-\s]*$/, '').trim();
             if (/^(?:keywords?|index terms?|key words?|highlights?)(?:\s*[:\-].*)?$/i.test(headingText)) return;
+        }
+
+        // UNIVERSAL AUTHOR/ACADEMIC-METADATA HEADING GUARD (see modular path):
+        // names, designations, emails, affiliations styled as headings must never
+        // become \section/\subsection. Designation/email headings are dropped
+        // anywhere; university-ish lines only before the first real section.
+        if (node.type === 'heading') {
+            const isDesignationHeading = /^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|head of|researcher|mr\.|ms\.|mrs\.|md)\b/i.test(text) ||
+                /^(?:email|e-mail|mail|phone|tel|orcid|corresponding author)\b/i.test(text);
+            const isEmailHeading = /^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(text);
+            const isAffiliationHeading = !frontMatterDone && text.length < 70 &&
+                /\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy)\b/i.test(text) &&
+                !/\b(?:of|and|for|in|the|a|an)\b.{0,20}\b(?:research|study|model|framework|approach|system|survey)\b/i.test(text);
+            const isCaptionHeading = /^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(text) && text.length < 120;
+            if (isDesignationHeading || isEmailHeading || isAffiliationHeading || isCaptionHeading) {
+                return;
+            }
+            const isRealSectionHeading = /^(?:introduction|abstract|keywords|related work|literature review|background|methodology|method|conclusion|conclusions|discussion|references|bibliography|acknowledgements|acknowledgments|appendix|future work|overview|results|implementation|experimental|evaluation)\b/i.test(text) || node.level === 1;
+            if (isRealSectionHeading) frontMatterDone = true;
         }
 
         // Section splitting: flush on level-1 headings OR canonical section names at any level
@@ -589,27 +619,13 @@ export class LatexAssembler {
         const primaryKey = `ref${idx + 1}`;
         bibItems.push(`\\bibitem{${primaryKey}} ${escapedRef}`);
         seenKeys.add(primaryKey);
-
-        // Generate author-year alias keys matching the parenthetical citation
-        // engine in escape() exactly: "(Smith, 2020)" → Smith2020 and
-        // "(Smith et al., 2020)" → Smithetal2020 — otherwise those in-text
-        // cites render as "[?]" with no matching \bibitem. Both the first word
-        // and the surname are covered ("John Smith, ... 2021" is cited in-text
-        // as "Smith", not "John").
-        const yearMatch = cleanRef.match(/\b(19|20)\d{2}\b/);
-        if (yearMatch) {
-          const names = LatexAssembler.surnameCandidates(cleanRef);
-          const aliasKeys = names.flatMap(name => [`${name}${yearMatch[0]}`, `${name}etal${yearMatch[0]}`]);
-          for (const aliasKey of aliasKeys) {
-            if (!seenKeys.has(aliasKey)) {
-              bibItems.push(`\\bibitem{${aliasKey}} ${escapedRef}`);
-              seenKeys.add(aliasKey);
-            }
-          }
-        }
       });
-      const bibPrefix = isNature ? "\\renewcommand{\\refname}{References}\n" : "";
-      const bibContent = `\n${bibPrefix}\\begin{thebibliography}{99}\n${bibItems.join('\n')}\n\\end{thebibliography}`;
+      // Author-year alias \bibitem entries are intentionally OMITTED here —
+      // each alias rendered a SEPARATE bibliography line in the compiled PDF
+      // (triple duplicate entries per reference). In-text author-year citations
+      // are resolved to \cite{refN} keys by resolveParentheticalCitations().
+      const refHeaderCmd = '\\section*{References}\n';
+      const bibContent = `\n${refHeaderCmd}\\begin{thebibliography}{99}\n${bibItems.join('\n')}\n\\end{thebibliography}`;
       files['references/bibliography.tex'] = bibContent;
       header.push("\\input{references/bibliography.tex}");
     }
@@ -1299,8 +1315,16 @@ export class LatexAssembler {
       const year = (clean.match(/(?:19|20)\d{2}/) || [])[0] || '';
       if (!author || !year) return null;
       const a = author.toLowerCase().replace(/[^\w]/g, '');
-      const hit = refMeta.find(m => m.year === year && m.authors.includes(a));
-      return hit ? hit.key : null;
+      // Exact author+year match wins (keeps the citation faithful to the source).
+      const exactHit = refMeta.find(m => m.year === year && m.authors.includes(a));
+      if (exactHit) return exactHit.key;
+      // AUTHOR-ONLY FALLBACK: when the DOCX cites "(Resnik, 1998)" but the
+      // reference list says "(Resnik, 2005)" (year drift in the source), map to
+      // the unique reference by surname anyway. Without this the parenthetical
+      // engine emits \cite{Resnik1998}, which has no bibitem — "[?]" in the PDF.
+      const authorHits = refMeta.filter(m => m.authors.includes(a));
+      if (authorHits.length === 1) return authorHits[0].key;
+      return null;
     };
 
     (doc.body || []).forEach((n: any) => {
@@ -1968,9 +1992,20 @@ export class ModularLatexAssembler {
 
         const sectionContent = dedupedNodes.map(n => LatexAssembler.assembleNode({ ...n, sectionStyle: mapping.sectionStyle } as any, mathBlocks)).join("\n\n");
         const safeTitle = currentSectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20);
-        const fileName = `sections/${sectionIdx.toString().padStart(2, '0')}_${safeTitle}.tex`;
+        // UNIQUE FILE NAME GUARD: two flushes with the same slug (e.g. repeated
+        // "Discussion" headings) must never overwrite each other or be \input'd
+        // twice — both would corrupt the PDF (repeating content / lost sections).
+        let fileName = `sections/${sectionIdx.toString().padStart(2, '0')}_${safeTitle}.tex`;
+        let fileSuffix = 2;
+        while (files[fileName] !== undefined) {
+          fileName = `sections/${sectionIdx.toString().padStart(2, '0')}_${safeTitle}_${fileSuffix}.tex`;
+          fileSuffix++;
+        }
         files[fileName] = sectionContent + "\n";
-      header.push(`\\input{${fileName}}`);
+        if (!headerInputs.has(`\\input{${fileName}}`)) {
+          headerInputs.add(`\\input{${fileName}}`);
+          header.push(`\\input{${fileName}}`);
+        }
       currentSectionNodes = [];
       sectionIdx++;
     };
@@ -1981,6 +2016,8 @@ export class ModularLatexAssembler {
     let aiChartIdx = 0;
     let aiTableIdx = 0;
     let aiAlgoIdx = 0;
+    let frontMatterDone = false; // true once the first real section heading is seen
+    const headerInputs = new Set<string>(); // dedupe \input{...} lines in main.tex
 
     nodes.forEach((node: any, nodeIdx: number) => {
         const text = (node.text || "").trim();
@@ -2041,6 +2078,32 @@ export class ModularLatexAssembler {
 
         // For headings specifically, block metadata section titles even if they trigger a split
         if (node.type === 'heading' && isMetadataMatch) return;
+
+        // UNIVERSAL AUTHOR/ACADEMIC-METADATA HEADING GUARD: Word documents
+        // frequently style the author block (names, designations, emails,
+        // affiliations, universities) as Heading paragraphs. Those lines must
+        // NEVER become \section/\subsection — they belong to the front matter.
+        // Designation/email headings are dropped anywhere; university-ish lines
+        // only while still in the front-matter region (before the first real
+        // section heading), so a genuine section like "The Role of University
+        // Libraries" is never harmed.
+        if (node.type === 'heading') {
+            const isDesignationHeading = /^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|head of|researcher|mr\.|ms\.|mrs\.|md|prof\.)\b/i.test(text) ||
+                /^(?:email|e-mail|mail|phone|tel|orcid|corresponding author)\b/i.test(text);
+            const isEmailHeading = /^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(text);
+            const isAffiliationHeading = !frontMatterDone && text.length < 70 &&
+                /\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy)\b/i.test(text) &&
+                !/\b(?:of|and|for|in|the|a|an)\b.{0,20}\b(?:research|study|model|framework|approach|system|survey)\b/i.test(text);
+            // FIGURE/TABLE CAPTION HEADING GUARD: "Figure 1: Architecture of ..."
+            // or "Table 2 ..." as a heading is always a caption artifact, never
+            // a section — the real caption is rendered by the figure/table node.
+            const isCaptionHeading = /^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(text) && text.length < 120;
+            if (isDesignationHeading || isEmailHeading || isAffiliationHeading || isCaptionHeading) {
+                return;
+            }
+            const isRealSectionHeading = /^(?:introduction|abstract|keywords|related work|literature review|background|methodology|method|conclusion|conclusions|discussion|references|bibliography|acknowledgements|acknowledgments|appendix|future work|overview|results|implementation|experimental|evaluation)\b/i.test(text) || node.level === 1;
+            if (isRealSectionHeading) frontMatterDone = true;
+        }
 
         if (node.type === 'heading' && (node.level === 1 || !node.level)) {
             flushSection();

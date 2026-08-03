@@ -965,14 +965,16 @@ Analyze the manuscript and return ONE JSON object (no markdown, no commentary be
 7. Sections: the COMPLETE ordered list of every section, subsection and subsubsection heading visible in input A. level 1 = \\section, level 2 = \\subsection, level 3 = \\subsubsection. Drop leading numbering ("1.", "1.1", "1.1.2", "[1]", "I."). "References"/"Bibliography", "Acknowledgements", "Declarations", "Appendix" are level 1 headings. Never omit, merge or reorder sections. Keep every heading's implied depth: a "3.2" heading belongs at level 2, "3.2.1" at level 3 — never flatten them to level 1.
 8. figures/tables/algorithms: list EVERY figure, table and algorithm visible in input A with its caption/title copied VERBATIM, in document order. Empty arrays when none exist. An image without any caption is NOT a figure - do not count or list it.
 9. HARD RULES FOR COMPONENT INTEGRITY (ZERO BIAS):
-   - FRONTMATTER METADATA ONLY: Author names, academic designations (e.g., 'Assistant Professor', 'Deputy Librarian'), department names, university names, and email addresses ARE FRONTMATTER METADATA. They MUST NEVER be placed in the "sections" array or counted as sections/headings!
-   - SECTION HEADINGS ARE NOT EQUATIONS: Section and subsection titles (e.g. "6. AI-Assisted Responsible Citation (ARC) Framework") ARE HEADINGS ONLY. They MUST NEVER be included in "equations" or classified as math!
+   - FRONTMATTER METADATA ONLY: Author names, academic designations (e.g., 'Assistant Professor', 'Deputy Librarian', 'Lecturer', 'Dr.', 'Prof.'), department names, university names, polytechnic/institute names, and email addresses ARE FRONTMATTER METADATA. They MUST NEVER be placed in the "sections" array or counted as sections/headings — even if they are visually styled as headings in the converted text (a Word author block often is). Put them ONLY in the "authors"/"affiliations" fields.
+   - SECTION HEADINGS ARE NOT EQUATIONS: Section and subsection titles (e.g. "6. AI-Assisted Responsible Citation (ARC) Framework", "3.1 Methods") ARE HEADINGS ONLY. They MUST NEVER be included in "equations" or classified as math, even when they appear inside equation-looking delimiters or math markup in the converted text. An "equation" MUST contain real math operators (=, <, >, sums, integrals, Greek letters, exponents) — pure words are never an equation.
+   - FIGURE CAPTIONS ARE NOT SECTIONS: "Figure N: <caption>" / "Table N: <caption>" lines are CAPTIONS, never headings — do not put them in "sections".
    - FIGURES & CHARTS: Count by "Fig." or "Figure" captions ONLY, excluding charts/plots. Sub-figures (a)(b)(c) under one "Fig. N" = 1 figure. Do NOT count images without captions.
    - CHARTS: Count chart/plot images only (a chart with a "Fig." caption counts here, not under figures).
    - TABLES: Count by "Table" or "TABLE" captions. Do NOT count algorithm or equation tables. A 2-column key-value table IS a table. A layout table used for author affiliations is NOT a table.
    - EQUATIONS: Count ONLY display equations — numbered equations like (1), (2), or explicit equation/align/gather blocks. Inline math ($x$), parameter assignments ("n = 100"), inequality constraints, section titles, and simple expressions in prose are NOT equations. When in doubt, do NOT count it.
    - PSEUDOCODE: Count "Algorithm N" or "Pseudocode N" blocks only.
    - NEVER inflate counts. If you see 3 tables, report 3 — not 5. Under-counting by 1 is acceptable; over-counting by even 1 is a FAILURE.
+   - CONSISTENCY CHECK: the number of entries you list in "figures"/"tables"/"algorithms" MUST equal your "components" figures/tables/pseudocode counts. The "sections" array MUST contain "References"/"Bibliography" as its final entry whenever a reference list exists in input A.
    - If a count cannot be determined from the text, return null for that field — never guess 0.
 10. Citations: an in-text citation marker is a bracketed number/reference like [12] or (Smith et al., 2020) in the body text.
 11. References: include the actual bibliography entries verbatim (up to 150). If no bibliography is visible in the text, return [].
@@ -1134,12 +1136,13 @@ Return ONE JSON object (no markdown, no commentary) with this EXACT schema:
 3. \\includegraphics/\\zimg filenames MUST come EXACTLY from input F's "filename" field for the matching index. Never invent filenames.
 4. tables: reconstruct rows/columns from the text ACCURATELY. Use tabularx with |c|c|..| column spec and \\hline. Use \\multicolumn for merged cells. Use \\adjustbox{max width=\\linewidth} to prevent overflow. Every table must compile standalone inside a float. Preserve ALL data rows — never truncate table content.
 5. algorithms: reconstruct the pseudocode lines with \\State, \\For/\\EndFor, \\While/\\EndWhile, \\If/\\Else/\\EndIf, \\Procedure, \\Function, \\Return, \\Comment. Use the algorithmic environment (algorithmicx style).
-6. Latex must be a single float/environment block per entry — no \\documentclass, \\usepackage, \\input, \\newcommand, \\def, \\bibliography, \\maketitle, or any other structural commands.
+6. Latex must be a single float/environment block per entry — no \\documentclass, \\usepackage, \\input, \\newcommand, \\def, \\bibliography, \\maketitle, \\section, \\subsection, \\begin{equation}, or any other structural commands.
 7. Escape special characters in text (%, #, &, _ as \\%, \\#, \\&, \\_).
 8. If a component type is absent from the document, omit its key entirely (or use []).
 9. Keep every fragment under 3000 characters. JSON keys and backslashes must be exact and properly escaped.
 10. COUNTS: your counts MUST match input E exactly — the counts there are ground truth. Do not recount or re-derive them from the truncated text window; if input E shows figures: 3, emit EXACTLY 3 figure entries.
-11. RESPONSE BUDGET: return ONLY the JSON object — no commentary, no markdown fences, no trailing text. Be economical: captions and pseudocode lines must be verbatim and complete, but add no prose or padding.
+11. ZERO-BIAS GUARD: A text line like "N. Some Words" or "N.M. Some Words" is a SECTION HEADING, not a figure/table/algorithm/chart — never emit a component fragment for it and never include it in a caption. A line like "Figure N: <text>" that is NOT in inputs B/C/D is not a verified component — skip it. Pure-word lines are never captions.
+12. RESPONSE BUDGET: return ONLY the JSON object — no commentary, no markdown fences, no trailing text. Be economical: captions and pseudocode lines must be verbatim and complete, but add no prose or padding.
 
 Respond with ONLY the JSON object.`;
   },

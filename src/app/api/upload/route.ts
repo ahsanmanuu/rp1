@@ -383,6 +383,23 @@ export async function POST(req: Request) {
 
       const mathData: { latex: string, isDisplay: boolean }[] = [];
       allMathNodes.forEach((node: any) => {
+        // HEADING-LIKE MATH GUARD: Word sometimes wraps section headings / titles in
+        // OMML math elements (auto-formatting). Extracting those as math turns a
+        // heading like "6. AI-Assisted Responsible Citation (ARC) Framework" into a
+        // \begin{equation} in the compiled PDF. If the math content reads like a
+        // heading (numbered title, or mostly-English words with no math operators),
+        // leave the node untouched so mammoth renders it as plain text instead.
+        const rawMathText = (node.textContent || '').trim();
+        const headingLikeMath =
+          rawMathText.length > 0 && (
+            /^\s*(?:section|chapter|appendix|part)?\s*\d+(?:\.\d+)*[.\s:]+[A-Za-z]/.test(rawMathText) ||
+            /^\d+\.\s+[A-Z]/.test(rawMathText)
+          );
+        const mathOperatorCount = (rawMathText.match(/[=+\-*/^<>\u2264\u2265\u2248\u2260\u2211\u222B\u221A_α-ωΑ-Ω]/g) || []).length;
+        const wordCount = (rawMathText.match(/[A-Za-z]{2,}/g) || []).length;
+        const proseLikeMath = rawMathText.length > 15 && mathOperatorCount === 0 && wordCount >= 3;
+        if (headingLikeMath || proseLikeMath) return;
+
         // UNIFIED ROOT FILTER: Only process nodes that are NOT contained within another math node
         let parent: any = node.parentNode;
         let isNested = false;
