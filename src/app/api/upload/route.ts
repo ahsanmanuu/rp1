@@ -906,7 +906,7 @@ export async function POST(req: Request) {
             imageFiles: imageNames,
             templateId: templateId,
           }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 45000))
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 14000))
         ]);
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
@@ -1155,7 +1155,7 @@ export async function POST(req: Request) {
             imageFiles: [],
             templateId: templateId,
           }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 45000))
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 14000))
         ]);
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
