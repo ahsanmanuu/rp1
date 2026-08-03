@@ -760,7 +760,6 @@ export function applyStructureCorrections(
       const year = yearMatch ? yearMatch[0] : '';
       return surname && year ? `${surname}_${year}` : clean.substring(0, 50).toLowerCase();
     };
-
     const seenSignatures = new Set(parserRefs.map(refSignature));
     const newRefs: string[] = [];
     
@@ -787,9 +786,16 @@ export function applyStructureCorrections(
     const body = deepData.body || [];
     const aiSections: Array<{ title: string; level: number }> = [];
     const seenAiNorms = new Set<string>();
+    const isAuthorOrAffilNoise = (title: string): boolean => {
+      const lower = title.toLowerCase();
+      if (/@/.test(title)) return true;
+      if (/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|head of|researcher)\b/i.test(title)) return true;
+      if (/\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|center for|centre for|hospital|foundation)\b/i.test(lower)) return true;
+      return false;
+    };
     for (const s of verdict.sections) {
       const t = String(s?.title || '').replace(/\s+/g, ' ').trim();
-      if (!t || t.length < 2) continue;
+      if (!t || t.length < 2 || isAuthorOrAffilNoise(t)) continue;
       const norm = normalizeTitleKey(t);
       if (seenAiNorms.has(norm)) continue; // dedupe duplicated AI headings
       seenAiNorms.add(norm);

@@ -337,7 +337,9 @@ export class DeepDocumentParser {
             (cleanLine.split(' ').every(w => /^[A-Z]/.test(w) || STOPWORDS.has(w.toLowerCase())) ||
              (/^[A-Z0-9\s_\-&:\(\)]+$/.test(cleanLine) && cleanLine.split(' ').length <= 8));
           
-          if (isSection || isNumberedHeading || isShortTitleCase) {
+          const isPdfAuthorAffil = /@/.test(cleanLine) || /^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|head of|researcher)\b/i.test(cleanLine) || /\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|center for|centre for|hospital|foundation)\b/i.test(cleanLine);
+
+          if (!isPdfAuthorAffil && (isSection || isNumberedHeading || isShortTitleCase)) {
               let level = 1;
               if (prefixMatch) {
                   const cleanPrefix = prefixMatch[1];
@@ -780,7 +782,8 @@ export class DeepDocumentParser {
           const detectedLvl = this.detectHeading(el, f.text, manifest);
           const isNumberedHeading = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(f.text);
           const isStandardSectionName = /^(?:[\d\.]+\s*)?(?:introduction|related work|background|methodology|conclusion|abstract|acknowledgments|references|overview|implementation|proposed|experimental|results|discussion|system)/i.test(f.text);
-          const isSectionHeading = detectedLvl !== null || isNumberedHeading || isStandardSectionName || tagName.startsWith('h') || (tagName === 'p' && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8);
+          const isAuthorAffilText = /@/.test(f.text) || /^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|head of|researcher)\b/i.test(f.text) || /\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|center for|centre for|hospital|foundation)\b/i.test(f.text);
+          const isSectionHeading = !isAuthorAffilText && (detectedLvl !== null || isNumberedHeading || isStandardSectionName || tagName.startsWith('h') || (tagName === 'p' && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8));
 
           if (isSectionHeading) {
               nextRole = 'section';

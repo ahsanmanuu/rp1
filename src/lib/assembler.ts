@@ -2187,14 +2187,10 @@ const useBibtex = tpl?.mapping?.bibliographyStyle || templateId.includes('ieee')
           }
         });
         const bibContent = bibEntries.join('\n\n');
-        // The .bib filename MUST match the \bibliography{references} argument —
-        // previously the file was written as references/sample.bib while the
-        // document asked for "references", so bibtex found nothing and the
-        // references section rendered BLANK. The root copy guarantees tectonic
-        // and every engine locate the database regardless of path remapping.
+        const refHeaderCmd = (isAcm || isIeee || isElsevier || isLncs || isNature) ? '' : '\\section*{References}\n';
         files[`references/${bibFileName}.bib`] = bibContent;
         files[`${bibFileName}.bib`] = bibContent;
-        files['references/bibliography.tex'] = `\n\\bibliographystyle{${bibKey}}\n\\bibliography{${bibFileName}}\n`;
+        files['references/bibliography.tex'] = `\n${refHeaderCmd}\\bibliographystyle{${bibKey}}\n\\bibliography{${bibFileName}}\n`;
         header.push("\\input{references/bibliography.tex}");
       } else {
         const bibItems = (doc.references || []).map((ref: string, idx: number) => {
@@ -2204,9 +2200,10 @@ const useBibtex = tpl?.mapping?.bibliographyStyle || templateId.includes('ieee')
           const cleanRef = ref.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '');
           return `\\bibitem{${key}} ${LatexAssembler.escape(cleanRef, mathBlocks, { skipCitations: true, isBibItem: true })}`;
         });
-        const bibContent = `\n\\begin{thebibliography}{99}\n${bibItems.join('\n')}\n\\end{thebibliography}`;
+        const refHeaderCmd = (isAcm || isIeee || isElsevier || isLncs || isNature) ? '' : '\\section*{References}\n';
+        const bibContent = `\n${refHeaderCmd}\\begin{thebibliography}{99}\n${bibItems.join('\n')}\n\\end{thebibliography}`;
         files['references/bibliography.tex'] = bibContent;
-header.push("\\input{references/bibliography.tex}");
+        header.push("\\input{references/bibliography.tex}");
       }
     }
 

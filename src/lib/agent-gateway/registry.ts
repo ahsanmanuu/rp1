@@ -964,13 +964,14 @@ Analyze the manuscript and return ONE JSON object (no markdown, no commentary be
 6. Keywords: exact terms, no numbering, no bullet prefixes.
 7. Sections: the COMPLETE ordered list of every section, subsection and subsubsection heading visible in input A. level 1 = \\section, level 2 = \\subsection, level 3 = \\subsubsection. Drop leading numbering ("1.", "1.1", "1.1.2", "[1]", "I."). "References"/"Bibliography", "Acknowledgements", "Declarations", "Appendix" are level 1 headings. Never omit, merge or reorder sections. Keep every heading's implied depth: a "3.2" heading belongs at level 2, "3.2.1" at level 3 — never flatten them to level 1.
 8. figures/tables/algorithms: list EVERY figure, table and algorithm visible in input A with its caption/title copied VERBATIM, in document order. Empty arrays when none exist. An image without any caption is NOT a figure - do not count or list it.
-9. Components — COUNTING PRECISION (CRITICAL — WRONG COUNTS = FAILURE):
-   - Count EXACTLY what you can see in input A. If the text contains an elision marker ("[middle of document elided]" or similar), you MUST NOT extrapolate or guess: count only the items visible in the window you were given and set any count you could not fully determine to null — never a guessed number.
-   - figures: count by "Fig." or "Figure" captions ONLY, excluding charts/plots. Sub-figures (a)(b)(c) under one "Fig. N" = 1 figure. Do NOT count images without captions.
-   - charts: count chart/plot images only (a chart with a "Fig." caption counts here, not under figures).
-   - tables: count by "Table" or "TABLE" captions. Do NOT count algorithm or equation tables. A 2-column key-value table IS a table. A layout table used for author affiliations is NOT a table.
-   - equations: count ONLY display equations — numbered equations like (1), (2), or explicit equation/align/gather blocks. Inline math ($x$), parameter assignments ("n = 100"), inequality constraints, and simple expressions in prose are NOT equations. When in doubt, do NOT count it.
-   - pseudocode: count "Algorithm N" or "Pseudocode N" blocks only.
+9. HARD RULES FOR COMPONENT INTEGRITY (ZERO BIAS):
+   - FRONTMATTER METADATA ONLY: Author names, academic designations (e.g., 'Assistant Professor', 'Deputy Librarian'), department names, university names, and email addresses ARE FRONTMATTER METADATA. They MUST NEVER be placed in the "sections" array or counted as sections/headings!
+   - SECTION HEADINGS ARE NOT EQUATIONS: Section and subsection titles (e.g. "6. AI-Assisted Responsible Citation (ARC) Framework") ARE HEADINGS ONLY. They MUST NEVER be included in "equations" or classified as math!
+   - FIGURES & CHARTS: Count by "Fig." or "Figure" captions ONLY, excluding charts/plots. Sub-figures (a)(b)(c) under one "Fig. N" = 1 figure. Do NOT count images without captions.
+   - CHARTS: Count chart/plot images only (a chart with a "Fig." caption counts here, not under figures).
+   - TABLES: Count by "Table" or "TABLE" captions. Do NOT count algorithm or equation tables. A 2-column key-value table IS a table. A layout table used for author affiliations is NOT a table.
+   - EQUATIONS: Count ONLY display equations — numbered equations like (1), (2), or explicit equation/align/gather blocks. Inline math ($x$), parameter assignments ("n = 100"), inequality constraints, section titles, and simple expressions in prose are NOT equations. When in doubt, do NOT count it.
+   - PSEUDOCODE: Count "Algorithm N" or "Pseudocode N" blocks only.
    - NEVER inflate counts. If you see 3 tables, report 3 — not 5. Under-counting by 1 is acceptable; over-counting by even 1 is a FAILURE.
    - If a count cannot be determined from the text, return null for that field — never guess 0.
 10. Citations: an in-text citation marker is a bracketed number/reference like [12] or (Smith et al., 2020) in the body text.
