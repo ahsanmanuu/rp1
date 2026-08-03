@@ -323,10 +323,19 @@ function reconcileVerdict(
   };
 
   // ── Sections: keep only AI sections whose title actually appears in text ──
+  // Also filter out author/affiliation noise that should never be sections.
+  const isAuthorOrAffilNoise = (title: string): boolean => {
+    if (/@/.test(title)) return true;
+    if (/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|head of|researcher)\b/i.test(title)) return true;
+    if (/\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|center for|centre for|hospital|foundation)\b/i.test(title.toLowerCase())) return true;
+    if (/\b(?:designations?|librarian|professor|assistant|associate|lecturer)\b/i.test(title.toLowerCase()) && title.length < 80) return true;
+    return false;
+  };
   if (verdict.sections && verdict.sections.length > 0) {
     const verified = verdict.sections.filter(s => {
       const t = String(s?.title || '').replace(/\s+/g, ' ').trim();
-      if (!t) return false;
+      if (!t || t.length < 2) return false;
+      if (isAuthorOrAffilNoise(t)) return false;
       if (inText(t)) return true;
       // Allow numbering-stripped match (e.g. "1. Introduction" -> "introduction")
       return inText(t.replace(/^[\d\s.\-–—:()[\]ivxlcdm]+/i, ''));

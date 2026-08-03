@@ -276,7 +276,12 @@ function UploadContent() {
       // Step 1: Upload the file — with automatic retry loop for transient network errors
       let uploadData: any;
       let uploadAttempts = 0;
-      const maxUploadAttempts = 3;
+      const maxUploadAttempts = 4;
+
+      // Scale XHR timeout dynamically based on file size — large files need much more
+      // server-side processing time (DOCX parsing, mammoth, sharp, AI analysis, LaTeX assembly)
+      const fileSizeMB = targetFile.size / (1024 * 1024);
+      const xhrTimeoutMs = Math.max(600000, Math.min(fileSizeMB * 90000, 1800000)); // 10min base, 1KB/s scaled, 30min cap
 
       while (uploadAttempts < maxUploadAttempts) {
         uploadAttempts++;
@@ -284,7 +289,7 @@ function UploadContent() {
           uploadData = await new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             xhr.open("POST", "/api/upload");
-            xhr.timeout = 300000; // 5 minutes timeout for large DOCX processing
+            xhr.timeout = xhrTimeoutMs;
             
             let simulatedProgress = 0;
 
@@ -356,7 +361,7 @@ function UploadContent() {
 
             xhr.ontimeout = () => {
               if (simulatedInterval) clearInterval(simulatedInterval);
-              reject(new Error("Analysis timeout. The server took too long to process."));
+              reject(new Error("NETWORK_DROP"));
             };
             
             xhr.send(formData);
@@ -364,11 +369,11 @@ function UploadContent() {
           break; // Upload succeeded!
         } catch (networkErr: any) {
           if (networkErr?.message === "NETWORK_DROP" && uploadAttempts < maxUploadAttempts) {
-            await new Promise(r => setTimeout(r, 1200 * uploadAttempts));
+            await new Promise(r => setTimeout(r, 2000 * uploadAttempts));
             continue;
           }
           if (networkErr?.message === "NETWORK_DROP") {
-            throw new Error("Connection timed out while uploading. Please check your internet connection or try uploading again.");
+            throw new Error("Connection timed out while uploading. The file may be too large or the server is busy processing. Please check your internet connection and try again.");
           }
           throw networkErr;
         }

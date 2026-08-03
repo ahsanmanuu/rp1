@@ -799,8 +799,9 @@ export class LatexAssembler {
       case 'figure': {
         const rawId = String(node.id || 'figure').replace(/\\/g, '/');
         const fileId = rawId.replace(/^assets\//, '') || 'figure';
-        const rawCaption = node.caption || 'Figure';
-        const cleaned = LatexAssembler.cleanFigureCaption(rawCaption);
+        const rawCaption = node.caption || '';
+        const hasRealCaption = rawCaption.length > 3 && !/^(?:Figure|Fig\.?|Image|Chart|Diagram|Photo)\s*$/i.test(rawCaption.trim());
+        const cleaned = hasRealCaption ? LatexAssembler.cleanFigureCaption(rawCaption) : '';
         const caption = LatexAssembler.escapeText(cleaned.length > 0 ? cleaned : 'Figure', mathBlocks);
         const labelIdx = (node as any).labelIdx ?? Math.random().toString(36).substring(2, 7);
         const label = `fig:${String(labelIdx).replace(/[^a-z0-9]/gi, '_')}`;
@@ -813,8 +814,9 @@ export class LatexAssembler {
       case 'chart': {
         const rawId = String(node.id || 'chart').replace(/\\/g, '/');
         const fileId = rawId.replace(/^assets\//, '') || 'chart';
-        const rawCaption = node.caption || 'Chart';
-        const cleaned = LatexAssembler.cleanFigureCaption(rawCaption);
+        const rawCaption = node.caption || '';
+        const hasRealCaption = rawCaption.length > 3 && !/^(?:Chart|Figure|Fig\.?)\s*$/i.test(rawCaption.trim());
+        const cleaned = hasRealCaption ? LatexAssembler.cleanFigureCaption(rawCaption) : '';
         const caption = LatexAssembler.escapeText(cleaned.length > 0 ? cleaned : 'Chart', mathBlocks);
         const labelIdx = (node as any).labelIdx ?? Math.random().toString(36).substring(2, 7);
         const label = `chart:${String(labelIdx).replace(/[^a-z0-9]/gi, '_')}`;
@@ -2010,6 +2012,16 @@ export class ModularLatexAssembler {
         // (>60% of length or short node <100 chars), avoiding converting long prose paragraphs
         // that merely contain an inline math fragment ($x$).
         if (node.type === 'paragraph' && !isMetadataMatch) {
+            // GUARD: Never reclassify section headings or author metadata as equations
+            const looksLikeHeading = /^\d+\.\s+[A-Z]/.test(text) ||
+                /^(?:\d+\.\d+\.\d+|\d+\.\d+|\d+)\s+[A-Z]/.test(text) ||
+                /^(?:introduction|related work|background|methodology|conclusion|abstract|acknowledgments|references|overview|implementation|results|discussion|literature review|future work|scope for future|transformation|ethical principles|role of|figure \d)/i.test(text.trim());
+            const looksLikeAuthorMeta = /@/.test(text) || /^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|lecturer)\b/i.test(text) ||
+                /\b(?:university|polytechnic|college|institute|department|faculty|school of)\b/i.test(text);
+
+            if (looksLikeHeading || looksLikeAuthorMeta) {
+                // Do not reclassify — keep as paragraph/heading
+            } else {
             const eqEntry = mathBlocks.find((b: any) => {
                 const raw = typeof b === 'string' ? b : (b?.latex || b?.tex || '');
                 if (raw.length < 3) return false;
@@ -2021,6 +2033,7 @@ export class ModularLatexAssembler {
             });
             if (eqEntry) {
                 node = { ...node, type: 'equation', latex: typeof eqEntry === 'string' ? eqEntry : (eqEntry.latex || eqEntry.tex || ''), label: eqEntry?.label || '' };
+            }
             }
         }
 
@@ -2171,36 +2184,32 @@ const useBibtex = tpl?.mapping?.bibliographyStyle || templateId.includes('ieee')
             seenBibKeys.add(key);
             bibEntries.push(buildBibEntry(key, ref, idx));
           }
-          // Author-year alias entries for parenthetical citations
-          // ("(Smith et al., 2020)") that the pre-pass could not map to refN.
-          const cleanRef = ref.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '').trim();
-          const yearMatch = cleanRef.match(/\b(19|20)\d{2}\b/);
-          if (yearMatch) {
-            const aliasNames = LatexAssembler.surnameCandidates(cleanRef);
-            const aliasKeys = aliasNames.flatMap(name => [`${name}${yearMatch[0]}`, `${name}etal${yearMatch[0]}`]);
-            for (const aliasKey of aliasKeys) {
-              if (!seenBibKeys.has(aliasKey)) {
-                seenBibKeys.add(aliasKey);
-                bibEntries.push(buildBibEntry(aliasKey, ref, idx));
-              }
-            }
-          }
+          // Author-year alias entries are intentionally OMITTED here.
+          // Generating separate BibTeX entries for each author-year variant
+          // (e.g. Smith2020, Smithetal2020) causes natbib to render each as
+          // a separate \bibitem, producing TRIPLE duplicate bibliography entries
+          // in the compiled PDF. Numbered \cite{refN} citations resolve via the
+          // primary key only.
         });
         const bibContent = bibEntries.join('\n\n');
-        const refHeaderCmd = (isAcm || isIeee || isElsevier || isLncs || isNature) ? '' : '\\section*{References}\n';
+        const refHeaderCmd = '\\section*{References}\n';
         files[`references/${bibFileName}.bib`] = bibContent;
         files[`${bibFileName}.bib`] = bibContent;
         files['references/bibliography.tex'] = `\n${refHeaderCmd}\\bibliographystyle{${bibKey}}\n\\bibliography{${bibFileName}}\n`;
         header.push("\\input{references/bibliography.tex}");
       } else {
-        const bibItems = (doc.references || []).map((ref: string, idx: number) => {
+        const seenBibKeys = new Set<string>();
+        const bibItems: string[] = [];
+        (doc.references || []).forEach((ref: string, idx: number) => {
           let key = `ref${idx + 1}`;
           const numMatch = ref.match(/^\[(\d+)\]/);
           if (numMatch && parseInt(numMatch[1]) === idx + 1) key = `ref${numMatch[1]}`;
+          if (seenBibKeys.has(key)) return;
+          seenBibKeys.add(key);
           const cleanRef = ref.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '');
-          return `\\bibitem{${key}} ${LatexAssembler.escape(cleanRef, mathBlocks, { skipCitations: true, isBibItem: true })}`;
+          bibItems.push(`\\bibitem{${key}} ${LatexAssembler.escape(cleanRef, mathBlocks, { skipCitations: true, isBibItem: true })}`);
         });
-        const refHeaderCmd = (isAcm || isIeee || isElsevier || isLncs || isNature) ? '' : '\\section*{References}\n';
+        const refHeaderCmd = '\\section*{References}\n';
         const bibContent = `\n${refHeaderCmd}\\begin{thebibliography}{99}\n${bibItems.join('\n')}\n\\end{thebibliography}`;
         files['references/bibliography.tex'] = bibContent;
         header.push("\\input{references/bibliography.tex}");

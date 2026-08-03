@@ -793,6 +793,7 @@ export class DeepDocumentParser {
               const looksLikeAuthor = ((f.wordCount >= 2 && f.wordCount <= 30 &&
                 (f.text.includes(',') || f.text.includes(';') || /\b(and|&)\b/i.test(f.text) || /\d/.test(f.text) || /#/.test(f.text) ||
                  /orcid/i.test(f.text) ||
+                 /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\s+[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){0,3}$/i.test(f.text) ||
                  /^[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,3}$/.test(f.text)) &&
                 (f.capRatio > 0.15 || /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+/.test(f.text)) &&
                 !AFFIL_KEYWORDS.test(f.text) &&
@@ -851,6 +852,7 @@ export class DeepDocumentParser {
           const looksLikeAuthor = ((f.wordCount >= 2 && f.wordCount <= 30 &&
             (f.text.includes(',') || f.text.includes(';') || /\b(and|&)\b/i.test(f.text) || /\d/.test(f.text) || /#/.test(f.text) ||
              /orcid/i.test(f.text) ||
+             /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\s+[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){0,3}$/i.test(f.text) ||
              /^[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,3}$/.test(f.text)) &&
             (f.capRatio > 0.15 || /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+/.test(f.text)) &&
             !AFFIL_KEYWORDS.test(f.text) &&
@@ -860,16 +862,17 @@ export class DeepDocumentParser {
           const isLocationAffil = isAlreadyTitleStarted && !foundAbstract &&
             (/(?:\b\d{5,6}\b|\b(?:India|USA|UK|China|Japan|Germany|France|Australia|Canada|Brazil|Korea|Italy|Spain|Netherlands|Switzerland|Singapore|Malaysia|Iran|Egypt|Pakistan|Indonesia|Thailand|Turkey|Russia|Mexico|Colombia|Nigeria|Kenya|Ethiopia|South\s+Africa)\b)/i.test(f.text) || /orcid/i.test(f.text)) &&
             f.wordCount < 15 && f.text.length < 200;
+          const startsWithDrOrProf = /^(?:dr\.|prof\.|professor)\b/i.test(f.text.trim());
 
           if ((EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil) && isAlreadyTitleStarted) {
               nextRole = 'affiliation';
-          } else if (looksLikeAuthor && isAlreadyTitleStarted) {
+          } else if ((startsWithDrOrProf || looksLikeAuthor) && isAlreadyTitleStarted) {
               nextRole = 'author';
           } else if (!isAlreadyTitleStarted) {
               nextRole = 'title';
           } else if (currentRole === 'title') {
-              if (looksLikeAuthor || EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil || /#/.test(f.text) || f.text.includes(',') || f.text.match(/\d/)) {
-                  if (looksLikeAuthor) {
+              if (startsWithDrOrProf || looksLikeAuthor || EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil || /#/.test(f.text) || f.text.includes(',') || f.text.match(/\d/)) {
+                  if (startsWithDrOrProf || looksLikeAuthor) {
                       nextRole = 'author';
                   } else if (EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil) {
                       nextRole = 'affiliation';
@@ -882,7 +885,7 @@ export class DeepDocumentParser {
                   nextRole = 'section';
               }
           } else {
-              if (looksLikeAuthor) {
+              if (startsWithDrOrProf || looksLikeAuthor) {
                   nextRole = 'author';
               } else if (EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil) {
                   nextRole = 'affiliation';
@@ -1989,7 +1992,9 @@ export class DeepDocumentParser {
 
     // Numbered headings with formula-like titles ("3.1 Loss = L1 + L2") are
     // headings, never equations — equations do not carry "X.Y" prefixes.
-    if (/^(?:\s*(?:section|chapter|appendix|part)\s+)?\d+(?:\.\d+)*\s+[A-Z]/.test(text) && text.length < 120) return false;
+    if (/^(?:\s*(?:section|chapter|appendix|part)\s+)?\d+(?:\.\d+)*[.\s:]+[A-Z]/.test(text) && text.length < 150) return false;
+    // Also reject "N. Title" patterns (e.g. "6. AI-Assisted Responsible Citation...")
+    if (/^\d+\.\s+[A-Z]/.test(text) && text.length < 200) return false;
 
     // Prose cross-references to numbered items ("Eq. (5)", "Figure 2", "see (3)")
     // are not equations themselves.
