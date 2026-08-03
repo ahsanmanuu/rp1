@@ -337,6 +337,15 @@ const COLLECTIONS = [
     { name: 'requestCount', type: 'number' },
     { name: 'agentBreakdown', type: 'json' },
   ], indexes: ['CREATE UNIQUE INDEX idx_auds_unique ON ai_usage_daily_summaries (userId, date);', 'CREATE INDEX idx_auds_date ON ai_usage_daily_summaries (date);'] },
+  { name: 'ai_usage_logs', type: 'base', schema: [
+    { name: 'userId', type: 'text' },
+    { name: 'agent', type: 'text', required: true },
+    { name: 'model', type: 'text' },
+    { name: 'promptTokens', type: 'number' },
+    { name: 'completionTokens', type: 'number' },
+    { name: 'totalTokens', type: 'number' },
+    { name: 'durationMs', type: 'number' },
+  ], indexes: ['CREATE INDEX idx_aul_user ON ai_usage_logs (userId);', 'CREATE INDEX idx_aul_agent ON ai_usage_logs (agent);'] },
   { name: 'ai_cap_rules', type: 'base', schema: [
     { name: 'name', type: 'text', required: true, unique: true },
     { name: 'description', type: 'text' },
@@ -1049,7 +1058,7 @@ export async function setupPocketBase() {
         'banners', 'testimonials', 'how_it_works', 'gallery_items',
         'institution_logos', 'features', 'benefits', 'product_details',
         'footer_links', 'tasar_stats', 'platform_stats', 'floating_banners',
-        'videos', 'announcements'
+        'videos', 'announcements', 'ai_usage_logs', 'ai_usage_daily_summaries'
       ];
       console.log('[PB Setup] Ensuring public read rules for homepage collections...');
       for (const name of publicCollections) {

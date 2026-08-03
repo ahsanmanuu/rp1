@@ -7,6 +7,8 @@ import { prisma } from '../prisma';
 import { enforceAiCapRules } from '../aiCapRules';
 import { startModelSync } from './model-sync';
 
+import { logAndSyncAiUsage } from '../pbAiUsage';
+
 startModelSync();
 
 async function logAiUsage(
@@ -18,25 +20,11 @@ async function logAiUsage(
   promptContent: string,
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number }
 ) {
-  try {
-    const promptTokens = usage?.promptTokens ?? Math.max(1, Math.round(promptContent.length / 4));
-    const completionTokens = usage?.completionTokens ?? Math.max(1, Math.round(responseContent.length / 4));
-    const totalTokens = usage?.totalTokens ?? (promptTokens + completionTokens);
+  const promptTokens = usage?.promptTokens ?? Math.max(1, Math.round(promptContent.length / 4));
+  const completionTokens = usage?.completionTokens ?? Math.max(1, Math.round(responseContent.length / 4));
+  const totalTokens = usage?.totalTokens ?? (promptTokens + completionTokens);
 
-    await prisma.aiUsageLog.create({
-      data: {
-        userId,
-        agent,
-        model,
-        promptTokens,
-        completionTokens,
-        totalTokens,
-        durationMs,
-      }
-    });
-  } catch (error) {
-    console.warn('[AiUsage Logging Fail-Safe] Error saving AI usage log:', error);
-  }
+  await logAndSyncAiUsage(userId, agent, model, durationMs, promptTokens, completionTokens, totalTokens);
 }
 
 async function checkAiCap(userId: string): Promise<{ capped: boolean; reactivatesAt?: Date; dailyCap?: number; usedToday?: number }> {

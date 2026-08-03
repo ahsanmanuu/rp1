@@ -367,12 +367,21 @@ export async function GET(req: NextRequest) {
 
     // Per-agent token consumption by user (all studios)
     const AGENT_LABELS: Record<string, string> = {
-      'chat': 'LaTeXify Studio',
+      'chat': 'LaTeXify Studio AI',
       'reviewer': 'AI Peer Reviewer',
+      'ai-reviewer': 'AI Peer Reviewer',
       'diagram': 'AI Diagram Studio',
-      'extract': 'Citation Studio',
-      'ai-fix': 'Template Migrator',
+      'diagram-stream': 'AI Diagram Generator',
+      'extract': 'Doc2LaTeX Extraction',
+      'ai-fix': 'LaTeXify Studio AI Fix',
       'doc2latex': 'Doc2LaTeX Studio',
+      'structure-analyze': 'Doc2LaTeX Analyzer',
+      'structure-frontmatter': 'Doc2LaTeX Frontmatter',
+      'structure-latex': 'Doc2LaTeX Code Gen',
+      'citation-enrich': 'AI Citation Enricher',
+      'citation-validate': 'AI Citation Validator',
+      'citation-format': 'AI Citation Reformatter',
+      'template-migrator': 'Template Migrator AI',
     };
     const AGENT_KEYS = Object.keys(AGENT_LABELS);
     const allAgentUserGroups = await prisma.aiUsageLog.groupBy({

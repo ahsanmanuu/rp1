@@ -62,11 +62,21 @@ function formatCountdown(targetIso: string | null | undefined): string {
 
 function agentLabel(key: string): string {
   const map: Record<string, string> = {
-    'latex-review': 'AI Reviewer', 'chat': 'AI Chat', 'ai-fix': 'AI Fix',
-    'diagram': 'Diagrams', 'extract': 'Doc Extract', 'doc2latex': 'Doc2LaTeX',
-    'reviewer': 'Peer Review',
-    'citation-enrich': 'Citation Enrich', 'citation-validate': 'Citation Validate',
-    'citation-format': 'Citation Format',
+    chat: 'LaTeXify Studio AI',
+    reviewer: 'AI Peer Reviewer',
+    'ai-reviewer': 'AI Peer Reviewer',
+    'ai-fix': 'LaTeXify Studio AI Fix',
+    extract: 'Doc2LaTeX Extraction',
+    doc2latex: 'Doc2LaTeX Studio',
+    'structure-analyze': 'Doc2LaTeX Analyzer',
+    'structure-frontmatter': 'Doc2LaTeX Frontmatter',
+    'structure-latex': 'Doc2LaTeX Code Gen',
+    diagram: 'AI Diagram / TikZ Studio',
+    'diagram-stream': 'AI Diagram Generator',
+    'citation-enrich': 'AI Citation Enricher',
+    'citation-validate': 'AI Citation Validator',
+    'citation-format': 'AI Citation Reformatter',
+    'template-migrator': 'Template Migrator AI',
   };
   return map[key] || key.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }

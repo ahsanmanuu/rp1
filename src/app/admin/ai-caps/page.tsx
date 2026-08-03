@@ -141,11 +141,25 @@ interface UserHistory {
 // ── Constants ────────────────────────────────────────────────────────────────
 const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
 const AGENT_LABELS: Record<string, string> = {
-  chat: 'Chat Assistant',
-  'ai-reviewer': 'AI Reviewer',
-  'ai-fix': 'AI Fix',
-  extract: 'Extract',
-  diagram: 'Diagram Generator'
+  chat: 'LaTeXify Studio AI',
+  reviewer: 'AI Peer Reviewer',
+  'ai-reviewer': 'AI Peer Reviewer',
+  'ai-fix': 'LaTeXify Studio AI Fix',
+  'studio-editor': 'LaTeXify Studio',
+  'studio-autofix': 'LaTeXify Studio Auto-Fix',
+  extract: 'Doc2LaTeX Extraction',
+  doc2latex: 'Doc2LaTeX Studio',
+  'doc2latex-convert': 'Doc2LaTeX Converter',
+  'doc2latex-chat': 'Doc2LaTeX Assistant',
+  'structure-analyze': 'Doc2LaTeX Document Analyzer',
+  'structure-frontmatter': 'Doc2LaTeX Frontmatter Analyzer',
+  'structure-latex': 'Doc2LaTeX Code Generator',
+  diagram: 'AI Diagram / TikZ Studio',
+  'diagram-stream': 'AI Diagram Generator',
+  'citation-enrich': 'AI Citation Metadata Enricher',
+  'citation-validate': 'AI Citation Validator',
+  'citation-format': 'AI Citation Reformatter',
+  'template-migrator': 'Template Migrator AI',
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

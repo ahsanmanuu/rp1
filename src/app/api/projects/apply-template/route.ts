@@ -471,6 +471,9 @@ export async function POST(req: Request) {
         }
     }
     
+    const { logAndSyncAiUsage } = await import('@/lib/pbAiUsage');
+    logAndSyncAiUsage(session.user.id, 'template-migrator', 'template-engine', 250, 120, 80).catch(() => {});
+
     return NextResponse.json({ success: true });
 
   } catch (error: any) {

@@ -221,41 +221,8 @@ export async function POST(req: NextRequest) {
       const enqueue = (chunk: string) => controller.enqueue(encoder.encode(chunk));
 
       const logUsage = async (promptTokens: number, completionTokens: number) => {
-        const totalTokens = promptTokens + completionTokens;
-        try {
-          await prisma.aiUsageLog.create({
-            data: { userId, agent: 'diagram', model: 'diagram-stream', promptTokens, completionTokens, totalTokens, durationMs: 0 },
-          });
-          const today = new Date().toISOString().slice(0, 10);
-          await prisma.aiUsageDailySummary.upsert({
-            where: { userId_date: { userId, date: today } },
-            update: {
-              totalTokens: { increment: totalTokens },
-              promptTokens: { increment: promptTokens },
-              completionTokens: { increment: completionTokens },
-              requestCount: { increment: 1 },
-            },
-            create: {
-              userId, date: today, totalTokens, promptTokens, completionTokens,
-              requestCount: 1, agentBreakdown: JSON.stringify({ diagram: totalTokens }),
-            },
-          });
-          // Update agentBreakdown
-          const existing = await prisma.aiUsageDailySummary.findUnique({
-            where: { userId_date: { userId, date: today } },
-            select: { agentBreakdown: true },
-          });
-          if (existing) {
-            const bd = JSON.parse(existing.agentBreakdown || '{}');
-            bd.diagram = (bd.diagram || 0) + totalTokens;
-            await prisma.aiUsageDailySummary.update({
-              where: { userId_date: { userId, date: today } },
-              data: { agentBreakdown: JSON.stringify(bd) },
-            });
-          }
-        } catch (e) {
-          console.warn('[DiagramStream] Usage logging fail-safe:', e);
-        }
+        const { logAndSyncAiUsage } = await import('@/lib/pbAiUsage');
+        await logAndSyncAiUsage(userId, 'diagram', 'diagram-stream', 0, promptTokens, completionTokens);
       };
 
       for (const modelName of FALLBACK_MODELS) {

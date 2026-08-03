@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendAiPlanExpiryReminderEmail } from "@/lib/mailer";
 import { ensureAiPlanCollections } from "@/lib/pbAiPlans";
+import { ensureAiUsageCollections } from "@/lib/pbAiUsage";
 
 import { getServerSession } from "@/lib/auth-pb";
 export const dynamic = "force-dynamic";
@@ -45,7 +46,7 @@ async function getMemberSince(userId: string): Promise<string | null> {
 
 export async function GET(req: NextRequest) {
   try {
-    await ensureAiPlanCollections();
+    await Promise.all([ensureAiPlanCollections(), ensureAiUsageCollections()]);
 
     const session = await getServerSession().catch(() => null);
     if (!session?.user?.id) {
