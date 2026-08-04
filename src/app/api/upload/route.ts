@@ -129,15 +129,18 @@ class PQueue {
 }
 const psQueue = new PQueue(3); // Max 3 concurrent powershell instances
 
-// ── TWO-PHASE UPLOAD (huge-file fix) ────────────────────────────────────────
-// Render kills long requests (~300s) regardless of the client XHR timeout, so a
-// large DOCX pipeline (AdmZip + JSDOM math/charts + mammoth + sharp + AI +
-// assembly + DB) routinely exceeds it and the client gave up with
-// "Connection timed out while uploading". Phase 1 (POST) now ONLY saves the raw
-// bytes to a pending dir and returns { uploadId } immediately; the heavy
-// pipeline runs in the background (same process) and the client polls
-// GET /api/upload/status. Pending files live OUTSIDE public/ so the raw bytes
-// are never statically served.
+// ── TWO-PHASE UPLOAD (durable Postgres-backed) ──────────────────────────────
+// Render kills long requests (~300s) regardless of the client XHR timeout, so
+// the heavy pipeline (AdmZip + JSDOM math/charts + mammoth + sharp + AI +
+// assembly + DB) must NEVER share the request with the byte transfer.
+// Phase 1 (POST) ONLY stores raw bytes + metadata in an UploadJob row
+// (Postgres is the only store that survives Render restarts — tmp/ is
+// ephemeral, which is why disk-backed pending state surfaced as
+// "Upload processing was lost (server restarted)" after any deploy/OOM) and
+// returns { uploadId } immediately. The worker re-reads the bytes from the DB
+// row; the client polls GET /api/upload/status. The tmp/ dir is now used only
+// for transient in-run image staging (re-created from the DB bytes on any
+// re-kick), never for durable state.
 const PENDING_DIR = path.join(process.cwd(), 'tmp', 'uploads-pending');
 // Staleness window before a worker is suspected dead. Generous on purpose:
 // stages between progress milestones (chart QuickChart loop, sync assembly
@@ -149,31 +152,41 @@ const PENDING_TTL_MS = 600 * 1000;
 const MAX_BACKGROUND_KICKS = 3;
 
 // Module-level worker registry: prevents duplicate concurrent runs of the
-// same uploadId (POST kick + GET recovery re-kick racing each other).
+// same uploadId (POST kick + GET recovery re-kick racing each other). This is
+// a same-process race guard only — kick-count durability lives in the DB
+// row's attempts field.
 const backgroundRunning = new Set<string>();
-const backgroundKicks = new Map<string, number>();
 
-function ensurePendingDir(): void {
-  if (!fs.existsSync(PENDING_DIR)) fs.mkdirSync(PENDING_DIR, { recursive: true });
-}
-
-function statusPath(uploadId: string): string {
-  return path.join(PENDING_DIR, `${uploadId}.json`);
-}
-
-function writeStatus(uploadId: string, data: Record<string, any>): void {
+async function writeStatus(uploadId: string, data: Record<string, any>): Promise<void> {
   try {
-    ensurePendingDir();
-    fs.writeFileSync(statusPath(uploadId), JSON.stringify({ ...data, updatedAt: Date.now() }));
+    await prisma.uploadJob.update({ where: { uploadId }, data });
   } catch (writeErr) {
     console.warn('[UPLOAD-STATUS] Status write failed:', writeErr);
   }
 }
 
-function readStatus(uploadId: string): Record<string, any> | null {
+async function readStatus(uploadId: string): Promise<Record<string, any> | null> {
   try {
-    const raw = fs.readFileSync(statusPath(uploadId), 'utf-8');
-    return JSON.parse(raw);
+    const row = await prisma.uploadJob.findUnique({ where: { uploadId } });
+    if (!row) return null;
+    return {
+      uploadId: row.uploadId,
+      fileName: row.fileName,
+      size: row.size,
+      templateId: row.templateId,
+      userId: row.userId,
+      email: row.email,
+      name: row.name,
+      phase: row.phase,
+      stage: row.stage,
+      progress: row.progress,
+      message: row.message,
+      projectId: row.projectId,
+      recovering: row.recovering,
+      recoverable: row.recoverable,
+      attempts: row.attempts,
+      updatedAt: row.updatedAt.getTime(),
+    };
   } catch {
     return null;
   }
@@ -181,7 +194,7 @@ function readStatus(uploadId: string): Record<string, any> | null {
 
 function progress(uploadId: string, stage: string, percent: number): void {
   if (percent > 99.9) percent = 99.9;
-  writeStatus(uploadId, { phase: 'processing', stage, progress: percent });
+  void writeStatus(uploadId, { phase: 'processing', stage, progress: percent });
   console.log(`[UPLOAD-PROGRESS] ${uploadId} ${percent}% — ${stage}`);
 }
 
@@ -189,39 +202,27 @@ function progress(uploadId: string, stage: string, percent: number): void {
 // used in long async loops (per-chart QuickChart calls) so a genuinely busy
 // worker is never mistaken for a dead one.
 function heartbeat(uploadId: string, stage: string, progressPercent: number): void {
-  writeStatus(uploadId, { phase: 'processing', stage, progress: progressPercent });
-}
-
-function metaPath(uploadId: string): string {
-  return path.join(PENDING_DIR, `${uploadId}.meta.json`);
-}
-
-function readMeta(uploadId: string): Record<string, any> | null {
-  try {
-    return JSON.parse(fs.readFileSync(metaPath(uploadId), 'utf-8'));
-  } catch {
-    return null;
-  }
-}
-
-function checkpointPath(uploadId: string): string {
-  return path.join(PENDING_DIR, `${uploadId}.checkpoint.json`);
+  void writeStatus(uploadId, { phase: 'processing', stage, progress: progressPercent });
 }
 
 // Resume checkpoint: written IMMEDIATELY after the project row is created so a
 // re-kicked worker (crash/restart recovery) never duplicates the project —
 // it adopts the checkpointed id and re-runs the idempotent file phase.
-function readCheckpoint(uploadId: string): { projectId?: string } | null {
+async function readCheckpoint(uploadId: string): Promise<{ projectId?: string } | null> {
   try {
-    return JSON.parse(fs.readFileSync(checkpointPath(uploadId), 'utf-8'));
+    const row = await prisma.uploadJob.findUnique({
+      where: { uploadId },
+      select: { projectId: true },
+    });
+    return row?.projectId ? { projectId: row.projectId } : null;
   } catch {
     return null;
   }
 }
 
-function writeCheckpoint(uploadId: string, data: { projectId: string }): void {
+async function writeCheckpoint(uploadId: string, data: { projectId: string }): Promise<void> {
   try {
-    fs.writeFileSync(checkpointPath(uploadId), JSON.stringify(data));
+    await prisma.uploadJob.update({ where: { uploadId }, data: { projectId: data.projectId } });
   } catch (cpErr) {
     console.warn('[UPLOAD] Checkpoint write failed (non-fatal):', cpErr);
   }
@@ -229,13 +230,12 @@ function writeCheckpoint(uploadId: string, data: { projectId: string }): void {
 
 // Shared terminal handler for every worker kick (POST fire-and-forget AND GET
 // recovery re-kick): writes the final status and releases the worker registry.
-function finishUpload(uploadId: string, res: any): void {
+async function finishUpload(uploadId: string, res: any): Promise<void> {
   backgroundRunning.delete(uploadId);
-  backgroundKicks.delete(uploadId);
   if (res?.success && res.projectId) {
-    writeStatus(uploadId, { phase: 'done', progress: 100, stage: 'Complete', projectId: res.projectId });
+    await writeStatus(uploadId, { phase: 'done', progress: 100, stage: 'Complete', projectId: res.projectId });
   } else if (res?.error) {
-    writeStatus(uploadId, { phase: 'error', message: res.error });
+    await writeStatus(uploadId, { phase: 'error', message: res.error, recoverable: false });
   }
 }
 
@@ -446,20 +446,25 @@ function ommlToLatex(mathNode: Element, isDisplay: boolean): string {
 export const maxDuration = 300;
 export const runtime = "nodejs";
 
-async function runUploadProcessing(uploadId: string, meta: any) {
+async function runUploadProcessing(uploadId: string) {
   backgroundRunning.add(uploadId);
   try {
-    const filePath = path.join(PENDING_DIR, `${uploadId}__${meta.fileName}`);
-    let buffer: Buffer | null = await fs.promises.readFile(filePath);
+    // Durable source of truth: the UploadJob row in Postgres. Re-read on every
+    // kick (including recovery re-kicks) so the worker always operates on the
+    // latest bytes/meta — zero dependency on the ephemeral tmp/ dir.
+    const job = await prisma.uploadJob.findUnique({ where: { uploadId } });
+    if (!job) throw new Error('Upload job not found');
+    let buffer: Buffer | null = job.rawBytes || null;
+    if (!buffer) throw new Error('Upload bytes not found');
     // Plain file object — the pipeline only uses .name (and occasionally .size).
-    const file: any = { name: meta.fileName, size: meta.size };
+    const file: any = { name: job.fileName, size: job.size };
     // Reconstructed session for the background worker: the original request
     // session is long gone by the time the pipeline finishes. All later code
     // uses session.user.{id,email,name} (read + the FK-remap mutation).
     const session = {
-      user: { id: meta.userId, email: meta.email, name: meta.name }
+      user: { id: job.userId, email: job.email, name: job.name }
     } as any;
-    let templateId = meta.templateId || 'article_lncs';
+    let templateId = job.templateId || 'article_lncs';
     let finalLatex = "";
     let finalXml = "";
     const extractedImages: any[] = [];
@@ -1623,7 +1628,7 @@ async function runUploadProcessing(uploadId: string, meta: any) {
     // create() below.
     let resumeProjectId: string | null = null;
     try {
-      const cp = readCheckpoint(uploadId);
+      const cp = await readCheckpoint(uploadId);
       if (cp?.projectId) {
         const existing = await prisma.project.findUnique({
           where: { id: cp.projectId },
@@ -1661,7 +1666,7 @@ async function runUploadProcessing(uploadId: string, meta: any) {
         chartCount: Math.max(0, Math.floor(deepData.stats?.chartCount || 0)),
       }
     });
-    if (!resumeProjectId) writeCheckpoint(uploadId, { projectId: project.id });
+    if (!resumeProjectId) await writeCheckpoint(uploadId, { projectId: project.id });
 
     // --- BATCH PERSISTENCE ENGINE (Nuclear 50.0 - Speed Optimization) ---
     const filesToCreate: any[] = [];
@@ -1864,7 +1869,7 @@ async function runUploadProcessing(uploadId: string, meta: any) {
     console.error('Message:', error.message);
     console.error('Stack Trace:', error.stack);
     console.error('-----------------------------');
-    writeStatus(uploadId, { phase: 'error', message: error.message || 'Internal Server Error' });
+    await writeStatus(uploadId, { phase: 'error', message: error.message || 'Internal Server Error' }).catch(() => {});
     return { success: false, error: error.message || 'Internal Server Error' };
   } finally {
     backgroundRunning.delete(uploadId);
@@ -1897,11 +1902,11 @@ export async function POST(req: Request) {
       }
     }
 
-    // PHASE 1 (fast): save the raw bytes to the pending dir and return
-    // immediately. The heavy pipeline (parse/AI/assembly/persist) runs in the
-    // background in runUploadProcessing() — a huge DOCX exceeds Render's
-    // ~300s request kill, so processing must NEVER share the request with the
-    // byte transfer. The client polls GET /api/upload/status for completion.
+    // PHASE 1 (fast): save the raw bytes + metadata to a durable UploadJob row
+    // in Postgres and return immediately. The heavy pipeline runs in the
+    // background — a huge DOCX exceeds Render's ~300s request kill, so
+    // processing must NEVER share the request with the byte transfer. The
+    // client polls GET /api/upload/status for completion.
     const formData = await req.formData();
     const file = formData.get('file') as File;
     if (!file) return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
@@ -1910,29 +1915,38 @@ export async function POST(req: Request) {
     const templateId = (formData.get('templateId') || formData.get('template') || 'article_lncs') as string;
     const fileName = file.name || 'document.docx';
 
-    ensurePendingDir();
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    await fs.promises.writeFile(path.join(PENDING_DIR, `${uploadId}__${fileName}`), buffer);
 
-    const meta = {
-      fileName,
-      size: buffer.length,
-      templateId,
-      userId: (session.user as any).id,
-      email: (session.user as any).email || null,
-      name: (session.user as any).name || null,
-      startedAt: Date.now(),
-    };
+    // Lazy GC: purge finished/failed upload jobs older than 24h so the table
+    // never accumulates raw bytes without bound (stale rows are worthless).
     try {
-      fs.writeFileSync(path.join(PENDING_DIR, `${uploadId}.meta.json`), JSON.stringify(meta));
-    } catch (metaErr) {
-      console.warn('[UPLOAD] Meta write failed (non-fatal):', metaErr);
-    }
-    writeStatus(uploadId, { phase: 'processing', stage: 'Uploading document', progress: 4 });
+      await prisma.uploadJob.deleteMany({
+        where: {
+          phase: { in: ['done', 'error'] },
+          updatedAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        },
+      });
+    } catch { /* non-critical */ }
 
-    // Fire-and-forget background processing — the status file is the contract.
-    void runUploadProcessing(uploadId, meta)
+    await prisma.uploadJob.create({
+      data: {
+        uploadId,
+        fileName,
+        size: buffer.length,
+        templateId,
+        userId: (session.user as any).id,
+        email: (session.user as any).email || null,
+        name: (session.user as any).name || null,
+        rawBytes: buffer,
+        phase: 'processing',
+        stage: 'Uploading document',
+        progress: 4,
+      },
+    });
+
+    // Fire-and-forget background processing — the UploadJob row is the contract.
+    void runUploadProcessing(uploadId)
       .then((res: any) => finishUpload(uploadId, res))
       .catch((bgErr: any) => {
         console.error('[UPLOAD-BACKGROUND] Fatal background error:', bgErr?.message || bgErr);
@@ -1956,45 +1970,47 @@ export async function GET(req: Request) {
     if (!uploadId || !/^[a-f0-9]{24}$/.test(uploadId)) {
       return NextResponse.json({ error: 'Invalid uploadId' }, { status: 400 });
     }
-    const status = readStatus(uploadId);
+    const status = await readStatus(uploadId);
     if (!status) {
-      // Pending bytes were lost (instance restart/deploy wiped tmp/) — the
+      // Row genuinely missing (never created / GC'd) — cannot recover; the
       // client must tell the user to re-upload instead of waiting forever.
       return NextResponse.json({ error: 'not_found' }, { status: 404 });
     }
 
     // STALE WORKER RECOVERY: if the worker stopped writing for PENDING_TTL_MS,
-    // it may have been killed (OOM/deploy). Re-kick it from the saved bytes —
-    // idempotent via the checkpoint (the project row is adopted, not
-    // duplicated). Only give up after MAX_BACKGROUND_KICKS so a genuinely huge
-    // document (multiple 10-min stages) is never abandoned prematurely.
+    // it may have been killed (OOM/deploy). Re-kick it from the durable DB
+    // bytes — idempotent via the checkpoint (the project row is adopted, not
+    // duplicated). Kick count lives in the DB (attempts) so it survives
+    // instance restarts too. Only give up after MAX_BACKGROUND_KICKS so a
+    // genuinely huge document (multiple 10-min stages) is never abandoned
+    // prematurely.
     if (status.phase === 'processing' && Date.now() - (status.updatedAt || 0) > PENDING_TTL_MS) {
-      const kicks = backgroundKicks.get(uploadId) || 0;
+      const kicks = status.attempts || 0;
       if (kicks >= MAX_BACKGROUND_KICKS) {
         // Too many recovery attempts — give the user a definitive error
         // instead of an endless recovery loop.
         const tooLongMsg = 'Upload processing is taking too long. Please upload the file again.';
-        writeStatus(uploadId, { phase: 'error', message: tooLongMsg, recoverable: false });
+        await writeStatus(uploadId, { phase: 'error', message: tooLongMsg, recoverable: false }).catch(() => {});
         return NextResponse.json({ phase: 'error', message: tooLongMsg, recoverable: false });
       }
       if (!backgroundRunning.has(uploadId)) {
-        const meta = readMeta(uploadId);
-        if (!meta || typeof meta.fileName !== 'string') {
-          // Bytes gone (instance restart wiped tmp/) — recovery is impossible;
-          // surface a definitive error instead of polling forever.
-          const lostMsg = 'Upload data was lost (server restart). Please upload the file again.';
-          writeStatus(uploadId, { phase: 'error', message: lostMsg, recoverable: false });
-          return NextResponse.json({ phase: 'error', message: lostMsg, recoverable: false });
+        try {
+          await prisma.uploadJob.update({
+            where: { uploadId },
+            data: {
+              attempts: kicks + 1,
+              recovering: true,
+              phase: 'processing',
+              stage: status.stage || 'Recovering document',
+              progress: Math.max(4, status.progress || 4),
+              message: null,
+            },
+          });
+          console.warn(`[UPLOAD-RECOVERY] Upload ${uploadId} stale ${Math.round((Date.now() - (status.updatedAt || 0)) / 1000)}s — re-kicking worker (${kicks + 1}/${MAX_BACKGROUND_KICKS}).`);
+        } catch (recErr) {
+          console.warn('[UPLOAD-RECOVERY] Failed to mark recovery state (non-fatal):', recErr);
         }
-        backgroundKicks.set(uploadId, kicks + 1);
-        console.warn(`[UPLOAD-RECOVERY] Upload ${uploadId} stale ${Math.round((Date.now() - (status.updatedAt || 0)) / 1000)}s — re-kicking worker (${kicks + 1}/${MAX_BACKGROUND_KICKS}).`);
-        writeStatus(uploadId, {
-          phase: 'processing',
-          stage: status.stage || 'Recovering document',
-          progress: Math.max(4, status.progress || 4),
-          recovering: true,
-        });
-        void runUploadProcessing(uploadId, meta)
+        void runUploadProcessing(uploadId)
           .then((res: any) => finishUpload(uploadId, res))
           .catch((bgErr: any) => {
             console.error('[UPLOAD-RECOVERY] Re-kick fatal:', bgErr?.message || bgErr);

@@ -165,6 +165,36 @@ model Template {
   createdAt       DateTime @db.Timestamptz @default(now())
 }
 
+// Durable two-phase upload job. Raw bytes + status live in Postgres (the only
+// store that survives Render instance restarts) — tmp/ is ephemeral, so any
+// disk-backed pending state is guaranteed lossy on deploy/OOM. A re-kicked
+// worker re-reads rawBytes from this row and adopts the checkpointed
+// projectId, keeping the pipeline idempotent across crashes.
+model UploadJob {
+  id          String   @id @default(cuid())
+  uploadId    String   @unique
+  fileName    String
+  size        Int      @default(0)
+  templateId  String?
+  userId      String?
+  email       String?
+  name        String?
+  rawBytes    Bytes?   // original file bytes; released after the worker loads it
+  phase       String   @default("processing") // processing | done | error
+  stage       String   @default("Uploading document")
+  progress    Float    @default(4)
+  message     String?  // error message when phase = error
+  projectId   String?  // resume checkpoint (adopted, never duplicated)
+  recovering  Boolean  @default(false)
+  recoverable Boolean  @default(true)
+  attempts    Int      @default(1) // worker kick count (survives restarts)
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@index([phase, updatedAt])
+  @@map("upload_jobs")
+}
+
 model ShareLink {
   id         String    @id @default(cuid())
   projectId  String

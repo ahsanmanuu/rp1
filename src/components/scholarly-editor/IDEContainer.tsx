@@ -543,6 +543,38 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
       
       if (!uploadRes.ok) throw new Error(uploadData.error || "Conversion failed");
 
+      // Two-phase upload: POST returns { uploadId, pending } immediately and
+      // the heavy pipeline runs in the background — poll the durable status
+      // endpoint until it completes, then resolve to the created project.
+      if (uploadData?.pending && uploadData?.uploadId) {
+        const pollUploadId = uploadData.uploadId;
+        const pollMaxWaitMs = 30 * 60 * 1000;
+        const pollStartedAt = Date.now();
+        let pollSettled = false;
+        while (!pollSettled && Date.now() - pollStartedAt < pollMaxWaitMs) {
+          await new Promise(r => setTimeout(r, 2000));
+          const pollRes = await fetch(`/api/upload/status?uploadId=${pollUploadId}`, { cache: 'no-store' });
+          if (pollRes.status === 404) {
+            throw new Error("Upload processing was lost (server restarted). Please upload the file again.");
+          }
+          if (pollRes.ok) {
+            const pollStatus = await pollRes.json();
+            if (pollStatus?.phase === 'done' && pollStatus?.projectId) {
+              uploadData = { projectId: pollStatus.projectId };
+              pollSettled = true;
+              break;
+            }
+            if (pollStatus?.phase === 'error') {
+              if (pollStatus.recoverable === true) continue;
+              throw new Error(pollStatus.message || "Document processing failed. Please try again.");
+            }
+          }
+        }
+        if (!uploadData?.projectId) {
+          throw new Error("Connection timed out while processing. The file may be too large or the server is busy. Please try again.");
+        }
+      }
+
       // 1. Get the newly converted LaTeX content
       const projRes = await fetch(`/api/projects/${uploadData.projectId}`);
       if (!projRes.ok) throw new Error("Failed to fetch converted project");
