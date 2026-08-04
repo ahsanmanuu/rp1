@@ -139,9 +139,19 @@ const psQueue = new PQueue(3); // Max 3 concurrent powershell instances
 // GET /api/upload/status. Pending files live OUTSIDE public/ so the raw bytes
 // are never statically served.
 const PENDING_DIR = path.join(process.cwd(), 'tmp', 'uploads-pending');
-// If processing hasn't written progress in this long, the background worker is
-// presumed dead (deploy/restart) and the status endpoint reports recovery.
-const PENDING_TTL_MS = 180 * 1000;
+// Staleness window before a worker is suspected dead. Generous on purpose:
+// stages between progress milestones (chart QuickChart loop, sync assembly
+// string work, disk batch writes) can legitimately take several minutes for
+// huge documents. Recovery re-kicks the worker instead of failing outright.
+const PENDING_TTL_MS = 600 * 1000;
+// Max re-kicks per uploadId — after this the job is presumed impossible and
+// the client gets a definitive error instead of an infinite recovery loop.
+const MAX_BACKGROUND_KICKS = 3;
+
+// Module-level worker registry: prevents duplicate concurrent runs of the
+// same uploadId (POST kick + GET recovery re-kick racing each other).
+const backgroundRunning = new Set<string>();
+const backgroundKicks = new Map<string, number>();
 
 function ensurePendingDir(): void {
   if (!fs.existsSync(PENDING_DIR)) fs.mkdirSync(PENDING_DIR, { recursive: true });
@@ -173,6 +183,60 @@ function progress(uploadId: string, stage: string, percent: number): void {
   if (percent > 99.9) percent = 99.9;
   writeStatus(uploadId, { phase: 'processing', stage, progress: percent });
   console.log(`[UPLOAD-PROGRESS] ${uploadId} ${percent}% — ${stage}`);
+}
+
+// Lightweight heartbeat: refreshes updatedAt without touching progress/logs —
+// used in long async loops (per-chart QuickChart calls) so a genuinely busy
+// worker is never mistaken for a dead one.
+function heartbeat(uploadId: string, stage: string, progressPercent: number): void {
+  writeStatus(uploadId, { phase: 'processing', stage, progress: progressPercent });
+}
+
+function metaPath(uploadId: string): string {
+  return path.join(PENDING_DIR, `${uploadId}.meta.json`);
+}
+
+function readMeta(uploadId: string): Record<string, any> | null {
+  try {
+    return JSON.parse(fs.readFileSync(metaPath(uploadId), 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+function checkpointPath(uploadId: string): string {
+  return path.join(PENDING_DIR, `${uploadId}.checkpoint.json`);
+}
+
+// Resume checkpoint: written IMMEDIATELY after the project row is created so a
+// re-kicked worker (crash/restart recovery) never duplicates the project —
+// it adopts the checkpointed id and re-runs the idempotent file phase.
+function readCheckpoint(uploadId: string): { projectId?: string } | null {
+  try {
+    return JSON.parse(fs.readFileSync(checkpointPath(uploadId), 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+function writeCheckpoint(uploadId: string, data: { projectId: string }): void {
+  try {
+    fs.writeFileSync(checkpointPath(uploadId), JSON.stringify(data));
+  } catch (cpErr) {
+    console.warn('[UPLOAD] Checkpoint write failed (non-fatal):', cpErr);
+  }
+}
+
+// Shared terminal handler for every worker kick (POST fire-and-forget AND GET
+// recovery re-kick): writes the final status and releases the worker registry.
+function finishUpload(uploadId: string, res: any): void {
+  backgroundRunning.delete(uploadId);
+  backgroundKicks.delete(uploadId);
+  if (res?.success && res.projectId) {
+    writeStatus(uploadId, { phase: 'done', progress: 100, stage: 'Complete', projectId: res.projectId });
+  } else if (res?.error) {
+    writeStatus(uploadId, { phase: 'error', message: res.error });
+  }
 }
 
 function getFallbackPngBuffer(): Buffer {
@@ -383,9 +447,10 @@ export const maxDuration = 300;
 export const runtime = "nodejs";
 
 async function runUploadProcessing(uploadId: string, meta: any) {
+  backgroundRunning.add(uploadId);
   try {
     const filePath = path.join(PENDING_DIR, `${uploadId}__${meta.fileName}`);
-    const buffer = await fs.promises.readFile(filePath);
+    let buffer: Buffer | null = await fs.promises.readFile(filePath);
     // Plain file object — the pipeline only uses .name (and occasionally .size).
     const file: any = { name: meta.fileName, size: meta.size };
     // Reconstructed session for the background worker: the original request
@@ -406,7 +471,7 @@ async function runUploadProcessing(uploadId: string, meta: any) {
     if (file.name.endsWith('.docx')) {
       console.log("[TELEMETRY] Step 1: Parsing DOCX with AdmZip");
 
-      let zip = new AdmZip(buffer);
+      let zip = new AdmZip(buffer!);
       const documentXml = zip.readAsText('word/document.xml');
       console.log("[TELEMETRY] Step 2: Extracting Math nodes with JSDOM");
       const dom = new JSDOM(documentXml, { contentType: "text/xml" });
@@ -806,6 +871,10 @@ async function runUploadProcessing(uploadId: string, meta: any) {
 
         let chartFileIdx = 1;
         for (const pc of pendingCharts) {
+          // Heartbeat per chart: QuickChart conversion can take ~6s per chart
+          // and large documents carry dozens — without this the 600s staleness
+          // window could still trip and falsely declare the worker dead.
+          heartbeat(uploadId, `Processing chart ${chartFileIdx}/${pendingCharts.length}`, 50);
           const isTrueChart = pc.target.includes('charts/');
           const chartName = isTrueChart ? `rf_chart_${chartFileIdx++}.png` : `rf_fig_${figIdx++}.png`;
           markerToFinalName.set(pc.marker, chartName);
@@ -938,6 +1007,26 @@ async function runUploadProcessing(uploadId: string, meta: any) {
       extractedImages.push(...deduplicatedImages);
       console.timeEnd("[PERF] Chart Extraction Engine");
 
+      // MEMORY STAGING (huge-file/OOM fix): extracted image buffers can total
+      // hundreds of MB for a large DOCX (Reward: each is held in RAM through AI
+      // analysis + assembly + persistence). Write NON-structural image buffers
+      // to a staging dir NOW and keep only the path — persistence later copies
+      // the staged file instead of holding every buffer in memory, which is what
+      // pushed single instances over Render's RAM cap and OOM-killed the whole
+      // process (surfacing as the "processing was lost" error).
+      const stagingDir = path.join(PENDING_DIR, `${uploadId}_staging`);
+      fs.mkdirSync(stagingDir, { recursive: true });
+      for (const img of extractedImages) {
+        if ((img as any).isStructural || !img.buffer) continue;
+        if (img.buffer.length === 0) continue;
+        const stagedName = img.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const stagedPath = path.join(stagingDir, stagedName);
+        await fs.promises.writeFile(stagedPath, img.buffer);
+        (img as any).stagedPath = stagedPath;
+        img.buffer = null; // release for GC
+      }
+      progress(uploadId, 'Extracting text and figures', 48);
+
       console.log(`[TELEMETRY] Extraction complete. Final image count: ${extractedImages.length}`);
 
       console.log("[TELEMETRY] Step 5: Deep Structural Analysis");
@@ -1016,6 +1105,13 @@ async function runUploadProcessing(uploadId: string, meta: any) {
       }
       console.timeEnd("[PERF] Bibliography Extraction");
 
+      // Release the heavy raw buffers for GC: the DOM, AdmZip and raw file
+      // buffer are no longer needed past bibliography extraction. The staged
+      // images (on disk) and deepData are what the rest of the pipeline uses.
+      buffer = null;
+      (zip as any) = null;
+      try { (dom as any)?.window?.close?.(); } catch { /* non-critical */ }
+
       console.log("[TELEMETRY] Step 6: Modular LaTeX Assembly");
       console.time("[PERF] Modular LaTeX Assembly");
       // Choose template based on filename, defaulting to llncs for standard academic papers
@@ -1077,7 +1173,7 @@ async function runUploadProcessing(uploadId: string, meta: any) {
       progress(uploadId, 'Assembling LaTeX project', 74);
 
     } else if (file.name.endsWith('.txt')) {
-      const text = buffer.toString('utf-8');
+      const text = buffer!.toString('utf-8');
       deepData = {
         title: file.name,
         authors: [],
@@ -1102,7 +1198,7 @@ async function runUploadProcessing(uploadId: string, meta: any) {
       // Persist all section files generated by the assembler
       (deepData as any).modularComponents = txtAssembled.files;
     } else if (file.name.endsWith('.tex')) {
-      const text = buffer.toString('utf-8');
+      const text = buffer!.toString('utf-8');
       finalLatex = text;
       deepData = {
         title: file.name,
@@ -1131,7 +1227,7 @@ async function runUploadProcessing(uploadId: string, meta: any) {
         pdfjs.GlobalWorkerOptions.workerSrc = '';
         // @ts-ignore
         pdfjs.GlobalWorkerOptions.workerPort = null;
-        const pdfDoc = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise;
+        const pdfDoc = await pdfjs.getDocument({ data: new Uint8Array(buffer!) }).promise;
         for (let i = 1; i <= pdfDoc.numPages; i++) {
           const page = await pdfDoc.getPage(i);
           const viewport = page.getViewport({ scale: 1.0 });
@@ -1272,7 +1368,7 @@ async function runUploadProcessing(uploadId: string, meta: any) {
       (deepData as any).modularComponents = pdfModular.files;
     } else if (file.name.endsWith('.zip')) {
       console.log("[TELEMETRY] Step 1: Processing ZIP Project Intake");
-      const zip = new AdmZip(buffer);
+      const zip = new AdmZip(buffer!);
       const entries = zip.getEntries();
 
       // Preliminary main.tex discovery
@@ -1520,7 +1616,31 @@ async function runUploadProcessing(uploadId: string, meta: any) {
       console.warn(`[TELEMETRY] latexContent trimmed to ${Buffer.byteLength(latexContentForDb, 'utf8')} bytes (PB limit ${pbContentLimit})`);
     }
 
-    const project = await prisma.project.create({
+    // ── RESUME CHECKPOINT (crash-recovery idempotency) ──────────────────────
+    // If a previous worker run created the project row but died before
+    // finishing (OOM/deploy), a re-kicked run MUST adopt that project instead
+    // of creating a duplicate. The checkpoint is written immediately after
+    // create() below.
+    let resumeProjectId: string | null = null;
+    try {
+      const cp = readCheckpoint(uploadId);
+      if (cp?.projectId) {
+        const existing = await prisma.project.findUnique({
+          where: { id: cp.projectId },
+          select: { id: true }
+        });
+        if (existing) resumeProjectId = existing.id;
+      }
+    } catch (cpErr) {
+      console.warn('[UPLOAD] Checkpoint probe failed (non-fatal):', cpErr);
+    }
+    if (resumeProjectId) {
+      console.log(`[UPLOAD-RESUME] Adopting checkpointed project ${resumeProjectId} (previous worker died after project creation).`);
+    }
+
+    const project = resumeProjectId
+      ? { id: resumeProjectId }
+      : await prisma.project.create({
       data: {
         userId: session.user.id,
         title: (deepData.title || file.name).trim(),
@@ -1541,6 +1661,7 @@ async function runUploadProcessing(uploadId: string, meta: any) {
         chartCount: Math.max(0, Math.floor(deepData.stats?.chartCount || 0)),
       }
     });
+    if (!resumeProjectId) writeCheckpoint(uploadId, { projectId: project.id });
 
     // --- BATCH PERSISTENCE ENGINE (Nuclear 50.0 - Speed Optimization) ---
     const filesToCreate: any[] = [];
@@ -1555,8 +1676,14 @@ async function runUploadProcessing(uploadId: string, meta: any) {
         const fullPath = path.join(dir, img.name);
         const parentDir = path.dirname(fullPath);
         if (!fs.existsSync(parentDir)) fs.mkdirSync(parentDir, { recursive: true });
-        return fs.promises.writeFile(fullPath, img.buffer);
+        if ((img as any).stagedPath) {
+          // Already staged to disk during extraction — copy, don't re-hold the buffer.
+          await fs.promises.copyFile((img as any).stagedPath, fullPath);
+        } else if (img.buffer) {
+          return fs.promises.writeFile(fullPath, img.buffer);
+        }
       }));
+      heartbeat(uploadId, 'Saving project data', 88);
 
       extractedImages.forEach(img => {
         const filePath = `/uploads/projects/${project.id}/${img.name.replace(/\\/g, '/')}`;
@@ -1670,6 +1797,11 @@ async function runUploadProcessing(uploadId: string, meta: any) {
       if (finalLatex) localFiles.push({ filename: 'main.tex', content: finalLatex });
       extractedImages.forEach((img: any) => {
         if ((img as any).isStructural) return;
+        // Staged images were already copied to public/uploads/projects/<id> in
+        // the persistence block — re-reading them here would re-hold every
+        // buffer in memory. Skip them (main.tex + modular components + AI
+        // snapshot are still harvested).
+        if ((img as any).stagedPath) return;
         localFiles.push({ filename: img.name, buffer: img.buffer });
       });
       const modularEntries = Object.entries(modularComponents || {}) as [string, string][];
@@ -1718,7 +1850,8 @@ async function runUploadProcessing(uploadId: string, meta: any) {
     if (filesToCreate.length > 0) {
       console.log(`[TELEMETRY] Executing single-batch DB insertion for ${filesToCreate.length} project files...`);
       await prisma.projectFile.createMany({
-        data: filesToCreate
+        data: filesToCreate,
+        skipDuplicates: true
       });
       console.log("[TELEMETRY] Batch DB persistence fully completed.");
     }
@@ -1733,6 +1866,8 @@ async function runUploadProcessing(uploadId: string, meta: any) {
     console.error('-----------------------------');
     writeStatus(uploadId, { phase: 'error', message: error.message || 'Internal Server Error' });
     return { success: false, error: error.message || 'Internal Server Error' };
+  } finally {
+    backgroundRunning.delete(uploadId);
   }
 }
 
@@ -1798,16 +1933,10 @@ export async function POST(req: Request) {
 
     // Fire-and-forget background processing — the status file is the contract.
     void runUploadProcessing(uploadId, meta)
-      .then((res: any) => {
-        if (res?.success && res.projectId) {
-          writeStatus(uploadId, { phase: 'done', progress: 100, stage: 'Complete', projectId: res.projectId });
-        } else if (res?.error) {
-          writeStatus(uploadId, { phase: 'error', message: res.error });
-        }
-      })
+      .then((res: any) => finishUpload(uploadId, res))
       .catch((bgErr: any) => {
         console.error('[UPLOAD-BACKGROUND] Fatal background error:', bgErr?.message || bgErr);
-        writeStatus(uploadId, { phase: 'error', message: bgErr?.message || 'Internal processing error' });
+        finishUpload(uploadId, { success: false, error: bgErr?.message || 'Internal processing error' });
       });
 
     return NextResponse.json({ success: true, uploadId, pending: true });
@@ -1833,11 +1962,53 @@ export async function GET(req: Request) {
       // client must tell the user to re-upload instead of waiting forever.
       return NextResponse.json({ error: 'not_found' }, { status: 404 });
     }
+
+    // STALE WORKER RECOVERY: if the worker stopped writing for PENDING_TTL_MS,
+    // it may have been killed (OOM/deploy). Re-kick it from the saved bytes —
+    // idempotent via the checkpoint (the project row is adopted, not
+    // duplicated). Only give up after MAX_BACKGROUND_KICKS so a genuinely huge
+    // document (multiple 10-min stages) is never abandoned prematurely.
     if (status.phase === 'processing' && Date.now() - (status.updatedAt || 0) > PENDING_TTL_MS) {
-      const deadWorkerMsg = 'Processing worker lost its connection to the server (deploy/restart). Please upload the file again.';
-      writeStatus(uploadId, { phase: 'error', message: deadWorkerMsg, recoverable: true });
-      return NextResponse.json({ phase: 'error', message: deadWorkerMsg, recoverable: true });
+      const kicks = backgroundKicks.get(uploadId) || 0;
+      if (kicks >= MAX_BACKGROUND_KICKS) {
+        // Too many recovery attempts — give the user a definitive error
+        // instead of an endless recovery loop.
+        const tooLongMsg = 'Upload processing is taking too long. Please upload the file again.';
+        writeStatus(uploadId, { phase: 'error', message: tooLongMsg, recoverable: false });
+        return NextResponse.json({ phase: 'error', message: tooLongMsg, recoverable: false });
+      }
+      if (!backgroundRunning.has(uploadId)) {
+        const meta = readMeta(uploadId);
+        if (!meta || typeof meta.fileName !== 'string') {
+          // Bytes gone (instance restart wiped tmp/) — recovery is impossible;
+          // surface a definitive error instead of polling forever.
+          const lostMsg = 'Upload data was lost (server restart). Please upload the file again.';
+          writeStatus(uploadId, { phase: 'error', message: lostMsg, recoverable: false });
+          return NextResponse.json({ phase: 'error', message: lostMsg, recoverable: false });
+        }
+        backgroundKicks.set(uploadId, kicks + 1);
+        console.warn(`[UPLOAD-RECOVERY] Upload ${uploadId} stale ${Math.round((Date.now() - (status.updatedAt || 0)) / 1000)}s — re-kicking worker (${kicks + 1}/${MAX_BACKGROUND_KICKS}).`);
+        writeStatus(uploadId, {
+          phase: 'processing',
+          stage: status.stage || 'Recovering document',
+          progress: Math.max(4, status.progress || 4),
+          recovering: true,
+        });
+        void runUploadProcessing(uploadId, meta)
+          .then((res: any) => finishUpload(uploadId, res))
+          .catch((bgErr: any) => {
+            console.error('[UPLOAD-RECOVERY] Re-kick fatal:', bgErr?.message || bgErr);
+            finishUpload(uploadId, { success: false, error: bgErr?.message || 'Recovery processing failed' });
+          });
+        return NextResponse.json({
+          phase: 'processing',
+          stage: 'Recovering document processing…',
+          progress: status.progress || 4,
+          recovering: true,
+        });
+      }
     }
+
     return NextResponse.json(status);
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Status check failed' }, { status: 500 });

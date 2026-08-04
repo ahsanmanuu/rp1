@@ -414,6 +414,10 @@ function UploadContent() {
                 break;
               }
               if (pollStatus?.phase === 'error') {
+                // Recoverable errors mean the server is automatically re-kicking
+                // the background worker (stale/dead) — the client keeps polling
+                // instead of failing the upload. Only hard failures surface.
+                if (pollStatus.recoverable === true) continue;
                 throw new Error(pollStatus.message || 'Document processing failed. Please try again.');
               }
               if (typeof pollStatus?.progress === 'number') {
