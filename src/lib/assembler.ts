@@ -50,6 +50,24 @@ class PackageRegistry {
   }
 }
 
+/** Convert a section title to a clean filename slug, truncated at word boundaries. */
+function slugifySectionTitle(title: string, maxLen = 40): string {
+  const raw = title.toLowerCase()
+    .replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '')   // strip leading numbering
+    .replace(/[^\w\s]/g, ' ')                                          // punctuation → space
+    .replace(/\s+/g, ' ')                                              // collapse whitespace
+    .trim();
+  if (raw.length <= maxLen) return raw.replace(/ /g, '_');
+  const words = raw.split(' ');
+  let slug = '';
+  for (const w of words) {
+    const candidate = slug ? `${slug}_${w}` : w;
+    if (candidate.length > maxLen) break;
+    slug = candidate;
+  }
+  return slug.replace(/ /g, '_') || 'section';
+}
+
 import { StructuredDocument, ContentNode } from './deep-parser';
 const GREEK_MAP: Record<string, string> = {
   'α': 'alpha', 'β': 'beta', 'γ': 'gamma', 'δ': 'delta', 'ε': 'epsilon',
@@ -467,7 +485,7 @@ export class LatexAssembler {
         return;
       }
       const sectionContent = dedupedNodes.map(n => LatexAssembler.assembleNode(n, mathBlocks)).join("\n\n");
-      const safeTitle = currentSectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20);
+      const safeTitle = slugifySectionTitle(currentSectionTitle, 40);
       // UNIQUE FILE NAME GUARD: never overwrite a previous flush with the same slug.
       let fileName = `sections/${sectionIdx.toString().padStart(2, '0')}_${safeTitle}.tex`;
       let fileSuffix = 2;
@@ -2054,7 +2072,7 @@ export class ModularLatexAssembler {
         }
 
         const sectionContent = dedupedNodes.map(n => LatexAssembler.assembleNode({ ...n, sectionStyle: mapping.sectionStyle } as any, mathBlocks)).join("\n\n");
-        const safeTitle = currentSectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20);
+        const safeTitle = slugifySectionTitle(currentSectionTitle, 40);
         // UNIQUE FILE NAME GUARD: two flushes with the same slug (e.g. repeated
         // "Discussion" headings) must never overwrite each other or be \input'd
         // twice — both would corrupt the PDF (repeating content / lost sections).
