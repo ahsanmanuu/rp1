@@ -227,14 +227,14 @@ function deepRenameKeys(obj: any, map: Record<string, string>): any {
  */
 function toFields(select?: Record<string, any>): string | undefined {
   if (!select || typeof select !== 'object') return undefined;
+  const PB_FIELD_MAP: Record<string, string> = { createdAt: 'created', updatedAt: 'updated' };
   const keys: string[] = [];
   for (const [k, v] of Object.entries(select)) {
     if (k.startsWith('_')) continue;
     if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)) {
-      // Relational select — de-opt to full record (expand path handles it)
       if ('select' in v || 'include' in v) return undefined;
     }
-    keys.push(k);
+    keys.push(PB_FIELD_MAP[k] || k);
   }
   return keys.length ? keys.join(',') : undefined;
 }
@@ -422,8 +422,16 @@ function collectionProxy(collectionName: string) {
 
             // ──────────────────────────────────────────────
             case 'update': {
-              const id = args?.where?.id;
-              if (!id) throw new Error(`update requires where.id for collection ${collectionName}`);
+              let id = args?.where?.id;
+              if (!id) {
+                // Non-id where clause: look up the PB record id via filter
+                const filter = toFilter(args?.where);
+                if (filter) {
+                  const found = await col.getList(1, 1, { filter, requestKey: null });
+                  if (found.items.length) id = found.items[0].id;
+                }
+                if (!id) throw new Error(`update: record not found for where clause in collection ${collectionName}`);
+              }
               for (let attempt = 0; attempt < 3; attempt++) {
               try {
                 let finalData = args?.data;
@@ -520,8 +528,15 @@ function collectionProxy(collectionName: string) {
 
             // ──────────────────────────────────────────────
             case 'delete': {
-              const id = args?.where?.id;
-              if (!id) throw new Error(`delete requires where.id for collection ${collectionName}`);
+              let id = args?.where?.id;
+              if (!id) {
+                const filter = toFilter(args?.where);
+                if (filter) {
+                  const found = await col.getList(1, 1, { filter, requestKey: null });
+                  if (found.items.length) id = found.items[0].id;
+                }
+                if (!id) throw new Error(`delete: record not found for where clause in collection ${collectionName}`);
+              }
               await col.delete(id, {
                 requestKey: null,
               });
