@@ -99,6 +99,14 @@ export function usePbRealtime<T = any>(options: PbRealtimeOptions<T>) {
       if (msg.includes('aborted') || msg.includes('autocancelled') || msg.includes('autocancel') || msg === 'offline' || isTimeout) {
         return [];
       }
+      // Transient network errors (e.g. "Failed to fetch" during HMR restarts) are
+      // expected — downgrade to warn and skip setting error state so the UI doesn't
+      // flash error messages on every dev server restart.
+      const isTransient = msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_NETWORK');
+      if (isTransient) {
+        console.warn(`[usePbRealtime] Transient fetch error for ${collection}:`, msg);
+        return [];
+      }
       console.error(`[usePbRealtime] Fetch error for ${collection}:`, msg);
       setError(msg || `Failed to fetch ${collection}`);
       return [];
