@@ -221,7 +221,7 @@ const COLLECTION_FIELDS = {
     { name: 'userId', ...text() },
     { name: 'email', ...text() },
     { name: 'name', ...text() },
-    { name: 'rawBytes', ...text() },
+    { name: 'rawBytes', ...text({ max: 100000000 }) },
     { name: 'phase', ...text() },
     { name: 'stage', ...text() },
     { name: 'progress', ...number({ onlyInt: true }) },

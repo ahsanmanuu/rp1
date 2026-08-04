@@ -173,7 +173,7 @@ const COLLECTIONS = [
       { name: 'userId', type: 'text' },
       { name: 'email', type: 'text' },
       { name: 'name', type: 'text' },
-      { name: 'rawBytes', type: 'text' },
+      { name: 'rawBytes', type: 'text', options: { max: 100000000 } },
       { name: 'phase', type: 'text' },
       { name: 'stage', type: 'text' },
       { name: 'progress', type: 'number', options: { min: null, max: null, onlyInt: true } },
