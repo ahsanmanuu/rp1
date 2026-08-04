@@ -129,6 +129,52 @@ class PQueue {
 }
 const psQueue = new PQueue(3); // Max 3 concurrent powershell instances
 
+// ── TWO-PHASE UPLOAD (huge-file fix) ────────────────────────────────────────
+// Render kills long requests (~300s) regardless of the client XHR timeout, so a
+// large DOCX pipeline (AdmZip + JSDOM math/charts + mammoth + sharp + AI +
+// assembly + DB) routinely exceeds it and the client gave up with
+// "Connection timed out while uploading". Phase 1 (POST) now ONLY saves the raw
+// bytes to a pending dir and returns { uploadId } immediately; the heavy
+// pipeline runs in the background (same process) and the client polls
+// GET /api/upload/status. Pending files live OUTSIDE public/ so the raw bytes
+// are never statically served.
+const PENDING_DIR = path.join(process.cwd(), 'tmp', 'uploads-pending');
+// If processing hasn't written progress in this long, the background worker is
+// presumed dead (deploy/restart) and the status endpoint reports recovery.
+const PENDING_TTL_MS = 180 * 1000;
+
+function ensurePendingDir(): void {
+  if (!fs.existsSync(PENDING_DIR)) fs.mkdirSync(PENDING_DIR, { recursive: true });
+}
+
+function statusPath(uploadId: string): string {
+  return path.join(PENDING_DIR, `${uploadId}.json`);
+}
+
+function writeStatus(uploadId: string, data: Record<string, any>): void {
+  try {
+    ensurePendingDir();
+    fs.writeFileSync(statusPath(uploadId), JSON.stringify({ ...data, updatedAt: Date.now() }));
+  } catch (writeErr) {
+    console.warn('[UPLOAD-STATUS] Status write failed:', writeErr);
+  }
+}
+
+function readStatus(uploadId: string): Record<string, any> | null {
+  try {
+    const raw = fs.readFileSync(statusPath(uploadId), 'utf-8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function progress(uploadId: string, stage: string, percent: number): void {
+  if (percent > 99.9) percent = 99.9;
+  writeStatus(uploadId, { phase: 'processing', stage, progress: percent });
+  console.log(`[UPLOAD-PROGRESS] ${uploadId} ${percent}% — ${stage}`);
+}
+
 function getFallbackPngBuffer(): Buffer {
   return Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
 }
@@ -336,46 +382,25 @@ function ommlToLatex(mathNode: Element, isDisplay: boolean): string {
 export const maxDuration = 300;
 export const runtime = "nodejs";
 
-export async function POST(req: Request) {
+async function runUploadProcessing(uploadId: string, meta: any) {
   try {
-    const session = await getServerSession();
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    // Check project limits for Free tier
-    const user = await prisma.user.findUnique({
-      where: { id: (session.user as any).id },
-      select: { membership: true }
-    });
-
-    if (user?.membership === 'free' || !user?.membership) {
-      const [projectsCount, citationCount, reviewCount] = await Promise.all([
-        prisma.project.count({ where: { userId: (session.user as any).id } }),
-        prisma.citationProject.count({ where: { userId: (session.user as any).id } }),
-        prisma.paperReview.count({ where: { userId: (session.user as any).id } }),
-      ]);
-      const totalCount = projectsCount + citationCount + reviewCount;
-      if (totalCount >= 7) {
-        return NextResponse.json({ 
-          error: 'LIMIT_REACHED', 
-          message: 'Free membership is restricted to a total of 7 projects. Please upgrade to Premium.' 
-        }, { status: 403 });
-      }
-    }
-
-
-    const formData = await req.formData();
-    const file = formData.get('file') as File;
-    if (!file) return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
-
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const filePath = path.join(PENDING_DIR, `${uploadId}__${meta.fileName}`);
+    const buffer = await fs.promises.readFile(filePath);
+    // Plain file object — the pipeline only uses .name (and occasionally .size).
+    const file: any = { name: meta.fileName, size: meta.size };
+    // Reconstructed session for the background worker: the original request
+    // session is long gone by the time the pipeline finishes. All later code
+    // uses session.user.{id,email,name} (read + the FK-remap mutation).
+    const session = {
+      user: { id: meta.userId, email: meta.email, name: meta.name }
+    } as any;
+    let templateId = meta.templateId || 'article_lncs';
     let finalLatex = "";
     let finalXml = "";
     const extractedImages: any[] = [];
     console.log("[TELEMETRY] Starting upload processing for:", file.name);
     let deepData: any = null;
     let mammothResult = { value: "" };
-    let templateId = (formData.get('templateId') || formData.get('template') || 'article_lncs') as string;
     let groundTruth: { imageCount?: number; tableCount: number; equationCount: number } | null = null;
 
     if (file.name.endsWith('.docx')) {
@@ -744,6 +769,7 @@ export async function POST(req: Request) {
         })
       });
       console.timeEnd("[PERF] Mammoth DOCX Extraction");
+      progress(uploadId, 'Extracting text and figures', 42);
 
       // 🛡️ BINARY SAFETY SWEEP: Catch any base64 images that mammoth missed or bypassed
       console.time("[PERF] Binary Safety Sweep");
@@ -771,6 +797,7 @@ export async function POST(req: Request) {
         mammothResult.value = newValue;
       }
       console.timeEnd("[PERF] Binary Safety Sweep");
+      progress(uploadId, 'Extracting text and figures', 46);
 
       // ===== CHART EXTRACTION ENGINE (Phase 2: Image Extraction + Marker Resolution) =====
       console.time("[PERF] Chart Extraction Engine");
@@ -917,6 +944,7 @@ export async function POST(req: Request) {
       console.time("[PERF] Deep Structural Analysis");
       deepData = DeepDocumentParser.parse(mammothResult.value, mathData, file.name || "Document", groundTruth, finalXml);
       console.timeEnd("[PERF] Deep Structural Analysis");
+      progress(uploadId, 'Analyzing document structure', 55);
 
       const placeholders = deepData.body.filter((n: any) => (n.type === 'figure' || n.type === 'chart') && n.id?.startsWith('chart_pending_'));
       if (placeholders.length > 0) {
@@ -959,6 +987,7 @@ export async function POST(req: Request) {
         console.warn('[AI-STRUCTURE] AI structural analysis failed (non-critical):', aiErr?.message || aiErr);
       }
 
+      progress(uploadId, 'Analyzing document structure', 65);
       // XML GROUND-TRUTH OVERRIDE: the DOCX XML table/equation counts (validTables,
       // finalEquationCount) are exact — layout/metadata tables and parameter
       // assignments are already excluded there. Body-walk counts can over-count
@@ -1045,6 +1074,7 @@ export async function POST(req: Request) {
         }
       }
       console.timeEnd("[PERF] Modular LaTeX Assembly");
+      progress(uploadId, 'Assembling LaTeX project', 74);
 
     } else if (file.name.endsWith('.txt')) {
       const text = buffer.toString('utf-8');
@@ -1405,6 +1435,7 @@ export async function POST(req: Request) {
 
     // --- DB PERSISTENCE ---
     console.log("[TELEMETRY] Step 7: DB Persistence (Hardened Path)");
+    progress(uploadId, 'Saving project data', 82);
 
     // PocketBase editor/json fields default to a 5MB content limit; large DOCX
     // payloads (rawHtml + rawXml + parsed structure) routinely exceed it and PB
@@ -1692,16 +1723,123 @@ export async function POST(req: Request) {
       console.log("[TELEMETRY] Batch DB persistence fully completed.");
     }
 
-    return NextResponse.json({
-      success: true,
-      projectId: project.id,
-    });
+    progress(uploadId, 'Finalizing project', 97);
+    return { success: true, projectId: project.id };
 
   } catch (error: any) {
     console.error('--- CRITICAL UPLOAD ERROR ---');
     console.error('Message:', error.message);
     console.error('Stack Trace:', error.stack);
     console.error('-----------------------------');
+    writeStatus(uploadId, { phase: 'error', message: error.message || 'Internal Server Error' });
+    return { success: false, error: error.message || 'Internal Server Error' };
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const session = await getServerSession();
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // Check project limits for Free tier
+    const user = await prisma.user.findUnique({
+      where: { id: (session.user as any).id },
+      select: { membership: true }
+    });
+
+    if (user?.membership === 'free' || !user?.membership) {
+      const [projectsCount, citationCount, reviewCount] = await Promise.all([
+        prisma.project.count({ where: { userId: (session.user as any).id } }),
+        prisma.citationProject.count({ where: { userId: (session.user as any).id } }),
+        prisma.paperReview.count({ where: { userId: (session.user as any).id } }),
+      ]);
+      const totalCount = projectsCount + citationCount + reviewCount;
+      if (totalCount >= 7) {
+        return NextResponse.json({ 
+          error: 'LIMIT_REACHED', 
+          message: 'Free membership is restricted to a total of 7 projects. Please upgrade to Premium.' 
+        }, { status: 403 });
+      }
+    }
+
+    // PHASE 1 (fast): save the raw bytes to the pending dir and return
+    // immediately. The heavy pipeline (parse/AI/assembly/persist) runs in the
+    // background in runUploadProcessing() — a huge DOCX exceeds Render's
+    // ~300s request kill, so processing must NEVER share the request with the
+    // byte transfer. The client polls GET /api/upload/status for completion.
+    const formData = await req.formData();
+    const file = formData.get('file') as File;
+    if (!file) return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
+
+    const uploadId = randomBytes(12).toString('hex');
+    const templateId = (formData.get('templateId') || formData.get('template') || 'article_lncs') as string;
+    const fileName = file.name || 'document.docx';
+
+    ensurePendingDir();
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    await fs.promises.writeFile(path.join(PENDING_DIR, `${uploadId}__${fileName}`), buffer);
+
+    const meta = {
+      fileName,
+      size: buffer.length,
+      templateId,
+      userId: (session.user as any).id,
+      email: (session.user as any).email || null,
+      name: (session.user as any).name || null,
+      startedAt: Date.now(),
+    };
+    try {
+      fs.writeFileSync(path.join(PENDING_DIR, `${uploadId}.meta.json`), JSON.stringify(meta));
+    } catch (metaErr) {
+      console.warn('[UPLOAD] Meta write failed (non-fatal):', metaErr);
+    }
+    writeStatus(uploadId, { phase: 'processing', stage: 'Uploading document', progress: 4 });
+
+    // Fire-and-forget background processing — the status file is the contract.
+    void runUploadProcessing(uploadId, meta)
+      .then((res: any) => {
+        if (res?.success && res.projectId) {
+          writeStatus(uploadId, { phase: 'done', progress: 100, stage: 'Complete', projectId: res.projectId });
+        } else if (res?.error) {
+          writeStatus(uploadId, { phase: 'error', message: res.error });
+        }
+      })
+      .catch((bgErr: any) => {
+        console.error('[UPLOAD-BACKGROUND] Fatal background error:', bgErr?.message || bgErr);
+        writeStatus(uploadId, { phase: 'error', message: bgErr?.message || 'Internal processing error' });
+      });
+
+    return NextResponse.json({ success: true, uploadId, pending: true });
+  } catch (error: any) {
+    console.error('--- CRITICAL UPLOAD ERROR ---');
+    console.error('Message:', error.message);
+    console.error('Stack Trace:', error.stack);
+    console.error('-----------------------------');
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+  }
+}
+
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const uploadId = searchParams.get('uploadId');
+    if (!uploadId || !/^[a-f0-9]{24}$/.test(uploadId)) {
+      return NextResponse.json({ error: 'Invalid uploadId' }, { status: 400 });
+    }
+    const status = readStatus(uploadId);
+    if (!status) {
+      // Pending bytes were lost (instance restart/deploy wiped tmp/) — the
+      // client must tell the user to re-upload instead of waiting forever.
+      return NextResponse.json({ error: 'not_found' }, { status: 404 });
+    }
+    if (status.phase === 'processing' && Date.now() - (status.updatedAt || 0) > PENDING_TTL_MS) {
+      const deadWorkerMsg = 'Processing worker lost its connection to the server (deploy/restart). Please upload the file again.';
+      writeStatus(uploadId, { phase: 'error', message: deadWorkerMsg, recoverable: true });
+      return NextResponse.json({ phase: 'error', message: deadWorkerMsg, recoverable: true });
+    }
+    return NextResponse.json(status);
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message || 'Status check failed' }, { status: 500 });
   }
 }

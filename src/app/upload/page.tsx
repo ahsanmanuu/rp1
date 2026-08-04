@@ -387,6 +387,50 @@ function UploadContent() {
         }
       }
 
+      // PHASE 2 (huge-file fix): the server now returns { uploadId, pending }
+      // IMMEDIATELY after saving the raw bytes — processing runs in the
+      // background (Render kills requests at ~300s, and a huge DOCX pipeline
+      // takes longer). Poll the processing status until it completes, then
+      // continue with the existing project-sync flow below.
+      if (uploadData?.pending && uploadData?.uploadId) {
+        const pollUploadId = uploadData.uploadId;
+        const pollMaxWaitMs = 30 * 60 * 1000;
+        const pollStartedAt = Date.now();
+        let pollStatus: any = null;
+        let pollSettled = false;
+        while (!pollSettled && Date.now() - pollStartedAt < pollMaxWaitMs) {
+          await new Promise(r => setTimeout(r, 2000));
+          try {
+            const pollRes = await fetch(`/api/upload/status?uploadId=${pollUploadId}`, { cache: 'no-store' });
+            if (pollRes.status === 404) {
+              throw new Error("Upload processing was lost (server restarted). Please upload the file again.");
+            }
+            if (pollRes.ok) {
+              pollStatus = await pollRes.json();
+              if (pollStatus?.phase === 'done' && pollStatus?.projectId) {
+                uploadData = { projectId: pollStatus.projectId };
+                setAnalysisProgress(100);
+                pollSettled = true;
+                break;
+              }
+              if (pollStatus?.phase === 'error') {
+                throw new Error(pollStatus.message || 'Document processing failed. Please try again.');
+              }
+              if (typeof pollStatus?.progress === 'number') {
+                setAnalysisProgress(pollStatus.progress);
+              }
+            }
+          } catch (pollErr: any) {
+            // Re-throw real processing failures; swallow transient poll
+            // network errors and keep polling (phase 1 already succeeded).
+            if (pollErr?.message && /processing|restarted/i.test(pollErr.message)) throw pollErr;
+          }
+        }
+        if (!uploadData?.projectId) {
+          throw new Error("Connection timed out while processing. The file may be too large or the server is busy. Please try again.");
+        }
+      }
+
       // Step 2: Fetch project data and await the templates promise together (with auto-retry & self-healing fallback)
       let projRes: Response | null = null;
       let templateData: any = null;
