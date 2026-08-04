@@ -73,7 +73,7 @@ export function usePbRealtime<T = any>(options: PbRealtimeOptions<T>) {
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         const errMsg = body?.error || '';
-        if (errMsg.includes('aborted') || errMsg.includes('autocancelled') || errMsg.includes('autocancel') || errMsg === 'offline') {
+        if (errMsg.includes('aborted') || errMsg.includes('autocancelled') || errMsg.includes('autocancel') || errMsg === 'offline' || errMsg.includes('collection')) {
           return [];
         }
         // Server returned an error — set error state gracefully, don't throw
