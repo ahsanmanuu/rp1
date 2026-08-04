@@ -509,11 +509,12 @@ export async function analyzeManuscriptStructure(
     const plainText = opts.html ? stripTags(opts.html) : opts.pdfText || '';
 
     // Silent fast-path for large documents (50+ pages / >100K chars):
-    // Silently use 100% accurate deterministic parsing + ModularLatexAssembler
-    // without invoking LLMs or displaying any warning to the user.
+    // Deterministic parsing + ModularLatexAssembler is used without LLMs.
+    // Set a warning on deepData so the upload route can surface it to the user.
     const isLargeDoc = plainText.length > 100000;
     if (isLargeDoc) {
-      console.log(`[AI-STRUCTURE] Large document detected (${plainText.length} chars) — silently executing 100% accurate deterministic parsing.`);
+      console.log(`[AI-STRUCTURE] Large document detected (${plainText.length} chars) — using deterministic parsing.`);
+      (deepData as any).largeDocWarning = `Large document (${Math.round(plainText.length / 1000)}K chars): AI structure verification was skipped. The document was parsed using deterministic rules — some component detection may be less precise for very large manuscripts.`;
       return null;
     }
 

@@ -45,6 +45,7 @@ export default function LatexifyLogo({ size = 32, className = '', style = {}, fo
         width={0}
         height={0}
         sizes="100%"
+        loading="eager"
         className={imgClass}
         unoptimized={dynamicSrc.startsWith('http')}
         style={{

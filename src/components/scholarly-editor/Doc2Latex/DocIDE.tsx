@@ -785,6 +785,28 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       return;
     }
     if (!fs || !projectId || !confirm(`Delete ${path}?`)) return;
+
+    // Strip \input{}/\include{} references from main.tex BEFORE deleting the file,
+    // so the compiler doesn't try to recover the deleted file during the next build.
+    try {
+      const mainFileObj = await fs.readFile(projectId, 'main.tex');
+      if (mainFileObj?.content) {
+        const basename = path.replace(/\.tex$/i, '').replace(/^.*\//, '');
+        const patterns = [
+          new RegExp(`\\\\input\\s*\\{\\s*(?:\\.?\\/)?${basename}(?:\\.tex)?\\s*\\}\\s*\\n?`, 'gi'),
+          new RegExp(`\\\\include\\s*\\{\\s*(?:\\.?\\/)?${basename}(?:\\.tex)?\\s*\\}\\s*\\n?`, 'gi'),
+        ];
+        let cleaned: string = mainFileObj.content;
+        for (const pat of patterns) cleaned = cleaned.replace(pat, '');
+        if (cleaned !== mainFileObj.content) {
+          await fs.writeFile(projectId, 'main.tex', cleaned);
+          setFiles(prev => prev.map(f => f.path === 'main.tex' ? { ...f, content: cleaned } : f));
+        }
+      }
+    } catch (cleanupErr) {
+      console.warn('[DELETE] Failed to clean \\input{} references from main.tex:', cleanupErr);
+    }
+
     await fs.deleteFile(projectId, path);
     setFiles(prev => prev.filter(f => f.path !== path));
     if (openTabs.includes(path)) setOpenTabs(t => t.filter(x => x !== path));
@@ -943,7 +965,11 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     let autoSyncFailed = false;
 
     try {
-      await fs.writeFile(projectId, activeFile, codeRef.current);
+      // RACE FIX: read directly from Monaco editor — codeRef.current is synced
+      // via async useEffect and can be stale if user types then clicks BUILD
+      // in the same microtask. Monaco always holds the authoritative buffer.
+      const liveContent = editorRef.current?.getValue() ?? codeRef.current ?? '';
+      await fs.writeFile(projectId, activeFile, liveContent);
       // The editor buffer is now persisted — safe for background syncs.
       dirtyRef.current = false;
       const payloadMeta = await fs.listFiles(projectId);

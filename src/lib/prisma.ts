@@ -43,10 +43,10 @@ function mapWriteData(data: any): any {
   if ('updatedAt' in copy) {
     if (copy.updatedAt instanceof Date) {
       copy.updated = pbDateStr(copy.updatedAt);
-    } else if (copy.updated) {
+    } else if (copy.updatedAt) {
       copy.updated = pbDateStr(new Date(copy.updatedAt));
     }
-    delete copy.updated;
+    delete copy.updatedAt;
   }
   return copy;
 }

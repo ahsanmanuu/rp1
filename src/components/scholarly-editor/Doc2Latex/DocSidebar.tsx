@@ -31,54 +31,93 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
   compiling = false
 }) => {
   // ── Standard Academic Manuscript File Categories ───────────────
+  // Track which files matched a known category so uncategorized ones can be shown
+  const categorizedPaths = new Set<string>();
+
   const categories = [
     {
       name: 'TITLE & METADATA',
-      files: files.filter(f =>
-        /^metadata\/(?:title|authors|affiliations|abstract|keywords|acknowledgements|frontmatter|organizations)\.tex$/i.test(f.path)
-      ),
+      files: files.filter(f => {
+        const m = /^metadata\/(?:title|authors|affiliations|abstract|keywords|acknowledgements|frontmatter|organizations)\.tex$/i.test(f.path);
+        if (m) categorizedPaths.add(f.path);
+        return m;
+      }),
     },
     {
       name: 'BODY SECTIONS',
-      files: files.filter(f => /^(?:sections|chapters|paragraphs)\//i.test(f.path) && f.path.endsWith('.tex')),
+      files: files.filter(f => {
+        const m = /^(?:sections|chapters|paragraphs)\//i.test(f.path) && f.path.endsWith('.tex');
+        if (m) categorizedPaths.add(f.path);
+        return m;
+      }),
     },
     {
       name: 'TABLES',
-      files: files.filter(f => /^floats\/tables\.tex$/i.test(f.path) || /^tables\/table_\d+\.tex$/i.test(f.path)),
+      files: files.filter(f => {
+        const m = /^floats\/tables\.tex$/i.test(f.path) || /^tables\/table_\d+\.tex$/i.test(f.path);
+        if (m) categorizedPaths.add(f.path);
+        return m;
+      }),
     },
     {
       name: 'FIGURES',
-      files: files.filter(f => /^floats\/figures\.tex$/i.test(f.path) || /^figures\/figure_\d+\.tex$/i.test(f.path)),
+      files: files.filter(f => {
+        const m = /^floats\/figures\.tex$/i.test(f.path) || /^figures\/figure_\d+\.tex$/i.test(f.path);
+        if (m) categorizedPaths.add(f.path);
+        return m;
+      }),
     },
     {
       name: 'ALGORITHMS',
-      files: files.filter(f => /^floats\/algorithms\.tex$/i.test(f.path) || /^algorithms\/algo_\d+\.tex$/i.test(f.path)),
+      files: files.filter(f => {
+        const m = /^floats\/algorithms\.tex$/i.test(f.path) || /^algorithms\/algo_\d+\.tex$/i.test(f.path);
+        if (m) categorizedPaths.add(f.path);
+        return m;
+      }),
     },
     {
       name: 'EQUATIONS',
-      files: files.filter(f => /^floats\/equations\.tex$/i.test(f.path) || /^equations\/eq_\d+\.tex$/i.test(f.path)),
+      files: files.filter(f => {
+        const m = /^floats\/equations\.tex$/i.test(f.path) || /^equations\/eq_\d+\.tex$/i.test(f.path);
+        if (m) categorizedPaths.add(f.path);
+        return m;
+      }),
     },
     {
       name: 'REFERENCES',
-      files: files.filter(f => /^references\//i.test(f.path)),
+      files: files.filter(f => {
+        const m = /^references\//i.test(f.path);
+        if (m) categorizedPaths.add(f.path);
+        return m;
+      }),
     },
-
     {
       name: 'TEMPLATE FILES',
-      files: files.filter(f =>
-        /\.(cls|sty|bib|bst|cfg|clo|def|ldf)$/i.test(f.path) ||
-        /^components\//i.test(f.path)
-      ),
+      files: files.filter(f => {
+        const m = /\.(cls|sty|bib|bst|cfg|clo|def|ldf)$/i.test(f.path) || /^components\//i.test(f.path);
+        if (m) categorizedPaths.add(f.path);
+        return m;
+      }),
     },
     {
       name: 'IMAGE ASSETS',
-      files: files.filter(f => /\.(png|jpg|jpeg|gif|svg|webp|eps|tiff?|bmp|heic|heif|avif)$/i.test(f.path)),
+      files: files.filter(f => {
+        const m = /\.(png|jpg|jpeg|gif|svg|webp|eps|tiff?|bmp|heic|heif|avif)$/i.test(f.path);
+        if (m) categorizedPaths.add(f.path);
+        return m;
+      }),
     },
     {
       name: 'FLOAT REFERENCES',
-      files: files.filter(f => /^assets\/(figure|table|algorithm|equation)\.tex$/i.test(f.path)),
+      files: files.filter(f => {
+        const m = /^assets\/(figure|table|algorithm|equation)\.tex$/i.test(f.path);
+        if (m) categorizedPaths.add(f.path);
+        return m;
+      }),
     },
   ];
+  // Catch-all: show any file not matched by the above categories
+  const uncategorized = files.filter(f => !categorizedPaths.has(f.path) && f.path !== 'main.tex');
   const mainFile = files.find(f => f.path === 'main.tex');
 
   return (
@@ -162,6 +201,14 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
               ))}
             </div>
           ))}
+          {uncategorized.length > 0 && (
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.6rem', fontWeight: 900, color: 'var(--ide-icon-muted)', letterSpacing: '0.1em', padding: '0 0.75rem 0.25rem', textTransform: 'uppercase' }}>OTHER FILES</div>
+              {uncategorized.sort((a,b) => a.path.localeCompare(b.path)).map(f => (
+                <FileItem key={f.path} f={f} activeFile={activeFile} onClick={switchTab} onDelete={deleteFile} onRename={renameFile} isReadOnly={isReadOnly} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
       

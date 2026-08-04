@@ -12,7 +12,12 @@ const ADMIN_EMAIL = process.env.POCKETBASE_ADMIN_EMAIL || 'admin@latexify.io';
 const ADMIN_PASSWORD = process.env.POCKETBASE_ADMIN_PASSWORD || 'Sczone@123';
 
 const pb = new PocketBase(PB_URL);
-await pb.admins.authWithPassword(ADMIN_EMAIL, ADMIN_PASSWORD);
+// PocketBase v0.23+: admins moved to _superusers collection
+try {
+  await pb.collection('_superusers').authWithPassword(ADMIN_EMAIL, ADMIN_PASSWORD);
+} catch {
+  await pb.admins.authWithPassword(ADMIN_EMAIL, ADMIN_PASSWORD);
+}
 
 console.log('Authenticated to PocketBase admin API');
 
@@ -233,6 +238,17 @@ const COLLECTION_FIELDS = {
     { name: 'createdAt', ...autodate({ onCreate: true, onUpdate: false }) },
     { name: 'updatedAt', ...autodate({ onCreate: true, onUpdate: true }) },
   ],
+  // LaTeX project files (content holds source code — can be very large)
+  project_files: [
+    { name: 'projectId', ...text({ required: true }) },
+    { name: 'filename', ...text({ required: true }) },
+    { name: 'filePath', ...text() },
+    { name: 'fileType', ...text() },
+    { name: 'size', ...number({ onlyInt: true }) },
+    { name: 'content', ...text({ max: 20000000 }) },
+    { name: 'createdAt', ...autodate({ onCreate: true, onUpdate: false }) },
+    { name: 'updatedAt', ...autodate({ onCreate: true, onUpdate: true }) },
+  ],
 };
 
 // ── Migration logic ─────────────────────────────────────────────────────────
@@ -262,18 +278,40 @@ async function migrateCollection(name, expectedFields) {
     return;
   }
 
-  // Collection exists — add missing fields
-  const existingFields = new Set((collection.fields || []).map(f => f.name));
-  const fieldsToAdd = expectedFields.filter(f => !existingFields.has(f.name));
+  // Collection exists — add missing fields AND raise limits on existing ones
+  const existingFieldMap = new Map((collection.fields || []).map(f => [f.name, f]));
+  const fieldsToAdd = expectedFields.filter(f => !existingFieldMap.has(f.name));
 
-  if (fieldsToAdd.length === 0) {
-    console.log(`  [OK] "${name}" — all fields present`);
+  // Check for field limit updates (max, maxSize)
+  let limitsChanged = false;
+  const updatedExisting = (collection.fields || []).map(f => {
+    const expected = expectedFields.find(e => e.name === f.name);
+    if (!expected) return f;
+    const patch = { ...f };
+    if (expected.max && Number(f.max || 0) < Number(expected.max)) {
+      patch.max = expected.max;
+      limitsChanged = true;
+      console.log(`  [LIMIT] "${name}"."${f.name}": max ${f.max || 5000} → ${expected.max}`);
+    }
+    if (expected.maxSize && Number(f.maxSize || 0) < Number(expected.maxSize)) {
+      patch.maxSize = expected.maxSize;
+      limitsChanged = true;
+      console.log(`  [LIMIT] "${name}"."${f.name}": maxSize ${f.maxSize || 0} → ${expected.maxSize}`);
+    }
+    return patch;
+  });
+
+  if (fieldsToAdd.length === 0 && !limitsChanged) {
+    console.log(`  [OK] "${name}" — all fields present, limits OK`);
     return;
   }
 
-  console.log(`  [UPDATE] "${name}" — adding ${fieldsToAdd.length} field(s): ${fieldsToAdd.map(f => f.name).join(', ')}`);
+  const action = [];
+  if (fieldsToAdd.length) action.push(`adding ${fieldsToAdd.length} field(s): ${fieldsToAdd.map(f => f.name).join(', ')}`);
+  if (limitsChanged) action.push('raising field limits');
+  console.log(`  [UPDATE] "${name}" — ${action.join('; ')}`);
   try {
-    const updatedSchema = [...(collection.fields || []), ...fieldsToAdd];
+    const updatedSchema = [...updatedExisting, ...fieldsToAdd];
     await pb.collections.update(collection.id, { schema: updatedSchema }, { requestKey: `update_${name}` });
     console.log(`  [OK] "${name}" updated`);
   } catch (e) {

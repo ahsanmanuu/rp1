@@ -186,6 +186,22 @@ const COLLECTIONS = [
     indexes: ['CREATE UNIQUE INDEX idx_upload_jobs_uploadId ON upload_jobs (uploadId);'],
   },
   {
+    name: 'project_files',
+    type: 'base',
+    schema: [
+      { name: 'projectId', type: 'text', required: true },
+      { name: 'filename', type: 'text', required: true },
+      { name: 'filePath', type: 'text' },
+      { name: 'fileType', type: 'text' },
+      { name: 'size', type: 'number', options: { min: null, max: null, onlyInt: true } },
+      { name: 'content', type: 'text', options: { max: 20000000 } },
+    ],
+    indexes: [
+      'CREATE INDEX idx_project_files_projectId ON project_files (projectId);',
+      'CREATE UNIQUE INDEX idx_project_files_unique ON project_files (projectId, filename);',
+    ],
+  },
+  {
     name: 'floating_banners',
     type: 'base',
     schema: [

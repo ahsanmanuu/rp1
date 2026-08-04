@@ -535,7 +535,18 @@ export function mapLegacyTemplateId(id: string): string {
     't3': 'elsevier_ai',
     't4': 'springer_ml',
     't5': 'plos_one',
-    't6': 'scirep'
+    't6': 'scirep',
+    // Ghost IDs used by the upload form and filename detection — map to the
+    // closest registry entry so getTemplateById() finds a real template and
+    // the assembler gets the correct document class + native preamble.
+    'article_lncs': 'springer_ml',
+    'article_ieee': 'ieee_tpami',
+    'article_acm': 'acm_cacm',
+    'article_elsevier': 'elsevier_ai',
+    'article_scirep': 'scirep',
+    'article_nature': 'nature',
+    'article_pnas': 'pnas',
+    'article_plos': 'plos_one',
   };
   return map[id] || id;
 }

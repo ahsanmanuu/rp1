@@ -160,8 +160,8 @@ const backgroundRunning = new Set<string>();
 async function writeStatus(uploadId: string, data: Record<string, any>): Promise<void> {
   try {
     await prisma.uploadJob.update({ where: { uploadId }, data });
-  } catch (writeErr) {
-    console.warn('[UPLOAD-STATUS] Status write failed:', writeErr);
+  } catch (writeErr: any) {
+    console.warn('[UPLOAD-STATUS] Status write failed:', writeErr?.message || writeErr);
   }
 }
 
@@ -255,9 +255,13 @@ async function writeCheckpoint(uploadId: string, data: { projectId: string }): P
 async function finishUpload(uploadId: string, res: any): Promise<void> {
   backgroundRunning.delete(uploadId);
   if (res?.success && res.projectId) {
+    console.log(`[UPLOAD-FINISH] Marking upload ${uploadId} as done (project: ${res.projectId})`);
     await writeStatus(uploadId, { phase: 'done', progress: 100, stage: 'Complete', projectId: res.projectId });
   } else if (res?.error) {
+    console.log(`[UPLOAD-FINISH] Marking upload ${uploadId} as error: ${res.error}`);
     await writeStatus(uploadId, { phase: 'error', message: res.error, recoverable: false });
+  } else {
+    console.warn(`[UPLOAD-FINISH] Upload ${uploadId} finished with unknown result:`, JSON.stringify(res));
   }
 }
 
@@ -471,6 +475,13 @@ export const runtime = "nodejs";
 async function runUploadProcessing(uploadId: string) {
   backgroundRunning.add(uploadId);
   try {
+    // Ensure PB text/editor field limits are raised before any createMany.
+    // After a server restart the in-memory cache resets; this is cheap after
+    // the first call (cached) and prevents PB 400 "Failed to create record"
+    // on large content payloads.
+    const { ensureContentSizeLimits } = await import('@/lib/pbContentLimits');
+    await ensureContentSizeLimits();
+
     // Durable source of truth: the UploadJob row in Postgres. Re-read on every
     // kick (including recovery re-kicks) so the worker always operates on the
     // latest bytes/meta — zero dependency on the ephemeral tmp/ dir.
@@ -1101,7 +1112,14 @@ async function runUploadProcessing(uploadId: string) {
           (deepData as any).aiModel = aiRes.model;
           console.log(`[TELEMETRY] AI structure corrections applied: ${applied.join(', ') || 'none'} (${aiRes.model})`);
         } else {
-          console.warn('[TELEMETRY] AI structural analysis timed out or unavailable — keeping heuristic parse.');
+          // Surface large-doc warning to the user via upload status
+          const ldWarning = (deepData as any).largeDocWarning;
+          if (ldWarning) {
+            console.warn(`[TELEMETRY] ${ldWarning}`);
+            await writeStatus(uploadId, { warning: ldWarning }).catch(() => {});
+          } else {
+            console.warn('[TELEMETRY] AI structural analysis timed out or unavailable — keeping heuristic parse.');
+          }
         }
       } catch (aiErr: any) {
         console.warn('[AI-STRUCTURE] AI structural analysis failed (non-critical):', aiErr?.message || aiErr);

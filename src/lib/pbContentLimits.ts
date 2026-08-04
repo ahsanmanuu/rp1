@@ -12,9 +12,10 @@ const FIELD_TARGETS: Record<string, string[]> = {
 };
 
 /** Text fields that need a raised max (in characters). PB defaults text max to
- *  5000 chars, far too low for base64-encoded file payloads. */
+ *  5000 chars, far too low for base64-encoded file payloads or large source code. */
 const TEXT_FIELD_TARGETS: Record<string, { field: string; max: number }[]> = {
   upload_jobs: [{ field: 'rawBytes', max: 100_000_000 }], // ~100 MB of base64 text
+  project_files: [{ field: 'content', max: 20_000_000 }], // LaTeX source / large file content
 };
 
 /**

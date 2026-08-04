@@ -14,9 +14,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   
   // Verify ownership
   const project = await prisma.project.findUnique({ where: { id: projectId }});
-  if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (!project) {
+    // Fallback: project may exist on disk but not in DB (orphaned upload).
+    // Allow authenticated users to retrieve the PDF.
+    const fallbackDir = path.join(process.cwd(), 'public', 'uploads', 'projects', projectId);
+    if (!fs.existsSync(fallbackDir)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+  }
   
-  if (project.userId !== session.user.id) {
+  if (project && project.userId !== session.user.id) {
      const collab = await prisma.projectCollaborator.findFirst({
          where: { projectId, userEmail: session.user.email || '' }
      });

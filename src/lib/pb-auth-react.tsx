@@ -43,29 +43,36 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
   
   const isFetching = useRef(false);
   const sessionTokenRef = useRef<string | null>(null);
+  const statusRef = useRef<SessionStatus>("loading");
+  const retryCount = useRef(0);
+  const MAX_RETRIES = 2;
 
   const update = useCallback(async (newData?: PbServerSession | null) => {
     if (newData !== undefined) {
       if (newData) {
         setData(newData);
         setStatus("authenticated");
+        statusRef.current = "authenticated";
         sessionTokenRef.current = newData.token || null;
+        retryCount.current = 0;
         if (newData.token && typeof window !== "undefined") {
           localStorage.setItem("auth-token", newData.token);
         }
       } else {
         setData(null);
         setStatus("unauthenticated");
+        statusRef.current = "unauthenticated";
         sessionTokenRef.current = null;
         if (typeof window !== "undefined") localStorage.removeItem("auth-token");
       }
       return;
     }
 
+    if (isFetching.current) return;
     isFetching.current = true;
     try {
       const res = await fetch(`/api/auth/pb-session?_=${Date.now()}`, {
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(20000),
         headers: {
           "Cache-Control": "no-cache, no-store, must-revalidate",
           "Pragma": "no-cache"
@@ -73,39 +80,50 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
       });
       if (res.ok) {
         const json = await res.json();
+        retryCount.current = 0;
         if (json.user) {
           setData(prev => {
             if (prev && JSON.stringify(prev) === JSON.stringify(json)) return prev;
             return json;
           });
           setStatus("authenticated");
+          statusRef.current = "authenticated";
           sessionTokenRef.current = json.token || null;
-          // Store token in localStorage for PB real-time subscription
           if (json.token && typeof window !== "undefined") {
             localStorage.setItem("auth-token", json.token);
           }
         } else {
           setData(null);
           setStatus("unauthenticated");
+          statusRef.current = "unauthenticated";
           sessionTokenRef.current = null;
           if (typeof window !== "undefined") localStorage.removeItem("auth-token");
         }
       } else if (res.status === 401) {
-        // Explicit auth rejection — clear session
         setData(null);
         setStatus("unauthenticated");
+        statusRef.current = "unauthenticated";
         sessionTokenRef.current = null;
         if (typeof window !== "undefined") localStorage.removeItem("auth-token");
       } else {
-        // Transient error (500, 502, 503, 504, etc.) — DO NOT clear session if already logged in!
         console.warn(`[PB Session Provider] Received transient status ${res.status}. Keeping current session.`);
         setStatus(prev => prev === 'loading' ? 'unauthenticated' : prev);
+        if (statusRef.current === 'loading') statusRef.current = 'unauthenticated';
       }
     } catch (err: any) {
-      // Network timeout or connection drop — DO NOT clear session if already logged in!
       const msg = err?.name === 'TimeoutError' || err?.name === 'AbortError'
         ? 'Request timed out'
         : (err?.message || String(err));
+
+      if (statusRef.current === 'loading' && retryCount.current < MAX_RETRIES) {
+        retryCount.current++;
+        const delay = retryCount.current * 2000;
+        console.warn(`[PB Session Provider] ${msg} — retrying in ${delay}ms (${retryCount.current}/${MAX_RETRIES})`);
+        isFetching.current = false;
+        setTimeout(update, delay);
+        return;
+      }
+
       console.warn("[PB Session Provider] Fetch failed with network/timeout error:", msg);
       setStatus(prev => prev === 'loading' ? 'unauthenticated' : prev);
     } finally {

@@ -13,6 +13,7 @@ async function ensureStatusFieldsInPb() {
   try {
     const { pbAdmin } = await import('@/lib/pb');
     const pb = await pbAdmin();
+    if (!pb) return;
     const collectionsToUpdate = ['citation_projects', 'paper_reviews'];
     for (const cName of collectionsToUpdate) {
       try {
@@ -99,7 +100,9 @@ export async function GET(_req: NextRequest) {
     }
 
     ensureStatusFieldsInPb().catch(() => {});
-    await syncUserMembershipChain(userId);
+    await syncUserMembershipChain(userId).catch((syncErr: any) => {
+      console.warn('[CHECK_MEMBERSHIP] syncUserMembershipChain failed (non-fatal):', syncErr?.message || syncErr);
+    });
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -234,7 +237,8 @@ export async function GET(_req: NextRequest) {
     RESPONSE_CACHE.set(userId, { data: responseData, expiry: Date.now() + RESPONSE_CACHE_TTL });
     return NextResponse.json(responseData);
   } catch (error: any) {
-    console.error("[CHECK_MEMBERSHIP_ERROR] Failed:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    console.error("[CHECK_MEMBERSHIP_ERROR] Failed:", error?.message || error?.toString?.() || String(error));
+    if (error?.stack) console.error("[CHECK_MEMBERSHIP_ERROR] Stack:", error.stack);
+    return NextResponse.json({ success: false, error: error?.message || 'Internal error' }, { status: 500 });
   }
 }

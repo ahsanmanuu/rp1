@@ -672,6 +672,11 @@ export async function runHardenedPipeline(
     // structuredContent, then from ProjectFile records. If all recovery fails,
     // safely comment out the reference to avoid blank pages from empty stubs.
     const mainTex = finalNormalized.find(f => normalizePath(f.path) === normalizePath(cleanMain));
+    // DELETE FIX: when the session carries a real main.tex with \documentclass,
+    // the editor session is authoritative — missing files are intentionally
+    // deleted by the user. DB recovery must be skipped to prevent resurrecting
+    // files that the user removed from the IDE.
+    const sessionCompleteForRecovery = !!(mainTex && typeof mainTex.content === 'string' && mainTex.content.includes('\\documentclass'));
     if (mainTex && typeof mainTex.content === 'string') {
       const fileSet = new Set(finalNormalized.map(f => normalizePath(f.path)));
       const texRefs = mainTex.content.match(/\\(?:include|input)\s*\{([^}]+)\}/gi);
@@ -693,8 +698,9 @@ export async function runHardenedPipeline(
               // and this block pulled the stale copy back into every compile.
               // The editor session payload is the source of truth — recovery is
               // limited to the delete-aware ProjectFile rows below.
-              // Attempt 1: Recover from ProjectFile records
-              if (!recovered && projectId) {
+              // Attempt 1: Recover from ProjectFile records (SKIPPED when session
+              // is authoritative — deleted files must not be resurrected).
+              if (!recovered && projectId && !sessionCompleteForRecovery) {
                 try {
                   const { prisma } = require('@/lib/prisma');
                   const dbFile = await prisma.projectFile.findFirst({

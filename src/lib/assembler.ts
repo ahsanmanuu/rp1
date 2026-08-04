@@ -1605,21 +1605,21 @@ export class ModularLatexAssembler {
         }
     }
 
-    if (docClass && tpl) {
-        if (templateId === 'article_ieee' || tpl.assetFolder === 'ieee') docClass = "\\documentclass[journal]{IEEEtran}";
-        else if (templateId === 'article_acm' || tpl.assetFolder === 'acm') docClass = "\\documentclass[nonacm,sigconf]{acmart}";
-        else if (templateId === 'article_elsevier' || tpl.assetFolder === 'elsevier') docClass = "\\documentclass[preprint,12pt]{elsarticle}";
-        else if (templateId === 'article_lncs' || tpl.publisher === 'Springer') docClass = "\\documentclass{llncs}";
-        else if (templateId === 'article_scirep' || tpl.assetFolder === 'scirep') docClass = "\\documentclass[10pt]{wlscirep}";
-        else if (tpl.assetFolder === 'nature') docClass = "\\documentclass{nature}";
-        else if (tpl.assetFolder === 'aaas') docClass = "\\documentclass{scifile}";
-        else if (tpl.assetFolder === 'pnas') docClass = "\\documentclass{pnas-new}";
-        else if (tpl.assetFolder === 'plos') docClass = "\\documentclass{plos2015}";
-        else if (tpl.assetFolder === 'aps') docClass = "\\documentclass[aps,prl,reprint]{revtex4-2}";
-        else if (tpl.category === 'Thesis') docClass = "\\documentclass[12pt]{thesis}";
-        else if (tpl.category === 'CV') docClass = "\\documentclass[11pt]{cv}";
-        else if (tpl.category === 'Presentation') docClass = "\\documentclass{beamer}";
-        else if (tpl.assetFolder) docClass = `\\documentclass{${tpl.assetFolder}}`;
+    if (docClass) {
+        if (templateId === 'article_ieee' || tpl?.assetFolder === 'ieee') docClass = "\\documentclass[journal]{IEEEtran}";
+        else if (templateId === 'article_acm' || tpl?.assetFolder === 'acm') docClass = "\\documentclass[nonacm,sigconf]{acmart}";
+        else if (templateId === 'article_elsevier' || tpl?.assetFolder === 'elsevier') docClass = "\\documentclass[preprint,12pt]{elsarticle}";
+        else if (templateId === 'article_lncs' || tpl?.publisher === 'Springer') docClass = "\\documentclass{llncs}";
+        else if (templateId === 'article_scirep' || tpl?.assetFolder === 'scirep') docClass = "\\documentclass[10pt]{wlscirep}";
+        else if (tpl?.assetFolder === 'nature') docClass = "\\documentclass{nature}";
+        else if (tpl?.assetFolder === 'aaas') docClass = "\\documentclass{scifile}";
+        else if (tpl?.assetFolder === 'pnas') docClass = "\\documentclass{pnas-new}";
+        else if (tpl?.assetFolder === 'plos') docClass = "\\documentclass{plos2015}";
+        else if (tpl?.assetFolder === 'aps') docClass = "\\documentclass[aps,prl,reprint]{revtex4-2}";
+        else if (tpl?.category === 'Thesis') docClass = "\\documentclass[12pt]{thesis}";
+        else if (tpl?.category === 'CV') docClass = "\\documentclass[11pt]{cv}";
+        else if (tpl?.category === 'Presentation') docClass = "\\documentclass{beamer}";
+        else if (tpl?.assetFolder) docClass = `\\documentclass{${tpl.assetFolder}}`;
     }
 
     if (tpl?.assetFolder) {

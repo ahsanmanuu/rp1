@@ -29,6 +29,7 @@ export async function POST(req: Request) {
         userId: session.user.id,
         projectId,
         title,
+        status: 'verified',
         statsJson: JSON.stringify(stats || {}),
         authorsJson: JSON.stringify(authors || []),
         affiliationsJson: JSON.stringify(affiliations || []),

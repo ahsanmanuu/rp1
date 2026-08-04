@@ -91,6 +91,7 @@ export default function ScholarlyAnalysisModal({ isOpen, progress = 0, activeMod
                           stroke={currentStep.color} 
                           strokeWidth="3" 
                           strokeDasharray="301.6"
+                          initial={{ strokeDashoffset: 301.6 }}
                           animate={{ strokeDashoffset: 301.6 - (301.6 * safeProgress / 100) }}
                           transition={{ duration: 0.1, ease: "linear" }}
                           strokeLinecap="round"
