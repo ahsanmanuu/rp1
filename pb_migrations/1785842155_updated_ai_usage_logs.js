@@ -1,6 +1,11 @@
 /// <reference path="../pb_data/types.d.ts" />
 migrate((app) => {
-  const collection = app.findCollectionByNameOrId("pbc_3543645026")
+  let collection;
+  try {
+    collection = app.findCollectionByNameOrId("pbc_3543645026")
+  } catch {
+    return; // collection doesn't exist yet, skip
+  }
 
   // update collection data
   unmarshal({
@@ -11,7 +16,12 @@ migrate((app) => {
 
   return app.save(collection)
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("pbc_3543645026")
+  let collection;
+  try {
+    collection = app.findCollectionByNameOrId("pbc_3543645026")
+  } catch {
+    return; // collection doesn't exist in this environment, nothing to rollback
+  }
 
   // update collection data
   unmarshal({

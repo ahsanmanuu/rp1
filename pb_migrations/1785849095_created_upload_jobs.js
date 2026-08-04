@@ -261,7 +261,12 @@ migrate((app) => {
 
   return app.save(collection);
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("pbc_3706112456");
+  let collection;
+  try {
+    collection = app.findCollectionByNameOrId("pbc_3706112456");
+  } catch {
+    return; // collection doesn't exist, nothing to delete
+  }
 
   return app.delete(collection);
 })
