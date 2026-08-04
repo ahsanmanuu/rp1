@@ -1880,6 +1880,14 @@ const TemplateCard = ({ id, name, desc, projectId, router, onError, isCustom, on
               await new Promise(r => setTimeout(r, 600));
               continue;
             }
+          } else if (res.status === 500 || errMsg.includes('resource') || errMsg.includes('not found') || errMsg.includes('does not exist')) {
+            // Server-side collection or resource issue — retry with backoff
+            lastError = new Error(errMsg);
+            if (attempts < maxAttempts) {
+              await new Promise(r => setTimeout(r, 1000 * attempts));
+              continue;
+            }
+            throw new Error(errMsg);
           } else {
             throw new Error(errMsg);
           }
@@ -1897,7 +1905,8 @@ const TemplateCard = ({ id, name, desc, projectId, router, onError, isCustom, on
     }
 
     // If we have a projectId, self-heal by navigating to doc2latex studio where local sync can resolve the state
-    if (projectId) {
+    // Only self-heal for true offline errors, not server 500s (those are real errors that need fixing)
+    if (projectId && lastError && (String(lastError.message).includes('offline') || String(lastError.message).includes('Failed to fetch'))) {
       console.warn("Template application encountered offline state, self-healing by redirecting to workspace...", lastError);
       setStatus('success');
       sessionStorage.setItem(`force_sync_${projectId}`, 'true');

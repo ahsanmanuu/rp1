@@ -3,6 +3,20 @@ import { countCitationsFromHtml } from './citationCounting';
 import { validateAiLatexFragments } from './latex-fragment-validator';
 import type { AiLatexFragments } from './latex-fragment-validator';
 import type { StructuredDocument, AuthorInfo } from './deep-parser';
+import { createHash } from 'crypto';
+
+/**
+ * Content-hash cache for AI analysis results. Avoids re-running 2-3 expensive
+ * LLM calls when the same document is uploaded or processed multiple times.
+ * Keyed on SHA-256 of (filename + fullText). TTL: 10 minutes.
+ */
+const analysisCache = new Map<string, { result: any; ts: number }>();
+const ANALYSIS_CACHE_TTL = 600_000;
+
+function computeAnalysisCacheKey(deepData: StructuredDocument, filename: string): string {
+  const text = String((deepData as any).body?.map((n: any) => n.text || '').join('') || '').substring(0, 10000);
+  return createHash('sha256').update(`${filename}:${text}`).digest('hex').slice(0, 32);
+}
 
 /**
  * AI-assisted structural verification for converted manuscripts.
@@ -490,6 +504,14 @@ export async function analyzeManuscriptStructure(
   deepData: StructuredDocument,
   opts: { html?: string; pdfText?: string; filename: string; userId?: string | null; imageFiles?: string[]; templateId?: string }
 ): Promise<{ verdict: AiStructureVerdict; model: string; aiLatex: AiLatexFragments | null } | null> {
+  // Content-hash cache: skip expensive LLM calls if identical document was already analyzed
+  const cacheKey = computeAnalysisCacheKey(deepData, opts.filename);
+  const cached = analysisCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < ANALYSIS_CACHE_TTL) {
+    console.log(`[AI_ANALYSIS] Cache hit for ${opts.filename} — skipping LLM calls`);
+    return cached.result;
+  }
+
   try {
     const sectionTitles: string[] = [];
     const figureCaptions: string[] = [];
@@ -725,7 +747,15 @@ export async function analyzeManuscriptStructure(
     }
 
     const model = [resA?.model, resB?.model].filter(Boolean)[0] || 'unknown';
-    return { verdict: finalVerdict, model, aiLatex: null };
+    const result = { verdict: finalVerdict, model, aiLatex: null };
+    // Populate cache so identical re-uploads skip LLM calls entirely
+    analysisCache.set(cacheKey, { result, ts: Date.now() });
+    // Evict stale cache entries (keep map bounded to 50 entries)
+    if (analysisCache.size > 50) {
+      const oldest = [...analysisCache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
+      if (oldest) analysisCache.delete(oldest[0]);
+    }
+    return result;
   } catch (err: any) {
     console.warn('[AI-Structure] Analysis failed (non-critical):', err?.message || err);
     return null;

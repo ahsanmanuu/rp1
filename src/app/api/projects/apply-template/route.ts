@@ -107,6 +107,39 @@ export async function POST(req: Request) {
     const rawHtml = structured.rawHtml || project.content || "";
     const rawXml = structured.rawXml || "";
 
+    // Helper: safely upsert a ProjectFile — swallows collection-missing errors
+    const safeFileUpsert = async (data: { projectId: string; filename: string; content: string; fileType: string; filePath: string }) => {
+      try {
+        const existing = await prisma.projectFile.findFirst({ where: { projectId: data.projectId, filename: data.filename } });
+        if (existing) {
+          await prisma.projectFile.update({ where: { id: existing.id }, data });
+        } else {
+          await prisma.projectFile.create({ data });
+        }
+      } catch (e: any) {
+        const msg = String(e?.message || '');
+        if (msg.includes('not found') || msg.includes('404') || msg.includes('does not exist')) {
+          console.warn(`[TEMPLATE] project_files collection unavailable, skipping DB sync for ${data.filename}`);
+        } else {
+          console.warn(`[TEMPLATE] Failed to sync ${data.filename}:`, msg.slice(0, 200));
+        }
+      }
+    };
+
+    // Helper: safely deleteMany — swallows collection-missing errors
+    const safeDeleteMany = async (where: any) => {
+      try {
+        await prisma.projectFile.deleteMany({ where });
+      } catch (e: any) {
+        const msg = String(e?.message || '');
+        if (msg.includes('not found') || msg.includes('404') || msg.includes('does not exist')) {
+          console.warn('[TEMPLATE] project_files collection unavailable, skipping deleteMany');
+        } else {
+          console.warn('[TEMPLATE] deleteMany failed:', msg.slice(0, 200));
+        }
+      }
+    };
+
     // --- UNIVERSAL MAPPING LOGIC (Tier 1: Model-First Preservation) ---
     console.time(`[LATEX_SYNC] ${projectId}`);
     let fullLatex = "";
@@ -269,12 +302,7 @@ export async function POST(req: Request) {
                 if (fs.statSync(srcPath).isFile()) {
                     fs.copyFileSync(srcPath, destPath);
                     const content = fs.readFileSync(srcPath, 'utf-8');
-                    const existingAux = await prisma.projectFile.findFirst({ where: { projectId, filename: fileName }});
-                    if (existingAux) {
-                        await prisma.projectFile.update({ where: { id: existingAux.id }, data: { content, filePath: `/uploads/projects/${projectId}/${fileName}` }});
-                    } else {
-                        await prisma.projectFile.create({ data: { projectId, filename: fileName, content, fileType: fileName.split('.').pop() || 'tex', filePath: `/uploads/projects/${projectId}/${fileName}` }});
-                    }
+                    await safeFileUpsert({ projectId, filename: fileName, content, fileType: fileName.split('.').pop() || 'tex', filePath: `/uploads/projects/${projectId}/${fileName}` });
                 }
             }
         }
@@ -302,26 +330,13 @@ export async function POST(req: Request) {
                 }
 
                 // 2. Sync to Database
-                const existingAux = await prisma.projectFile.findFirst({
-                    where: { projectId, filename: fileName }
+                await safeFileUpsert({
+                    projectId,
+                    filename: fileName,
+                    content: isBase64 ? '' : String(content),
+                    fileType: fileName.split('.').pop() || 'tex',
+                    filePath: `/uploads/projects/${projectId}/${fileName}`
                 });
-
-                if (existingAux) {
-                    await prisma.projectFile.update({
-                        where: { id: existingAux.id },
-                        data: { content: isBase64 ? '' : String(content), filePath: `/uploads/projects/${projectId}/${fileName}` }
-                    });
-                } else {
-                    await prisma.projectFile.create({
-                        data: {
-                            projectId,
-                            filename: fileName,
-                            content: isBase64 ? '' : String(content),
-                            fileType: fileName.split('.').pop() || 'tex',
-                            filePath: `/uploads/projects/${projectId}/${fileName}`
-                        }
-                    });
-                }
             }
         }
     }
@@ -331,6 +346,25 @@ export async function POST(req: Request) {
 
     // Update project with the template and refreshed statistics
     // PB JSON fields expect raw objects, not strings. status must be a valid PB select value.
+    // Guard against field-size overflow: PB TEXT fields default to 5000 chars; if structured
+    // content is huge, store a truncated summary instead of failing.
+    let safeStructured = structured;
+    try {
+      const jsonStr = JSON.stringify(structured);
+      if (jsonStr.length > 400000) {
+        console.warn(`[TEMPLATE] structuredContent too large (${jsonStr.length} chars), truncating to summary`);
+        safeStructured = {
+          title: structured.title,
+          authors: structured.authors,
+          affiliations: structured.affiliations,
+          abstract: structured.abstract,
+          keywords: structured.keywords,
+          stats: structured.stats,
+          _truncated: true,
+        };
+      }
+    } catch {}
+
     try {
       await prisma.project.update({
         where: { id: projectId },
@@ -338,7 +372,7 @@ export async function POST(req: Request) {
           latexContent: healedLatex,
           status: 'completed',
           templateName: templateId,
-          structuredContent: structured
+          structuredContent: safeStructured
         }
       });
     } catch (updateErr: any) {
@@ -349,7 +383,7 @@ export async function POST(req: Request) {
           data: {
             latexContent: healedLatex,
             status: 'completed',
-            structuredContent: structured
+            structuredContent: safeStructured
           }
         });
       } catch (fallbackErr: any) {
@@ -391,33 +425,13 @@ export async function POST(req: Request) {
     }
 
     // CRITICAL: Sync main.tex to ProjectFile table so IDEs can sync
-    const existingFile = await prisma.projectFile.findFirst({
-      where: { 
-        projectId, 
-        filename: 'main.tex' 
-      }
+    await safeFileUpsert({
+      projectId,
+      filename: 'main.tex',
+      content: healedLatex,
+      fileType: 'tex',
+      filePath: `/uploads/projects/${projectId}/main.tex`
     });
-
-    if (existingFile) {
-      await prisma.projectFile.update({
-        where: { id: existingFile.id },
-        data: {
-          content: healedLatex,
-          fileType: 'tex',
-          filePath: `/uploads/projects/${projectId}/main.tex`
-        }
-      });
-    } else {
-      await prisma.projectFile.create({
-        data: {
-          projectId,
-          filename: 'main.tex',
-          content: healedLatex,
-          fileType: 'tex',
-          filePath: `/uploads/projects/${projectId}/main.tex`
-        }
-      });
-    }
     
     // --- PERSIST MODULAR COMPONENTS ---
     if (extractedComponents && Object.keys(extractedComponents).length > 0) {
@@ -435,14 +449,10 @@ export async function POST(req: Request) {
 
         // 2. Database Sync (IDB/StudioFS)
         // To avoid duplicates or stale files, we first delete existing components that are being overwritten
-        // or we can just upsert. But since we might have renamed sections, it's better to clear old ones
-        // that are in the same folders we are now populating.
         const foldersToClear = ['sections', 'metadata', 'floats', 'references', 'figures', 'tables', 'algorithms', 'equations', 'assets'];
-        await prisma.projectFile.deleteMany({
-            where: {
-                projectId,
-                OR: foldersToClear.map(folder => ({ filename: { startsWith: `${folder}/` } }))
-            }
+        await safeDeleteMany({
+            projectId,
+            OR: foldersToClear.map(folder => ({ filename: { startsWith: `${folder}/` } }))
         });
 
         // 3. Upsert individually
@@ -455,19 +465,7 @@ export async function POST(req: Request) {
         }));
 
         for (const comp of componentData) {
-            const existing = await prisma.projectFile.findFirst({
-                where: { projectId: comp.projectId, filename: comp.filename }
-            });
-            if (existing) {
-                await prisma.projectFile.update({
-                    where: { id: existing.id },
-                    data: comp
-                });
-            } else {
-                await prisma.projectFile.create({
-                    data: comp
-                });
-            }
+            await safeFileUpsert(comp);
         }
     }
     

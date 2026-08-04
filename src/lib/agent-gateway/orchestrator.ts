@@ -9,6 +9,10 @@ import { startModelSync } from './model-sync';
 
 import { logAndSyncAiUsage } from '../pbAiUsage';
 
+/** In-memory cache for aiContextConfig overrides (60s TTL). Avoids a DB roundtrip per routeToAgent call. */
+const contextConfigCache = new Map<string, { data: any; ts: number }>();
+const CONTEXT_CONFIG_TTL = 60_000;
+
 startModelSync();
 
 async function logAiUsage(
@@ -248,9 +252,17 @@ export async function routeToAgent(req: GatewayRequest): Promise<GatewayResponse
 
   let systemContent = agentConfig.buildSystemPrompt(req.context || {});
   try {
-    const dbOverride = await prisma.aiContextConfig.findUnique({
-      where: { agentId: req.agent }
-    });
+    // Use in-memory cache to avoid a DB roundtrip on every routeToAgent call
+    const cached = contextConfigCache.get(req.agent);
+    let dbOverride: any = null;
+    if (cached && Date.now() - cached.ts < CONTEXT_CONFIG_TTL) {
+      dbOverride = cached.data;
+    } else {
+      dbOverride = await prisma.aiContextConfig.findUnique({
+        where: { agentId: req.agent }
+      });
+      contextConfigCache.set(req.agent, { data: dbOverride, ts: Date.now() });
+    }
     if (dbOverride && dbOverride.isActive) {
       if (dbOverride.systemPrompt) {
         systemContent = dbOverride.systemPrompt;
