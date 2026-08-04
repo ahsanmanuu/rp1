@@ -8,15 +8,18 @@ import { formatLatexCode } from './studio-core/formatting-utils';
 class PackageRegistry {
   private packages: Map<string, Set<string>> = new Map();
   private nativeText: string = "";
+  private nativePackages: Set<string> = new Set();
 
   constructor(nativePreamble: string[] = []) {
     this.nativeText = nativePreamble.join('\n');
-    // Basic regex to pre-seed existing packages from native preamble
+    // Extract individual package names from comma-separated \usepackage{a,b,c}
+    // declarations and track them in a Set for reliable dedup.
     const pkgMatches = this.nativeText.matchAll(/\\usepackage\s*(?:\[([^\]]*)\])?\s*\{([^}]+)\}/g);
     for (const match of pkgMatches) {
       const opts = match[1] ? match[1].split(',').map(o => o.trim()) : [];
       const names = match[2].split(',').map(n => n.trim());
       names.forEach(name => {
+        this.nativePackages.add(name);
         if (!this.packages.has(name)) this.packages.set(name, new Set());
         opts.forEach(opt => this.packages.get(name)!.add(opt));
       });
@@ -25,7 +28,7 @@ class PackageRegistry {
 
   add(name: string, options?: string) {
     if (name === 'acmart' || name === 'packages') return;
-    if (this.nativeText.includes(`{${name}}`)) return;
+    if (this.nativePackages.has(name)) return;
     if (!this.packages.has(name)) this.packages.set(name, new Set());
     if (options) {
       options.split(',').forEach(o => this.packages.get(name)!.add(o.trim()));
@@ -33,14 +36,13 @@ class PackageRegistry {
   }
 
   has(name: string): boolean {
-    return this.packages.has(name) || this.nativeText.includes(`{${name}}`);
+    return this.nativePackages.has(name) || this.packages.has(name);
   }
 
   serialize(): string[] {
     const lines: string[] = [];
     this.packages.forEach((opts, name) => {
-      // If the package is already in nativeText, we don't emit it again
-      if (this.nativeText.includes(`{${name}}`)) return;
+      if (this.nativePackages.has(name)) return;
       const optStr = opts.size > 0 ? `[${Array.from(opts).join(',')}]` : '';
       lines.push(`\\usepackage${optStr}{${name}}`);
     });
@@ -525,13 +527,13 @@ export class LatexAssembler {
             if (isRealSectionHeading) frontMatterDone = true;
         }
 
-        // Section splitting: flush on level-1 headings OR canonical section names at any level
+        // Section splitting: flush on explicit level-1 headings OR canonical section names
         if (node.type === 'heading') {
             const normHeading = text.toLowerCase()
               .replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '')
               .replace(/[:.\s]*$/, '')
               .trim();
-            const isLevel1 = (node.level === 1 || !node.level);
+            const isLevel1 = (node.level === 1);
             const isCanonical = FORCED_L1_ASSEMBLER.has(normHeading);
             if (isLevel1 || isCanonical) {
                 flushSection();
@@ -1644,13 +1646,16 @@ export class ModularLatexAssembler {
     if (docClass) preamble.push(docClass);
     else if (nativePreamble.length > 0) preamble.push(...nativePreamble);
 
-    // Engine-aware core packages
+    // Engine-aware core packages — skip fontenc/inputenc if native preamble
+    // already handles encoding (avoids duplicate package errors).
+    const hasFontenc = pkgReg.has('fontenc');
+    const hasInputenc = pkgReg.has('inputenc');
     preamble.push("\\usepackage{iftex}");
     preamble.push("\\ifxetex");
     preamble.push("  \\usepackage{fontspec}");
     preamble.push("\\else");
-    preamble.push("  \\usepackage[T1]{fontenc}");
-    preamble.push("  \\usepackage[utf8]{inputenc}");
+    if (!hasFontenc) preamble.push("  \\usepackage[T1]{fontenc}");
+    if (!hasInputenc) preamble.push("  \\usepackage[utf8]{inputenc}");
     preamble.push("\\fi");
 
     pkgReg.add("amsmath");
@@ -1700,10 +1705,16 @@ export class ModularLatexAssembler {
       pkgReg.add("hyperref", "unicode,colorlinks=true,allcolors=blue,bookmarksnumbered");
     }
 
-    preamble.push(
-      "\\graphicspath{{./}{./assets/}{./images/}{./figures/}{../}{../assets/}{../images/}{./figures/}}",
-      "\\DeclareGraphicsExtensions{.pdf,.eps,.png,.PNG,.jpg,.JPG,.jpeg,.JPEG,.tif,.tiff,.bmp,.gif,.webp,.avif,.svg,.ico,.heic,.HEIC,.heif,.HEIF}",
-      "",
+    // Skip \graphicspath and \DeclareGraphicsExtensions if native preamble already
+    // defines them — avoids duplicate package errors with template preambles.
+    const nativeText = nativePreamble.join('\n');
+    if (!nativeText.includes('\\graphicspath')) {
+      preamble.push("\\graphicspath{{./}{./assets/}{./images/}{./figures/}{../}{../assets/}{../images/}{./figures/}}");
+    }
+    if (!nativeText.includes('\\DeclareGraphicsExtensions')) {
+      preamble.push("\\DeclareGraphicsExtensions{.pdf,.eps,.png,.PNG,.jpg,.JPG,.jpeg,.JPEG,.tif,.tiff,.bmp,.gif,.webp,.avif,.svg,.ico,.heic,.HEIC,.heif,.HEIF}");
+    }
+    preamble.push("",
       "% --- UNIVERSAL ASSET RESOLVER (zimg) ---",
       "\\ifdefined\\zimg\\else",
       "  \\newcommand{\\zimg}[4]{%",
@@ -2139,6 +2150,7 @@ export class ModularLatexAssembler {
         // only while still in the front-matter region (before the first real
         // section heading), so a genuine section like "The Role of University
         // Libraries" is never harmed.
+        let isRealSectionHeading = false;
         if (node.type === 'heading') {
             const probe = frontMatterProbe(text);
             const isDesignationHeading = isDesignationLine(probe);
@@ -2152,11 +2164,16 @@ export class ModularLatexAssembler {
             if (isDesignationHeading || isEmailHeading || isAuthorNameHeading || isAffiliationHeading || isCaptionHeading) {
                 return;
             }
-            const isRealSectionHeading = /^(?:introduction|abstract|keywords|related work|literature review|background|methodology|method|conclusion|conclusions|discussion|references|bibliography|acknowledgements|acknowledgments|appendix|future work|overview|results|implementation|experimental|evaluation)\b/i.test(probe) || (node.level === 1 && !isAuthorNameHeading && probe.length >= 3);
+            isRealSectionHeading = /^(?:introduction|abstract|keywords|related work|literature review|background|methodology|method|conclusion|conclusions|discussion|references|bibliography|acknowledgements|acknowledgments|appendix|future work|overview|results|implementation|experimental|evaluation)\b/i.test(probe) || (node.level === 1 && !isAuthorNameHeading && probe.length >= 10 && probe.length <= 120 && !/^\d+\.\s/.test(text.trim()));
             if (isRealSectionHeading) frontMatterDone = true;
         }
 
-        if (node.type === 'heading' && (node.level === 1 || !node.level)) {
+        // Only split on confirmed real section headings with explicit level 1.
+        // The !node.level catch-all is removed — unknown-level headings must NOT
+        // trigger file splits (they are typically sentence fragments misclassified
+        // as headings by the deep parser, and splitting on them produces 500+
+        // tiny .tex files from a single document).
+        if (node.type === 'heading' && node.level === 1 && isRealSectionHeading) {
             flushSection();
             currentSectionTitle = text || "section";
         } else if (node.type === 'heading' && node.level === 2) {
