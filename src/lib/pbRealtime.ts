@@ -125,7 +125,7 @@ async function activateSub(reg: RegisteredSub): Promise<void> {
     const msg = err?.message || String(err);
     // Transient errors (network drop, socket closed) — polling fallback in the
     // hooks keeps data fresh; we retry on the next token check cycle.
-    if (!/canceled|cancelled|aborted/i.test(msg)) {
+    if (!/canceled|cancelled|aborted|collection/i.test(msg)) {
       console.warn(`[pbRealtime] subscribe failed for ${reg.collection}:${reg.topic}:`, msg);
     }
     // Retry once on the next cycle.

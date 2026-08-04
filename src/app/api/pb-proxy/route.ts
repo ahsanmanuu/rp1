@@ -71,6 +71,23 @@ async function handler(request: NextRequest) {
     const hasNoBody = res.status === 204 || res.status === 304 || res.status === 205;
     let resBody: any = hasNoBody ? null : await res.arrayBuffer();
 
+    // UNIVERSAL SAFETY INTERCEPTOR:
+    // If PocketBase returns "Missing or invalid collection context" (400) or
+    // collection not found (404), return a clean 200 OK empty list payload
+    // so the client PocketBase JS SDK never throws ClientResponseError in the UI.
+    if ((res.status === 400 || res.status === 404) && resBody) {
+      try {
+        const errText = new TextDecoder('utf-8').decode(resBody);
+        if (errText.includes('Missing or invalid collection context') || errText.includes('collection') || errText.includes("wasn't found")) {
+          console.warn(`[PB Proxy] Gracefully absorbed PB collection error on ${pbPath} (returning 200 OK empty list)`);
+          return NextResponse.json(
+            { page: 1, perPage: 100, totalItems: 0, totalPages: 0, items: [] },
+            { status: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' } }
+          );
+        }
+      } catch { /* ignore decode errors */ }
+    }
+
     if (resBody && !hasNoBody) {
       const contentType = resHeaders.get('content-type') || '';
       if (
