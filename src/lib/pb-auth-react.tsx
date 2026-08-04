@@ -45,7 +45,7 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
   const sessionTokenRef = useRef<string | null>(null);
   const statusRef = useRef<SessionStatus>("loading");
   const retryCount = useRef(0);
-  const MAX_RETRIES = 2;
+  const MAX_RETRIES = 3;
 
   const update = useCallback(async (newData?: PbServerSession | null) => {
     if (newData !== undefined) {
@@ -117,14 +117,17 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
 
       if (statusRef.current === 'loading' && retryCount.current < MAX_RETRIES) {
         retryCount.current++;
-        const delay = retryCount.current * 2000;
-        console.warn(`[PB Session Provider] ${msg} — retrying in ${delay}ms (${retryCount.current}/${MAX_RETRIES})`);
+        const delay = Math.min(retryCount.current * 3000, 15000);
         isFetching.current = false;
         setTimeout(update, delay);
         return;
       }
 
-      console.warn("[PB Session Provider] Fetch failed with network/timeout error:", msg);
+      // Only log during authenticated sessions — initial loading failures
+      // are expected during dev HMR restarts and clutter the console.
+      if (statusRef.current !== 'loading') {
+        console.warn("[PB Session Provider] Fetch failed with network/timeout error:", msg);
+      }
       setStatus(prev => prev === 'loading' ? 'unauthenticated' : prev);
     } finally {
       isFetching.current = false;
