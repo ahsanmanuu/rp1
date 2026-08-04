@@ -167,7 +167,29 @@ async function writeStatus(uploadId: string, data: Record<string, any>): Promise
 
 async function readStatus(uploadId: string): Promise<Record<string, any> | null> {
   try {
-    const row = await prisma.uploadJob.findUnique({ where: { uploadId } });
+    const row = await prisma.uploadJob.findUnique({
+      where: { uploadId },
+      // Explicitly scope the fields so multi-MB rawBytes is never pulled into
+      // the 2s status-poll response (the worker decodes it from the DB row).
+      select: {
+        uploadId: true,
+        fileName: true,
+        size: true,
+        templateId: true,
+        userId: true,
+        email: true,
+        name: true,
+        phase: true,
+        stage: true,
+        progress: true,
+        message: true,
+        projectId: true,
+        recovering: true,
+        recoverable: true,
+        attempts: true,
+        updatedAt: true,
+      },
+    });
     if (!row) return null;
     return {
       uploadId: row.uploadId,
@@ -454,7 +476,11 @@ async function runUploadProcessing(uploadId: string) {
     // latest bytes/meta — zero dependency on the ephemeral tmp/ dir.
     const job = await prisma.uploadJob.findUnique({ where: { uploadId } });
     if (!job) throw new Error('Upload job not found');
-    let buffer: Buffer | null = job.rawBytes || null;
+    // rawBytes is stored base64-encoded in the PocketBase text field (PB has no
+    // native bytes type) — decode it back to a real Buffer for the pipeline.
+    let buffer: Buffer | null = null;
+    if (typeof job.rawBytes === 'string' && job.rawBytes) buffer = Buffer.from(job.rawBytes, 'base64');
+    else if (Buffer.isBuffer(job.rawBytes)) buffer = job.rawBytes;
     if (!buffer) throw new Error('Upload bytes not found');
     // Plain file object — the pipeline only uses .name (and occasionally .size).
     const file: any = { name: job.fileName, size: job.size };
@@ -1938,7 +1964,7 @@ export async function POST(req: Request) {
         userId: (session.user as any).id,
         email: (session.user as any).email || null,
         name: (session.user as any).name || null,
-        rawBytes: buffer,
+        rawBytes: buffer.toString('base64'),
         phase: 'processing',
         stage: 'Uploading document',
         progress: 4,

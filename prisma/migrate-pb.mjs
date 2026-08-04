@@ -212,6 +212,27 @@ const COLLECTION_FIELDS = {
     { name: 'action', ...text() },
     { name: 'createdAt', ...autodate({ onCreate: true, onUpdate: false }) },
   ],
+  // Durable two-phase upload jobs (raw bytes stored base64 — PB has no bytes type)
+  upload_jobs: [
+    { name: 'uploadId', ...text({ required: true, unique: true }) },
+    { name: 'fileName', ...text({ required: true }) },
+    { name: 'size', ...number({ onlyInt: true }) },
+    { name: 'templateId', ...text() },
+    { name: 'userId', ...text() },
+    { name: 'email', ...text() },
+    { name: 'name', ...text() },
+    { name: 'rawBytes', ...text() },
+    { name: 'phase', ...text() },
+    { name: 'stage', ...text() },
+    { name: 'progress', ...number({ onlyInt: true }) },
+    { name: 'message', ...text() },
+    { name: 'projectId', ...text() },
+    { name: 'recovering', ...bool() },
+    { name: 'recoverable', ...bool() },
+    { name: 'attempts', ...number({ onlyInt: true }) },
+    { name: 'createdAt', ...autodate({ onCreate: true, onUpdate: false }) },
+    { name: 'updatedAt', ...autodate({ onCreate: true, onUpdate: true }) },
+  ],
 };
 
 // ── Migration logic ─────────────────────────────────────────────────────────

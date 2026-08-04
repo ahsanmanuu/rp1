@@ -219,6 +219,27 @@ function deepRenameKeys(obj: any, map: Record<string, string>): any {
 }
 
 /**
+ * Convert a Prisma-style select to a PocketBase `fields` param (comma-list of
+ * field names). Only safe when the select contains no nested relation selects —
+ * relations must go through expand (which `fields` would otherwise mask).
+ * Returns undefined when the select is relational or absent, so the full record
+ * is returned (existing behavior).
+ */
+function toFields(select?: Record<string, any>): string | undefined {
+  if (!select || typeof select !== 'object') return undefined;
+  const keys: string[] = [];
+  for (const [k, v] of Object.entries(select)) {
+    if (k.startsWith('_')) continue;
+    if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)) {
+      // Relational select — de-opt to full record (expand path handles it)
+      if ('select' in v || 'include' in v) return undefined;
+    }
+    keys.push(k);
+  }
+  return keys.length ? keys.join(',') : undefined;
+}
+
+/**
  * Build a per-collection proxy that translates Prisma method calls
  * into PocketBase SDK calls.
  */
@@ -315,6 +336,8 @@ function collectionProxy(collectionName: string) {
                 const expand = toExpand(args?.include, args?.select);
                 const opts: Record<string, any> = { requestKey: null };
                 if (expand) opts.expand = expand;
+                const fields = toFields(args?.select);
+                if (fields) opts.fields = fields;
                 try {
                   const r = await col.getOne(id, opts);
                   return mapRecord(r as any);
@@ -328,6 +351,8 @@ function collectionProxy(collectionName: string) {
               if (filter) opts2.filter = filter;
               const expand2 = toExpand(args?.include, args?.select);
               if (expand2) opts2.expand = expand2;
+              const fields2 = toFields(args?.select);
+              if (fields2) opts2.fields = fields2;
               try {
                 const list2 = await col.getList(1, 1, opts2);
                 return list2.items.length ? mapRecord(list2.items[0] as any) : null;
@@ -345,6 +370,8 @@ function collectionProxy(collectionName: string) {
               if (sort) opts.sort = sort;
               const expand = toExpand(args?.include, args?.select);
               if (expand) opts.expand = expand;
+              const fields = toFields(args?.select);
+              if (fields) opts.fields = fields;
               try {
                 const list = await col.getList(1, 1, opts);
                 return list.items.length ? mapRecord(list.items[0] as any) : null;
@@ -605,6 +632,8 @@ const MODEL_MAP: Record<string, string> = {
   project: 'projects',
   projectFile: 'project_files',
   ProjectFile: 'project_files',
+  uploadJob: 'upload_jobs',
+  UploadJob: 'upload_jobs',
   Template: 'templates',
   template: 'templates',
   shareLink: 'share_links',
