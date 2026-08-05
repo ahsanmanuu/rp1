@@ -21,6 +21,7 @@ export default function FloatingBanner({ userEmail, banners: propBanners }: { us
   const [banner, setBanner] = useState<FloatingBannerItem | null>(null);
   const [visible, setVisible] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,12 +83,27 @@ export default function FloatingBanner({ userEmail, banners: propBanners }: { us
       >
         {banner.linkUrl ? (
           <Link href={banner.linkUrl} className="block w-full h-full">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={banner.imageUrl} alt={banner.title} className="w-full h-full object-cover" />
+            {imgFailed ? (
+              <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-center px-4"
+                style={{ background: "radial-gradient(circle at 30% 20%, rgba(107,56,212,0.35) 0%, rgba(0,104,95,0.35) 55%, #000 100%)" }}>
+                <span className="text-lg font-extrabold text-white leading-snug">{banner.title}</span>
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-white/90">View <span aria-hidden>→</span></span>
+              </div>
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={banner.imageUrl} alt={banner.title} className="w-full h-full object-cover" onError={() => setImgFailed(true)} />
+            )}
           </Link>
         ) : (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={banner.imageUrl} alt={banner.title} className="w-full h-full object-cover" />
+          imgFailed ? (
+            <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-center text-gradient"
+              style={{ background: "radial-gradient(circle at 30% 20%, rgba(59,56,212,0.35) 0%, rgba(0,104,95,0.35) 55%, #111 100%)" }}>
+              <span className="text-lg font-extrabold text-white leading-snug">{banner.title}</span>
+            </div>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={banner.imageUrl} alt={banner.title} className="w-full h-full object-cover" onError={() => setImgFailed(true)} />
+          )
         )}
         <button
           onClick={handleClose}
