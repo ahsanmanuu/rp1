@@ -269,13 +269,18 @@ function UploadContent() {
     // keeps their work. The flag is cleared when the flow settles.
     if (typeof window !== 'undefined') (window as any).__uploadInFlight = true;
 
-    // Pre-fetch templates in parallel with the upload
-    const templatesPromise = fetch('/api/templates', { cache: 'no-store' })
-      .then(res => res.json())
-      .catch(err => {
-        console.error("Template pre-fetch failed:", err);
-        return { templates: [] };
-      });
+    // Pre-fetch templates in parallel with the upload. Race with a 10s
+    // timeout so a slow /api/templates endpoint can never hang the entire
+    // upload flow (the templatesPromise feeds a Promise.all later).
+    const templatesPromise = Promise.race([
+      fetch('/api/templates', { cache: 'no-store' })
+        .then(res => res.json())
+        .catch(err => {
+          console.error("Template pre-fetch failed:", err);
+          return { templates: [] };
+        }),
+      new Promise(resolve => setTimeout(() => resolve({ templates: [] } as any), 10000)),
+    ]);
 
     try {
       const formData = new FormData();
@@ -409,6 +414,10 @@ function UploadContent() {
               pollStatus = await pollRes.json();
               if (pollStatus?.phase === 'done' && pollStatus?.projectId) {
                 uploadData = { projectId: pollStatus.projectId };
+                // Stop the simulated progress interval immediately — the real
+                // work is done. Without this, the interval keeps overwriting
+                // the 100% progress with 99.9% every 120ms, confusing the UI.
+                if (simulatedInterval) { clearInterval(simulatedInterval); simulatedInterval = null; }
                 setAnalysisProgress(100);
                 pollSettled = true;
                 break;
@@ -445,10 +454,15 @@ function UploadContent() {
         while (syncAttempts < maxSyncAttempts) {
           syncAttempts++;
           try {
+            // Wrap the project fetch in a 30s AbortController so a slow or
+            // hung server can never block the UI forever.  The retry loop
+            // below handles the AbortError gracefully.
+            const projectFetchController = new AbortController();
+            const projectFetchTimeout = setTimeout(() => projectFetchController.abort(), 30000);
             const results = await Promise.all([
-              fetch(`/api/projects/${uploadData.projectId}`, { cache: 'no-store' }),
+              fetch(`/api/projects/${uploadData.projectId}`, { cache: 'no-store', signal: projectFetchController.signal }),
               templatesPromise,
-            ]);
+            ]).finally(() => clearTimeout(projectFetchTimeout));
             projRes = results[0];
             templateData = results[1];
             if (projRes && projRes.ok) break;
