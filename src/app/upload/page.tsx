@@ -1852,7 +1852,7 @@ const TemplateCard = ({ id, name, desc, projectId, router, onError, isCustom, on
       });
     }
 
-    // 2. Apply template with auto-retry and self-healing fallback
+    // 2. Phase 2: Generate modular LaTeX with selected template
     let attempts = 0;
     const maxAttempts = 3;
     let lastError: any = null;
@@ -1860,7 +1860,7 @@ const TemplateCard = ({ id, name, desc, projectId, router, onError, isCustom, on
     while (attempts < maxAttempts) {
       attempts++;
       try {
-        const res = await fetch("/api/projects/apply-template", {
+        const res = await fetch("/api/projects/generate-latex", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ projectId, templateId: id })

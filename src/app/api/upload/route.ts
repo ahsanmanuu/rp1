@@ -1161,65 +1161,24 @@ async function runUploadProcessing(uploadId: string) {
       (zip as any) = null;
       try { (dom as any)?.window?.close?.(); } catch { /* non-critical */ }
 
-      console.log("[TELEMETRY] Step 6: Modular LaTeX Assembly");
-      console.time("[PERF] Modular LaTeX Assembly");
-      // Choose template based on filename, defaulting to llncs for standard academic papers
-      // NOTE: templateId is declared in outer scope so asset injection can use it
+      // --- PHASE 1 (Upload): Skip assembly — Phase 2 (generate-latex) handles it ---
+      // Assembly is deferred to when the user selects a template. This makes
+      // Phase 1 faster and allows the user to see the AI analysis report before
+      // any LaTeX is generated. Phase 2 runs in parallel with template selection.
+      console.log("[TELEMETRY] Phase 1 complete: parsing + AI analysis done. Assembly deferred to Phase 2.");
+
+      // Choose default template based on filename (for metadata only, not assembly)
       if (file.name.toUpperCase().includes('IEEE')) templateId = 'article_ieee';
       else if (file.name.toUpperCase().includes('ACM')) templateId = 'article_acm';
 
 
-      let templateMainTex: string | undefined = undefined;
-      try {
-        const { getTemplateById, mapLegacyTemplateId } = require('@/lib/templates/registry');
-        const tpl = getTemplateById(mapLegacyTemplateId(templateId));
-        if (tpl && tpl.assetFolder) {
-          const mainPath = path.join(process.cwd(), 'src', 'assets', 'templates', tpl.assetFolder, 'main.tex');
-          if (fs.existsSync(mainPath)) {
-            templateMainTex = fs.readFileSync(mainPath, 'utf-8');
-            console.log(`[TELEMETRY] Native template preamble found for ${templateId} (${tpl.assetFolder})`);
-          }
-        }
-      } catch (err) {
-        console.warn("[TELEMETRY] Failed to load template registry or main.tex for upload preview:", err);
-      }
-
-      const modular = ModularLatexAssembler.assemble(deepData, templateId, templateMainTex || { hasBibFile: !!bibContent });
-      finalLatex = modular.mainTex;
-      // Attach modular files so asset persistence block can write them to disk + DB
-      (deepData as any).modularComponents = modular.files;
-
-      // BIBLIOGRAPHY MERGE: when the DOCX carried a native references.bib AND
-      // the assembler generated its own (refN + author-year alias entries for
-      // our in-text \cite{refN}/\cite{AuthorYear} keys), the native file wins
-      // the filename at persistence — leaving our citation keys with no bib
-      // entries (renders as "[?]" with a blank references section). Append the
-      // generated entries (deduped by key) to the native file.
-      const genBibPath = modular.files && typeof modular.files['references/references.bib'] === 'string'
-        ? modular.files['references/references.bib']
-        : null;
-      const nativeBibIdx = extractedImages.findIndex((img: any) => img.name === 'references.bib');
-      if (genBibPath && nativeBibIdx !== -1) {
-        try {
-          const nativeText = extractedImages[nativeBibIdx].buffer.toString('utf-8') || '';
-          const nativeKeys = new Set(
-            (nativeText.match(/@\w+\s*\{\s*([^,\s]+)/g) || [])
-              .map((k: string) => k.replace(/@\w+\s*\{\s*/, '').trim())
-          );
-          const genEntries = (genBibPath.split('\n\n') || []).filter((e: string) => {
-            const km = e.match(/@\w+\s*\{\s*([^,\s]+)/);
-            return km && !nativeKeys.has(km[1].trim());
-          });
-          if (genEntries.length > 0) {
-            extractedImages[nativeBibIdx].buffer = Buffer.from(`${nativeText}\n\n${genEntries.join('\n\n')}`, 'utf-8');
-            console.log(`[TELEMETRY] Merged ${genEntries.length} assembler-generated bib entries into native references.bib.`);
-          }
-        } catch (bibMergeErr) {
-          console.warn('[TELEMETRY] Bibliography merge failed (non-critical):', bibMergeErr);
-        }
-      }
-      console.timeEnd("[PERF] Modular LaTeX Assembly");
-      progress(uploadId, 'Assembling LaTeX project', 74);
+      // --- PHASE 1: Assembly deferred to Phase 2 (generate-latex endpoint) ---
+      // The ModularLatexAssembler.assemble() call is skipped here. When the user
+      // selects a template, POST /api/projects/generate-latex runs the assembler
+      // with the structured content saved in the DB. This makes Phase 1 faster
+      // and allows the AI analysis report to be displayed before any LaTeX is
+      // generated.
+      progress(uploadId, 'Phase 1: Analysis complete', 74);
 
     } else if (file.name.endsWith('.txt')) {
       const text = buffer!.toString('utf-8');
@@ -1242,10 +1201,8 @@ async function runUploadProcessing(uploadId: string) {
           pseudocodeCount: 0
         }
       };
-      const txtAssembled = LatexAssembler.assemble(deepData);
-      finalLatex = txtAssembled.mainTex;
-      // Persist all section files generated by the assembler
-      (deepData as any).modularComponents = txtAssembled.files;
+      // Phase 1: Skip assembly — Phase 2 (generate-latex) handles it
+      progress(uploadId, 'Phase 1: Text analysis complete', 74);
     } else if (file.name.endsWith('.tex')) {
       const text = buffer!.toString('utf-8');
       finalLatex = text;
@@ -1455,130 +1412,12 @@ async function runUploadProcessing(uploadId: string) {
       return NextResponse.json({ error: 'Unsupported format. Please upload .docx, .txt, .tex, .pdf, or .zip' }, { status: 400 });
     }
 
-    console.log(`[TELEMETRY] FINAL STATS BEFORE NLP SYNC — title:"${deepData.title}"`);
-
-    // --- UNIFIED NLP STATS SYNC ---
-    // Strategy: HTML/PDF parser (deepData.stats) is authoritative for PROSE metrics
-    // (wordCount, charCount) because it parses clean extracted text.
-    // LaTeX parser (calculateDocumentStats) is authoritative for STRUCTURAL metrics
-    // (tables, equations, citations, references, algorithms, images) because it
-    // can see the full assembled template structure.
-    const { calculateDocumentStats } = await import('@/lib/stats');
-    
-    let consolidatedLatex = finalLatex;
-    const activeModularComponents = (deepData as any).modularComponents as Record<string, string> | undefined;
-    const zipComponents: Record<string, string> = {};
-    if (extractedImages && extractedImages.length > 0) {
-      for (const img of extractedImages) {
-        if ((img as any).isStructural) {
-          try {
-            zipComponents[img.name] = img.buffer.toString('utf-8');
-          } catch {}
-        }
-      }
-    }
-
-    const getComponentContent = (cleanPath: string): string | undefined => {
-      if (activeModularComponents) {
-        const content = activeModularComponents[cleanPath] || activeModularComponents[cleanPath.replace(/\.tex$/, '')];
-        if (content !== undefined) return content;
-      }
-      const content = zipComponents[cleanPath] || zipComponents[cleanPath.replace(/\.tex$/, '')];
-      if (content !== undefined) return content;
-      for (const key of Object.keys(zipComponents)) {
-        if (key.endsWith(cleanPath) || key.endsWith(cleanPath + '.tex')) {
-          return zipComponents[key];
-        }
-      }
-      return undefined;
-    };
-
-    let replaced = true;
-    let iterations = 0;
-    while (replaced && iterations < 10) {
-      replaced = false;
-      iterations++;
-      consolidatedLatex = consolidatedLatex.replace(/\\input\{([^}]+)\}/g, (match, pathVal) => {
-        let cleanPath = pathVal.trim();
-        if (!cleanPath.endsWith('.tex') && !cleanPath.includes('.')) cleanPath += '.tex';
-        const content = getComponentContent(cleanPath);
-        if (content !== undefined) {
-          replaced = true;
-          return content;
-        }
-        return match;
-      });
-      consolidatedLatex = consolidatedLatex.replace(/\\include\{([^}]+)\}/g, (match, pathVal) => {
-        let cleanPath = pathVal.trim();
-        if (!cleanPath.endsWith('.tex') && !cleanPath.includes('.')) cleanPath += '.tex';
-        const content = getComponentContent(cleanPath);
-        if (content !== undefined) {
-          replaced = true;
-          return content;
-        }
-        return match;
-      });
-    }
-
-    const latexStats = calculateDocumentStats(consolidatedLatex);
-    // Count only true binary image files (not .bib/.cls/.sty structural files)
-    const actualImageFiles = extractedImages.filter(img => !(img as any).isStructural && /\.(png|jpe?g|webp|gif|pdf|eps|svg|heic|heif|tiff|tif|bmp|avif)$/i.test(img.name));
-    const actualChartFiles = actualImageFiles.filter(img => /rf_chart_|chart_pending_/i.test(img.name));
-    const actualFigureFiles = actualImageFiles.filter(img => !/rf_chart_|chart_pending_/i.test(img.name));
-
-    let bibRefCount = 0;
-    if (extractedImages && extractedImages.length > 0) {
-      for (const img of extractedImages) {
-        if (img.name.endsWith('.bib')) {
-          try {
-            const bibText = img.buffer.toString('utf-8');
-            const matches = bibText.match(/@\s*[a-zA-Z]+\s*\{\s*[^,\s]+/g);
-            if (matches) bibRefCount += matches.length;
-          } catch {}
-        }
-      }
-    }
-    if (activeModularComponents) {
-      for (const [filename, content] of Object.entries(activeModularComponents)) {
-        if (filename.endsWith('.bib') && typeof content === 'string') {
-          const matches = content.match(/@\s*[a-zA-Z]+\s*\{\s*[^,\s]+/g);
-          if (matches) {
-            bibRefCount = Math.max(bibRefCount, matches.length);
-          }
-        }
-      }
-    }
-
-    const aiComp = (deepData as any).aiStructure?.components as
-      | { figures?: number | null; charts?: number | null; tables?: number | null; equations?: number | null; pseudocode?: number | null; citations?: number | null; references?: number | null }
-      | undefined;
-    // When the AI full-document analysis ran, its verified counts are the
-    // authoritative ground truth (exact, not raise-only). Fall back to the
-    // inclusive Math.max semantics only when the AI pass did not provide a
-    // count for a given component.
-    const aiPick = (key: keyof NonNullable<typeof aiComp>, fallback: number): number => {
-      const v = aiComp ? aiComp[key] : undefined;
-      return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback;
-    };
-
-    const refCountFinal = aiPick('references', Math.max(deepData.stats.referenceCount || 0, latexStats.referenceCount || 0, bibRefCount));
-    const citCountFinal = aiPick('citations', Math.max(deepData.stats.citationCount || 0, latexStats.citationCount || 0));
-
-    deepData.stats = {
-      ...deepData.stats,
-      wordCount:       Math.max(deepData.stats.wordCount || 0, latexStats.wordCount || 0),
-      charCount:       Math.max(deepData.stats.charCount || 0, latexStats.charCount || 0),
-      imageCount:      Math.min(aiPick('figures', Math.max(deepData.stats.imageCount || 0, latexStats.imageCount || 0, actualFigureFiles.length)), actualFigureFiles.length),
-      tableCount:      aiPick('tables', Math.max(deepData.stats.tableCount || 0, latexStats.tableCount || 0)),
-      // AI-verified exact counts win over the HTML/LaTeX maxima
-      equationCount:   aiPick('equations', Math.max(deepData.stats.equationCount || 0, latexStats.equationCount || 0)),
-      citationCount:   citCountFinal,
-      referenceCount:  refCountFinal,
-      pseudocodeCount: aiPick('pseudocode', Math.max(deepData.stats.pseudocodeCount || 0, latexStats.pseudocodeCount || 0)),
-      chartCount:      Math.min(aiPick('charts', Math.max(deepData.stats.chartCount || 0, latexStats.chartCount || 0, actualChartFiles.length)), actualChartFiles.length),
-    };
+    console.log(`[TELEMETRY] FINAL STATS — title:"${deepData.title}"`);
 
     // --- DB PERSISTENCE ---
+    // Phase 1: No modular components or NLP stats to sync (deferred to Phase 2)
+    console.log("[TELEMETRY] Step 7: DB Persistence (Hardened Path)");
+    progress(uploadId, 'Saving project data', 82);
     console.log("[TELEMETRY] Step 7: DB Persistence (Hardened Path)");
     progress(uploadId, 'Saving project data', 82);
 
@@ -1712,21 +1551,20 @@ async function runUploadProcessing(uploadId: string) {
     });
     if (!resumeProjectId) await writeCheckpoint(uploadId, { projectId: project.id });
 
-    // --- BATCH PERSISTENCE ENGINE (Nuclear 50.0 - Speed Optimization) ---
+    // --- BATCH PERSISTENCE ENGINE (Phase 1: Images only, no modular components) ---
     const filesToCreate: any[] = [];
 
-    // 1. Queue Extracted Images & Bibliography
+    // 1. Persist Extracted Images & Bibliography to disk + DB
+    // These are needed by Phase 2 (generate-latex) for assembly.
     if (extractedImages.length > 0) {
       const dir = path.join(process.cwd(), 'public', 'uploads', 'projects', project.id);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-      // Parallel Filesystem Writes (Extremely fast, non-blocking)
       await Promise.all(extractedImages.map(async (img) => {
         const fullPath = path.join(dir, img.name);
         const parentDir = path.dirname(fullPath);
         if (!fs.existsSync(parentDir)) fs.mkdirSync(parentDir, { recursive: true });
         if ((img as any).stagedPath) {
-          // Already staged to disk during extraction — copy, don't re-hold the buffer.
           await fs.promises.copyFile((img as any).stagedPath, fullPath);
         } else if (img.buffer) {
           return fs.promises.writeFile(fullPath, img.buffer);
@@ -1738,7 +1576,6 @@ async function runUploadProcessing(uploadId: string) {
         const filePath = `/uploads/projects/${project.id}/${img.name.replace(/\\/g, '/')}`;
         const fileType = (img as any).isStructural ? 'tex' : 'image';
         const content = (img as any).isStructural ? img.buffer.toString('utf8') : '';
-        
         filesToCreate.push({
           projectId: project.id,
           filename: img.name,
@@ -1749,153 +1586,11 @@ async function runUploadProcessing(uploadId: string) {
       });
     }
 
-    // 2. Queue Modular LaTeX Components
-    const modularComponents = (deepData as any).modularComponents as Record<string, string> | undefined;
-    if (modularComponents && Object.keys(modularComponents).length > 0) {
-      console.log(`[TELEMETRY] Queueing ${Object.keys(modularComponents).length} modular LaTeX components`);
-      const projectDir = path.join(process.cwd(), 'public', 'uploads', 'projects', project.id);
-      if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
+    // Phase 1: Skip modular components, template assets, local-first harvest, image audit
+    // These are all handled by Phase 2 (generate-latex endpoint)
+    console.log("[TELEMETRY] Phase 1: Images persisted. Modular components deferred to Phase 2.");
 
-      const componentEntries = Object.entries(modularComponents);
-
-      // Parallel Filesystem Writes
-      await Promise.all(componentEntries.map(([filename, content]) => {
-        const fullPath = path.join(projectDir, filename);
-        const dir = path.dirname(fullPath);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        return fs.promises.writeFile(fullPath, content as string, 'utf-8');
-      }));
-
-      for (const [filename, content] of componentEntries) {
-        const ext = (filename.split('.').pop() || 'tex').toLowerCase();
-        const filePath = `/uploads/projects/${project.id}/${filename.replace(/\\/g, '/')}`;
-        
-        if (!filesToCreate.some(f => f.filename === filename)) {
-          filesToCreate.push({
-            projectId: project.id,
-            filename,
-            content: content as string,
-            fileType: ext,
-            filePath
-          });
-        }
-      }
-    }
-
-    // 3. Queue Template Support Assets
-    try {
-      const { getTemplateById, mapLegacyTemplateId } = require('@/lib/templates/registry');
-      const tpl = getTemplateById(mapLegacyTemplateId(templateId));
-      if (tpl && tpl.assetFolder) {
-        const assetsPath = path.join(process.cwd(), 'src', 'assets', 'templates', tpl.assetFolder);
-        const projectDir = path.join(process.cwd(), 'public', 'uploads', 'projects', project.id);
-        if (fs.existsSync(assetsPath)) {
-          const LATEX_EXTS = new Set(['.tex', '.bib', '.bst', '.cls', '.sty', '.ldf', '.cfg', '.clo']);
-          
-          const injectRecursive = (currentSrc: string, currentDest: string, currentSub = '') => {
-            const items = fs.readdirSync(currentSrc);
-            for (const name of items) {
-              const srcPath = path.join(currentSrc, name);
-              const relPath = currentSub ? `${currentSub}/${name}` : name;
-              const destPath = path.join(currentDest, name);
-              
-              if (fs.statSync(srcPath).isDirectory()) {
-                if (!fs.existsSync(destPath)) fs.mkdirSync(destPath, { recursive: true });
-                injectRecursive(srcPath, destPath, relPath);
-              } else {
-                if (relPath === 'main.tex') continue;
-                if (modularComponents && modularComponents[relPath]) continue;
-
-                const ext = '.' + (name.split('.').pop() || '');
-                if (!LATEX_EXTS.has(ext.toLowerCase())) continue;
-                // Do NOT copy template .bib files (e.g. sample.bib) into generated
-                // projects — the assembler emits the bibliography inline and stray
-                // .bib files only confuse the project directory and downloads.
-                if (ext.toLowerCase() === '.bib') continue;
-
-                const content = fs.readFileSync(srcPath, 'utf-8');
-                if (!fs.existsSync(destPath)) fs.writeFileSync(destPath, content);
-
-                const normalizedRelPath = relPath.replace(/\\/g, '/');
-                if (!filesToCreate.some(f => f.filename === normalizedRelPath)) {
-                  filesToCreate.push({
-                    projectId: project.id,
-                    filename: normalizedRelPath,
-                    content,
-                    fileType: name.split('.').pop() || 'tex',
-                    filePath: `/uploads/projects/${project.id}/${normalizedRelPath}`
-                  });
-                }
-              }
-            }
-          };
-
-          injectRecursive(assetsPath, projectDir);
-        }
-      }
-    } catch (err) {
-      console.warn("[TELEMETRY] Template asset injection failed during upload (non-critical):", err);
-    }
-
-    // 4. Local-first harvest: persist the full project (main.tex, images,
-    //    modular components, AI snapshot) to server disk so recompiles and
-    //    recovery never depend on PocketBase record caps or DB content alone.
-    try {
-      const { persistProjectToLocalFs } = await import('@/lib/local-project-fs');
-      const localFiles: any[] = [];
-      if (finalLatex) localFiles.push({ filename: 'main.tex', content: finalLatex });
-      extractedImages.forEach((img: any) => {
-        if ((img as any).isStructural) return;
-        // Staged images were already copied to public/uploads/projects/<id> in
-        // the persistence block — re-reading them here would re-hold every
-        // buffer in memory. Skip them (main.tex + modular components + AI
-        // snapshot are still harvested).
-        if ((img as any).stagedPath) return;
-        localFiles.push({ filename: img.name, buffer: img.buffer });
-      });
-      const modularEntries = Object.entries(modularComponents || {}) as [string, string][];
-      for (const [filename, content] of modularEntries) {
-        if (!localFiles.some((f: any) => f.filename === filename)) {
-          localFiles.push({ filename, content });
-        }
-      }
-      const written = persistProjectToLocalFs(project.id, localFiles, {
-        savedAt: Date.now(),
-        aiLatex: (deepData as any).aiLatex || null,
-        aiVerdict: (deepData as any).aiVerdict || null,
-        aiModel: (deepData as any).aiModel || null,
-      });
-      if (written.length > 0) {
-        console.log(`[TELEMETRY] Local-first harvest: ${written.length} artifact(s) persisted to server disk.`);
-      }
-    } catch (localErr: any) {
-      console.warn('[TELEMETRY] Local-first harvest failed (non-critical):', localErr?.message || localErr);
-    }
-
-    // 5. Include-graphics audit (Phase 4): every image referenced by the
-    //    assembled latex must resolve to a real file — missing references
-    //    indicate image loss and must never be silent.
-    try {
-      const { auditLatexImageReferences } = await import('@/lib/latex-image-audit');
-      const audit = auditLatexImageReferences(
-        finalLatex,
-        extractedImages.filter((img: any) => !(img as any).isStructural).map((img: any) => img.name)
-      );
-      if (audit.total === 0) {
-        console.log('[IMAGE-AUDIT] Assembled latex references no images.');
-      } else if (audit.missing.length === 0) {
-        console.log(`[IMAGE-AUDIT] All ${audit.total} referenced image(s) resolve for project ${project.id}.`);
-      } else {
-        const shown = audit.missing.slice(0, 10).join(', ');
-        console.warn(
-          `[IMAGE-AUDIT] ${audit.missing.length} of ${audit.total} referenced image(s) MISSING for project ${project.id}: ${shown}${audit.missing.length > 10 ? '...' : ''}`
-        );
-      }
-    } catch (auditErr: any) {
-      console.warn('[IMAGE-AUDIT] Image reference audit failed (non-critical):', auditErr?.message || auditErr);
-    }
-
-    // 6. Executing single bulk DB transaction to prevent SQLite connection locks
+    // Bulk DB insert for image files
     if (filesToCreate.length > 0) {
       console.log(`[TELEMETRY] Executing single-batch DB insertion for ${filesToCreate.length} project files...`);
       await prisma.projectFile.createMany({
