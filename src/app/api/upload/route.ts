@@ -1551,6 +1551,22 @@ async function runUploadProcessing(uploadId: string) {
     });
     if (!resumeProjectId) await writeCheckpoint(uploadId, { projectId: project.id });
 
+    // Store complete untruncated source document to local project directory on disk
+    // to guarantee 100% content fidelity for large 20MB files during Phase 2 template generation.
+    try {
+      const projDir = path.join(process.cwd(), 'public', 'uploads', 'projects', project.id);
+      if (!fs.existsSync(projDir)) fs.mkdirSync(projDir, { recursive: true });
+      const fullDocPayload = JSON.stringify({
+        ...deepData,
+        rawHtml: mammothResult.value || "",
+        rawXml: finalXml || "",
+        title: deepData.title || file.name,
+      });
+      await fs.promises.writeFile(path.join(projDir, 'source_document.json'), fullDocPayload, 'utf-8');
+    } catch (saveErr) {
+      console.warn('[UPLOAD] Could not persist source_document.json to disk:', saveErr);
+    }
+
     // --- BATCH PERSISTENCE ENGINE (Phase 1: Images only, no modular components) ---
     const filesToCreate: any[] = [];
 

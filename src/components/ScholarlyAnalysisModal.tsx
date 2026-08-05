@@ -165,7 +165,7 @@ export default function ScholarlyAnalysisModal({ isOpen, progress = 0, activeMod
                 style={{ marginTop: '3rem', padding: '1rem', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}
               >
                   <div style={{ fontSize: '0.7rem', fontWeight: 900, color: currentStep.color, letterSpacing: '0.1em' }}>
-                      ENGINE STATUS: {safeProgress >= 100 ? 'COMPLETE' : 'OPTIMIZING'}
+                      ENGINE STATUS: {Math.round(safeProgress) >= 100 ? 'COMPLETE' : 'OPTIMIZING'}
                   </div>
                   <motion.div 
                     animate={{ opacity: [1, 0.4, 1] }}

@@ -723,7 +723,13 @@ export function autoHealLatex(latex: string): string {
 
     // amsmath first — everything math-related depends on it
     if (!hasPackage(patchedPreamble, "amsmath")) {
-      usepackageGuards.push(isA ? "\\usepackage{amsmath,amsfonts}" : "\\usepackage{amsmath,amsfonts,amssymb,mathrsfs}");
+      usepackageGuards.push(
+        "\\makeatletter",
+        "\\expandafter\\let\\csname equation*\\endcsname\\relax",
+        "\\expandafter\\let\\csname endequation*\\endcsname\\relax",
+        "\\makeatother",
+        isA ? "\\usepackage{amsmath,amsfonts}" : "\\usepackage{amsmath,amsfonts,amssymb,mathrsfs}"
+      );
       usepackageGuards.push("\\allowdisplaybreaks");
     } else if (!patchedPreamble.includes("allowdisplaybreaks")) {
       usepackageGuards.push("\\allowdisplaybreaks");

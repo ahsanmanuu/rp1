@@ -72,7 +72,7 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
     isFetching.current = true;
     try {
       const res = await fetch(`/api/auth/pb-session?_=${Date.now()}`, {
-        signal: AbortSignal.timeout(20000),
+        signal: AbortSignal.timeout(30000),
         headers: {
           "Cache-Control": "no-cache, no-store, must-revalidate",
           "Pragma": "no-cache"
@@ -106,14 +106,12 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
         sessionTokenRef.current = null;
         if (typeof window !== "undefined") localStorage.removeItem("auth-token");
       } else {
-        console.warn(`[PB Session Provider] Received transient status ${res.status}. Keeping current session.`);
         setStatus(prev => prev === 'loading' ? 'unauthenticated' : prev);
         if (statusRef.current === 'loading') statusRef.current = 'unauthenticated';
       }
     } catch (err: any) {
-      const msg = err?.name === 'TimeoutError' || err?.name === 'AbortError'
-        ? 'Request timed out'
-        : (err?.message || String(err));
+      const isTimeout = err?.name === 'TimeoutError' || err?.name === 'AbortError';
+      const msg = isTimeout ? 'Request timed out' : (err?.message || String(err));
 
       if (statusRef.current === 'loading' && retryCount.current < MAX_RETRIES) {
         retryCount.current++;
@@ -123,10 +121,9 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
         return;
       }
 
-      // Only log during authenticated sessions — initial loading failures
-      // are expected during dev HMR restarts and clutter the console.
-      if (statusRef.current !== 'loading') {
-        console.warn("[PB Session Provider] Fetch failed with network/timeout error:", msg);
+      // Suppress transient background timeout warnings when session is already authenticated
+      if (statusRef.current !== 'loading' && statusRef.current !== 'authenticated' && !isTimeout) {
+        console.warn("[PB Session Provider] Fetch failed with network error:", msg);
       }
       setStatus(prev => prev === 'loading' ? 'unauthenticated' : prev);
     } finally {

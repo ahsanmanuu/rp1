@@ -186,7 +186,7 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
           {mainFile && (
             <div style={{ marginBottom: '1rem' }}>
               <div style={{ fontSize: '0.6rem', fontWeight: 900, color: 'var(--ide-icon-muted)', letterSpacing: '0.1em', padding: '0 0.75rem 0.25rem', textTransform: 'uppercase' }}>DOC2LATEX SOURCE</div>
-              <FileItem f={mainFile} activeFile={activeFile} onClick={switchTab} onDelete={deleteFile} isReadOnly={isReadOnly} />
+              <FileItem f={mainFile} activeFile={activeFile} onClick={switchTab} onDelete={deleteFile} onRename={renameFile} isReadOnly={isReadOnly} />
             </div>
           )}
           {categories.map(cat => cat.files.length > 0 && (

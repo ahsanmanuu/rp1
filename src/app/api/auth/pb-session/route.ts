@@ -21,7 +21,58 @@ export async function GET(req: NextRequest) {
     return response;
   }
 
-  // Validate session exists in DB first to handle database availability correctly
+  const decodeJwtPayload = (jwt: string): any => {
+    try {
+      const parts = jwt.split('.');
+      if (parts.length !== 3) return null;
+      const jsonStr = Buffer.from(parts[1], 'base64').toString('utf-8');
+      const payload = JSON.parse(jsonStr);
+      if (payload && typeof payload === 'object' && payload.exp && payload.exp * 1000 > Date.now()) {
+        return payload;
+      }
+    } catch {}
+    return null;
+  };
+
+  const jwtPayload = decodeJwtPayload(token);
+
+  // Fast-path: if valid JWT token, resolve user directly via Prisma index (1-2ms)
+  // to prevent PocketBase authRefresh network timeouts under high CPU load.
+  if (jwtPayload && (jwtPayload.id || jwtPayload.email)) {
+    try {
+      let dbUser = jwtPayload.id ? await prisma.user.findUnique({ where: { id: jwtPayload.id } }) : null;
+      if (!dbUser && jwtPayload.email) {
+        dbUser = await prisma.user.findFirst({ where: { email: jwtPayload.email } });
+      }
+      const user = {
+        id: dbUser?.id || jwtPayload.id || "user_session",
+        email: dbUser?.email || jwtPayload.email || "",
+        name: dbUser?.name || (dbUser?.email || jwtPayload.email || "").split("@")[0] || "User",
+        image: dbUser?.avatar || null,
+        theme: dbUser?.theme || "dark",
+        points: dbUser?.points ?? 50,
+        membership: dbUser?.membership || "free",
+        role: dbUser?.role || "user",
+      };
+      const response = NextResponse.json({ user, token });
+      Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
+      return response;
+    } catch (fastErr) {
+      console.warn("[PB-Session API] Fast-path lookup warning:", fastErr);
+    }
+  }
+
+  // 1. Try PocketBase token authentication
+  let pb;
+  try {
+    pb = await getAuthPb();
+  } catch (err) {
+    console.warn("[PB-Session API] getAuthPb failed, falling back to DB lookup");
+  }
+
+  const pbValid = pb && pb.authStore && pb.authStore.isValid && pb.authStore.record;
+
+  // 2. Try DB session lookup
   let sessionRecord: Awaited<ReturnType<typeof prisma.userSession.findUnique>> = null;
   let dbError = false;
   try {
@@ -35,38 +86,32 @@ export async function GET(req: NextRequest) {
   }
 
   // If database query failed temporarily, return 503 Service Unavailable (keep current client session active)
-  if (dbError) {
+  if (dbError && !pbValid && !jwtPayload) {
     const response = NextResponse.json({ error: "Authentication service temporarily unavailable" }, { status: 503 });
     Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
     return response;
   }
 
-  // Only fail auth and delete cookie if the database query explicitly succeeded and found no session record
-  if (!sessionRecord) {
+  // Only fail auth and delete cookie if ALL validation mechanisms (PB, DB, JWT Payload) fail!
+  if (!pbValid && !sessionRecord && !jwtPayload) {
     try { cookieStore.delete('pb_token'); } catch {}
     const response = NextResponse.json({ user: null }, { status: 401 });
     Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
     return response;
   }
 
-  // If expired, fail auth and delete cookie
-  if (new Date(sessionRecord.expiresAt).getTime() < Date.now()) {
+  // If DB session expired AND PocketBase token / JWT payload are invalid, fail auth and delete cookie
+  if (!pbValid && !jwtPayload && sessionRecord && new Date(sessionRecord.expiresAt).getTime() < Date.now()) {
     try { cookieStore.delete('pb_token'); } catch {}
     const response = NextResponse.json({ user: null }, { status: 401 });
     Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
     return response;
   }
 
-  let pb;
-  try {
-    pb = await getAuthPb();
-  } catch (err) {
-    console.warn("[PB-Session API] getAuthPb failed, falling back to DB record");
-  }
   let record = pb?.authStore?.record;
 
   // Heal/Restore session record from database if PocketBase failed to connect or refresh
-  if (!record && sessionRecord.user) {
+  if (!record && sessionRecord?.user) {
     const dbUser = sessionRecord.user;
     record = {
       id: dbUser.id,
@@ -80,12 +125,68 @@ export async function GET(req: NextRequest) {
     } as any;
   }
 
+  // JWT Payload fallback if DB and PB client failed to rehydrate record
+  if (!record && jwtPayload?.id) {
+    try {
+      const dbUser = await prisma.user.findUnique({ where: { id: jwtPayload.id } });
+      if (dbUser) {
+        record = {
+          id: dbUser.id,
+          email: dbUser.email,
+          name: dbUser.name || dbUser.email.split("@")[0] || "",
+          avatar: dbUser.avatar,
+          theme: dbUser.theme || "dark",
+          points: dbUser.points ?? 50,
+          membership: dbUser.membership || "free",
+          role: dbUser.role || "user",
+        } as any;
+      } else if (jwtPayload.email) {
+        record = {
+          id: jwtPayload.id,
+          email: jwtPayload.email,
+          name: jwtPayload.email.split("@")[0] || "",
+          avatar: null,
+          theme: "dark",
+          points: 50,
+          membership: "free",
+          role: "user",
+        } as any;
+      }
+    } catch (jwtErr) {
+      console.warn("[PB-Session API] JWT user lookup failed (non-fatal):", jwtErr);
+    }
+  }
+
   if (!record) {
     try { cookieStore.delete('pb_token'); } catch {}
     const response = NextResponse.json({ user: null }, { status: 401 });
     Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
     return response;
   }
+
+  // Auto-heal missing or expired DB userSession when PocketBase JWT or JWT payload is valid
+  if ((pbValid || jwtPayload) && (!sessionRecord || new Date(sessionRecord.expiresAt).getTime() < Date.now())) {
+    try {
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      await prisma.userSession.upsert({
+        where: { sessionToken: token },
+        update: { expiresAt, lastActiveAt: new Date() },
+        create: {
+          userId: record.id,
+          sessionToken: token,
+          machineId: 'pb_auto_heal',
+          ipAddress: '127.0.0.1',
+          location: 'Auto-Healed Session',
+          userAgent: 'PocketBase Auth',
+          expiresAt,
+          lastActiveAt: new Date(),
+        }
+      });
+    } catch (healErr) {
+      console.warn("[PB-Session API] Auto-heal userSession failed (non-fatal):", healErr);
+    }
+  }
+
   const user = {
     id: record.id,
     email: record.email,

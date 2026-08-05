@@ -14,8 +14,7 @@ interface FileItemProps {
 export const FileItem: React.FC<FileItemProps> = ({ f, activeFile, onClick, onDelete, onRename, isReadOnly = false }) => {
   const [hovered, setHovered] = useState(false);
   const isActive = activeFile === f.path;
-  const isMain = f.path === 'main.tex';
-  const showActions = !isMain && !isReadOnly && (hovered || isActive);
+  const showActions = !isReadOnly && (hovered || isActive);
 
   return (
     <motion.div 

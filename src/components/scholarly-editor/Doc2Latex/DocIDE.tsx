@@ -759,7 +759,13 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     if (!openTabs.includes(path)) setOpenTabs(t => [...t, path]);
     const file = files.find(f => f.path === path);
     if (file) {
-      setCode(isImage(path) ? file.content : formatLatexCode(file.content));
+      const newContent = isImage(path) ? file.content : formatLatexCode(file.content);
+      setCode(newContent);
+      if (editorRef.current && !isImage(path)) {
+        try {
+          editorRef.current.setValue(newContent);
+        } catch (e) {}
+      }
       setLoadingCode(false);
     } else {
       setLoadingCode(false);
@@ -809,8 +815,14 @@ export default function DocIDE({ projectId }: { projectId: string }) {
 
     await fs.deleteFile(projectId, path);
     setFiles(prev => prev.filter(f => f.path !== path));
-    if (openTabs.includes(path)) setOpenTabs(t => t.filter(x => x !== path));
-    if (activeFile === path) switchTab(openTabs[0] || 'main.tex');
+    const remainingTabs = openTabs.filter(x => x !== path);
+    setOpenTabs(remainingTabs);
+    if (activeFile === path) {
+      const remainingFiles = files.filter(f => f.path !== path);
+      const fallbackTab = remainingTabs[0] || remainingFiles[0]?.path || '';
+      if (fallbackTab) switchTab(fallbackTab);
+      else setCode('');
+    }
     // PROPAGATE THE DELETE TO THE CLOUD: without this, the stale ProjectFile
     // row + disk copy are resurrected by hardenedDiscovery on the next compile
     // and the deleted file keeps appearing in the PDF.
@@ -831,7 +843,6 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       toast.error("Read-Only Mode: Daily credit limit reached. Please upgrade to Premium to rename files.");
       return;
     }
-    if (oldPath === 'main.tex') return toast.error("Cannot rename main.tex");
     const newName = window.prompt("Rename file path:", oldPath);
     if (!newName || newName.trim() === "" || newName === oldPath) return;
     try {
@@ -1295,7 +1306,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                                style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '2px', background: 'var(--accent-primary)', boxShadow: '0 0 10px var(--accent-glow)' }} 
                              />
                            )}
-                           {t !== 'main.tex' && (
+                           {openTabs.length > 1 && (
                              <X 
                                size={10} 
                                strokeWidth={2.5} 
@@ -1410,10 +1421,12 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                     ) : (
                       <div style={{ flex: 1, position: 'relative', height: '100%', width: '100%', minWidth: 0 }}>
                         <MonacoEditor 
+                           key={activeFile}
+                           path={activeFile}
                            height="100%" 
                            theme="vs-dark" 
-                           language="latex" 
-                           defaultValue={code} 
+                           language={activeFile.endsWith('.bib') ? 'bibtex' : 'latex'} 
+                           value={code} 
                            onChange={v => {
                              isSelfChange.current = true;
                              handleCodeChange(v || '');

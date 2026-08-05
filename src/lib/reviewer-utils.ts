@@ -21,12 +21,14 @@ export function buildDocumentDigest(structured: StructuredDocument, filename: st
   // ── METADATA ──────────────────────────────────────────────
   parts.push(`\n${SEP}\nMETADATA (ground truth — extracted from document)\n${SEP}`);
   parts.push(`TITLE: ${structured.title || "(not found)"}`);
-  parts.push(`AUTHORS: ${structured.authors.map(a => a.name).join("; ") || "(not found)"}`);
-  if (structured.organizations.length > 0) {
-    parts.push(`AFFILIATIONS: ${structured.organizations.slice(0, 5).join(" | ")}`);
-  }
+  const authorNames = (structured.authors || []).map(a => a.name).filter(Boolean);
+  parts.push(`AUTHORS: ${authorNames.join("; ") || "(not found)"}`);
+  const affilStr = (structured.organizations && structured.organizations.length > 0)
+    ? structured.organizations.slice(0, 8).join(" | ")
+    : (structured.authors || []).map(a => a.affiliation).filter(Boolean).join(" | ");
+  parts.push(`AFFILIATIONS: ${affilStr || "(not found)"}`);
   parts.push(`ABSTRACT:\n${structured.abstract || "(not found)"}`);
-  parts.push(`KEYWORDS: ${structured.keywords.join(", ") || "(not found)"}`);
+  parts.push(`KEYWORDS: ${(structured.keywords || []).join(", ") || "(not found)"}`);
 
   // ── INVENTORY ─────────────────────────────────────────────
   const s = structured.stats;
@@ -136,18 +138,40 @@ export function buildReviewPrompt(
   return `You are a Senior Editor and Distinguished Reviewer for a top-tier global academic publisher (Nature Portfolio, Elsevier, or IEEE).
 
 You are reviewing ONLY the manuscript whose content is provided below as a ${mode}.
-Every insight, title, abstract, score, and statistic you return MUST be grounded in the MANUSCRIPT CONTENT provided.
+Every insight, title, author, affiliation, abstract, score, and statistic you return MUST be grounded in the MANUSCRIPT CONTENT provided.
 Do NOT use prior knowledge about any other paper. Do NOT hallucinate citations, figures, tables, or equations not present.
 
 MANUSCRIPT FILENAME: "${filename}"
 
+MANUSCRIPT METADATA EXTRACTION RULES (STRICT & ACCURATE):
+1. TITLE ("extractedTitle"):
+   - Extract the EXACT main scientific title of the article.
+   - If a line starting with "TITLE:" is present in the preamble or metadata header below, use that exact title string as ground truth.
+   - Do NOT pick up journal headers/banners (e.g., "IEEE Transactions on...", "ACM Transactions", "Springer Nature", "Elsevier"), running heads, volume/issue numbers, arXiv IDs (e.g., "arXiv:2301.12345v1"), page numbers, or file names as the title.
+   - Clean out any surrounding quotes, line breaks, or footnote markers.
+
+2. AUTHORS ("authors" array & "extractedAuthors" array):
+   - Extract ALL author names as a clean JSON array of strings: ["Firstname Lastname", "Author Two"].
+   - If a line starting with "AUTHORS:" is present in the preamble or metadata header below, parse clean individual author names from it.
+   - Strip academic/professional designations (Dr., Prof., Professor, PhD, Dean, Scholar, Fellow, Lecturer, Assistant Professor, etc.).
+   - Strip email addresses, ORCID numbers, corresponding author markers (*, †, ‡), and superscript affiliation numbers (e.g. 1, 2, a, b).
+   - Do NOT place department or university names into the authors array.
+
+3. AFFILIATIONS ("affiliations" & "extractedAffiliations" string):
+   - Extract the full institutional affiliations of the authors as a consolidated string (e.g., "Department of Computer Science, Stanford University, CA, USA; Department of AI, MIT, Cambridge, MA, USA").
+   - If a line starting with "AFFILIATIONS:" is present in the preamble or metadata header below, use that as ground truth.
+   - Include department/school, university/institute/company, city, state/province, and country where present.
+   - Do NOT include author names, email addresses, phone numbers, or publication citations in the affiliation string.
+
 ANTI-HALLUCINATION RULES:
-1. "extractedTitle" MUST be the EXACT title from this manuscript — not from your training data.
-2. "extractedAbstract" MUST be the EXACT abstract text from this manuscript.
-3. All scores must reflect the ACTUAL quality of this manuscript's content.
-4. Do NOT invent citations, figures, tables, or equations not mentioned in the text.
-5. Journal recommendations must match the ACTUAL domain and scope of this paper.
-6. documentStats counts MUST match the DOCUMENT INVENTORY provided above (if using structured mode).
+1. "extractedTitle" MUST be the EXACT main scientific paper title from this manuscript — not from your training data.
+2. "authors" MUST be the actual author names from this manuscript.
+3. "affiliations" MUST be the actual institutional affiliations from this manuscript.
+4. "extractedAbstract" MUST be the EXACT abstract text from this manuscript.
+5. All scores must reflect the ACTUAL quality of this manuscript's content.
+6. Do NOT invent citations, figures, tables, or equations not mentioned in the text.
+7. Journal recommendations must match the ACTUAL domain and scope of this paper.
+8. documentStats counts MUST match the DOCUMENT INVENTORY provided above (if using structured mode).
 
 MANUSCRIPT CONTENT:
 ${content}
@@ -168,6 +192,10 @@ Respond ONLY with valid JSON (no markdown fences) with these exact keys:
 {
   "manuscriptMetadata": {
     "extractedTitle": "exact title from this manuscript",
+    "authors": ["Author Name 1", "Author Name 2"],
+    "extractedAuthors": ["Author Name 1", "Author Name 2"],
+    "affiliations": "Department of CS, Stanford University, CA, USA",
+    "extractedAffiliations": "Department of CS, Stanford University, CA, USA",
     "extractedAbstract": "exact abstract from this manuscript",
     "keywords": ["keyword1", "keyword2"]
   },
@@ -197,23 +225,23 @@ Respond ONLY with valid JSON (no markdown fences) with these exact keys:
     "language": 90
   },
   "detailedReport": {
-    "abstract": "The abstract is informative and covers problem, method, results, and implications. However, it contains repetitive phrasing and minor grammatical issues that slightly reduce clarity.",
-    "introduction": "The introduction provides sufficient background but lacks clear state-of-the-art literature review mapping.",
-    "methods": "Methodology describes data collection, preprocessing, augmentation, and the 9-layer CNN architecture with layer details. However, it lacks justification for the chosen architecture, ablation studies, and deeper discussion of hyperparameter selection beyond reported values.",
-    "results": "Results present training/testing accuracies for two datasets, confusion matrices, and comparative tables. The performance improvements are shown, but statistical significance tests or variability measures are absent, limiting robustness claims.",
-    "discussion": "Discussion interprets results, addresses dataset quality impact, and mentions clinical relevance. It could benefit from deeper analysis of limitations, potential biases, and broader implications for real-world deployment.",
-    "conclusion": "Conclusion summarizes findings, highlights contributions, and outlines future directions such as clinical integration and expansion to other diseases. It is appropriate but could be strengthened by linking future work to identified limitations.",
-    "dataConsistency": "The manuscript proposes a 9-layer CNN for multiclass ocular disease detection using two fundus datasets. It reports high training and testing accuracies, includes preprocessing and hyperparameter tuning, and compares with prior work. The writing is clear but contains some redundancy and limited novelty. The methodology lacks depth in architectural justification and ablation studies.",
-    "citationAlignment": "The references cited in text correspond cleanly with the bibliography section at the end of the manuscript.",
-    "claimVerification": "Experimental accuracy claims align with the data reported in confusion matrices and tables.",
-    "codeAvailability": "Code repositories or link structures were not explicitly highlighted in the manuscript text.",
-    "scopeFit": "Perfect match for journals focusing on machine learning, artificial intelligence, and computerized medical imaging.",
-    "anonymityStyle": "Meets anonymity guidelines, with generic institutional identifiers used appropriately.",
-    "illustrationQuality": "Layer diagrams and confusion matrices are clearly legible, though high-resolution source links could be provided.",
-    "formattingRules": "Conforms cleanly with structural conventions of general computing journal guidelines."
+    "abstract": "The abstract is informative and covers problem, method, results, and implications.",
+    "introduction": "The introduction provides sufficient background.",
+    "methods": "Methodology describes data collection, preprocessing, and model architecture.",
+    "results": "Results present performance metrics and comparisons.",
+    "discussion": "Discussion interprets results and addresses clinical relevance.",
+    "conclusion": "Conclusion summarizes findings and future directions.",
+    "dataConsistency": "The numeric data reported was cross-verified across sections.",
+    "citationAlignment": "The references cited in text correspond cleanly with the bibliography section.",
+    "claimVerification": "Experimental accuracy claims align with reported data.",
+    "codeAvailability": "Code repository availability noted.",
+    "scopeFit": "Matches journals focusing on target subject domain.",
+    "anonymityStyle": "Meets blind review guidelines.",
+    "illustrationQuality": "Figures and tables are legible.",
+    "formattingRules": "Conforms with standard manuscript structure."
   },
-  "strengths": ["Clear presentation of CNN architecture.", "Good use of dataset diversity."],
-  "weaknesses": ["Lack of ablation studies.", "Repetitive phrasing in abstract."],
+  "strengths": ["Clear presentation of architecture.", "Good dataset evaluation."],
+  "weaknesses": ["Lack of ablation studies.", "Minor grammatical refinements needed."],
   "improvementActions": [{ "section": "Methodology", "advice": "Conduct an ablation study." }],
   "suggestedDomains": ["Computer Science", "Artificial Intelligence", "Computer Vision"],
   "recommendedJournals": [
@@ -226,7 +254,7 @@ Respond ONLY with valid JSON (no markdown fences) with these exact keys:
       "avgWeeksToPublication": 24,
       "totalExpectedWeeks": 36,
       "aimScopeMatchScore": 95,
-      "reasoning": "Strong match for computer vision based ocular disease classification.",
+      "reasoning": "Strong match for computer vision based classification.",
       "homeUrl": "https://ieeexplore.ieee.org/xpl/RecentIssue.jsp?punumber=34",
       "latexTemplateUrl": "https://template-selector.ieee.org/"
     }
@@ -242,42 +270,68 @@ export function buildExtractionPrompt(
   structured?: StructuredDocument | null
 ): string {
   if (structured && structured.title && structured.title !== filename) {
-    // Already have structured data — ask AI only to verify/augment
-    return `You are a highly accurate academic document parser. The document has already been structurally parsed. 
-Verify and supplement the following pre-extracted data from "${filename}".
-Only change values if you are highly confident the pre-extracted value is wrong.
+    // Already have structured data — ask AI to verify/augment with strict parsing rules
+    const authNames = (structured.authors || []).map(a => a.name).filter(Boolean);
+    const orgs = (structured.organizations && structured.organizations.length > 0)
+      ? structured.organizations.join('; ')
+      : (structured.authors || []).map(a => a.affiliation).filter(Boolean).join('; ');
+
+    return `You are a highly accurate academic document metadata parser. The document has already been structurally parsed.
+Verify and supplement the pre-extracted metadata from "${filename}".
 
 PRE-EXTRACTED DATA:
 Title: ${structured.title}
-Authors: ${structured.authors.map(a => a.name).join(", ")}
+Authors: ${authNames.join(", ")}
+Affiliations: ${orgs}
 Abstract: ${structured.abstract?.substring(0, 500)}
-Keywords: ${structured.keywords.join(", ")}
+Keywords: ${(structured.keywords || []).join(", ")}
 Stats: ${JSON.stringify(structured.stats)}
 
-MANUSCRIPT CONTENT (first 8000 chars):
-${chunkText(text, 8000)}
+MANUSCRIPT CONTENT (first 10000 chars):
+${chunkText(text, 10000)}
+
+EXTRACTION GUIDELINES:
+1. "title": Preserve the exact scientific article title. Do NOT replace with journal headers, conference names, or file names.
+2. "authors": Clean array of author names. Do NOT include designations (Dr., Prof.), emails, or affiliation numbers.
+3. "affiliations": Clean string of author institutions/universities/departments.
+4. "abstract": Verbatim abstract text.
 
 Respond ONLY with valid JSON:
 {
   "title": "${structured.title}",
   "abstract": "verified abstract",
   "keywords": ${JSON.stringify(structured.keywords)},
-  "authors": ${JSON.stringify(structured.authors.map(a => a.name))},
-  "affiliations": "${structured.organizations.join('; ')}",
+  "authors": ${JSON.stringify(authNames)},
+  "affiliations": "${orgs}",
   "stats": ${JSON.stringify(structured.stats)}
 }`;
   }
 
-  return `You are a highly accurate academic document parser. Your ONLY task is to extract factual information that EXPLICITLY EXISTS in the provided manuscript text. Do NOT invent, hallucinate, or use prior knowledge.
+  return `You are a highly accurate academic document parser. Your ONLY task is to extract factual metadata that EXPLICITLY EXISTS in the provided manuscript text. Do NOT invent, hallucinate, or use prior knowledge.
 
 MANUSCRIPT FILENAME: "${filename}"
 
-CRITICAL RULES:
-1. Every field MUST come directly from the text below. If not present, return empty string or empty array.
-2. The "title" must be the exact title as it appears in the text.
-3. The "abstract" must be the verbatim abstract text.
-4. Do NOT use knowledge of other papers.
-5. For statistics, count only what you can verify. Return 0 if uncertain.
+CRITICAL EXTRACTION RULES:
+1. TITLE ("title"):
+   - Extract the EXACT main scientific title of the paper.
+   - Do NOT select journal headers (e.g. "IEEE Transactions on...", "Nature", "Elsevier"), running titles, volume/issue numbers, arXiv IDs, or file names as the title.
+   - Clean off leading numbers or footnote symbols.
+
+2. AUTHORS ("authors"):
+   - Extract author names as a clean JSON array of strings: ["Firstname Lastname", ...].
+   - Strip professional/academic titles (Dr., Prof., PhD, Dean, Lecturer, etc.).
+   - Strip email addresses, ORCID IDs, corresponding author markers (*, †), and superscript affiliation numbers (1, 2).
+   - Do NOT include university or department names in the authors list.
+
+3. AFFILIATIONS ("affiliations"):
+   - Extract institutional affiliations (department, university, institute, city, country) as a clean string.
+   - Do NOT include author names or emails in affiliations.
+
+4. ABSTRACT & KEYWORDS:
+   - Extract verbatim abstract text and keywords array.
+
+5. STATISTICS ("stats"):
+   - Count only what you can verify in text.
 
 MANUSCRIPT CONTENT:
 ${chunkText(text, 20000)}
@@ -288,7 +342,7 @@ Respond ONLY with valid JSON:
   "abstract": "exact abstract text or empty string",
   "keywords": ["keyword1", "keyword2"],
   "authors": ["Author Name 1", "Author Name 2"],
-  "affiliations": "affiliation text or empty string",
+  "affiliations": "Department of CS, University Name, City, Country",
   "stats": {
     "wordCount": 0,
     "charCount": 0,

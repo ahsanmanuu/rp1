@@ -98,6 +98,15 @@ function isFrontMatterNoise(text: string): boolean {
   return false;
 }
 
+function isValidSectionPrefix(cleanPrefix: string, fullMatch: string): boolean {
+  if (!cleanPrefix) return false;
+  if (/^\d+(?:\.\d+)*$/.test(cleanPrefix)) return true;
+  if (/^(?:[IVXLCDM]+)(?:\.(?:[IVXLCDM]+|\d+))*$/i.test(cleanPrefix)) return true;
+  if (/^(?:section|chapter|appendix|part)\b/i.test(fullMatch.trim())) return true;
+  if (/^[A-Z](?:\.\d+)*$/i.test(cleanPrefix) && /[.:)]/.test(fullMatch)) return true;
+  return false;
+}
+
 
 // Algorithm label: match lines that START with Algorithm/Procedure/etc keyword
 // The word-count guard in the SCAP loop handles mid-sentence false positives
@@ -363,7 +372,7 @@ export class DeepDocumentParser {
           
           // Universal dynamic hierarchical prefix scan: e.g. "1.", "1.1", "1.1.1", "A.1", "I.A.1", "Section 3:"
           const prefixMatch = cleanLine.match(/^(?:\s*(?:(?:section|chapter|appendix|part)\s+)?((?:\d+|[ivxlcdm]+|[A-Za-z])(?:\.(?:\d+|[ivxlcdm]+|[A-Za-z]))*)(?:\.?[.:\s)]+))/i);
-          const isNumberedHeading = prefixMatch !== null && cleanLine.length < 120 && !cleanLine.endsWith('.');
+          const isNumberedHeading = prefixMatch !== null && isValidSectionPrefix(prefixMatch[1], prefixMatch[0]) && cleanLine.length < 120 && !cleanLine.endsWith('.');
           // Support Title Case AND ALL CAPS headings (e.g. "RESULTS AND DISCUSSION", "EXPERIMENTAL SETUP")
           const isShortTitleCase = cleanLine.length < 80 && cleanLine.length > 3 && !cleanLine.endsWith('.') && !cleanLine.includes(',') && 
             (cleanLine.split(' ').every(w => /^[A-Z]/.test(w) || STOPWORDS.has(w.toLowerCase())) ||
@@ -1669,7 +1678,7 @@ export class DeepDocumentParser {
           }
           if (matchesNumbered) {
             const prefixMatch = liText.match(/^(?:\s*(?:(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[A-Za-z])(?:\.(?:\d+|[ivxlcdm]+|[A-Za-z]))*)(?:\]|\))?(?:\.?[.:\s)]+))/i);
-            if (prefixMatch) {
+            if (prefixMatch && isValidSectionPrefix(prefixMatch[1], prefixMatch[0])) {
               const cleanPrefix = prefixMatch[1];
               const parts = cleanPrefix.split('.');
               return Math.min(3, parts.length);
@@ -1724,7 +1733,7 @@ export class DeepDocumentParser {
     const isNumbered = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(f.text);
     if (isNumbered) {
       const prefixMatch = f.text.match(/^(?:\s*(?:(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[A-Za-z])(?:\.(?:\d+|[ivxlcdm]+|[A-Za-z]))*)(?:\]|\))?(?:\.?[.:\s)]+))/i);
-      if (prefixMatch) {
+      if (prefixMatch && isValidSectionPrefix(prefixMatch[1], prefixMatch[0])) {
         const cleanPrefix = prefixMatch[1];
         const parts = cleanPrefix.split('.');
         const level = Math.min(3, parts.length);

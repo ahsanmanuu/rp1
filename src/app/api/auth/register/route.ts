@@ -103,6 +103,9 @@ export async function POST(req: Request) {
       }
 
       record = await admPb.collection("users").create(userPayload);
+      try {
+        await admPb.collection("users").update(record.id, { verified: true });
+      } catch {}
     } catch (pbErr: any) {
       const details = pbErr?.data?.data || pbErr?.response?.data || {};
       const firstError = Object.values(details)[0] as any;

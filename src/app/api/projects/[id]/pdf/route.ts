@@ -60,10 +60,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // Find the PDF — no TOCTOU: findPdf uses statSync internally
   const pdfPath = findPdf(projectId);
 
+  const searchParams = req.nextUrl.searchParams;
+  const isBase64 = searchParams.get('base64') === 'true';
+
   if (!pdfPath) {
     // Distinguish "not yet" from "never" by checking if project dir exists
     const projectDir = path.join(process.cwd(), 'public', 'uploads', 'projects', projectId);
     const dirExists = fs.existsSync(projectDir);
+
+    if (isBase64) {
+      return NextResponse.json({
+        pdfBase64: null,
+        success: false,
+        retryable: true,
+        message: dirExists ? 'PDF compiling or not generated yet' : 'Project directory not found'
+      }, { status: 200 });
+    }
+
     if (!dirExists) {
       return NextResponse.json({ error: 'Not found', retryable: false }, { status: 404 });
     }

@@ -31,21 +31,11 @@ export async function POST(req: NextRequest) {
     const userAgent = geo.userAgent || req.headers.get("user-agent") || "unknown";
     const clientMachineId = machineId || "fp_" + crypto.createHash("md5").update(`${ipAddress}-${userAgent}`).digest("hex");
 
-    const existingSessions = await prisma.userSession.findMany({
-      where: {
-        userId,
-        expiresAt: { gte: new Date() },
-        machineId: { not: clientMachineId },
-      },
-    });
-
-    if (existingSessions.length > 0) {
-      return NextResponse.json({
-        error: "ALREADY_LOGGED_IN",
-        message: "Active session detected on another device.",
-        existingSessionCount: existingSessions.length,
-      }, { status: 409 });
-    }
+    try {
+      await prisma.userSession.deleteMany({
+        where: { userId },
+      });
+    } catch {}
 
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 

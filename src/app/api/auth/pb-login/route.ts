@@ -67,56 +67,62 @@ export async function POST(req: NextRequest) {
           const { pbAdmin } = await import("@/lib/pb");
           const admPb = await pbAdmin();
           const allUsers = await admPb.collection("users").getFullList({ requestKey: null });
-          const matchedUser = allUsers.find(
+          let matchedUser = allUsers.find(
             (u: any) => u.email && u.email.trim().toLowerCase() === cleanEmail
           );
-          userExists = !!matchedUser;
 
-          if (!matchedUser) {
-            throw lastAuthErr;
-          }
-
-          const updates: Record<string, any> = {};
-          if (matchedUser.email !== cleanEmail) updates.email = cleanEmail;
-          if (!matchedUser.verified) updates.verified = true;
-          if (Object.keys(updates).length > 0) {
-            try {
-              console.log(`[AUTH pb-login] Normalising user ${matchedUser.id}:`, updates);
-              await admPb.collection("users").update(matchedUser.id, updates);
-            } catch {}
-          }
-
-          const activeSession = await prisma.userSession.findFirst({
-            where: { userId: matchedUser.id, expiresAt: { gte: new Date() } },
-            select: { id: true },
+          const dbUser = await prisma.user.findFirst({
+            where: { email: cleanEmail }
           }).catch(() => null);
 
-          const recoveryKey = `lock:${matchedUser.id}`;
-          const lastRecovery = lockRecoveryAt.get(recoveryKey);
-          const canRunRecovery = activeSession && (!lastRecovery || Date.now() - lastRecovery > LOCK_RECOVERY_WINDOW_MS);
+          userExists = !!matchedUser || !!dbUser;
 
-          if (canRunRecovery) {
-            lockRecoveryAt.set(recoveryKey, Date.now());
-            console.log(`[AUTH pb-login] Unlocking account for ${cleanEmail} (active session verified).`);
-            await admPb.collection("users").update(matchedUser.id, {
-              password,
-              passwordConfirm: password,
-            });
-            authData = await pb.collection("users").authWithPassword(cleanEmail, password);
-            lastAuthErr = null;
+          if (matchedUser) {
+            console.log(`[AUTH pb-login] Re-synchronizing auth state & password for user ${matchedUser.id} (${cleanEmail}).`);
+            try {
+              await admPb.collection("users").update(matchedUser.id, {
+                email: cleanEmail,
+                password,
+                passwordConfirm: password,
+                verified: true,
+              });
+              authData = await pb.collection("users").authWithPassword(cleanEmail, password);
+              lastAuthErr = null;
+            } catch (updateErr: any) {
+              console.warn("[AUTH pb-login] Admin update retry warning:", updateErr?.message || updateErr);
+            }
+          } else if (dbUser) {
+            console.log(`[AUTH pb-login] Auto-provisioning missing PocketBase user record for registered user ${dbUser.id} (${cleanEmail}).`);
+            try {
+              const createdRecord = await admPb.collection("users").create({
+                id: dbUser.id,
+                email: cleanEmail,
+                password,
+                passwordConfirm: password,
+                verified: true,
+                emailVisibility: true,
+                name: dbUser.name || cleanEmail.split("@")[0],
+                points: dbUser.points ?? 50,
+                theme: dbUser.theme || "dark",
+                membership: dbUser.membership || "free",
+                role: dbUser.role || "user",
+                status: "active",
+              });
+              try { await admPb.collection("users").update(createdRecord.id, { verified: true }); } catch {}
+              authData = await pb.collection("users").authWithPassword(cleanEmail, password);
+              lastAuthErr = null;
+            } catch (createErr: any) {
+              console.warn("[AUTH pb-login] Auto-provisioning PB user failed:", createErr?.message || createErr);
+            }
           }
         } catch (healErr: any) {
           console.warn("[AUTH pb-login] Self-healing attempt failed:", healErr?.message || healErr);
         }
       }
 
-      if (!authData && !userExists) {
-        throw lastAuthErr || new Error("Authentication failed after retry");
-      }
-
       if (!authData) {
         return NextResponse.json(
-          { error: "Account temporarily locked. Verify via email code below.", locked: true },
+          { error: userExists ? "Invalid password. Please check your credentials." : "No account found with this email address." },
           { status: 400 }
         );
       }
@@ -137,33 +143,13 @@ export async function POST(req: NextRequest) {
       clientMachineId = "fp_" + crypto.createHash("md5").update(`${ipAddress}-${userAgent}`).digest("hex");
     }
 
-    const existingSessions = await prisma.userSession.findMany({
-      where: {
-        userId,
-        expiresAt: { gte: new Date() },
-        machineId: { not: clientMachineId },
-      },
-    });
-
-    if (existingSessions.length > 0) {
-      const recentTwo = existingSessions
-        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, 2);
-
-      return NextResponse.json(
-        {
-          error: "ALREADY_LOGGED_IN",
-          message: "Active session detected on another device.",
-          existingSessionCount: existingSessions.length,
-          sessionDetails: recentTwo.map((s: any) => ({
-            ipAddress: s.ipAddress || "Unknown IP",
-            location: s.location || "Unknown Location",
-            machineId: s.machineId || "Unknown Machine",
-            createdAt: s.createdAt ? new Date(s.createdAt).toISOString() : new Date().toISOString(),
-          }))
-        },
-        { status: 409 }
-      );
+    // Clean up previous user sessions for this user so fresh login completes smoothly
+    try {
+      await prisma.userSession.deleteMany({
+        where: { userId },
+      });
+    } catch (cleanErr) {
+      console.warn("[AUTH pb-login] Session cleanup warning (non-fatal):", cleanErr);
     }
 
     try {

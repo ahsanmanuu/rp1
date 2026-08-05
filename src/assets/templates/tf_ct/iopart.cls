@@ -52,7 +52,15 @@
 \ProcessOptions
 \DeclareMathAlphabet{\bi}{OML}{cmm}{b}{it}
 \DeclareMathAlphabet{\bcal}{OMS}{cmsy}{b}{n}
-\input{iopart1\@ptsize.clo}
+\IfFileExists{iopart1\@ptsize.clo}{%
+  \input{iopart1\@ptsize.clo}%
+}{%
+  \IfFileExists{article1\@ptsize.clo}{%
+    \input{article1\@ptsize.clo}%
+  }{%
+    \IfFileExists{size10.clo}{\input{size10.clo}}{}%
+  }%
+}
 \setlength\lineskip{1\p@}
 \setlength\normallineskip{1\p@}
 \renewcommand\baselinestretch{}
@@ -785,6 +793,8 @@
 \hskip\mathindent}
 \def\endequation{$\hfil \displaywidth\linewidth\@eqnnum\egroup \endtrivlist}
 %
+\expandafter\let\csname equation*\endcsname\relax
+\expandafter\let\csname endequation*\endcsname\relax
 \@namedef{equation*}{\[}
 \@namedef{endequation*}{\]}
 %

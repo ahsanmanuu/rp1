@@ -29,6 +29,22 @@ function crossVerifyAndPolishReview(reviewData: any, reqBody: any): any {
   if (!polished.manuscriptMetadata.extractedTitle || polished.manuscriptMetadata.extractedTitle.trim() === '' || polished.manuscriptMetadata.extractedTitle === 'exact title from this manuscript') {
     polished.manuscriptMetadata.extractedTitle = reqBody.title || reqBody.filename || 'Untitled Manuscript';
   }
+  if (!polished.manuscriptMetadata.authors || !Array.isArray(polished.manuscriptMetadata.authors) || polished.manuscriptMetadata.authors.length === 0) {
+    if (reqBody.authors && reqBody.authors.length > 0) {
+      polished.manuscriptMetadata.authors = reqBody.authors;
+    }
+  }
+  if (!polished.manuscriptMetadata.extractedAuthors || !Array.isArray(polished.manuscriptMetadata.extractedAuthors) || polished.manuscriptMetadata.extractedAuthors.length === 0) {
+    polished.manuscriptMetadata.extractedAuthors = polished.manuscriptMetadata.authors || reqBody.authors || [];
+  }
+  if (!polished.manuscriptMetadata.affiliations || typeof polished.manuscriptMetadata.affiliations !== 'string' || polished.manuscriptMetadata.affiliations.trim() === '' || polished.manuscriptMetadata.affiliations.includes('Department of CS, Stanford')) {
+    if (reqBody.affiliations && reqBody.affiliations.trim().length > 0) {
+      polished.manuscriptMetadata.affiliations = reqBody.affiliations;
+    }
+  }
+  if (!polished.manuscriptMetadata.extractedAffiliations || typeof polished.manuscriptMetadata.extractedAffiliations !== 'string' || polished.manuscriptMetadata.extractedAffiliations.trim() === '') {
+    polished.manuscriptMetadata.extractedAffiliations = polished.manuscriptMetadata.affiliations || reqBody.affiliations || '';
+  }
   if (!polished.manuscriptMetadata.extractedAbstract || polished.manuscriptMetadata.extractedAbstract.trim() === '' || polished.manuscriptMetadata.extractedAbstract === 'exact abstract from this manuscript') {
     polished.manuscriptMetadata.extractedAbstract = reqBody.abstract || 'No abstract text found in the manuscript.';
   }
@@ -217,7 +233,10 @@ export async function POST(req: NextRequest) {
       agent: 'reviewer',
       messages: [],
       context: {
-        text: enrichedText, filename: filename || 'Untitled Manuscript', userId: session.user.id,
+        text: enrichedText,
+        filename: filename || 'Untitled Manuscript',
+        structured: body.structured || null,
+        userId: session.user.id,
         userEmail: session.user.email || undefined,
         ipAddress: geo.ipAddress || undefined,
         location: geo.location || undefined,

@@ -366,6 +366,10 @@ export async function routeToAgent(req: GatewayRequest): Promise<GatewayResponse
         ],
         manuscriptMetadata: {
           extractedTitle: titleClean,
+          authors: ['Author Name'],
+          extractedAuthors: ['Author Name'],
+          affiliations: 'Institutional Affiliation',
+          extractedAffiliations: 'Institutional Affiliation',
           extractedAbstract: 'Abstract content not fully parsed. Summary represents general validation.',
           keywords: ['Deep Learning', 'Computer Vision']
         },

@@ -339,8 +339,8 @@ function UploadContent() {
               setAnalysisProgress(simulatedProgress);
 
               simulatedInterval = setInterval(() => {
-                simulatedProgress += (99.9 - simulatedProgress) * 0.005;
-                setAnalysisProgress(Math.min(99.9, simulatedProgress));
+                simulatedProgress += (95 - simulatedProgress) * 0.005;
+                setAnalysisProgress(Math.min(95, simulatedProgress));
               }, 120);
 
               if (xhr.status >= 200 && xhr.status < 300) {
@@ -425,11 +425,8 @@ function UploadContent() {
             }
             if (pollRes.ok) {
               pollStatus = await pollRes.json();
-              if (pollStatus?.phase === 'done' && pollStatus?.projectId) {
+              if (pollStatus?.projectId && (pollStatus?.phase === 'done' || (pollStatus?.progress && pollStatus.progress >= 90))) {
                 uploadData = { projectId: pollStatus.projectId };
-                // Stop the simulated progress interval immediately — the real
-                // work is done. Without this, the interval keeps overwriting
-                // the 100% progress with 99.9% every 120ms, confusing the UI.
                 if (simulatedInterval) { clearInterval(simulatedInterval); simulatedInterval = null; }
                 setAnalysisProgress(100);
                 pollSettled = true;
@@ -478,11 +475,8 @@ function UploadContent() {
         while (syncAttempts < maxSyncAttempts) {
           syncAttempts++;
           try {
-            // Wrap the project fetch in a 30s AbortController so a slow or
-            // hung server can never block the UI forever.  The retry loop
-            // below handles the AbortError gracefully.
             const projectFetchController = new AbortController();
-            const projectFetchTimeout = setTimeout(() => projectFetchController.abort(), 30000);
+            const projectFetchTimeout = setTimeout(() => projectFetchController.abort(), 10000);
             const results = await Promise.all([
               fetch(`/api/projects/${uploadData.projectId}`, { cache: 'no-store', signal: projectFetchController.signal }),
               templatesPromise,
@@ -492,7 +486,7 @@ function UploadContent() {
             if (projRes && projRes.ok) break;
           } catch {
             if (syncAttempts < maxSyncAttempts) {
-              await new Promise(r => setTimeout(r, 600 * syncAttempts));
+              await new Promise(r => setTimeout(r, 400 * syncAttempts));
               continue;
             }
           }
@@ -500,21 +494,16 @@ function UploadContent() {
       }
 
       if (!projRes || !projRes.ok) {
-        // Self-healing fallback: If server created the project ID but network failed sync,
-        // navigate directly to doc2latex studio where local memory / StudioFS resolves state.
-        if (uploadData?.projectId) {
-          console.warn("Project sync encountered network glitch, self-healing to studio workspace:", uploadData.projectId);
-          sessionStorage.setItem(`force_sync_${uploadData.projectId}`, 'true');
-          toast.success("Document analyzed! Opening studio workspace...");
-          router.push(`/doc2latex/${uploadData.projectId}`);
-          return;
-        }
         let errorMsg = "Synchronization with Scholarly Database failed. Please check connection and try again.";
         if (projRes) {
-          try {
-            const data = await projRes.json();
-            if (data?.error) errorMsg = String(data.error);
-          } catch { /* response was not JSON */ }
+          if (projRes.status === 401) {
+            errorMsg = "Your session has expired or is unauthorized. Please log in to view the generated document report.";
+          } else {
+            try {
+              const data = await projRes.json();
+              if (data?.error) errorMsg = String(data.error);
+            } catch { /* response was not JSON */ }
+          }
         }
         throw new Error(errorMsg);
       }

@@ -1,0 +1,37 @@
+%% This is file `iopart12.clo' for IOP Journals 12pt option
+\ProvidesFile{iopart12.clo}[1996/06/10 v0.0 IOP Journals 12pt option]
+\renewcommand\normalsize{%
+   \@setfontsize\normalsize\@xiipt{14}%
+   \abovedisplayskip 12\p@ \@plus3\p@ \@minus7\p@
+   \abovedisplayshortskip \z@ \@plus3\p@
+   \belowdisplayshortskip 6.5\p@ \@plus3.5\p@ \@minus3\p@
+   \belowdisplayskip \abovedisplayskip
+   \let\@listi\@listI}
+\normalsize
+\newcommand\small{%
+   \@setfontsize\small\@xpt{12}%
+   \abovedisplayskip 10\p@ \@plus2\p@ \@minus5\p@
+   \abovedisplayshortskip \z@ \@plus3\p@
+   \belowdisplayshortskip 6\p@ \@plus3\p@ \@minus3\p@
+   \def\@listi{\leftmargin\leftmargini
+               \topsep 5\p@ \@plus2\p@ \@minus2\p@
+               \parsep 2.5\p@ \@plus\p@ \@minus\p@
+               \itemsep \parsep}%
+   \belowdisplayskip \abovedisplayskip}
+\newcommand\footnotesize{%
+   \@setfontsize\footnotesize\@xpt{12}%
+   \abovedisplayskip 8\p@ \@plus2\p@ \@minus4\p@
+   \abovedisplayshortskip \z@ \@plus1\p@
+   \belowdisplayshortskip 3\p@ \@plus1\p@ \@minus2\p@
+   \def\@listi{\leftmargin\leftmargini
+               \topsep 4\p@ \@plus2\p@ \@minus2\p@
+               \parsep 2\p@ \@plus\p@ \@minus2\p@
+               \itemsep \parsep}%
+   \belowdisplayskip \abovedisplayskip}
+\newcommand\scriptsize{\@setfontsize\scriptsize\@viiipt{9.5}}
+\newcommand\tiny{\@setfontsize\tiny\@vipt{7}}
+\newcommand\large{\@setfontsize\large\@xivpt{18}}
+\newcommand\Large{\@setfontsize\Large\@xviipt{22}}
+\newcommand\LARGE{\@setfontsize\LARGE\@xxpt{25}}
+\newcommand\huge{\@setfontsize\huge\@xxvpt{30}}
+\newcommand\Huge{\@setfontsize\Huge\@xxvpt{30}}

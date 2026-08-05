@@ -1,4 +1,5 @@
-import { buildReviewPrompt } from '../reviewer-utils';
+import { buildReviewPrompt, buildExtractionPrompt } from '../reviewer-utils';
+import type { StructuredDocument } from '../deep-parser';
 import type { SubAgentConfig, AgentId } from './types';
 import { parseDiagram, extractCodeBlock } from '../diagramParsers';
 import { JOURNAL_DB } from '../journal-db';
@@ -158,7 +159,8 @@ register({
   buildSystemPrompt(ctx) {
     const text = String(ctx.text || '');
     const filename = String(ctx.filename || 'Untitled Manuscript');
-    return buildReviewPrompt(text, filename);
+    const structured = (ctx.structured as StructuredDocument) || null;
+    return buildReviewPrompt(text, filename, structured);
   },
   parseResponse(raw) {
     const trimmed = raw.trim();
@@ -375,15 +377,10 @@ register({
   maxTokens: 8192,
   rateLimit: 30,
   buildSystemPrompt(ctx) {
-    const text = String(ctx.text || '').substring(0, 6000);
-    return `You are a scholarly document analyzer. Extract metadata from the following text.
-
-Text:
-${text}
-
-Return JSON with: title, abstract, keywords (array), authors (array of {name, affiliation}), stats (object with wordCount, charCount).
-
-If you cannot find a field, use an empty string or empty array. Be accurate and concise.`;
+    const text = String(ctx.text || '');
+    const filename = String(ctx.filename || 'Untitled Manuscript');
+    const structured = (ctx.structured as StructuredDocument) || null;
+    return buildExtractionPrompt(text, filename, structured);
   },
   parseResponse(raw) {
     const json = extractJsonBlock(raw);
