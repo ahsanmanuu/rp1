@@ -407,8 +407,16 @@ function UploadContent() {
         // worker recovery failed.  This prevents the client from polling a
         // stale OfflineSync cache for the full 60 min.
         const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
+        // A 404 right after the POST succeeded means the status row couldn't
+        // be read (server restarting / storage temporarily unavailable) — the
+        // POST already persisted the bytes, so the row must exist. Wait out
+        // the restart window (~60s at the 2s poll interval) before declaring
+        // the upload lost, so a deploy/OOM restart never kills a recoverable
+        // upload.
+        const NOT_FOUND_RETRY_LIMIT = 30;
         let lastUpdatedAt: number | null = null;
         let lastActivityAt = Date.now();
+        let notFoundStreak = 0;
         let pollStatus: any = null;
         let pollSettled = false;
         while (!pollSettled && Date.now() - pollStartedAt < pollMaxWaitMs) {
@@ -421,8 +429,17 @@ function UploadContent() {
           try {
             const pollRes = await fetch(`/api/upload/status?uploadId=${pollUploadId}`, { cache: 'no-store' });
             if (pollRes.status === 404) {
-              throw new Error("Upload processing was lost (server restarted). Please upload the file again.");
+              // Row unreadable right now — likely the server/PB is restarting
+              // (deploy or OOM). The row itself persists in the DB, so keep
+              // polling through the restart window; only give up if the 404
+              // persists (row truly gone / prolonged outage).
+              notFoundStreak++;
+              if (notFoundStreak >= NOT_FOUND_RETRY_LIMIT) {
+                throw new Error("Upload processing was lost (server restarted). Please upload the file again.");
+              }
+              continue;
             }
+            notFoundStreak = 0;
             if (pollRes.ok) {
               pollStatus = await pollRes.json();
               if (pollStatus?.projectId && (pollStatus?.phase === 'done' || (pollStatus?.progress && pollStatus.progress >= 90))) {

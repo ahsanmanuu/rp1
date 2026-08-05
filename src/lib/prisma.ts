@@ -620,7 +620,7 @@ function collectionProxy(collectionName: string) {
 
 /** Get a PocketBase admin client with caching and fallback. */
 let _cachedClient: PocketBase | null = null;
-async function getClient(): Promise<PocketBase> {
+export async function getClient(): Promise<PocketBase> {
   if (_cachedClient) {
     if (_cachedClient.authStore && _cachedClient.authStore.isValid) return _cachedClient;
     _cachedClient = null;

@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import { randomBytes } from 'crypto';
+import { getClient } from '@/lib/prisma';
 
 // Configure Sharp image processing engine cache and threadpool buffers for maximum upload throughput
 sharp.concurrency(4);
@@ -165,52 +166,50 @@ async function writeStatus(uploadId: string, data: Record<string, any>): Promise
   }
 }
 
-async function readStatus(uploadId: string): Promise<Record<string, any> | null> {
+// Status read via the raw PB client (not the prisma adapter): the adapter
+// swallows query errors and returns null, which made a transient storage
+// failure (PB restarting, SQLite busy) indistinguishable from a genuinely
+// missing row — the GET then 404'd and the client surfaced the fatal
+// "Upload processing was lost (server restarted)" message even though the
+// durable row existed and stale-worker recovery would have resumed it.
+async function readStatus(uploadId: string): Promise<
+  | { ok: true; status: Record<string, any> }
+  | { ok: false; reason: 'not_found' | 'error'; error?: string }
+> {
   try {
-    const row = await prisma.uploadJob.findUnique({
-      where: { uploadId },
+    const pb = await getClient();
+    const res = await pb.collection('upload_jobs').getList(1, 1, {
+      filter: `uploadId = "${uploadId}"`,
       // Explicitly scope the fields so multi-MB rawBytes is never pulled into
       // the 2s status-poll response (the worker decodes it from the DB row).
-      select: {
-        uploadId: true,
-        fileName: true,
-        size: true,
-        templateId: true,
-        userId: true,
-        email: true,
-        name: true,
-        phase: true,
-        stage: true,
-        progress: true,
-        message: true,
-        projectId: true,
-        recovering: true,
-        recoverable: true,
-        attempts: true,
-        updatedAt: true,
-      },
+      fields: 'uploadId,fileName,size,templateId,userId,email,name,phase,stage,progress,message,projectId,recovering,recoverable,attempts,updated',
+      requestKey: null,
     });
-    if (!row) return null;
+    const row: any = res.items[0];
+    if (!row) return { ok: false, reason: 'not_found' };
     return {
-      uploadId: row.uploadId,
-      fileName: row.fileName,
-      size: row.size,
-      templateId: row.templateId,
-      userId: row.userId,
-      email: row.email,
-      name: row.name,
-      phase: row.phase,
-      stage: row.stage,
-      progress: row.progress,
-      message: row.message,
-      projectId: row.projectId,
-      recovering: row.recovering,
-      recoverable: row.recoverable,
-      attempts: row.attempts,
-      updatedAt: row.updatedAt.getTime(),
+      ok: true,
+      status: {
+        uploadId: row.uploadId,
+        fileName: row.fileName,
+        size: row.size,
+        templateId: row.templateId,
+        userId: row.userId,
+        email: row.email,
+        name: row.name,
+        phase: row.phase,
+        stage: row.stage,
+        progress: row.progress,
+        message: row.message,
+        projectId: row.projectId,
+        recovering: row.recovering,
+        recoverable: row.recoverable,
+        attempts: row.attempts,
+        updatedAt: new Date(row.updated).getTime(),
+      },
     };
-  } catch {
-    return null;
+  } catch (err: any) {
+    return { ok: false, reason: 'error', error: err?.message || 'Status read failed' };
   }
 }
 
@@ -1725,12 +1724,23 @@ export async function GET(req: Request) {
     if (!uploadId || !/^[a-f0-9]{24}$/.test(uploadId)) {
       return NextResponse.json({ error: 'Invalid uploadId' }, { status: 400 });
     }
-    const status = await readStatus(uploadId);
-    if (!status) {
-      // Row genuinely missing (never created / GC'd) — cannot recover; the
-      // client must tell the user to re-upload instead of waiting forever.
-      return NextResponse.json({ error: 'not_found' }, { status: 404 });
+    const read = await readStatus(uploadId);
+    if (!read.ok) {
+      if (read.reason === 'not_found') {
+        // Row genuinely missing (never created / GC'd) — cannot recover; the
+        // client must tell the user to re-upload instead of waiting forever.
+        return NextResponse.json({ error: 'not_found' }, { status: 404 });
+      }
+      // Transient storage failure (PB restarting / SQLite busy during a
+      // deploy or OOM restart): the durable row still exists and stale-worker
+      // recovery would resume it once readable. Return a retryable error so
+      // the client keeps polling instead of surfacing a fatal "lost" message.
+      return NextResponse.json(
+        { error: 'Storage temporarily unavailable', retryable: true },
+        { status: 503 }
+      );
     }
+    const status = read.status;
 
     // STALE WORKER RECOVERY: if the worker stopped writing for PENDING_TTL_MS,
     // it may have been killed (OOM/deploy). Re-kick it from the durable DB

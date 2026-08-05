@@ -550,13 +550,22 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
         const pollUploadId = uploadData.uploadId;
         const pollMaxWaitMs = 30 * 60 * 1000;
         const pollStartedAt = Date.now();
+        // Grace window for transient 404s (server/PB restarting right after
+        // the POST persisted the bytes): keep polling before declaring lost.
+        const NOT_FOUND_RETRY_LIMIT = 30;
+        let notFoundStreak = 0;
         let pollSettled = false;
         while (!pollSettled && Date.now() - pollStartedAt < pollMaxWaitMs) {
           await new Promise(r => setTimeout(r, 2000));
           const pollRes = await fetch(`/api/upload/status?uploadId=${pollUploadId}`, { cache: 'no-store' });
           if (pollRes.status === 404) {
-            throw new Error("Upload processing was lost (server restarted). Please upload the file again.");
+            notFoundStreak++;
+            if (notFoundStreak >= NOT_FOUND_RETRY_LIMIT) {
+              throw new Error("Upload processing was lost (server restarted). Please upload the file again.");
+            }
+            continue;
           }
+          notFoundStreak = 0;
           if (pollRes.ok) {
             const pollStatus = await pollRes.json();
             if (pollStatus?.phase === 'done' && pollStatus?.projectId) {
