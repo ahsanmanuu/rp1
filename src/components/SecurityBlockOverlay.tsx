@@ -39,10 +39,38 @@ export default function SecurityBlockOverlay() {
         return;
       }
       try {
-        // Query free geocoding API to resolve client-side public IP to location name
-        const geoRes = await fetch('http://ip-api.com/json/?fields=query,country,countryCode,regionName,city', { signal: AbortSignal.timeout(5000) });
-        if (!geoRes.ok) throw new Error(`Geo IP HTTP ${geoRes.status}`);
-        const geoData = await geoRes.json();
+        // ip-api.com's free tier is HTTP-only, which browsers block on HTTPS
+        // pages as mixed content. Use HTTPS-capable free providers instead and
+        // normalize to the ip-api response shape the caller expects.
+        const providers = [
+          {
+            url: 'https://ipwho.is/',
+            map: (d: any) => (d && d.ip
+              ? { query: d.ip, country: d.country, countryCode: d.country_code, regionName: d.region, city: d.city }
+              : null),
+          },
+          {
+            url: 'https://ipapi.co/json/',
+            map: (d: any) => (d && d.ip
+              ? { query: d.ip, country: d.country_name, countryCode: d.country_code, regionName: d.region, city: d.city }
+              : null),
+          },
+        ];
+        let geoData: any = null;
+        for (const provider of providers) {
+          try {
+            const geoRes = await fetch(provider.url, { signal: AbortSignal.timeout(5000) });
+            if (!geoRes.ok) continue;
+            const data = await geoRes.json();
+            const mapped = provider.map(data);
+            if (mapped) {
+              geoData = mapped;
+              break;
+            }
+          } catch {
+            continue;
+          }
+        }
         if (geoData && geoData.query) {
           const locStr = `${geoData.city || ''}, ${geoData.regionName || ''}, ${geoData.country || ''}`
             .replace(/^,\s*/, '')
