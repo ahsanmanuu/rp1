@@ -53,23 +53,12 @@ export async function POST(req: Request) {
         }
       });
     } catch (createErr: any) {
-      // Handle foreign key / collection-missing / field-size errors gracefully.
-      // PB PocketBase adapter can throw with various message formats depending
-      // on the failure mode (missing collection, FK violation, field overflow).
-      const msg = String(createErr?.message || '').toLowerCase();
-      const isTransient = (
-        msg.includes('foreign key') || msg.includes('violates') ||
-        msg.includes('not found') || msg.includes('404') ||
-        msg.includes('does not exist') || msg.includes('failed to create') ||
-        msg.includes('collection') || msg.includes('findunique') ||
-        msg.includes('record') || msg.includes('constraint') ||
-        msg.includes('500') || msg.includes('maximum') || msg.includes('size')
-      );
-      if (isTransient) {
-        console.warn('[REPORTS_POST] DB persist failed (non-fatal), returning success without DB persist:', msg.slice(0, 200));
-        return NextResponse.json({ success: true, report: { id: `local_${Date.now()}`, projectId, title }, persisted: false });
-      }
-      throw createErr;
+      // Report history is non-critical — ANY DB error should not block the user.
+      // PB adapter can throw with unpredictable message formats (missing
+      // collection, FK violation, field overflow, 500, etc.) so we catch ALL
+      // errors and return a graceful fallback.
+      console.warn('[REPORTS_POST] DB persist failed (non-fatal), returning success without DB persist:', String(createErr?.message || createErr).slice(0, 200));
+      return NextResponse.json({ success: true, report: { id: `local_${Date.now()}`, projectId, title }, persisted: false });
     }
 
     // Invalidate cache so GET returns fresh data
