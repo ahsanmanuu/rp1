@@ -90,26 +90,38 @@ export async function syncUserMembershipChain(userId: string, txContext?: any) {
 }
 
 /**
+ * Maximum number of packages the auto-exchange may grant per trigger.
+ * Guards against misconfigured plans or huge balances silently chaining
+ * membership years into the future (e.g. "3360d remaining" on the dashboard).
+ */
+const MAX_AUTO_EXCHANGE_GRANTS = 12;
+
+/**
  * Checks a user's points balance and automatically processes swaps for membership packages.
  * It will deduct points and queue membership packages iteratively until no more thresholds match.
  */
 export async function processPointsMembershipExchange(userId: string, txContext?: any) {
   const db = txContext || prisma;
 
-  // Fetch dynamic packages from database
+  // Fetch dynamic packages from config
   const dbPlans = await db.membershipPlan.findMany({
     orderBy: { pointsExchange: "desc" }
   });
-  const packages = dbPlans.map((p: any) => ({
-    points: p.pointsExchange,
-    months: p.durationMonths,
-    planType: p.planId
-  }));
+  const packages = dbPlans
+    .filter((p: any) => Number(p.pointsExchange) > 0 && Number(p.durationMonths) > 0)
+    .map((p: any) => ({
+      points: p.pointsExchange,
+      months: p.durationMonths,
+      planType: p.planId
+    }));
 
-  // Run in a serial loop to handle multiple package matches if they have large points balances
+  if (packages.length === 0) return false;
+
+  // Run in a chain loop to handle consecutive package matches if they have large points balances
   let exchangeOccurred = false;
+  let grants = 0;
 
-  while (true) {
+  while (grants < MAX_AUTO_EXCHANGE_GRANTS) {
     // Get fresh user points inside the transaction
     const user = await db.user.findUnique({
       where: { id: userId },
@@ -177,6 +189,7 @@ export async function processPointsMembershipExchange(userId: string, txContext?
     });
 
     exchangeOccurred = true;
+    grants += 1;
   }
 
   if (exchangeOccurred) {

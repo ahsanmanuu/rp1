@@ -1,5 +1,13 @@
 /// <reference path="../pb_data/types.d.ts" />
 migrate((app) => {
+  // Idempotent guard: the collection may already exist (created at runtime
+  // by the /api/reports code path). Skip silently so PB can boot.
+  try {
+    if (app.findCollectionByNameOrId("report_history")) {
+      return;
+    }
+  } catch {}
+
   const collection = new Collection({
     "createRule": null,
     "deleteRule": null,

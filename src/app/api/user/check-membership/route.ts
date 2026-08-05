@@ -84,7 +84,11 @@ async function getMemberSince(userId: string): Promise<string | null> {
   }
 }
 
-export async function GET(_req: NextRequest) {
+function isFreshRequest(req: NextRequest | undefined): boolean {
+  return req?.nextUrl.searchParams.get("fresh") === "1";
+}
+
+export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession().catch(() => null);
     if (!session?.user) {
@@ -93,9 +97,11 @@ export async function GET(_req: NextRequest) {
 
     const userId = (session.user as any).id;
 
-    // Return cached response if still valid (avoids re-running heavy queries)
+    const fresh = isFreshRequest(req);
+
+    // Return cached response only for non-fresh requests (realtime events must see fresh data)
     const cachedResponse = RESPONSE_CACHE.get(userId);
-    if (cachedResponse && cachedResponse.expiry > Date.now()) {
+    if (!fresh && cachedResponse && cachedResponse.expiry > Date.now()) {
       return NextResponse.json(cachedResponse.data);
     }
 

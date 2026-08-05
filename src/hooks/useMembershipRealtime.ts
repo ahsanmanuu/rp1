@@ -65,7 +65,7 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
 
   const prevPlanRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
-  const fetchRef = useRef<((bg?: boolean) => void) | null>(null);
+  const fetchRef = useRef<((bg?: boolean, fresh?: boolean) => void) | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
   const onMembershipChangeRef = useRef(onMembershipChange);
   const onErrorRef = useRef(onError);
@@ -77,7 +77,7 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
   const refetchRef = useRef<(() => void) | null>(null);
 
   if (fetchRef.current === null) {
-    fetchRef.current = async (isBackground = false) => {
+    fetchRef.current = async (isBackground = false, fresh = false) => {
       if (!mountedRef.current) return;
 
       if (!isBackground && !prevPlanRef.current) {
@@ -85,7 +85,8 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
       }
 
       try {
-        const res = await fetch('/api/user/check-membership');
+        const url = fresh ? '/api/user/check-membership?fresh=1' : '/api/user/check-membership';
+        const res = await fetch(url);
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           throw new Error(body?.error || `Failed to load membership (${res.status})`);
@@ -125,7 +126,7 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
     };
 
     refetchRef.current = () => {
-      fetchRef.current?.(true);
+      fetchRef.current?.(true, true);
     };
   }
 
@@ -154,7 +155,7 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
       const unsubFns: (() => void)[] = [];
       const onEvent = () => {
         if (mountedRef.current) {
-          fetchRef.current?.(true);
+          fetchRef.current?.(true, true);
         }
       };
 
