@@ -541,6 +541,21 @@ export async function analyzeManuscriptStructure(
     }
 
     const frontMatter = plainText.substring(0, 12000);
+    // Pass raw HTML front matter when available — preserves bold/italic/font-size
+    // cues that indicate title, author names, and affiliation markers (superscripts).
+    const frontMatterHtml = opts.html
+      ? opts.html.substring(0, 15000)
+      : '';
+    // Extract raw author/affiliation lines from body nodes for cross-reference.
+    const rawAuthorLines: string[] = [];
+    const rawAffilLines: string[] = [];
+    for (const n of deepData.body || []) {
+      const role = (n as any).componentRole;
+      const txt = String(n.text || n.html || '').trim();
+      if (!txt) continue;
+      if (role === 'author' || role === 'title') rawAuthorLines.push(txt);
+      else if (role === 'affiliation') rawAffilLines.push(txt);
+    }
     // BALANCED FULL-TEXT WINDOW: the structure-analyze agent must see the ACTUAL
     // mid-document content (figures, tables, equations, algorithms), not a
     // compressed skeleton of only the FIRST 40 headings/20 captions. Previously
@@ -583,11 +598,20 @@ export async function analyzeManuscriptStructure(
           ...baseContext,
           modelOverride: AI_MODEL_OVERRIDE,
           frontMatter,
+          frontMatterHtml,
           heuristic: {
             title: deepData.title,
-            authors: (deepData.authors || []).map(a => a.name),
+            authors: (deepData.authors || []).map(a => ({
+              name: a.name,
+              affiliation: a.affiliation || null,
+              email: a.email || null,
+              affiliationIds: a.affiliationIds || [],
+            })),
+            organizations: (deepData.organizations || []).slice(0, 20),
             abstractLength: (deepData.abstract || '').length,
             keywords: deepData.keywords,
+            rawAuthorLines: rawAuthorLines.slice(0, 10),
+            rawAffilLines: rawAffilLines.slice(0, 10),
           },
         },
         signal: passAController.signal,
