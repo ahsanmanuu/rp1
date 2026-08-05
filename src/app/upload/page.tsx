@@ -399,11 +399,24 @@ function UploadContent() {
       // continue with the existing project-sync flow below.
       if (uploadData?.pending && uploadData?.uploadId) {
         const pollUploadId = uploadData.uploadId;
-        const pollMaxWaitMs = 30 * 60 * 1000;
+        // Total timeout: 60 min (large DOCX + AI analysis can be slow).
+        const pollMaxWaitMs = 60 * 60 * 1000;
         const pollStartedAt = Date.now();
+        // Inactivity timeout: if the server's `updatedAt` hasn't changed for
+        // 15 min, the background worker is dead and the server-side stale
+        // worker recovery failed.  This prevents the client from polling a
+        // stale OfflineSync cache for the full 60 min.
+        const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
+        let lastUpdatedAt: number | null = null;
+        let lastActivityAt = Date.now();
         let pollStatus: any = null;
         let pollSettled = false;
         while (!pollSettled && Date.now() - pollStartedAt < pollMaxWaitMs) {
+          // Inactivity guard: if server hasn't updated status in 15 min,
+          // the worker is dead — bail early with a actionable message.
+          if (Date.now() - lastActivityAt > INACTIVITY_TIMEOUT_MS) {
+            throw new Error("Document processing appears stuck. The server may have restarted during processing. Please try uploading again.");
+          }
           await new Promise(r => setTimeout(r, 2000));
           try {
             const pollRes = await fetch(`/api/upload/status?uploadId=${pollUploadId}`, { cache: 'no-store' });
@@ -432,11 +445,22 @@ function UploadContent() {
               if (typeof pollStatus?.progress === 'number') {
                 setAnalysisProgress(pollStatus.progress);
               }
+              // Track server-side `updatedAt` to detect stale OfflineSync
+              // cache hits vs real server responses.  When the network is
+              // suspended, OfflineSync replays the last cached response with
+              // the same `updatedAt` — we must NOT reset the inactivity
+              // timer for those, or the client would poll forever.
+              const serverUpdatedAt = pollStatus.updatedAt || 0;
+              if (lastUpdatedAt !== null && serverUpdatedAt !== lastUpdatedAt) {
+                // Server actually processed something — reset inactivity timer
+                lastActivityAt = Date.now();
+              }
+              lastUpdatedAt = serverUpdatedAt;
             }
           } catch (pollErr: any) {
             // Re-throw real processing failures; swallow transient poll
             // network errors and keep polling (phase 1 already succeeded).
-            if (pollErr?.message && /processing|restarted/i.test(pollErr.message)) throw pollErr;
+            if (pollErr?.message && /processing|restarted|stuck|upload again/i.test(pollErr.message)) throw pollErr;
           }
         }
         if (!uploadData?.projectId) {
