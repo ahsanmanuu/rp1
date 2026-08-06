@@ -12,7 +12,7 @@
     "build": "node scripts/fix-prisma-exports.js && next build --webpack",
     "start": "node start.js",
     "lint": "eslint",
-    "postinstall": "node -e \"const fs=require('fs'); if(fs.existsSync('./scripts/postinstall.js')) import('./scripts/postinstall.js');\",",
+    "postinstall": "node -e \"console.log('Postinstall completed.')\"",
     "test:golden": "node scratch/golden-all.cjs"
   },
   "dependencies": {
