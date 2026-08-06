@@ -1,7 +1,17 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { execSync, spawn } from 'child_process';
 import dns from 'dns';
+
+// Ensure working directory is locked to the directory of start.js
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+try {
+  process.chdir(__dirname);
+} catch (e) {
+  console.error('Failed to chdir in start.js:', e);
+}
 
 // Force IPv4-first resolution to prevent ENETUNREACH errors on environments without IPv6 routing
 if (typeof dns.setDefaultResultOrder === 'function') {
@@ -20,6 +30,36 @@ function log(msg, err = null) {
     console.error(msg, err);
   } else {
     console.log(msg);
+  }
+}
+
+// ============================================================
+// Auto-verify and build dependencies / Next.js production bundle if missing
+// ============================================================
+function ensureBuildAndDependencies() {
+  const nodeModulesPath = path.resolve(process.cwd(), 'node_modules');
+  const nextBuildPath = path.resolve(process.cwd(), '.next');
+  const standaloneServer = path.resolve(process.cwd(), '.next', 'standalone', 'server.js');
+  const buildManifest = path.resolve(process.cwd(), '.next', 'build-manifest.json');
+
+  if (!fs.existsSync(nodeModulesPath) || !fs.existsSync(path.resolve(nodeModulesPath, 'next'))) {
+    log('node_modules missing or incomplete. Running npm install...');
+    try {
+      execSync('npm install --production=false', { stdio: 'inherit', env: process.env });
+      log('npm install completed successfully.');
+    } catch (err) {
+      log('npm install failed (non-fatal):', err);
+    }
+  }
+
+  if (!fs.existsSync(nextBuildPath) || (!fs.existsSync(standaloneServer) && !fs.existsSync(buildManifest))) {
+    log('.next production build missing. Running npm run build...');
+    try {
+      execSync('npm run build', { stdio: 'inherit', env: process.env });
+      log('npm run build completed successfully.');
+    } catch (err) {
+      log('npm run build failed (non-fatal):', err);
+    }
   }
 }
 
@@ -57,9 +97,11 @@ function loadDotEnv() {
 }
 
 loadDotEnv();
+ensureBuildAndDependencies();
 
 // Default NODE_ENV to production if not set, since start.js is the standalone build runner
 process.env.NODE_ENV = process.env.NODE_ENV || 'production';
+
 
 // ============================================================
 // Auto-download PocketBase binary if missing (Render deploy / VPS deploy)
