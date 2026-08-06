@@ -1,0 +1,16 @@
+# Disable directory indexing to prevent showing raw folder file listings
+Options -Indexes
+
+# Deny direct access to sensitive files
+<FilesMatch "^\.(env|git|cpanel|json|lock|log|md|ps1|db|db-shm|db-wal)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Reverse Proxy to local Node.js application port (Port 3000)
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ http://127.0.0.1:3000/$1 [P,L]
+</IfModule>
