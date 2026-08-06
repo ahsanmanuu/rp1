@@ -71,14 +71,18 @@ try {
   const prismaCliOriginalPath = path.resolve(process.cwd(), 'node_modules/prisma/build/index.original.js');
 
   if (fs.existsSync(prismaCliPath)) {
-    // If the original has not been created yet, rename the current file to original
-    if (!fs.existsSync(prismaCliOriginalPath)) {
-      console.log(`[Prisma Shim] Renaming original CLI binary to: ${prismaCliOriginalPath}`);
-      fs.renameSync(prismaCliPath, prismaCliOriginalPath);
-    }
+    const currentContent = fs.readFileSync(prismaCliPath, 'utf8');
 
-    // Write the wrapper shim script
-    const wrapperContent = `#!/usr/bin/env node
+    if (currentContent.includes('[Prisma Shim] Intercepted')) {
+      console.log('[Prisma Shim] Shim already installed and active.');
+    } else {
+      if (!fs.existsSync(prismaCliOriginalPath)) {
+        console.log(`[Prisma Shim] Renaming original CLI binary to: ${prismaCliOriginalPath}`);
+        fs.renameSync(prismaCliPath, prismaCliOriginalPath);
+      }
+
+      const wrapperContent = `#!/usr/bin/env node
+const fs = require('fs');
 const { spawnSync } = require('child_process');
 const path = require('path');
 const args = process.argv.slice(2);
@@ -87,11 +91,16 @@ if (args[0] === 'migrate' && args[1] === 'deploy') {
   process.exit(0);
 }
 const originalCli = path.resolve(__dirname, 'index.original.js');
+if (!fs.existsSync(originalCli)) {
+  console.log('[Prisma Shim] Original CLI binary not found. Skipping CLI execution.');
+  process.exit(0);
+}
 const result = spawnSync('node', [originalCli, ...args], { stdio: 'inherit' });
 process.exit(result.status ?? 0);
 `;
-    fs.writeFileSync(prismaCliPath, wrapperContent, { mode: 0o755 });
-    console.log('[Prisma Shim] Successfully installed migrate deploy shim!');
+      fs.writeFileSync(prismaCliPath, wrapperContent, { mode: 0o755 });
+      console.log('[Prisma Shim] Successfully installed migrate deploy shim!');
+    }
   } else {
     console.warn(`[Prisma Shim] Prisma CLI entrypoint not found at: ${prismaCliPath}`);
   }
