@@ -33,6 +33,25 @@ function log(msg, err = null) {
   }
 }
 
+// Find valid npm executable in PATH or cPanel virtualenv
+function findNpmBinary() {
+  const cpanelUser = process.env.USER || (process.cwd().match(/\/home\/([^\/]+)/) || [])[1] || 'latexify';
+  const possiblePaths = [
+    `/home/${cpanelUser}/nodevenv/latexify/22/bin/npm`,
+    `/home/${cpanelUser}/nodevenv/${path.basename(process.cwd())}/22/bin/npm`,
+    'npm',
+    '/usr/local/bin/npm',
+    '/usr/bin/npm',
+  ];
+  for (const p of possiblePaths) {
+    try {
+      if (p === 'npm') return 'npm';
+      if (fs.existsSync(p)) return `"${p}"`;
+    } catch {}
+  }
+  return 'npm';
+}
+
 // ============================================================
 // Auto-verify and build dependencies / Next.js production bundle if missing
 // ============================================================
@@ -43,9 +62,10 @@ function ensureBuildAndDependencies() {
   const buildManifest = path.resolve(process.cwd(), '.next', 'build-manifest.json');
 
   if (!fs.existsSync(nodeModulesPath) || !fs.existsSync(path.resolve(nodeModulesPath, 'next'))) {
-    log('node_modules missing or incomplete. Running npm install...');
+    const npmBin = findNpmBinary();
+    log(`node_modules missing or incomplete. Running ${npmBin} install...`);
     try {
-      execSync('npm install --production=false', { stdio: 'inherit', env: process.env });
+      execSync(`${npmBin} install --production=false --no-audit`, { stdio: 'inherit', env: process.env });
       log('npm install completed successfully.');
     } catch (err) {
       log('npm install failed (non-fatal):', err);
@@ -53,9 +73,10 @@ function ensureBuildAndDependencies() {
   }
 
   if (!fs.existsSync(nextBuildPath) || (!fs.existsSync(standaloneServer) && !fs.existsSync(buildManifest))) {
-    log('.next production build missing. Running npm run build...');
+    const npmBin = findNpmBinary();
+    log(`.next production build missing. Running ${npmBin} run build...`);
     try {
-      execSync('npm run build', { stdio: 'inherit', env: process.env });
+      execSync(`${npmBin} run build`, { stdio: 'inherit', env: process.env });
       log('npm run build completed successfully.');
     } catch (err) {
       log('npm run build failed (non-fatal):', err);
