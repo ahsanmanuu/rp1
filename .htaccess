@@ -1,16 +1,10 @@
-# DO NOT REMOVE. CLOUDLINUX PASSED AGENT CONFIGURATION BEGIN
-PassengerAppRoot "/home/latexify/latexify"
-PassengerBaseURI "/"
-PassengerNodejs "/home/latexify/nodevenv/latexify/22/bin/node"
-PassengerAppType node
-PassengerStartupFile app.cjs
-# DO NOT REMOVE. CLOUDLINUX PASSED AGENT CONFIGURATION END
-
 # LiteSpeed & Apache Configuration for Node.js Application
 DirectoryIndex index.html index.php app.cjs app.js
 
-# Disable directory indexing to prevent showing raw folder file listings
-Options -Indexes
+# Explicitly grant access permissions for LiteSpeed Web Server
+<IfModule mod_authz_core.c>
+    Require all granted
+</IfModule>
 
 # Protect sensitive environment and database files
 <FilesMatch "^\.(env|git|cpanel|db)$">
@@ -36,4 +30,5 @@ Options -Indexes
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule ^(.*)$ http://127.0.0.1:3000/$1 [P,L]
 </IfModule>
+
 
