@@ -7,10 +7,17 @@ Options -Indexes
     Deny from all
 </FilesMatch>
 
-# Reverse Proxy to local Node.js application port (Port 3000)
+# Forward SSL protocol headers & handle reverse proxy fallback
 <IfModule mod_rewrite.c>
     RewriteEngine On
+
+    # Set X-Forwarded-Proto header for HTTPS connections
+    RewriteCond %{HTTPS} on
+    RewriteRule .* - [E=HTTP_X_FORWARDED_PROTO:https]
+
+    # Reverse Proxy to local Node.js application port (Port 3000)
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule ^(.*)$ http://127.0.0.1:3000/$1 [P,L]
 </IfModule>
+
