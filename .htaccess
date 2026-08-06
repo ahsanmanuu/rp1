@@ -1,10 +1,15 @@
 # Disable directory indexing to prevent showing raw folder file listings
 Options -Indexes
 
-# Deny direct access to sensitive files
-<FilesMatch "^\.(env|git|cpanel|json|lock|log|md|ps1|db|db-shm|db-wal)$">
-    Order allow,deny
-    Deny from all
+# Protect sensitive environment and database files
+<FilesMatch "^\.(env|git|cpanel|db)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
 </FilesMatch>
 
 # Forward SSL protocol headers & handle reverse proxy fallback
