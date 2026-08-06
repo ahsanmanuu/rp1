@@ -1,5 +1,13 @@
+# DO NOT REMOVE. CLOUDLINUX PASSED AGENT CONFIGURATION BEGIN
+PassengerAppRoot "/home/latexify/latexify"
+PassengerBaseURI "/"
+PassengerNodejs "/home/latexify/nodevenv/latexify/22/bin/node"
+PassengerAppType node
+PassengerStartupFile app.cjs
+# DO NOT REMOVE. CLOUDLINUX PASSED AGENT CONFIGURATION END
+
 # LiteSpeed & Apache Configuration for Node.js Application
-DirectoryIndex index.html index.php
+DirectoryIndex index.html index.php app.cjs app.js
 
 # Disable directory indexing to prevent showing raw folder file listings
 Options -Indexes
