@@ -426,27 +426,64 @@ startPocketBase().then(async () => {
     log('Background sync worker failed to start (non-fatal)', syncErr);
   }
   log('Starting Next.js server...');
+  const port = process.env.PORT || 3000;
   const standaloneServer = path.resolve(process.cwd(), '.next', 'standalone', 'server.js');
+
   if (fs.existsSync(standaloneServer)) {
     log(`Launching Next.js standalone server from ${standaloneServer}...`);
     try {
       await import('./.next/standalone/server.js');
+      return;
     } catch (importErr) {
-      log('Failed to import standalone server, falling back to next start:', importErr);
-      const port = process.env.PORT || 3000;
-      const nextBin = path.resolve(process.cwd(), 'node_modules', 'next', 'dist', 'bin', 'next');
-      spawn(process.execPath, [nextBin, 'start', '-p', String(port), '-H', '0.0.0.0'], {
-        stdio: 'inherit',
-        env: { ...process.env },
-      });
+      log('Failed to import standalone server:', importErr);
     }
-  } else {
-    log('Standalone server not found, launching next start CLI fallback...');
-    const port = process.env.PORT || 3000;
-    const nextBin = path.resolve(process.cwd(), 'node_modules', 'next', 'dist', 'bin', 'next');
+  }
+
+  const nextBin = path.resolve(process.cwd(), 'node_modules', 'next', 'dist', 'bin', 'next');
+  const buildManifest = path.resolve(process.cwd(), '.next', 'build-manifest.json');
+  if (fs.existsSync(nextBin) && fs.existsSync(buildManifest)) {
+    log('Launching next start CLI fallback...');
     spawn(process.execPath, [nextBin, 'start', '-p', String(port), '-H', '0.0.0.0'], {
       stdio: 'inherit',
       env: { ...process.env },
     });
+    return;
+  }
+
+  // HTTP Fallback Server: Guarantees 200 OK & prevents 403 / 500 errors on cPanel Passenger while build initializes
+  log('Starting HTTP fallback server on port ' + port + ' while build initializes...');
+  try {
+    const { createServer } = await import('http');
+    const fallbackServer = createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(`<!DOCTYPE html>
+<html>
+<head>
+  <title>Latexify.in - System Setup</title>
+  <meta http-equiv="refresh" content="10">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #0f172a; color: #f8fafc; text-align: center; }
+    .card { background: #1e293b; padding: 2.5rem; border-radius: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-width: 500px; border: 1px solid #334155; }
+    h1 { color: #38bdf8; font-size: 1.8rem; margin-top: 0; }
+    p { color: #94a3b8; font-size: 1rem; line-height: 1.6; }
+    .spinner { width: 40px; height: 40px; border: 4px solid #334155; border-top: 4px solid #38bdf8; border-radius: 50%; animation: spin 1s linear infinite; margin: 1.5rem auto; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Latexify.in</h1>
+    <div class="spinner"></div>
+    <p><strong>System Initialization in Progress</strong></p>
+    <p>The application is preparing dependencies and building production assets. This page will refresh automatically in 10 seconds.</p>
+  </div>
+</body>
+</html>`);
+    });
+    fallbackServer.listen(port, '0.0.0.0', () => {
+      log(`HTTP fallback server active and listening on port ${port}`);
+    });
+  } catch (fallbackErr) {
+    log('Failed to start HTTP fallback server:', fallbackErr);
   }
 });

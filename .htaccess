@@ -1,3 +1,6 @@
+# Specify DirectoryIndex to prevent 403 Forbidden directory listing errors
+DirectoryIndex app.js index.html index.php
+
 # Disable directory indexing to prevent showing raw folder file listings
 Options -Indexes
 
