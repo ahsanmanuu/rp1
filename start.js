@@ -447,6 +447,12 @@ startPocketBase().then(async () => {
     log('Background sync worker failed to start (non-fatal)', syncErr);
   }
   log('Starting Next.js server...');
+  if (global.passengerServer) {
+    try {
+      global.passengerServer.close();
+      log('Closed temporary Passenger server for Next.js server binding.');
+    } catch (e) {}
+  }
   const port = process.env.PORT || 3000;
   const standaloneServer = path.resolve(process.cwd(), '.next', 'standalone', 'server.js');
 
