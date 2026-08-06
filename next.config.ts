@@ -10,6 +10,7 @@ if (typeof process !== 'undefined') {
 }
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   typescript: {
     ignoreBuildErrors: true,
   },

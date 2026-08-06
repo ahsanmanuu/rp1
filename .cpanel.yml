@@ -1,5 +1,8 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=${DEPLOYPATH:-/home/$(whoami)/public_html}
+    - export DEPLOYPATH=${DEPLOYPATH:-/home/$(whoami)/latexify}
     - /bin/cp -R . "$DEPLOYPATH"
+    - touch "$DEPLOYPATH/tmp/restart.txt"
+
+
