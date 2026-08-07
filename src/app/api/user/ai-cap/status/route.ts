@@ -17,7 +17,21 @@ export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession().catch(() => null);
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({
+        authenticated: false,
+        isCapped: false,
+        used: 0,
+        limit: 0,
+        percentage: 0,
+        remaining: 0,
+        planName: "Free",
+        reactivateAt: null,
+        capExpiresAt: null,
+        quotaResetAt: new Date(Date.now() + 86400000).toISOString(),
+        msUntilReset: 86400000,
+        agentBreakdown: {},
+        ruleName: null
+      });
     }
 
     const userId = session.user.id as string;

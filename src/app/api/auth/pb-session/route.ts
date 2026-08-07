@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   };
 
   if (!token) {
-    const response = NextResponse.json({ user: null }, { status: 401 });
+    const response = NextResponse.json({ user: null, authenticated: false });
     Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
     return response;
   }
