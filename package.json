@@ -64,11 +64,12 @@
     "recharts": "^3.9.2",
     "resend": "^6.12.3",
     "sharp": "^0.34.5",
+    "tailwindcss": "^4",
+    "@tailwindcss/postcss": "^4",
     "uuid": "^13.0.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
     "@types/archiver": "^7.0.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.13",

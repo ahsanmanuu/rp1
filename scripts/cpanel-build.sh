@@ -25,13 +25,13 @@ echo "============================================"
 
 cd "$APP_DIR" || exit 1
 
-# Step 1: Only install if node_modules is missing
+# Step 1: Check node_modules and essential build tools
 echo ""
-if [ -d "node_modules/next" ]; then
-  echo "[Step 1/5] node_modules already exists — SKIPPING npm install"
+if [ ! -d "node_modules/@tailwindcss/postcss" ]; then
+  echo "[Step 1/5] Installing missing build dependencies (@tailwindcss/postcss)..."
+  npm install @tailwindcss/postcss tailwindcss --no-audit --no-fund
 else
-  echo "[Step 1/5] Installing dependencies..."
-  npm install --production=false --no-audit --no-fund --prefer-offline
+  echo "[Step 1/5] node_modules and Tailwind PostCSS verified — SKIPPING full npm install"
 fi
 
 # Step 2: Generate Prisma client
