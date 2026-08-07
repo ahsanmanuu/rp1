@@ -82,6 +82,9 @@ export async function POST(req: Request) {
 
     // 4. Create User in PocketBase (using pbAdmin for guaranteed creation)
     const { pbAdmin } = await import("@/lib/pb");
+    const { ensurePbUserCollectionFields } = await import("@/lib/pb-sync");
+    await ensurePbUserCollectionFields().catch(() => {});
+
     const admPb = await pbAdmin().catch(() => pb);
     let record;
     try {
@@ -102,7 +105,18 @@ export async function POST(req: Request) {
         userPayload.aiCapPlanId = freePlan.id;
       }
 
-      record = await admPb.collection("users").create(userPayload);
+      record = await admPb.collection("users").create(userPayload).catch(async () => {
+        // Fallback: create with core auth fields if custom schema fields are missing or restricted
+        return await admPb.collection("users").create({
+          email: cleanEmail,
+          password,
+          passwordConfirm: password,
+          verified: true,
+          emailVisibility: true,
+          name: cleanName || cleanEmail.split("@")[0],
+        });
+      });
+
       try {
         await admPb.collection("users").update(record.id, { verified: true });
       } catch {}
