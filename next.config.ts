@@ -8,6 +8,12 @@ if (typeof process !== 'undefined' && process.env.CPANEL_BUILD !== 'true') {
   }
 }
 
+// True when building inside the memory-constrained cPanel shared hosting:
+// enables every trick we have to keep peak memory under the container limit.
+const IS_CONSTRAINED =
+  process.env.CPANEL_BUILD === 'true' ||
+  Boolean(process.env.NODE_OPTIONS?.includes('max-old-space-size='));
+
 const nextConfig: NextConfig = {
   output: 'standalone',
   typescript: {
@@ -134,9 +140,20 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // Keep all Prisma and Prisma-related dependencies external on the server to prevent bundler resolution hijacking
-  serverExternalPackages: ['@prisma/client', '.prisma/client', '@auth/prisma-adapter', 'sharp', 'better-sqlite3', 'adm-zip', 'original-fs'],
-  compress: true,
+  // Keep Prisma + heavy server-side dependencies external on the server: stop
+  // webpack from parsing/bundling giant graphs (jsdom alone is ~1000 files).
+  // They are copied into the standalone output at runtime instead. Only the
+  // server compilation is affected; client bundles still compile them normally.
+  serverExternalPackages: IS_CONSTRAINED
+    ? [
+        '@prisma/client', '.prisma/client', '@auth/prisma-adapter', 'sharp', 'better-sqlite3', 'adm-zip', 'original-fs',
+        'jsdom', 'mammoth', 'docx', 'pdf-lib', 'pdf-parse', 'nodemailer', 'bcryptjs', 'jsonwebtoken',
+        'jose', 'multer', 'archiver', 'xlsx', 'jszip', 'katex', 'mathml-to-latex', 'uuid',
+      ]
+    : ['@prisma/client', '.prisma/client', '@auth/prisma-adapter', 'sharp', 'better-sqlite3', 'adm-zip', 'original-fs'],
+  // Skip build-time asset gzipping on cPanel (streams hold whole assets in memory
+  // at the end of the build). LiteSpeed gzips responses at the edge anyway.
+  compress: !IS_CONSTRAINED,
   async redirects() {
     return [
       {
@@ -238,22 +255,38 @@ const nextConfig: NextConfig = {
   experimental: {
     cpus: 1,
     workerThreads: false,
+    // Keeps webpack's string-cache pooling small — real peak-memory win on
+    // tight cPanel containers (Next 16 supports this natively).
+    webpackMemoryOptimizations: IS_CONSTRAINED,
     serverActions: {
       bodySizeLimit: '100mb',
     },
     proxyClientMaxBodySize: '100mb',
-    optimizePackageImports: ['pdfjs-dist', 'framer-motion', 'lucide-react', 'recharts', '@statelyai/graph'],
+    // Trim the heavy barrels for constrained builds: analyzing every export of
+    // recharts/pdfjs-dist during the build inflates memory a lot. NOTE: Next
+    // applies its OWN built-in list when the key is missing, so an explicit
+    // empty array is required to truly disable it.
+    optimizePackageImports: IS_CONSTRAINED
+      ? []
+      : ['pdfjs-dist', 'framer-motion', 'lucide-react', 'recharts', '@statelyai/graph'],
   },
   turbopack: {},
   webpack: (config, { isServer, webpack }) => {
-    const isConstrained = process.env.CPANEL_BUILD === 'true' || Boolean(process.env.NODE_OPTIONS?.includes('max-old-space-size='));
-    config.parallelism = isConstrained ? 1 : 50;
+    config.parallelism = IS_CONSTRAINED ? 1 : 50;
+
+    // Skip JS/CSS minification on cPanel builds: SWC/Terser holding every
+    // chunk in memory simultaneously is the single biggest peak-memory spike.
+    // Also skip scope-hoisting (module concatenation) — same reason.
+    if (IS_CONSTRAINED && config.optimization) {
+      config.optimization.minimize = false;
+      config.optimization.concatenateModules = false;
+    }
 
     // Disable parallel worker processes during cPanel builds to prevent SIGKILL 137
     if (config.optimization && config.optimization.minimizer) {
       config.optimization.minimizer.forEach((minimizer: any) => {
         if (minimizer.options) {
-          minimizer.options.parallel = isConstrained ? false : true;
+          minimizer.options.parallel = IS_CONSTRAINED ? false : true;
         }
       });
     }
