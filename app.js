@@ -6,7 +6,9 @@ import fs from 'fs';
 import path from 'path';
 import http from 'http';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 
+const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -16,7 +18,7 @@ try { process.chdir(__dirname); } catch (e) {}
 process.env.NODE_ENV = process.env.NODE_ENV || 'production';
 process.env.HOSTNAME = '0.0.0.0';
 
-// Sync .htaccess and index.html to public_html on startup for LiteSpeed / cPanel
+// Sync .htaccess to public_html on startup for LiteSpeed / cPanel
 try {
   const cpanelUser = process.env.USER || (__dirname.match(/\/home\/([^\/]+)/) || [])[1];
   if (cpanelUser) {
@@ -33,7 +35,7 @@ try {
 const standaloneServer = path.resolve(__dirname, '.next', 'standalone', 'server.js');
 
 if (fs.existsSync(standaloneServer)) {
-  console.log(`[app.js] Top-level importing standalone server from ${standaloneServer}`);
+  console.log(`[app.js] Loading CommonJS standalone server from ${standaloneServer}`);
   
   // Copy static assets into standalone directory before loading
   try {
@@ -45,8 +47,8 @@ if (fs.existsSync(standaloneServer)) {
     if (fs.existsSync(srcStatic)) try { fs.cpSync(srcStatic, destStatic, { recursive: true, force: true }); } catch (e) {}
   } catch (e) {}
 
-  // Top-level await guarantees Phusion Passenger hooks server.listen() synchronously
-  await import('./.next/standalone/server.js');
+  // Synchronously require CJS standalone server so require(), __dirname, and server.listen() resolve 100% natively
+  require(standaloneServer);
 
 } else {
   console.log('[app.js] Standalone build missing. Starting Passenger fallback server...');
