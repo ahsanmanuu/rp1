@@ -454,23 +454,8 @@ function waitForPocketBase(url, retries = 10, delay = 3000) {
   });
 }
 
-// Start PocketBase first, then run setup, then launch Next.js
-startPocketBase().then(async () => {
-  const pbUrl = process.env.POCKETBASE_URL || 'http://127.0.0.1:8090';
-  await waitForPocketBase(pbUrl, 10, 3000);
-  try {
-    const { setupPocketBase } = await import('./scripts/setup-pb.js');
-    await setupPocketBase();
-  } catch (setupErr) {
-    log('PocketBase auto-setup failed (non-fatal)', setupErr);
-  }
-  log('Starting background sync worker...');
-  try {
-    const { startSyncWorker } = await import('./src/lib/sync/syncWorker.js');
-    startSyncWorker();
-  } catch (syncErr) {
-    log('Background sync worker failed to start (non-fatal)', syncErr);
-  }
+// Launch Next.js production server immediately (< 1s boot time)
+async function launchNextJsServer() {
   log('Starting Next.js server...');
   if (global.passengerServer) {
     try {
@@ -550,4 +535,34 @@ startPocketBase().then(async () => {
   } catch (fallbackErr) {
     log('Failed to start HTTP fallback server:', fallbackErr);
   }
+}
+
+// 1. Launch Next.js server immediately (< 1 second boot time)
+launchNextJsServer().catch((err) => {
+  log('Failed to launch Next.js server:', err);
 });
+
+// 2. Launch PocketBase and background services asynchronously in parallel
+(async () => {
+  try {
+    log('Initiating background PocketBase startup...');
+    await startPocketBase();
+    const pbUrl = process.env.POCKETBASE_URL || 'http://127.0.0.1:8090';
+    await waitForPocketBase(pbUrl, 5, 2000);
+    try {
+      const { setupPocketBase } = await import('./scripts/setup-pb.js');
+      await setupPocketBase();
+    } catch (setupErr) {
+      log('PocketBase auto-setup failed (non-fatal)', setupErr);
+    }
+    log('Starting background sync worker...');
+    try {
+      const { startSyncWorker } = await import('./src/lib/sync/syncWorker.js');
+      startSyncWorker();
+    } catch (syncErr) {
+      log('Background sync worker failed to start (non-fatal)', syncErr);
+    }
+  } catch (err) {
+    log('Background PocketBase initialization warning:', err);
+  }
+})();
