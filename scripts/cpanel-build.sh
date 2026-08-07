@@ -60,8 +60,10 @@ export DISABLE_ESLINT_PLUGIN=true
 export NEXT_TELEMETRY_DISABLED=1
 export UV_THREADPOOL_SIZE=1
 export NEXT_CPU_COUNT=1
+export NEXT_PRIVATE_WORKER_THREADS=0
+export NEXT_DISABLE_TURBOPACK=1
 export NODE_ENV=production
-NODE_OPTIONS="--max-old-space-size=512" node node_modules/next/dist/bin/next build
+NODE_OPTIONS="--max-old-space-size=768" node node_modules/next/dist/bin/next build --webpack
 BUILD_EXIT=$?
 echo "  Build finished at: $(date)"
 
