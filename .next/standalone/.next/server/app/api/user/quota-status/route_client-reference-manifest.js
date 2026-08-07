@@ -1,0 +1,1 @@
+globalThis.__RSC_MANIFEST=(globalThis.__RSC_MANIFEST||{});globalThis.__RSC_MANIFEST["/api/user/quota-status/route"]={"moduleLoading":{"prefix":"/_next/"},"ssrModuleMapping":{},"edgeSSRModuleMapping":{},"clientModules":{},"entryCSSFiles":{"C:\\Users\\MANUU\\OneDrive\\Desktop\\rp\\src\\app\\api\\user\\quota-status\\route":[]},"rscModuleMapping":{},"edgeRscModuleMapping":{}};

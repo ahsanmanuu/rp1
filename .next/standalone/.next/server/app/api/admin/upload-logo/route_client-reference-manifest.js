@@ -1,0 +1,1 @@
+globalThis.__RSC_MANIFEST=(globalThis.__RSC_MANIFEST||{});globalThis.__RSC_MANIFEST["/api/admin/upload-logo/route"]={"moduleLoading":{"prefix":"/_next/"},"ssrModuleMapping":{},"edgeSSRModuleMapping":{},"clientModules":{},"entryCSSFiles":{"C:\\Users\\MANUU\\OneDrive\\Desktop\\rp\\src\\app\\api\\admin\\upload-logo\\route":[]},"rscModuleMapping":{},"edgeRscModuleMapping":{}};

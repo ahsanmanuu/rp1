@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "functions": {
+    "/_middleware": {
+      "runtime": "nodejs",
+      "matchers": [
+        {
+          "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?\\/admin(?:\\/((?:[^\\/#\\?]+?)(?:\\/(?:[^\\/#\\?]+?))*))?(\\.json)?[\\/#\\?]?$",
+          "originalSource": "/admin/:path*"
+        },
+        {
+          "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?\\/admin-access(\\.json)?[\\/#\\?]?$",
+          "originalSource": "/admin-access"
+        },
+        {
+          "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?\\/api(?:\\/((?:[^\\/#\\?]+?)(?:\\/(?:[^\\/#\\?]+?))*))?(\\.json)?[\\/#\\?]?$",
+          "originalSource": "/api/:path*"
+        },
+        {
+          "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?\\/pb(?:\\/((?:[^\\/#\\?]+?)(?:\\/(?:[^\\/#\\?]+?))*))?(\\.json)?[\\/#\\?]?$",
+          "originalSource": "/pb/:path*"
+        },
+        {
+          "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?\\/pb(\\.json)?[\\/#\\?]?$",
+          "originalSource": "/pb"
+        }
+      ]
+    },
+    "/api/admin/backup": {
+      "maxDuration": 300
+    },
+    "/api/admin/backup/restore": {
+      "maxDuration": 600
+    },
+    "/api/compile/doc2latex": {
+      "maxDuration": 120
+    },
+    "/api/compile/latexify": {
+      "maxDuration": 120
+    },
+    "/api/compile/migrator": {
+      "maxDuration": 120
+    },
+    "/api/diagrams/stream": {},
+    "/api/doc2latex-agent": {
+      "maxDuration": 120
+    },
+    "/api/latex-studio/compile": {
+      "maxDuration": 120
+    },
+    "/api/projects/complete": {},
+    "/api/projects/limit-status": {},
+    "/api/upload": {
+      "maxDuration": 300
+    }
+  }
+}

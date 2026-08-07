@@ -459,6 +459,18 @@ startPocketBase().then(async () => {
   if (fs.existsSync(standaloneServer)) {
     log(`Launching Next.js standalone server from ${standaloneServer}...`);
     try {
+      const srcPublic = path.resolve(process.cwd(), 'public');
+      const destPublic = path.resolve(process.cwd(), '.next', 'standalone', 'public');
+      const srcStatic = path.resolve(process.cwd(), '.next', 'static');
+      const destStatic = path.resolve(process.cwd(), '.next', 'standalone', '.next', 'static');
+
+      if (fs.existsSync(srcPublic)) {
+        try { fs.cpSync(srcPublic, destPublic, { recursive: true, force: true }); } catch (e) {}
+      }
+      if (fs.existsSync(srcStatic)) {
+        try { fs.cpSync(srcStatic, destStatic, { recursive: true, force: true }); } catch (e) {}
+      }
+
       await import('./.next/standalone/server.js');
       return;
     } catch (importErr) {

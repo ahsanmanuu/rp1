@@ -14,7 +14,12 @@
 /coverage
 
 # next.js
-/.next/
+/.next/*
+!.next/standalone
+!.next/static
+.next/standalone/public/uploads/
+.next/standalone/pb_data/
+.next/standalone/tmp/
 /out/
 
 # production
