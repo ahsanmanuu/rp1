@@ -206,7 +206,7 @@ export async function GET(req: NextRequest) {
       let nextIp = geo.ipAddress;
       if (!nextIp || nextIp === "127.0.0.1" || nextIp === "::1" || nextIp === "localhost") {
         const forwarded = req.headers.get("x-forwarded-for");
-        nextIp = forwarded ? forwarded.split(",")[0].trim() : (sessionRecord.ipAddress || "127.0.0.1");
+        nextIp = forwarded ? forwarded.split(",")[0].trim() : (sessionRecord?.ipAddress || "127.0.0.1");
       }
       let nextLoc = geo.location;
       if (!nextLoc || nextLoc === "Unknown Location") {
@@ -214,24 +214,25 @@ export async function GET(req: NextRequest) {
       }
       const userAgent = req.headers.get("user-agent") || "Unknown";
 
-      // Always update session in DB — and ROLL the expiry window forward so a
-      // long-running operation (e.g. a big DOCX upload + AI analysis that takes
-      // 10-30 minutes) can never expire the session mid-flight. The client polls
-      // this endpoint every 30s, so this is effectively a sliding 7-day session.
-      prisma.userSession.update({
-        where: { id: sessionRecord.id },
-        data: {
-          ipAddress: nextIp,
-          location: nextLoc,
-          lastActiveAt: new Date(),
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        }
-      }).catch(() => null);
+      // Always update session in DB if sessionRecord exists
+      if (sessionRecord?.id) {
+        prisma.userSession.update({
+          where: { id: sessionRecord.id },
+          data: {
+            ipAddress: nextIp,
+            location: nextLoc,
+            lastActiveAt: new Date(),
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          }
+        }).catch(() => null);
+      }
 
       // Always log activity
       const { logUserActivity } = await import("@/lib/security");
-      const uid = (sessionRecord!.userId ?? sessionRecord!.id ?? 'unknown') as string;
-      logUserActivity(uid, nextIp || '127.0.0.1', nextLoc || 'Unknown', userAgent).catch(() => {});
+      const uid = user.id || sessionRecord?.userId || sessionRecord?.id || 'unknown';
+      if (uid !== 'unknown') {
+        logUserActivity(uid, nextIp || '127.0.0.1', nextLoc || 'Unknown', userAgent).catch(() => {});
+      }
 
       // Update PocketBase user_sessions if exists
       import("@/lib/pb").then(({ pbAdmin }) =>

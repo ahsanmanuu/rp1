@@ -21,8 +21,8 @@ export interface HomeData {
 
 const FALLBACK_DATA: HomeData = {
   banners: [
-    { title: 'Academic Publishing, Reimagined', subtitle: 'The modern, intelligent platform for the entire research writing lifecycle.', imageUrl: '', linkUrl: '/latex-studio', sortOrder: 1 },
-    { title: 'AI-Powered Peer Review', subtitle: 'Get instant, scholarly feedback on clarity, argumentation, and methodology.', imageUrl: '', linkUrl: '/reviewer', sortOrder: 2 },
+    { id: 'b1', title: 'Academic Publishing, Reimagined', subtitle: 'The modern, intelligent platform for the entire research writing lifecycle.', imageUrl: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=1200&q=80', linkUrl: '/latex-studio', sortOrder: 1 },
+    { id: 'b2', title: 'AI-Powered Peer Review & Manuscript Intelligence', subtitle: 'Get instant, scholarly feedback on clarity, argumentation, and methodology.', imageUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80', linkUrl: '/reviewer/studio', sortOrder: 2 },
   ],
   testimonials: [
     { name: 'Dr. Elena Rostova', role: 'Postdoctoral Fellow, MIT', content: 'Latexify\'s template migrator saved me weeks of reformatting when my paper was transferred between journals.', rating: 5, sortOrder: 1 },
@@ -138,7 +138,7 @@ async function fetchAllCollections(): Promise<HomeData> {
   try {
     const res = await fetch('/api/content/homepage', {
       cache: 'no-store',
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
@@ -149,7 +149,9 @@ async function fetchAllCollections(): Promise<HomeData> {
     const msg = err?.name === 'TimeoutError' || err?.name === 'AbortError'
       ? 'Request timed out'
       : (err?.message || String(err));
-    console.warn('[useHomeRealtime] Fetch failed:', msg);
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[useHomeRealtime] Fetch failed:', msg);
+    }
   }
   return mergeWithFallback({ ...INITIAL_DATA });
 }

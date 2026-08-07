@@ -96,9 +96,13 @@ export function PocketBaseProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     fetchSession();
-    const interval = setInterval(fetchSession, 15000);
-    return () => clearInterval(interval);
   }, [fetchSession]);
+
+  useEffect(() => {
+    if (session.status !== "authenticated") return;
+    const interval = setInterval(fetchSession, 30000);
+    return () => clearInterval(interval);
+  }, [session.status, fetchSession]);
 
   const update = useCallback(async (data?: Partial<PbUser>) => {
     if (data) {

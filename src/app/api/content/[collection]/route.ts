@@ -39,7 +39,10 @@ export async function GET(
 
     let records: any[] = [];
     try {
-      const pb = await pbAdmin();
+      const pbPromise = pbAdmin();
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('PocketBase timeout')), 2500));
+      const pb = await Promise.race([pbPromise, timeoutPromise]) as any;
+
       let queryFilter = filter;
       if (activeOnly) {
         queryFilter = queryFilter ? `(${queryFilter}) && isActive = true` : 'isActive = true';
@@ -48,7 +51,12 @@ export async function GET(
       const queryParams: Record<string, any> = { sort };
       if (queryFilter) queryParams.filter = queryFilter;
 
-      records = await pb.collection(collection).getFullList(queryParams);
+      try {
+        records = await pb.collection(collection).getFullList(queryParams);
+      } catch {
+        delete queryParams.sort;
+        records = await pb.collection(collection).getFullList(queryParams);
+      }
     } catch {
       // Fallback to pre-exported homepage-content.json
       try {

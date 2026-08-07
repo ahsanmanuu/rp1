@@ -43,10 +43,14 @@ export default function RegisterPage() {
         body: JSON.stringify({ name, email, password }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        throw new Error(data.error || "Something went wrong");
+        const serverMsg = data?.error || data?.message || (typeof data === 'string' ? data : null);
+        const fallbackMsg = res.status === 400 
+          ? "A user with this email or scholar name is already registered."
+          : "Registration failed. Please check your details and try again.";
+        throw new Error(serverMsg || fallbackMsg);
       }
 
       // Save terms acceptance
@@ -302,11 +306,11 @@ export default function RegisterPage() {
                 <input
                   type="checkbox"
                   checked={termsScrolledToBottom}
-                  onChange={() => {}}
-                  className="w-4 h-4 rounded"
+                  onChange={(e) => setTermsScrolledToBottom(e.target.checked)}
+                  className="w-4 h-4 rounded cursor-pointer"
                   style={{ accentColor: '#00685f' }}
                 />
-                <span className="text-xs" style={{ color: '#475569' }}>I have read and understood the Terms & Conditions</span>
+                <span className="text-xs select-none font-medium" style={{ color: '#475569' }}>I have read and understood the Terms & Conditions</span>
               </label>
             </div>
 

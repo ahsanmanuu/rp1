@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -87,7 +88,9 @@ export async function GET() {
     const { pbAdmin } = await import('@/lib/pb');
     let pb;
     try {
-      pb = await pbAdmin();
+      const pbPromise = pbAdmin();
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('PocketBase timeout')), 2500));
+      pb = await Promise.race([pbPromise, timeoutPromise]) as any;
     } catch (pbErr: any) {
       console.warn('[PB_ERROR] Falling back to static data:', pbErr?.message || pbErr);
       const fallbackData = getJsonFallbackData();

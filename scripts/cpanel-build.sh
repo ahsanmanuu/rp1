@@ -10,10 +10,13 @@ APP_DIR="/home/${USER_NAME}/latexify"
 PUBLIC_HTML="/home/${USER_NAME}/public_html"
 
 # ── Find Node.js from cPanel virtual environment ──
-NODEVENV="/home/${USER_NAME}/nodevenv/latexify/22/bin"
-if [ -d "$NODEVENV" ]; then
-  export PATH="${NODEVENV}:${PATH}"
-fi
+for npath in "/home/${USER_NAME}/nodevenv/latexify"/*/bin; do
+  if [ -d "$npath" ]; then
+    export PATH="${npath}:${PATH}"
+    echo "[cpanel-build] Found cPanel Node environment: ${npath}"
+    break
+  fi
+done
 
 # Add local node_modules/.bin to PATH (replaces npx)
 export PATH="${APP_DIR}/node_modules/.bin:${PATH}"
@@ -55,8 +58,10 @@ echo "  Build started at: $(date)"
 export CPANEL_BUILD=true
 export DISABLE_ESLINT_PLUGIN=true
 export NEXT_TELEMETRY_DISABLED=1
-export UV_THREADPOOL_SIZE=4
-NODE_OPTIONS="--max-old-space-size=1536" node node_modules/next/dist/bin/next build --webpack
+export UV_THREADPOOL_SIZE=1
+export NEXT_CPU_COUNT=1
+export NODE_ENV=production
+NODE_OPTIONS="--max-old-space-size=512 --gc-interval=100" node node_modules/next/dist/bin/next build
 BUILD_EXIT=$?
 echo "  Build finished at: $(date)"
 

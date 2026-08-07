@@ -1,11 +1,10 @@
 import type { NextConfig } from "next";
 import path from "path";
 
-// Increase Node.js threadpool size and V8 heap memory allocation for fast upload buffer processing
-if (typeof process !== 'undefined') {
-  process.env.UV_THREADPOOL_SIZE = "64";
-  if (!process.env.NODE_OPTIONS?.includes('--max-old-space-size')) {
-    process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS || ''} --max-old-space-size=4096`.trim();
+// Configure threadpool size safely without overloading low-memory environments (like cPanel)
+if (typeof process !== 'undefined' && process.env.CPANEL_BUILD !== 'true') {
+  if (!process.env.UV_THREADPOOL_SIZE) {
+    process.env.UV_THREADPOOL_SIZE = "16";
   }
 }
 

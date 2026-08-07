@@ -161,7 +161,11 @@ export default function Home() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showHowItWorksModal, setShowHowItWorksModal] = useState(false);
 
-  const banners = homeData.banners.filter((b: any) => b.imageUrl && b.imageUrl !== 'null');
+  const rawBanners = homeData.banners.filter((b: any) => b.imageUrl && b.imageUrl !== 'null');
+  const banners = rawBanners.length > 0 ? rawBanners : [
+    { id: 'b1', title: 'Academic Publishing, Reimagined', subtitle: 'The modern, intelligent platform for the entire research writing lifecycle.', imageUrl: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=1200&q=80', linkUrl: '/latex-studio', sortOrder: 1 },
+    { id: 'b2', title: 'AI-Powered Peer Review & Manuscript Intelligence', subtitle: 'Get instant, scholarly feedback on clarity, argumentation, and methodology.', imageUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80', linkUrl: '/reviewer/studio', sortOrder: 2 },
+  ];
   const testimonials = homeData.testimonials;
   const galleryItems = homeData.galleryItems.filter((g: any) => g.imageUrl && g.imageUrl !== 'null');
   const institutionLogos = homeData.institutionLogos;

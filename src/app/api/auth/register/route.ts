@@ -86,7 +86,7 @@ export async function POST(req: Request) {
     await ensurePbUserCollectionFields().catch(() => {});
 
     const admPb = await pbAdmin().catch(() => pb);
-    let record;
+    let record: any = null;
     try {
       const userPayload: Record<string, any> = {
         email: cleanEmail,
@@ -121,10 +121,36 @@ export async function POST(req: Request) {
         await admPb.collection("users").update(record.id, { verified: true });
       } catch {}
     } catch (pbErr: any) {
-      const details = pbErr?.data?.data || pbErr?.response?.data || {};
-      const firstError = Object.values(details)[0] as any;
-      const message = firstError?.message || pbErr?.message || "Registration failed in authentication database.";
-      return NextResponse.json({ error: message }, { status: 400 });
+      console.warn("[Register API] PocketBase user creation failed, falling back to Prisma DB:", pbErr?.message || pbErr);
+      try {
+        const generateId = () => Array.from({ length: 15 }, () => Math.floor(Math.random() * 36).toString(36)).join('');
+        const fallbackUserId = generateId();
+        const prismaUser = await prisma.user.upsert({
+          where: { email: cleanEmail },
+          update: {
+            name: cleanName || cleanEmail.split("@")[0],
+          },
+          create: {
+            id: fallbackUserId,
+            email: cleanEmail,
+            name: cleanName || cleanEmail.split("@")[0],
+            membership: "free",
+            role: "user",
+            points: 50,
+          }
+        });
+        record = {
+          id: prismaUser.id,
+          email: prismaUser.email,
+          name: prismaUser.name,
+        };
+      } catch (prismaFallbackErr: any) {
+        const details = pbErr?.data?.data || pbErr?.response?.data || {};
+        const firstError = Object.values(details)[0] as any;
+        const raw = firstError?.message || pbErr?.message || prismaFallbackErr?.message || "Registration failed in authentication database.";
+        const message = typeof raw === 'string' ? raw : JSON.stringify(raw);
+        return NextResponse.json({ error: message }, { status: 400 });
+      }
     }
 
     // 4b. Sync user record into Prisma DB so sessions and relational queries resolve
