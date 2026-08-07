@@ -6,6 +6,8 @@ import * as path from 'path';
 export const dynamic = 'force-dynamic';
 
 const ALLOWED_COLLECTIONS = new Set([
+  'banners',
+  'testimonials',
   'home_content',
   'how_it_works',
   'gallery_items',
@@ -30,26 +32,47 @@ export async function GET(
       return NextResponse.json({ success: false, error: `Invalid collection: ${collection}` }, { status: 400 });
     }
 
-    const pb = await pbAdmin();
     const { searchParams } = new URL(_req.url);
     const filter = searchParams.get('filter') || '';
     const sort = searchParams.get('sort') || 'sortOrder';
     const activeOnly = searchParams.get('activeOnly') === 'true';
 
-    let queryFilter = filter;
-    if (activeOnly) {
-      queryFilter = queryFilter ? `(${queryFilter}) && isActive = true` : 'isActive = true';
+    let records: any[] = [];
+    try {
+      const pb = await pbAdmin();
+      let queryFilter = filter;
+      if (activeOnly) {
+        queryFilter = queryFilter ? `(${queryFilter}) && isActive = true` : 'isActive = true';
+      }
+
+      const queryParams: Record<string, any> = { sort };
+      if (queryFilter) queryParams.filter = queryFilter;
+
+      records = await pb.collection(collection).getFullList(queryParams);
+    } catch {
+      // Fallback to pre-exported homepage-content.json
+      try {
+        const jsonPath = path.resolve(process.cwd(), 'src/assets/homepage-content.json');
+        if (fs.existsSync(jsonPath)) {
+          const raw = fs.readFileSync(jsonPath, 'utf8');
+          const json = JSON.parse(raw);
+          records = json[collection] || json[camelCase(collection)] || [];
+          if (activeOnly) {
+            records = records.filter((r: any) => r.isActive !== false);
+          }
+        }
+      } catch {}
     }
 
-    const queryParams: Record<string, any> = { sort };
-    if (queryFilter) queryParams.filter = queryFilter;
-
-    const records = await pb.collection(collection).getFullList(queryParams);
     const cleaned = rewriteUrls(records);
     return NextResponse.json({ success: true, data: cleaned });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
+}
+
+function camelCase(str: string): string {
+  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }
 
 function rewriteUrls(obj: any): any {

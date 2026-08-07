@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export const dynamic = 'force-dynamic';
 
@@ -6,31 +7,39 @@ let cache: { data: any; expiry: number } | null = null;
 let inflight: Promise<NextResponse> | null = null;
 const CACHE_TTL = 30_000;
 
-// Fallback data when PB is unreachable
-const FALLBACK_DATA: any = {
-  banners: [],
-  testimonials: [
-    { name: 'Dr. Elena Rostova', role: 'Postdoctoral Fellow, MIT', content: "Latexify's template migrator saved me weeks of reformatting.", rating: 5 },
-    { name: 'James Chen', role: 'PhD Candidate, Stanford', content: "The AI Peer Reviewer caught logical gaps before submission.", rating: 5 },
-  ],
-  howItWorks: [],
-  galleryItems: [],
-  institutionLogos: [],
-  features: [],
-  benefits: [],
-  productDetails: [],
-  footerLinks: [],
-  tasarStats: [],
-  platformStats: [
-    { key: 'totalResearchers', value: 50000 },
-    { key: 'pagesCompiled', value: 1200000 },
-    { key: 'journalTemplates', value: 55 },
-    { key: 'uptime', value: 99.9 },
-    { key: 'scholarsActive', value: 18450 },
-  ],
-  videos: [],
-  floatingBanners: [],
-};
+function getJsonFallbackData(): any {
+  try {
+    const jsonPath = path.resolve(process.cwd(), 'src/assets/homepage-content.json');
+    if (fs.existsSync(jsonPath)) {
+      const raw = fs.readFileSync(jsonPath, 'utf8');
+      return JSON.parse(raw);
+    }
+  } catch {}
+  return {
+    banners: [],
+    testimonials: [
+      { name: 'Dr. Elena Rostova', role: 'Postdoctoral Fellow, MIT', content: "Latexify's template migrator saved me weeks of reformatting.", rating: 5 },
+      { name: 'James Chen', role: 'PhD Candidate, Stanford', content: "The AI Peer Reviewer caught logical gaps before submission.", rating: 5 },
+    ],
+    howItWorks: [],
+    galleryItems: [],
+    institutionLogos: [],
+    features: [],
+    benefits: [],
+    productDetails: [],
+    footerLinks: [],
+    tasarStats: [],
+    platformStats: [
+      { key: 'totalResearchers', value: 50000 },
+      { key: 'pagesCompiled', value: 1200000 },
+      { key: 'journalTemplates', value: 55 },
+      { key: 'uptime', value: 99.9 },
+      { key: 'scholarsActive', value: 18450 },
+    ],
+    videos: [],
+    floatingBanners: [],
+  };
+}
 
 const COLLECTIONS: { key: string; collection: string; filter?: string; sort: string }[] = [
   { key: 'banners', collection: 'banners', filter: 'isActive = true', sort: 'sortOrder' },
@@ -81,8 +90,9 @@ export async function GET() {
       pb = await pbAdmin();
     } catch (pbErr: any) {
       console.warn('[PB_ERROR] Falling back to static data:', pbErr?.message || pbErr);
-      const fallbackResponse = NextResponse.json({ success: true, data: FALLBACK_DATA });
-      cache = { data: { success: true, data: FALLBACK_DATA }, expiry: Date.now() + CACHE_TTL * 5 }; // Longer cache for fallback
+      const fallbackData = getJsonFallbackData();
+      const fallbackResponse = NextResponse.json({ success: true, data: fallbackData });
+      cache = { data: { success: true, data: fallbackData }, expiry: Date.now() + CACHE_TTL * 5 }; // Longer cache for fallback
       return fallbackResponse;
     }
     
