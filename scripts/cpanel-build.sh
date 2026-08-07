@@ -25,6 +25,10 @@ echo "============================================"
 
 cd "$APP_DIR" || exit 1
 
+mkdir -p tmp
+touch tmp/building.lock
+trap 'rm -f tmp/building.lock' EXIT
+
 # Step 1: Check node_modules and essential build tools
 echo ""
 if [ ! -d "node_modules/@tailwindcss/postcss" ]; then

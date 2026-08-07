@@ -4,9 +4,8 @@
 // This file is ONLY used on cPanel (Application Startup File = app.js).
 // For localhost development, use: npm run dev  (or npm start → start.js)
 //
-// Design: Zero blocking operations at startup. Detects pre-built standalone
-// server and launches it instantly. If missing, automatically spawns
-// background build so the user NEVER has to run manual terminal commands.
+// Design: Launches pre-built Next.js standalone server immediately.
+// If standalone server is missing, triggers automated background build once.
 // =============================================================================
 
 const http = require('http');
@@ -62,7 +61,7 @@ try {
 const port = process.env.PORT || 3000;
 const standaloneServer = path.resolve(__dirname, '.next', 'standalone', 'server.js');
 
-// ── Strategy 1: Launch pre-built Next.js standalone server ──
+// ── Strategy 1: Launch Next.js standalone server immediately if built ──
 if (fs.existsSync(standaloneServer)) {
   console.log(`[app.js] Launching Next.js standalone server from ${standaloneServer}`);
 
@@ -76,17 +75,21 @@ if (fs.existsSync(standaloneServer)) {
     if (fs.existsSync(srcStatic)) try { fs.cpSync(srcStatic, destStatic, { recursive: true, force: true }); } catch (e) {}
   } catch (e) {}
 
-  // Import standalone server (ESM)
+  // Directly import standalone server so Next.js binds port without port conflict
   import('./.next/standalone/server.js').catch((err) => {
-    console.error('[app.js] Failed to start standalone server:', err.message);
-    startFallbackServer('Standalone server failed to start. Retrying background build...');
-    triggerBackgroundBuild();
+    console.error('[app.js] Error starting standalone server:', err);
   });
 
 } else {
   // ── Strategy 2: Automatically trigger background build & serve progress page ──
-  console.log('[app.js] Standalone build missing. Triggering automated background build...');
-  triggerBackgroundBuild();
+  const lockFile = path.resolve(__dirname, 'tmp', 'building.lock');
+  if (!fs.existsSync(lockFile)) {
+    console.log('[app.js] Standalone build missing. Spawning automated background build...');
+    triggerBackgroundBuild();
+  } else {
+    console.log('[app.js] Standalone build in progress (lockfile present)...');
+  }
+
   startFallbackServer('Automated production build is in progress. Please wait 2-3 minutes while assets compile.');
 }
 
