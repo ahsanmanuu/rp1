@@ -52,10 +52,35 @@ function findNpmBinary() {
   return 'npm';
 }
 
+// Sync .htaccess and index.html to public_html on startup for LiteSpeed / cPanel
+function syncCpanelPublicHtml() {
+  try {
+    const cpanelUser = process.env.USER || (process.cwd().match(/\/home\/([^\/]+)/) || [])[1];
+    if (!cpanelUser) return;
+    const publicHtml = `/home/${cpanelUser}/public_html`;
+    if (!fs.existsSync(publicHtml)) return;
+
+    const htaccessSrc = path.resolve(process.cwd(), '.htaccess');
+    const indexSrc = path.resolve(process.cwd(), 'index.html');
+
+    if (fs.existsSync(htaccessSrc)) {
+      fs.copyFileSync(htaccessSrc, path.join(publicHtml, '.htaccess'));
+      log('[cPanel Sync] Synced .htaccess to public_html');
+    }
+    if (fs.existsSync(indexSrc)) {
+      fs.copyFileSync(indexSrc, path.join(publicHtml, 'index.html'));
+      log('[cPanel Sync] Synced index.html to public_html');
+    }
+  } catch (e) {
+    log('[cPanel Sync Warning] Non-fatal sync error:', e);
+  }
+}
+
 // ============================================================
 // Auto-verify and build dependencies / Next.js production bundle if missing
 // ============================================================
 function ensureBuildAndDependencies() {
+  syncCpanelPublicHtml();
   const nodeModulesPath = path.resolve(process.cwd(), 'node_modules');
   const nextBuildPath = path.resolve(process.cwd(), '.next');
   const standaloneServer = path.resolve(process.cwd(), '.next', 'standalone', 'server.js');
