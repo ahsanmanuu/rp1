@@ -105,6 +105,11 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
       const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const raw = await res.json();
+      if (raw.authenticated === false) {
+        setStatus(null);
+        setLoading(false);
+        return;
+      }
       const rawDailyCap  = raw.dailyCap  ?? raw.limit  ?? 0;
       const rawUsedToday = raw.usedToday ?? raw.used   ?? 0;
       const quotaResetAt = raw.quotaResetAt ?? (() => {

@@ -135,11 +135,12 @@ export function SessionProvider({ children, refetchInterval = 30, refetchOnWindo
     update();
   }, [update]);
 
-  // Heartbeat poll every refetchInterval seconds
+  // Heartbeat poll every refetchInterval seconds ONLY when authenticated
   useEffect(() => {
+    if (status !== "authenticated") return;
     const interval = setInterval(update, refetchInterval * 1000);
     return () => clearInterval(interval);
-  }, [refetchInterval, update]);
+  }, [refetchInterval, status, update]);
 
   // Re-fetch on window focus
   useEffect(() => {
