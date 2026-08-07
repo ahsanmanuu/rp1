@@ -283,3 +283,5 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: ['/admin/:path*', '/admin-access', '/api/:path*', '/pb/:path*', '/pb'],
 };
+
+export default proxy;
