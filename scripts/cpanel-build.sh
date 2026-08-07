@@ -84,7 +84,13 @@ if [ -d ".next/static" ] && [ -d "$STANDALONE_DIR" ]; then
 fi
 
 # Sync .htaccess to public_html and remove static index.html so LiteSpeed routes to Node.js
-cp .htaccess "${PUBLIC_HTML}/.htaccess" 2>/dev/null || true
+if [ -f .htaccess ]; then
+  cp .htaccess "${PUBLIC_HTML}/.htaccess" 2>/dev/null || true
+  # Ensure CloudLinux Passenger block has correct dynamic username
+  if ! grep -q "CLOUDLINUX PASSED AGENT CONFIGURATION" "${PUBLIC_HTML}/.htaccess"; then
+    sed -i "1i# DO NOT REMOVE. CLOUDLINUX PASSED AGENT CONFIGURATION BEGIN\nPassengerAppRoot \"/home/${USER_NAME}/latexify\"\nPassengerBaseURI \"/\"\nPassengerNodejs \"/home/${USER_NAME}/nodevenv/latexify/22/bin/node\"\nPassengerAppType node\nPassengerStartupFile app.js\n# DO NOT REMOVE. CLOUDLINUX PASSED AGENT CONFIGURATION END\n" "${PUBLIC_HTML}/.htaccess"
+  fi
+fi
 rm -f "${PUBLIC_HTML}/index.html" 2>/dev/null || true
 
 # Restart app

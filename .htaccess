@@ -1,3 +1,11 @@
+# DO NOT REMOVE. CLOUDLINUX PASSED AGENT CONFIGURATION BEGIN
+PassengerAppRoot "/home/latexify/latexify"
+PassengerBaseURI "/"
+PassengerNodejs "/home/latexify/nodevenv/latexify/22/bin/node"
+PassengerAppType node
+PassengerStartupFile app.js
+# DO NOT REMOVE. CLOUDLINUX PASSED AGENT CONFIGURATION END
+
 # LiteSpeed & Apache Configuration for Node.js Application
 DirectoryIndex app.js app.cjs index.php
 
@@ -17,18 +25,13 @@ DirectoryIndex app.js app.cjs index.php
     </IfModule>
 </FilesMatch>
 
-# Forward SSL protocol headers & handle reverse proxy fallback
+# Forward SSL protocol headers
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
     # Set X-Forwarded-Proto header for HTTPS connections
     RewriteCond %{HTTPS} on
     RewriteRule .* - [E=HTTP_X_FORWARDED_PROTO:https]
-
-    # Reverse Proxy to local Node.js application port (Port 3000)
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteRule ^(.*)$ http://127.0.0.1:3000/$1 [P,L]
 </IfModule>
 
 
