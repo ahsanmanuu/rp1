@@ -15,7 +15,9 @@ if [ -d "$NODEVENV" ]; then
   export PATH="${NODEVENV}:${PATH}"
 fi
 
-# Verify node/npm are available
+# Add local node_modules/.bin to PATH (replaces npx)
+export PATH="${APP_DIR}/node_modules/.bin:${PATH}"
+
 echo "============================================"
 echo "[cpanel-build] Node: $(node -v 2>&1)"
 echo "[cpanel-build] npm:  $(npm -v 2>&1)"
@@ -35,7 +37,7 @@ fi
 # Step 2: Generate Prisma client
 echo ""
 echo "[Step 2/5] Generating Prisma client..."
-npx prisma generate || echo "[WARNING] Prisma generate had issues"
+node node_modules/prisma/build/index.js generate || echo "[WARNING] Prisma generate had issues"
 
 # Step 3: Fix Prisma exports
 echo ""
@@ -46,7 +48,7 @@ node scripts/fix-prisma-exports.js || echo "[WARNING] fix-prisma-exports had iss
 echo ""
 echo "[Step 4/5] Building Next.js (this may take 3-5 minutes)..."
 echo "  Build started at: $(date)"
-NODE_OPTIONS="--max-old-space-size=1024" npx next build --webpack
+NODE_OPTIONS="--max-old-space-size=1024" node node_modules/next/dist/bin/next build --webpack
 BUILD_EXIT=$?
 echo "  Build finished at: $(date)"
 
