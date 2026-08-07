@@ -1,5 +1,5 @@
 // Entry point for cPanel / Phusion Passenger hosting (Domainz.in)
-// Pure CommonJS entrypoint for Phusion Passenger CJS loader compatibility
+// CommonJS wrapper for Phusion Passenger compatibility
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
@@ -10,9 +10,24 @@ try {
   console.error('Failed to chdir in app.cjs:', e);
 }
 
+// Automatically sync .htaccess and index.html to public_html on app startup
+try {
+  const cpanelUser = process.env.USER || (__dirname.match(/\/home\/([^\/]+)/) || [])[1];
+  if (cpanelUser) {
+    const publicHtml = `/home/${cpanelUser}/public_html`;
+    if (fs.existsSync(publicHtml)) {
+      const htaccessSrc = path.resolve(__dirname, '.htaccess');
+      const indexSrc = path.resolve(__dirname, 'index.html');
+      if (fs.existsSync(htaccessSrc)) fs.copyFileSync(htaccessSrc, path.join(publicHtml, '.htaccess'));
+      if (fs.existsSync(indexSrc)) fs.copyFileSync(indexSrc, path.join(publicHtml, 'index.html'));
+    }
+  }
+} catch (e) {
+  console.warn('[app.cjs Sync Warning]', e);
+}
+
 const port = process.env.PORT || 3000;
 
-// Create temporary HTTP server so Phusion Passenger registers an active listener immediately
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(`<!DOCTYPE html>
@@ -46,7 +61,6 @@ server.listen(port, '0.0.0.0', () => {
   console.log(`[Passenger] Server listening on port ${port}`);
 });
 
-// Asynchronously launch start.js ES module runner
 import('./start.js').catch((err) => {
   console.error('[cPanel Startup Error]', err);
 });
