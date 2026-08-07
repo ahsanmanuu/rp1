@@ -54,6 +54,8 @@ echo "[Step 4/5] Building Next.js (this may take 3-5 minutes)..."
 echo "  Build started at: $(date)"
 export CPANEL_BUILD=true
 export DISABLE_ESLINT_PLUGIN=true
+export NEXT_TELEMETRY_DISABLED=1
+export UV_THREADPOOL_SIZE=4
 NODE_OPTIONS="--max-old-space-size=1536" node node_modules/next/dist/bin/next build --webpack
 BUILD_EXIT=$?
 echo "  Build finished at: $(date)"
