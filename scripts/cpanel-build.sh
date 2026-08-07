@@ -4,9 +4,6 @@
 #
 # Run this via cPanel Terminal ONCE after pulling code:
 #   cd ~/latexify && bash scripts/cpanel-build.sh
-#
-# This builds the Next.js production bundle on the server with memory limits
-# suitable for shared hosting (1GB max heap).
 # =============================================================================
 
 set -e
@@ -15,11 +12,25 @@ USER_NAME=$(whoami)
 APP_DIR="/home/${USER_NAME}/latexify"
 PUBLIC_HTML="/home/${USER_NAME}/public_html"
 
+# ── Find Node.js from cPanel virtual environment ──
+NODEVENV="/home/${USER_NAME}/nodevenv/latexify/22/bin"
+if [ -d "$NODEVENV" ]; then
+  export PATH="${NODEVENV}:${PATH}"
+  echo "[cpanel-build] Using cPanel Node.js virtualenv: ${NODEVENV}"
+else
+  # Try to find any Node.js virtualenv
+  FOUND_ENV=$(find /home/${USER_NAME}/nodevenv -name "node" -type f 2>/dev/null | head -1)
+  if [ -n "$FOUND_ENV" ]; then
+    export PATH="$(dirname $FOUND_ENV):${PATH}"
+    echo "[cpanel-build] Using found Node.js: $(dirname $FOUND_ENV)"
+  fi
+fi
+
 echo "============================================"
 echo "[cpanel-build] Starting Latexify build"
 echo "[cpanel-build] App directory: ${APP_DIR}"
-echo "[cpanel-build] Node: $(node -v)"
-echo "[cpanel-build] npm: $(npm -v)"
+echo "[cpanel-build] Node: $(which node) — $(node -v)"
+echo "[cpanel-build] npm: $(which npm) — $(npm -v)"
 echo "============================================"
 
 cd "$APP_DIR"
@@ -51,7 +62,6 @@ echo "[Step 4/5] Building Next.js production bundle (this may take 3-5 minutes).
 NODE_OPTIONS="--max-old-space-size=1024" npx next build --webpack 2>&1 || {
   echo ""
   echo "[ERROR] Next.js build failed!"
-  echo "This usually means the server doesn't have enough RAM."
   echo "Try running with even lower memory:"
   echo "  NODE_OPTIONS='--max-old-space-size=512' npx next build --webpack"
   echo ""
