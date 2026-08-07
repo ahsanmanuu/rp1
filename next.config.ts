@@ -246,15 +246,14 @@ const nextConfig: NextConfig = {
   },
   turbopack: {},
   webpack: (config, { isServer, webpack }) => {
-    // Limit parallelism on cPanel/constrained memory environments to prevent V8 Heap OOM crashes
     const isConstrained = process.env.CPANEL_BUILD === 'true' || Boolean(process.env.NODE_OPTIONS?.includes('max-old-space-size='));
-    config.parallelism = isConstrained ? 2 : 50;
+    config.parallelism = isConstrained ? 1 : 50;
 
-    // Parallelize asset minimization using multiple threads
+    // Disable parallel worker processes during cPanel builds to prevent SIGKILL 137
     if (config.optimization && config.optimization.minimizer) {
       config.optimization.minimizer.forEach((minimizer: any) => {
         if (minimizer.options) {
-          minimizer.options.parallel = true;
+          minimizer.options.parallel = isConstrained ? false : true;
         }
       });
     }

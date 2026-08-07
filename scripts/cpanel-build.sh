@@ -63,7 +63,7 @@ export NEXT_CPU_COUNT=1
 export NEXT_PRIVATE_WORKER_THREADS=0
 export NEXT_DISABLE_TURBOPACK=1
 export NODE_ENV=production
-NODE_OPTIONS="--max-old-space-size=768" node node_modules/next/dist/bin/next build --webpack
+NODE_OPTIONS="--max-old-space-size=384" node node_modules/next/dist/bin/next build --webpack
 BUILD_EXIT=$?
 echo "  Build finished at: $(date)"
 
