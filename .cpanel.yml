@@ -1,4 +1,4 @@
 ---
 deployment:
   tasks:
-    - /bin/bash scripts/cpanel-deploy.sh
+    - echo "Deployment received. Run 'bash scripts/cpanel-build.sh' in cPanel Terminal to build."

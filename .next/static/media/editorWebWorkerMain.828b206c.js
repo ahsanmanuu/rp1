@@ -1,1 +1,0 @@
-import{bootstrapWebWorker as o}from"../../../base/common/worker/webWorkerBootstrap.js";import{EditorWorker as r}from"./editorWebWorker.js";o(()=>new r(null));
