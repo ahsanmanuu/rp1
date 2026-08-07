@@ -1,4 +1,4 @@
-name: Build & Deploy (off-box)
+name: Build Standalone (off-box)
 
 on:
   push:
@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  build-and-deploy:
-    name: Build standalone + deploy to cPanel
+  build-standalone:
+    name: Build standalone + prepare artifact
     runs-on: ubuntu-latest
     concurrency:
       group: cpanel-deploy
@@ -56,26 +56,3 @@ jobs:
           name: latexify-standalone
           path: latexify-next.tar.gz
           retention-days: 7
-
-      - name: Copy standalone tarball to cPanel
-        uses: appleboy/scp-action@v1.0.0
-        with:
-          host: ${{ secrets.CPANEL_SSH_HOST }}
-          port: ${{ secrets.CPANEL_SSH_PORT }}
-          username: ${{ secrets.CPANEL_SSH_USER }}
-          key: ${{ secrets.CPANEL_SSH_KEY }}
-          source: "latexify-next.tar.gz"
-          target: "/home/${{ secrets.CPANEL_SSH_USER }}/latexify"
-
-      - name: Deploy and restart on cPanel
-        uses: appleboy/ssh-action@v1.2.5
-        with:
-          host: ${{ secrets.CPANEL_SSH_HOST }}
-          port: ${{ secrets.CPANEL_SSH_PORT }}
-          username: ${{ secrets.CPANEL_SSH_USER }}
-          key: ${{ secrets.CPANEL_SSH_KEY }}
-          script: |
-            set -euo pipefail
-            APPDIR="/home/${{ secrets.CPANEL_SSH_USER }}/latexify"
-            cd "$APPDIR"
-            bash scripts/cpanel-deploy-artifact.sh "$APPDIR/latexify-next.tar.gz"
