@@ -17,6 +17,7 @@
 /.next/*
 !.next/standalone
 !.next/static
+.next/standalone/node_modules/
 .next/standalone/public/uploads/
 .next/standalone/pb_data/
 .next/standalone/tmp/
