@@ -99,51 +99,60 @@ echo "  [cpanel-build] Container memory limit: ${TOTAL_MEM_MB:-unknown}MB → st
 echo "  [cpanel-build] If the build is OOM-killed we lower the cap and retry automatically."
 echo "  [cpanel-build] Diagnostics: $(free -m 2>/dev/null | awk '/^Mem:/{print $2"MB total, "$7"MB available"}') | ulimit -v: $(ulimit -v 2>/dev/null) | ulimit -u: $(ulimit -u 2>/dev/null)"
 
-BUILD_EXIT=1
-ATTEMPT=1
-while [ "$ATTEMPT" -le 4 ] && [ "$BUILD_EXIT" -ne 0 ]; do
-  echo "  ── BuildRunner attempt ${ATTEMPT}/4 (max-old-space-size=${HEAP}MB) ──"
-  NODE_OPTIONS="--max-old-space-size=${HEAP}" node node_modules/next/dist/bin/next build --webpack
-  BUILD_EXIT=$?
-  if [ "$BUILD_EXIT" -ne 0 ]; then
-    if [ "$BUILD_EXIT" -eq 137 ]; then
-      # SIGKILL from the OS OOM-killer → total process memory exceeded the LVE pool
-      echo "  [cpanel-build] Build was OOM-killed (137) — lowering the heap cap and retrying"
-      HEAP=$((HEAP - 64))
-      [ "$HEAP" -lt 320 ] && HEAP=320
-    else
-      # V8 'heap out of memory' (exit 134) → we NEED more heap than the current cap
-      echo "  [cpanel-build] Build exited ${BUILD_EXIT} (V8 'out of memory'?) — raising the heap cap and retrying"
-      HEAP=$((HEAP + 64))
-      [ "$HEAP" -gt 768 ] && HEAP=768
-    fi
+# ── cPanel symlinks node_modules into ~/nodevenv (OUTSIDE the app root).
+#    Webpack tolerates crossing symlinks, but Turbopack refuses with
+#    "Symlink [project]/node_modules is invalid, it points out of the filesystem
+#    root". Materialize a REAL copy once so Turbopack's resolver accepts it.
+echo "  [cpanel-build] node_modules symlink check..."
+if [ -L node_modules ]; then
+  echo "  [cpanel-build] node_modules is a symlink → $(readlink node_modules)"
+  echo "  [cpanel-build] Replacing it with a real copy (one-time; may take a few minutes for a large tree)..."
+  cp -rL node_modules "node_modules.real.$$" && rm -f node_modules && mv "node_modules.real.$$" node_modules
+  if [ -d node_modules/next ]; then
+    echo "  [cpanel-build] ✓ node_modules dereferenced"
+  else
+    echo "  [cpanel-build] WARNING: dereference may have failed; continuing anyway"
   fi
-  ATTEMPT=$((ATTEMPT + 1))
-done
-echo "  Build finished at: $(date)"
+else
+  echo "  [cpanel-build] node_modules is a real directory ✓"
+fi
 
-# ── Fallback: Turbopack (native Rust compiler) ──
-# Webpack couldn't fit in the V8 heap? Turbopack keeps its compilation memory
-# OUTSIDE the V8 heap (Rust), so it is not limited by --max-old-space-size.
-# NEXT_TURBOPACK_USE_WORKER=0 forces the build into the current process —
-# this box cannot spawn Node worker_threads (EAGAIN / ERR_WORKER_INIT_FAILED).
+# ── Build order: Turbopack FIRST. Webpack proved it CANNOT fit in this box:
+#    heap cap 704MB → V8 OOM (needs more), heap cap 768MB → OS-killed (137).
+#    The LVE pool sits between those, so no webpack heap cap can win. Turbopack
+#    compiles in native Rust OUTSIDE the V8 heap, needing far less reserved
+#    memory. NEXT_TURBOPACK_USE_WORKER=0 forces an in-process build (this box
+#    cannot spawn Node worker_threads — EAGAIN).
+BUILD_EXIT=1
+HEAP=640
+
+echo "  ── BuildRunner attempt 1/3: Turbopack (in-process, heap cap ${HEAP}MB) ──"
+unset NEXT_DISABLE_TURBOPACK
+export NEXT_TURBOPACK_USE_WORKER=0
+NODE_OPTIONS="--max-old-space-size=${HEAP}" node node_modules/next/dist/bin/next build
+BUILD_EXIT=$?
 if [ $BUILD_EXIT -ne 0 ]; then
-  echo ""
-  echo "[cpanel-build] Webpack failed after $((ATTEMPT-1)) attempt(s) — falling back to in-process Turbopack build..."
-  echo "  Turbopack compiles in native Rust, so its memory is NOT bounded by the V8 heap cap."
-  unset NEXT_DISABLE_TURBOPACK
-  export NEXT_TURBOPACK_USE_WORKER=0
-  NODE_OPTIONS="--max-old-space-size=640" node node_modules/next/dist/bin/next build
+  echo "  ── BuildRunner attempt 2/3: Turbopack retry ──"
+  NODE_OPTIONS="--max-old-space-size=${HEAP}" node node_modules/next/dist/bin/next build
   BUILD_EXIT=$?
-  echo "  Turbopack build finished at: $(date +%H:%M:%S) (exit $BUILD_EXIT)"
 fi
 
 if [ $BUILD_EXIT -ne 0 ]; then
   echo ""
-  echo "[ERROR] Build failed with exit code $BUILD_EXIT after $((ATTEMPT-1)) attempt(s)."
-  echo "[FIX]   The cPanel memory pool is too small for a full Next.js 16 webpack build."
-  echo "[FIX]   Raise the plan/LVE memory limit (WHM → Limits → tweak) and re-run, or"
-  echo "[FIX]   build locally/on CI and upload the .next/standalone output instead."
+  echo "  [cpanel-build] Turbopack failed (exit $BUILD_EXIT) — trying webpack fallback."
+  echo "  ── BuildRunner attempt 3/3: Webpack (heap cap ${HEAP}MB) ──"
+  export NEXT_DISABLE_TURBOPACK=1
+  NODE_OPTIONS="--max-old-space-size=${HEAP}" node node_modules/next/dist/bin/next build --webpack
+  BUILD_EXIT=$?
+fi
+echo "  Build finished at: $(date)"
+
+if [ $BUILD_EXIT -ne 0 ]; then
+  echo ""
+  echo "  [ERROR] Build failed with exit code $BUILD_EXIT."
+  echo "  [FIX]   The cPanel memory pool (LVE) is too small for a full Next.js 16 build."
+  echo "  [FIX]   Raise the plan/LVE memory limit (WHM → Modify Account → Limits) and re-run,"
+  echo "  [FIX]   or build locally/on CI and upload the .next/standalone output instead."
   exit 1
 fi
 
