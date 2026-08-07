@@ -23,9 +23,9 @@ try {
     const publicHtml = `/home/${cpanelUser}/public_html`;
     if (fs.existsSync(publicHtml)) {
       const htSrc = path.resolve(__dirname, '.htaccess');
-      const idxSrc = path.resolve(__dirname, 'index.html');
       if (fs.existsSync(htSrc)) fs.copyFileSync(htSrc, path.join(publicHtml, '.htaccess'));
-      if (fs.existsSync(idxSrc)) fs.copyFileSync(idxSrc, path.join(publicHtml, 'index.html'));
+      const oldIndex = path.join(publicHtml, 'index.html');
+      if (fs.existsSync(oldIndex)) try { fs.unlinkSync(oldIndex); } catch (e) {}
     }
   }
 } catch (e) {}

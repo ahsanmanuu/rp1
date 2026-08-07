@@ -83,9 +83,9 @@ if [ -d ".next/static" ] && [ -d "$STANDALONE_DIR" ]; then
   echo "  ✓ .next/static/ assets"
 fi
 
-# Sync to public_html
+# Sync .htaccess to public_html and remove static index.html so LiteSpeed routes to Node.js
 cp .htaccess "${PUBLIC_HTML}/.htaccess" 2>/dev/null || true
-cp index.html "${PUBLIC_HTML}/index.html" 2>/dev/null || true
+rm -f "${PUBLIC_HTML}/index.html" 2>/dev/null || true
 
 # Restart app
 mkdir -p tmp

@@ -1,5 +1,5 @@
 # LiteSpeed & Apache Configuration for Node.js Application
-DirectoryIndex index.html index.php app.cjs app.js
+DirectoryIndex app.js app.cjs index.php
 
 # Explicitly grant access permissions for LiteSpeed Web Server
 <IfModule mod_authz_core.c>
