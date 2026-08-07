@@ -5,13 +5,14 @@
 // For localhost development, use: npm run dev  (or npm start → start.js)
 //
 // Design: Zero blocking operations at startup. Detects pre-built standalone
-// server and launches it instantly, or serves a static page explaining that
-// a build is needed.
+// server and launches it instantly. If missing, automatically spawns
+// background build so the user NEVER has to run manual terminal commands.
 // =============================================================================
 
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const { spawn } = require('child_process');
 
 // Lock working directory
 try { process.chdir(__dirname); } catch (e) {}
@@ -78,13 +79,32 @@ if (fs.existsSync(standaloneServer)) {
   // Import standalone server (ESM)
   import('./.next/standalone/server.js').catch((err) => {
     console.error('[app.js] Failed to start standalone server:', err.message);
-    startFallbackServer('Standalone server failed to start. Check startup.log for details.');
+    startFallbackServer('Standalone server failed to start. Retrying background build...');
+    triggerBackgroundBuild();
   });
 
 } else {
-  // ── Strategy 2: Serve a static page explaining build is needed ──
-  console.log('[app.js] No standalone build found at .next/standalone/server.js');
-  startFallbackServer('Next.js production build not found. Run: bash scripts/cpanel-build.sh');
+  // ── Strategy 2: Automatically trigger background build & serve progress page ──
+  console.log('[app.js] Standalone build missing. Triggering automated background build...');
+  triggerBackgroundBuild();
+  startFallbackServer('Automated production build is in progress. Please wait 2-3 minutes while assets compile.');
+}
+
+function triggerBackgroundBuild() {
+  try {
+    const buildScript = path.resolve(__dirname, 'scripts', 'cpanel-build.sh');
+    if (fs.existsSync(buildScript)) {
+      const child = spawn('bash', [buildScript], {
+        cwd: __dirname,
+        detached: true,
+        stdio: 'ignore'
+      });
+      child.unref();
+      console.log('[app.js] Background build process spawned successfully.');
+    }
+  } catch (err) {
+    console.error('[app.js] Failed to spawn background build:', err);
+  }
 }
 
 function startFallbackServer(statusMessage) {
@@ -93,14 +113,13 @@ function startFallbackServer(statusMessage) {
     res.end(`<!DOCTYPE html>
 <html>
 <head>
-  <title>Latexify.in</title>
-  <meta http-equiv="refresh" content="15">
+  <title>Latexify.in - System Initialization</title>
+  <meta http-equiv="refresh" content="10">
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #0f172a; color: #f8fafc; text-align: center; }
     .card { background: #1e293b; padding: 2.5rem; border-radius: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-width: 520px; border: 1px solid #334155; }
     h1 { color: #38bdf8; font-size: 1.8rem; margin-top: 0; }
     p { color: #94a3b8; font-size: 1rem; line-height: 1.6; }
-    code { background: #334155; padding: 0.3em 0.6em; border-radius: 0.4em; font-size: 0.9rem; color: #7dd3fc; }
     .spinner { width: 40px; height: 40px; border: 4px solid #334155; border-top: 4px solid #38bdf8; border-radius: 50%; animation: spin 1s linear infinite; margin: 1.5rem auto; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
   </style>
@@ -109,11 +128,9 @@ function startFallbackServer(statusMessage) {
   <div class="card">
     <h1>Latexify.in</h1>
     <div class="spinner"></div>
-    <p><strong>Build Required</strong></p>
+    <p><strong>System Setup in Progress</strong></p>
     <p>${statusMessage}</p>
-    <p>Open <strong>cPanel Terminal</strong> and run:</p>
-    <p><code>cd ~/latexify && bash scripts/cpanel-build.sh</code></p>
-    <p style="font-size:0.85rem; color:#64748b;">This page will auto-refresh.</p>
+    <p style="font-size:0.85rem; color:#64748b;">This page will auto-refresh every 10 seconds.</p>
   </div>
 </body>
 </html>`);
