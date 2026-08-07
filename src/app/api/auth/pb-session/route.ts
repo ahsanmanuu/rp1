@@ -92,18 +92,17 @@ export async function GET(req: NextRequest) {
     return response;
   }
 
-  // Only fail auth and delete cookie if ALL validation mechanisms (PB, DB, JWT Payload) fail!
+  // Return 200 OK user: null for expired/invalid tokens so browsers don't log red 401 errors
   if (!pbValid && !sessionRecord && !jwtPayload) {
     try { cookieStore.delete('pb_token'); } catch {}
-    const response = NextResponse.json({ user: null }, { status: 401 });
+    const response = NextResponse.json({ user: null, authenticated: false });
     Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
     return response;
   }
 
-  // If DB session expired AND PocketBase token / JWT payload are invalid, fail auth and delete cookie
   if (!pbValid && !jwtPayload && sessionRecord && new Date(sessionRecord.expiresAt).getTime() < Date.now()) {
     try { cookieStore.delete('pb_token'); } catch {}
-    const response = NextResponse.json({ user: null }, { status: 401 });
+    const response = NextResponse.json({ user: null, authenticated: false });
     Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
     return response;
   }
@@ -159,7 +158,7 @@ export async function GET(req: NextRequest) {
 
   if (!record) {
     try { cookieStore.delete('pb_token'); } catch {}
-    const response = NextResponse.json({ user: null }, { status: 401 });
+    const response = NextResponse.json({ user: null, authenticated: false });
     Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
     return response;
   }

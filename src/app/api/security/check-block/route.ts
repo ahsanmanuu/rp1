@@ -67,8 +67,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession();
-    if (!session?.user) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    const session = await getServerSession().catch(() => null);
+    if (!session?.user) return NextResponse.json({ success: true, logged: false, authenticated: false });
 
     const text = await req.text().catch(() => "");
     let body: any = {};
