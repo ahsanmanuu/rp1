@@ -1,0 +1,81 @@
+name: Build & Deploy (off-box)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    name: Build standalone + deploy to cPanel
+    runs-on: ubuntu-latest
+    concurrency:
+      group: cpanel-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Fix Prisma exports
+        run: node scripts/fix-prisma-exports.js
+
+      - name: Build standalone (webpack)
+        run: node --max-old-space-size=8192 node_modules/next/dist/bin/next build --webpack
+
+      - name: Assemble deployable artifact
+        run: |
+          set -euo pipefail
+          # standalone output must carry static + public so the server has
+          # everything without a build step (start.js also copies them, but
+          # defensively bundle here so the deployed .next is self-contained).
+          cp -r public .next/standalone/public
+          mkdir -p .next/standalone/.next
+          cp -r .next/static .next/standalone/.next/static
+          tar -czf latexify-next.tar.gz -C .next/standalone .
+          echo "Artifact size:"
+          du -h latexify-next.tar.gz
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: latexify-standalone
+          path: latexify-next.tar.gz
+          retention-days: 7
+
+      - name: Copy standalone tarball to cPanel
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.CPANEL_SSH_HOST }}
+          port: ${{ secrets.CPANEL_SSH_PORT }}
+          username: ${{ secrets.CPANEL_SSH_USER }}
+          key: ${{ secrets.CPANEL_SSH_KEY }}
+          source: "latexify-next.tar.gz"
+          target: "/home/${{ secrets.CPANEL_SSH_USER }}/latexify"
+
+      - name: Deploy and restart on cPanel
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.CPANEL_SSH_HOST }}
+          port: ${{ secrets.CPANEL_SSH_PORT }}
+          username: ${{ secrets.CPANEL_SSH_USER }}
+          key: ${{ secrets.CPANEL_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            APPDIR="/home/${{ secrets.CPANEL_SSH_USER }}/latexify"
+            cd "$APPDIR"
+            bash scripts/cpanel-deploy-artifact.sh "$APPDIR/latexify-next.tar.gz"

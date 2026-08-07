@@ -28,6 +28,16 @@ echo "============================================"
 
 cd "$APP_DIR" || exit 1
 
+# ── Fast path: prebuilt standalone artifact (off-box / GitHub Actions build) ──
+# If a standalone tar exists in the app dir, install it directly. The box's
+# memory pool is too small for ANY compiler (webpack AND Turbopack proved it),
+# so building here is only a last resort. Just extract+restart — memory-light.
+if [ -f "${APP_DIR}/latexify-next.tar.gz" ]; then
+  echo "[cpanel-build] Found prebuilt artifact — installing it (no build needed)."
+  bash scripts/cpanel-deploy-artifact.sh "${APP_DIR}/latexify-next.tar.gz"
+  exit $?;
+fi
+
 mkdir -p tmp
 touch tmp/building.lock
 trap 'rm -f tmp/building.lock' EXIT
