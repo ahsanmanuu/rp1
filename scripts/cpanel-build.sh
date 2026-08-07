@@ -44,11 +44,13 @@ echo ""
 echo "[Step 3/5] Fixing Prisma exports..."
 node scripts/fix-prisma-exports.js || echo "[WARNING] fix-prisma-exports had issues"
 
-# Step 4: Build Next.js (1GB memory limit for shared hosting)
+# Step 4: Build Next.js (low-memory mode for shared cPanel hosting)
 echo ""
 echo "[Step 4/5] Building Next.js (this may take 3-5 minutes)..."
 echo "  Build started at: $(date)"
-NODE_OPTIONS="--max-old-space-size=1024" node node_modules/next/dist/bin/next build --webpack
+export CPANEL_BUILD=true
+export DISABLE_ESLINT_PLUGIN=true
+NODE_OPTIONS="--max-old-space-size=1536" node node_modules/next/dist/bin/next build --webpack
 BUILD_EXIT=$?
 echo "  Build finished at: $(date)"
 

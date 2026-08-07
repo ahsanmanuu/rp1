@@ -245,8 +245,9 @@ const nextConfig: NextConfig = {
   },
   turbopack: {},
   webpack: (config, { isServer, webpack }) => {
-    // Enable parallel compilation and thread pooling for Webpack modules
-    config.parallelism = 200;
+    // Limit parallelism on cPanel/constrained memory environments to prevent V8 Heap OOM crashes
+    const isConstrained = process.env.CPANEL_BUILD === 'true' || Boolean(process.env.NODE_OPTIONS?.includes('max-old-space-size='));
+    config.parallelism = isConstrained ? 2 : 50;
 
     // Parallelize asset minimization using multiple threads
     if (config.optimization && config.optimization.minimizer) {
