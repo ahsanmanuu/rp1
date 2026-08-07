@@ -85,34 +85,37 @@ else
   [ -z "$TOTAL_MEM_MB" ] || [ "$TOTAL_MEM_MB" -le 0 ] && TOTAL_MEM_MB=$SYSTEM_MEM_MB
 fi
 
-# Heap cap = total - 128MB (Node/webpack native + OS overhead), clamped safe
-HEAP=384
+# Heap cap = guessed LVE ceiling minus native/OS overhead. Clamp to a safe
+# band. cPanel CloudLinux LVE limits can't be read by the web account, so the
+# retry ladder below adapts: V8 OOM (134) ⇒ raise the cap, OS kill (137) ⇒
+# lower it. 768 keeps us above the ~512 the build already proved it needs.
+HEAP=640
 if [ -n "$TOTAL_MEM_MB" ] && [ "$TOTAL_MEM_MB" -gt 256 ]; then
   HEAP=$((TOTAL_MEM_MB - 128))
 fi
-if [ -z "$HEAP" ] || [ "$HEAP" -lt 256 ]; then HEAP=256; fi
-if [ "$HEAP" -gt 512 ]; then HEAP=512; fi
+if [ -z "$HEAP" ] || [ "$HEAP" -lt 320 ]; then HEAP=320; fi
+if [ "$HEAP" -gt 768 ]; then HEAP=768; fi
 echo "  [cpanel-build] Container memory limit: ${TOTAL_MEM_MB:-unknown}MB → starting V8 heap cap: ${HEAP}MB"
 echo "  [cpanel-build] If the build is OOM-killed we lower the cap and retry automatically."
-echo "  [cpanel-build] Diagnostics: $(free -m 2>/dev/null | awk '/^Mem:/{print $2"MB total, "$7"MB available"}') | ulimit -v: $(ulimit -v 2>/dev/null)"
+echo "  [cpanel-build] Diagnostics: $(free -m 2>/dev/null | awk '/^Mem:/{print $2"MB total, "$7"MB available"}') | ulimit -v: $(ulimit -v 2>/dev/null) | ulimit -u: $(ulimit -u 2>/dev/null)"
 
 BUILD_EXIT=1
 ATTEMPT=1
-while [ "$ATTEMPT" -le 3 ] && [ "$BUILD_EXIT" -ne 0 ]; do
-  echo "  ── BuildRunner attempt ${ATTEMPT}/3 (max-old-space-size=${HEAP}MB) ──"
+while [ "$ATTEMPT" -le 4 ] && [ "$BUILD_EXIT" -ne 0 ]; do
+  echo "  ── BuildRunner attempt ${ATTEMPT}/4 (max-old-space-size=${HEAP}MB) ──"
   NODE_OPTIONS="--max-old-space-size=${HEAP}" node node_modules/next/dist/bin/next build --webpack
   BUILD_EXIT=$?
   if [ "$BUILD_EXIT" -ne 0 ]; then
     if [ "$BUILD_EXIT" -eq 137 ]; then
-      # SIGKILL from the OS OOM-killer → total process memory exceeded the pool
+      # SIGKILL from the OS OOM-killer → total process memory exceeded the LVE pool
       echo "  [cpanel-build] Build was OOM-killed (137) — lowering the heap cap and retrying"
-      HEAP=$((HEAP - 80))
-      [ "$HEAP" -lt 160 ] && HEAP=160
+      HEAP=$((HEAP - 64))
+      [ "$HEAP" -lt 320 ] && HEAP=320
     else
-      # V8 'heap out of memory' (exit 134) or other failure → give it headroom
+      # V8 'heap out of memory' (exit 134) → we NEED more heap than the current cap
       echo "  [cpanel-build] Build exited ${BUILD_EXIT} (V8 'out of memory'?) — raising the heap cap and retrying"
       HEAP=$((HEAP + 64))
-      [ "$HEAP" -gt 512 ] && HEAP=512
+      [ "$HEAP" -gt 768 ] && HEAP=768
     fi
   fi
   ATTEMPT=$((ATTEMPT + 1))
@@ -120,15 +123,17 @@ done
 echo "  Build finished at: $(date)"
 
 # ── Fallback: Turbopack (native Rust compiler) ──
-# Webpack couldn't fit in the tiny V8 heap? Turbopack keeps its compilation
-# memory OUTSIDE the V8 heap (Rust), so it is not limited by --max-old-space-size
-# and typically completes where webpack OOMs. Final safety net for cPanel.
+# Webpack couldn't fit in the V8 heap? Turbopack keeps its compilation memory
+# OUTSIDE the V8 heap (Rust), so it is not limited by --max-old-space-size.
+# NEXT_TURBOPACK_USE_WORKER=0 forces the build into the current process —
+# this box cannot spawn Node worker_threads (EAGAIN / ERR_WORKER_INIT_FAILED).
 if [ $BUILD_EXIT -ne 0 ]; then
   echo ""
-  echo "[cpanel-build] Webpack build failed after $((ATTEMPT-1)) attempt(s) — falling back to Turbopack build..."
+  echo "[cpanel-build] Webpack failed after $((ATTEMPT-1)) attempt(s) — falling back to in-process Turbopack build..."
   echo "  Turbopack compiles in native Rust, so its memory is NOT bounded by the V8 heap cap."
   unset NEXT_DISABLE_TURBOPACK
-  NODE_OPTIONS="--max-old-space-size=${HEAP}" node node_modules/next/dist/bin/next build
+  export NEXT_TURBOPACK_USE_WORKER=0
+  NODE_OPTIONS="--max-old-space-size=640" node node_modules/next/dist/bin/next build
   BUILD_EXIT=$?
   echo "  Turbopack build finished at: $(date +%H:%M:%S) (exit $BUILD_EXIT)"
 fi
