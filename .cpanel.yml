@@ -2,7 +2,8 @@
 deployment:
   tasks:
     - export DEPLOYPATH=${DEPLOYPATH:-/home/$(whoami)/latexify}
-    - /bin/cp -R . "$DEPLOYPATH"
+    - /bin/mkdir -p "$DEPLOYPATH"
+    - rsync -a --exclude='.git' --exclude='node_modules' --exclude='.env.local' . "$DEPLOYPATH/" 2>/dev/null || /bin/cp -R . "$DEPLOYPATH"
     - /bin/cp .htaccess /home/$(whoami)/public_html/.htaccess 2>/dev/null || true
     - /bin/cp index.html /home/$(whoami)/public_html/index.html 2>/dev/null || true
     - touch "$DEPLOYPATH/tmp/restart.txt"
