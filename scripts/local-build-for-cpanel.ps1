@@ -54,35 +54,12 @@ Write-Host "  Build finished at: $buildEnd" -ForegroundColor Gray
 # Step 4: Package standalone artifact
 Write-Host ""
 Write-Host "[Step 4/4] Packaging standalone artifact..." -ForegroundColor Yellow
+node scripts/package-standalone.cjs
 
-$StandaloneDir = [System.IO.Path]::Combine($ProjectRoot, ".next", "standalone")
-$StaticDir     = [System.IO.Path]::Combine($ProjectRoot, ".next", "static")
-$PublicDir     = [System.IO.Path]::Combine($ProjectRoot, "public")
-$OutputTar     = [System.IO.Path]::Combine($ProjectRoot, "latexify-next.tar.gz")
-
-# Copy static assets into standalone
-if (Test-Path $PublicDir) {
-    $destPublic = [System.IO.Path]::Combine($StandaloneDir, "public")
-    New-Item -ItemType Directory -Force -Path $destPublic | Out-Null
-    Copy-Item -Path (Join-Path $PublicDir "*") -Destination $destPublic -Recurse -Force
-    Write-Host "  OK: public/ assets copied" -ForegroundColor Green
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[ERROR] Standalone packaging failed" -ForegroundColor Red
+    exit 1
 }
-
-if (Test-Path $StaticDir) {
-    $destStatic = [System.IO.Path]::Combine($StandaloneDir, ".next", "static")
-    New-Item -ItemType Directory -Force -Path $destStatic | Out-Null
-    Copy-Item -Path (Join-Path $StaticDir "*") -Destination $destStatic -Recurse -Force
-    Write-Host "  OK: .next/static/ assets copied" -ForegroundColor Green
-}
-
-# Create tar.gz using tar (built into Windows 10+)
-if (Test-Path $OutputTar) { Remove-Item $OutputTar -Force }
-Push-Location $StandaloneDir
-tar -czf $OutputTar .
-Pop-Location
-
-$sizeBytes = (Get-Item $OutputTar).Length
-$sizeMB = [math]::Round($sizeBytes / 1MB, 1)
 $sizeStr = $sizeMB.ToString() + " MB"
 Write-Host ("  OK: Artifact created: " + $OutputTar + " (" + $sizeStr + ")") -ForegroundColor Green
 
