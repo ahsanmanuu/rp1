@@ -19,45 +19,7 @@ let enhanceImageCount = 0;
 const ENHANCE_IMAGE_CAP = 60;
 
 async function enhanceImageFor3000Dpi(buffer: Buffer): Promise<Buffer> {
-  if (enhanceImageCount >= ENHANCE_IMAGE_CAP) return buffer;
-  try {
-    if (!buffer || buffer.length === 0 || buffer.length > 5 * 1024 * 1024) return buffer;
-    
-    // Quick hash lookup for duplicate image buffers (e.g. logos, bullet graphics)
-    const bufKey = `${buffer.length}_${buffer.slice(0, 32).toString('hex')}`;
-    if (IMAGE_ENHANCE_CACHE.has(bufKey)) {
-      return IMAGE_ENHANCE_CACHE.get(bufKey)!;
-    }
-
-    const metadata = await sharp(buffer).metadata();
-    const origWidth = metadata.width || 800;
-
-    let result: Buffer;
-    // Fast high-DPI density tagging: avoid heavy CPU thrashing & proxy timeouts on Render
-    if (origWidth >= 1200 || buffer.length > 500 * 1024) {
-      result = await sharp(buffer)
-        .withMetadata({ density: 3000 })
-        .toBuffer();
-    } else {
-      const targetWidth = Math.min(Math.max(origWidth * 2, 1200), 1800);
-      result = await sharp(buffer)
-        .resize(targetWidth, null, {
-          fit: 'inside',
-          withoutEnlargement: true,
-        })
-        .sharpen()
-        .png({ compressionLevel: 4 })
-        .withMetadata({ density: 3000 })
-        .toBuffer();
-    }
-
-    if (IMAGE_ENHANCE_CACHE.size > 100) IMAGE_ENHANCE_CACHE.clear();
-    IMAGE_ENHANCE_CACHE.set(bufKey, result);
-    enhanceImageCount++;
-    return result;
-  } catch (err) {
-    return buffer;
-  }
+  return buffer;
 }
 
 import { getServerSession } from "@/lib/auth-pb";
@@ -1102,7 +1064,7 @@ async function runUploadProcessing(uploadId: string) {
             imageFiles: imageNames,
             templateId: templateId,
           }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 14000))
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000))
         ]);
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
