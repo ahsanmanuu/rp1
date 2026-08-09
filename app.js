@@ -5,7 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import http from 'http';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
@@ -35,7 +35,7 @@ try {
 const standaloneServer = path.resolve(__dirname, '.next', 'standalone', 'server.js');
 
 if (fs.existsSync(standaloneServer)) {
-  console.log(`[app.js] Loading CommonJS standalone server from ${standaloneServer}`);
+  console.log(`[app.js] Loading standalone server from ${standaloneServer}`);
   
   // Copy static assets into standalone directory before loading
   try {
@@ -47,8 +47,14 @@ if (fs.existsSync(standaloneServer)) {
     if (fs.existsSync(srcStatic)) try { fs.cpSync(srcStatic, destStatic, { recursive: true, force: true }); } catch (e) {}
   } catch (e) {}
 
-  // Synchronously require CJS standalone server so require(), __dirname, and server.listen() resolve 100% natively
-  require(standaloneServer);
+  // Load standalone server via dynamic ESM import with CJS fallback
+  import(pathToFileURL(standaloneServer).href).catch((err) => {
+    try {
+      require(standaloneServer);
+    } catch (e) {
+      console.error('[app.js Standalone Load Error]', err, e);
+    }
+  });
 
 } else {
   console.log('[app.js] Standalone build missing. Starting Passenger fallback server...');

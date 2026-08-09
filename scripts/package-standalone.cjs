@@ -100,6 +100,66 @@ async function main() {
     } catch (e) {}
   }
 
+  // ── Step: Sanitize Windows hardcoded paths & backslashes for Linux runtime ──
+  console.log('[Packager] Sanitizing Windows build paths and backslashes for Linux...');
+  
+  // 1. Sanitize server.js
+  const serverJsPath = path.join(standaloneDir, 'server.js');
+  if (fs.existsSync(serverJsPath)) {
+    try {
+      let serverJs = fs.readFileSync(serverJsPath, 'utf8');
+      serverJs = serverJs.replace(/"outputFileTracingRoot"\s*:\s*"[^"]+"/g, '"outputFileTracingRoot":"."');
+      serverJs = serverJs.replace(/"root"\s*:\s*"[A-Za-z]:\\[^"]+"/g, '"root":"."');
+      fs.writeFileSync(serverJsPath, serverJs);
+      console.log('  ✓ Sanitized server.js Windows paths');
+    } catch (e) {}
+  }
+
+  // 2. Sanitize .next/required-server-files.json
+  const reqFilesPath = path.join(standaloneDir, '.next', 'required-server-files.json');
+  if (fs.existsSync(reqFilesPath)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(reqFilesPath, 'utf8'));
+      data.appDir = '.';
+      data.relativeAppDir = '';
+      if (data.config) {
+        data.config.outputFileTracingRoot = '.';
+        if (data.config.turbopack) data.config.turbopack.root = '.';
+      }
+      if (Array.isArray(data.files)) {
+        data.files = data.files.map(f => typeof f === 'string' ? f.replace(/\\/g, '/') : f);
+      }
+      fs.writeFileSync(reqFilesPath, JSON.stringify(data, null, 2));
+      console.log('  ✓ Sanitized required-server-files.json (appDir & POSIX slashes)');
+    } catch (e) {}
+  }
+
+  // 3. Sanitize all JSON manifest files in standalone/.next (convert Windows \\ to POSIX /)
+  const standaloneNextDir = path.join(standaloneDir, '.next');
+  if (fs.existsSync(standaloneNextDir)) {
+    const sanitizeManifests = (dir) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          sanitizeManifests(fullPath);
+        } else if (entry.name.endsWith('.json')) {
+          try {
+            let content = fs.readFileSync(fullPath, 'utf8');
+            if (content.includes('C:\\') || content.includes('C:/') || content.includes('\\\\')) {
+              content = content.replace(/[A-Za-z]:\\\\[^\"]+/g, '.');
+              content = content.replace(/[A-Za-z]:\/[^\"]+/g, '.');
+              content = content.replace(/"\.next\\\\/g, '".next/');
+              content = content.replace(/\\\\/g, '/');
+              fs.writeFileSync(fullPath, content);
+            }
+          } catch (e) {}
+        }
+      }
+    };
+    sanitizeManifests(standaloneNextDir);
+    console.log('  ✓ Sanitized all .next manifest JSON files to POSIX slashes');
+  }
+
   console.log(`[Packager] Archiving .next/standalone to ${outputTar}...`);
 
   if (fs.existsSync(outputTar)) {
