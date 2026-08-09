@@ -19,7 +19,7 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  transpilePackages: ['pdfjs-dist'],
+  transpilePackages: IS_CONSTRAINED ? [] : ['pdfjs-dist'],
   images: {
     remotePatterns: [
       {
@@ -141,16 +141,14 @@ const nextConfig: NextConfig = {
     ],
   },
   // Keep Prisma + heavy server-side dependencies external on the server: stop
-  // webpack from parsing/bundling giant graphs (jsdom alone is ~1000 files).
+  // webpack/Turbopack from parsing/bundling giant graphs (jsdom alone is ~1000 files).
   // They are copied into the standalone output at runtime instead. Only the
   // server compilation is affected; client bundles still compile them normally.
-  serverExternalPackages: IS_CONSTRAINED
-    ? [
-        '@prisma/client', '.prisma/client', '@auth/prisma-adapter', 'sharp', 'better-sqlite3', 'adm-zip', 'original-fs',
-        'jsdom', 'mammoth', 'docx', 'pdf-lib', 'pdf-parse', 'nodemailer', 'bcryptjs', 'jsonwebtoken',
-        'jose', 'multer', 'archiver', 'xlsx', 'jszip', 'katex', 'mathml-to-latex', 'uuid',
-      ]
-    : ['@prisma/client', '.prisma/client', '@auth/prisma-adapter', 'sharp', 'better-sqlite3', 'adm-zip', 'original-fs'],
+  serverExternalPackages: [
+    '@prisma/client', '.prisma/client', '@auth/prisma-adapter', 'sharp', 'better-sqlite3', 'adm-zip', 'original-fs',
+    'jsdom', 'mammoth', 'docx', 'pdf-lib', 'pdf-parse', 'nodemailer', 'bcryptjs', 'jsonwebtoken',
+    'jose', 'multer', 'archiver', 'xlsx', 'jszip', 'katex', 'mathml-to-latex', 'uuid', 'pocketbase',
+  ],
   // Skip build-time asset gzipping on cPanel (streams hold whole assets in memory
   // at the end of the build). LiteSpeed gzips responses at the edge anyway.
   compress: !IS_CONSTRAINED,

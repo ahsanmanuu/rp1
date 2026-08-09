@@ -69,21 +69,18 @@ try {
 try {
   const prismaCliPath = path.resolve(process.cwd(), 'node_modules/prisma/build/index.js');
   const prismaCliOriginalPath = path.resolve(process.cwd(), 'node_modules/prisma/build/index.original.js');
+  const prismaChildPath = path.resolve(process.cwd(), 'node_modules/prisma/build/child.js');
 
   if (fs.existsSync(prismaCliPath)) {
     const currentContent = fs.readFileSync(prismaCliPath, 'utf8');
 
-    if (currentContent.includes('[Prisma Shim] Intercepted')) {
-      console.log('[Prisma Shim] Shim already installed and active.');
-    } else {
-      if (!fs.existsSync(prismaCliOriginalPath)) {
-        console.log(`[Prisma Shim] Renaming original CLI binary to: ${prismaCliOriginalPath}`);
-        fs.renameSync(prismaCliPath, prismaCliOriginalPath);
-      }
+    if (!fs.existsSync(prismaCliOriginalPath) && !currentContent.includes('require(originalCli)')) {
+      console.log(`[Prisma Shim] Renaming original CLI binary to: ${prismaCliOriginalPath}`);
+      fs.renameSync(prismaCliPath, prismaCliOriginalPath);
+    }
 
-      const wrapperContent = `#!/usr/bin/env node
+    const wrapperContent = `#!/usr/bin/env node
 const fs = require('fs');
-const { spawnSync } = require('child_process');
 const path = require('path');
 const args = process.argv.slice(2);
 if (args[0] === 'migrate' && args[1] === 'deploy') {
@@ -95,15 +92,22 @@ if (!fs.existsSync(originalCli)) {
   console.log('[Prisma Shim] Original CLI binary not found. Skipping CLI execution.');
   process.exit(0);
 }
-const result = spawnSync('node', [originalCli, ...args], { stdio: 'inherit' });
-process.exit(result.status ?? 0);
+// Run in-process without spawning child Node processes to prevent EAGAIN -11 on constrained environments
+require(originalCli);
 `;
-      fs.writeFileSync(prismaCliPath, wrapperContent, { mode: 0o755 });
-      console.log('[Prisma Shim] Successfully installed migrate deploy shim!');
-    }
+    fs.writeFileSync(prismaCliPath, wrapperContent, { mode: 0o755 });
+    console.log('[Prisma Shim] Successfully installed/updated migrate deploy shim (in-process)!');
   } else {
     console.warn(`[Prisma Shim] Prisma CLI entrypoint not found at: ${prismaCliPath}`);
+  }
+
+  // Stub child.js to prevent @prisma/checkpoint from spawning background telemetry node processes
+  if (fs.existsSync(prismaChildPath)) {
+    const stubChild = `#!/usr/bin/env node\nprocess.exit(0);\n`;
+    fs.writeFileSync(prismaChildPath, stubChild, { mode: 0o755 });
+    console.log('[Prisma Shim] Successfully stubbed child.js to disable telemetry process spawning!');
   }
 } catch (error) {
   console.error('[Prisma Shim] Error installing shim:', error);
 }
+

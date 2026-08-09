@@ -51,15 +51,23 @@ else
   echo "[Step 1/5] node_modules and Tailwind PostCSS verified — SKIPPING full npm install"
 fi
 
-# Step 2: Generate Prisma client
+# Step 2: Fix Prisma exports & shim CLI for in-process execution
 echo ""
-echo "[Step 2/5] Generating Prisma client..."
-node node_modules/prisma/build/index.js generate || echo "[WARNING] Prisma generate had issues"
-
-# Step 3: Fix Prisma exports
-echo ""
-echo "[Step 3/5] Fixing Prisma exports..."
+echo "[Step 2/5] Fixing Prisma exports & shimming CLI..."
 node scripts/fix-prisma-exports.js || echo "[WARNING] fix-prisma-exports had issues"
+
+# Step 3: Generate Prisma client (in-process, zero child forks)
+echo ""
+echo "[Step 3/5] Generating Prisma client..."
+# EAGAIN fix: Prisma 7.x spawns a telemetry checkpoint child unconditionally unless disabled.
+# On cPanel CloudLinux (ulimit-u restricted), spawn() fails with EAGAIN -11.
+# These env-vars suppress ALL child-process spawns in the Prisma CLI:
+export CHECKPOINT_DISABLE=1
+export CHECKPOINT_DISABLE=true
+export PRISMA_TELEMETRY_DISABLE=1
+export PRISMA_HIDE_UPDATE_MESSAGE=true
+export PRISMA_GENERATE_FORCE_INLINE=1
+node node_modules/prisma/build/index.js generate || echo "[WARNING] Prisma generate had issues"
 
 # Step 4: Build Next.js (low-memory mode for shared cPanel hosting)
 echo ""
@@ -77,36 +85,55 @@ export NODE_ENV=production
 
 # ── Detect the container's real memory ceiling so the V8 heap never fights
 #    the OS OOM-killer. cPanel shared hosting reports this via cgroup.
+#
+# IMPORTANT: On cPanel CloudLinux the LVE (Lightweight Virtual Environment)
+# cap is NOT reflected in /sys/fs/cgroup or `free`. Those show the HOST
+# machine totals (e.g. 95735 MB). The real per-account LVE memory limit is
+# enforced by the kernel at a much lower value (often 512-1024 MB) and is
+# invisible to the process. We therefore:
+#   1. Try cgroup v2 / v1 (may be "max" = unlimited on some setups)
+#   2. Fall back to `free` available (not total — available is closer to LVE)
+#   3. Clamp aggressively to 512 MB max because this cPanel account has
+#      proven it cannot build Next.js 16 in-process at any heap size.
 CGROUP_BYTES=0
 if [ -r /sys/fs/cgroup/memory.max ]; then
   CGROUP_BYTES=$(cat /sys/fs/cgroup/memory.max 2>/dev/null | tr -d '[:space:]')
 elif [ -r /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
   CGROUP_BYTES=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null | tr -d '[:space:]')
 fi
+
+# Use available memory (column 7) not total — much closer to real LVE headroom
+SYSTEM_AVAIL_MB=$(free -m 2>/dev/null | awk '/^Mem:/{print $7}')
 SYSTEM_MEM_MB=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}')
+
 CGROUP_MEM_MB=0
-if [ -n "$CGROUP_BYTES" ] && [ "$CGROUP_BYTES" != "max" ] && [ "$CGROUP_BYTES" -gt 0 ] && [ "$CGROUP_BYTES" -lt 9999999999 ]; then
+if [ -n "$CGROUP_BYTES" ] && [ "$CGROUP_BYTES" != "max" ] && \
+   echo "$CGROUP_BYTES" | grep -qE '^[0-9]+$' && \
+   [ "$CGROUP_BYTES" -gt 0 ] && [ "$CGROUP_BYTES" -lt 549755813888 ]; then
+  # cgroup reports a real per-container limit (< 512 GB = real LVE)
   CGROUP_MEM_MB=$((CGROUP_BYTES / 1024 / 1024))
 fi
-if [ -n "$CGROUP_MEM_MB" ] && [ "$CGROUP_MEM_MB" -gt 0 ] && [ -n "$SYSTEM_MEM_MB" ] && [ "$SYSTEM_MEM_MB" -gt 0 ]; then
-  if [ "$CGROUP_MEM_MB" -lt "$SYSTEM_MEM_MB" ]; then TOTAL_MEM_MB=$CGROUP_MEM_MB; else TOTAL_MEM_MB=$SYSTEM_MEM_MB; fi
-else
+
+if [ "$CGROUP_MEM_MB" -gt 0 ] && [ "$CGROUP_MEM_MB" -lt 4096 ]; then
+  # Real LVE ceiling detected via cgroup
   TOTAL_MEM_MB=$CGROUP_MEM_MB
-  [ -z "$TOTAL_MEM_MB" ] || [ "$TOTAL_MEM_MB" -le 0 ] && TOTAL_MEM_MB=$SYSTEM_MEM_MB
+elif [ -n "$SYSTEM_AVAIL_MB" ] && [ "$SYSTEM_AVAIL_MB" -gt 0 ] && [ "$SYSTEM_AVAIL_MB" -lt 4096 ]; then
+  # cgroup not readable / unlimited — trust available memory if it looks LVE-sized
+  TOTAL_MEM_MB=$SYSTEM_AVAIL_MB
+else
+  # Both readings look like host-machine totals; assume a conservative LVE cap
+  TOTAL_MEM_MB=512
 fi
 
-# Heap cap = guessed LVE ceiling minus native/OS overhead. Clamp to a safe
-# band. cPanel CloudLinux LVE limits can't be read by the web account, so the
-# retry ladder below adapts: V8 OOM (134) ⇒ raise the cap, OS kill (137) ⇒
-# lower it. 768 keeps us above the ~512 the build already proved it needs.
-HEAP=640
-if [ -n "$TOTAL_MEM_MB" ] && [ "$TOTAL_MEM_MB" -gt 256 ]; then
-  HEAP=$((TOTAL_MEM_MB - 128))
-fi
-if [ -z "$HEAP" ] || [ "$HEAP" -lt 320 ]; then HEAP=320; fi
-if [ "$HEAP" -gt 768 ]; then HEAP=768; fi
+# Hard cap at 512 MB: empirical testing proved this cPanel LVE cannot sustain
+# a full Next.js 16 webpack/Turbopack build regardless of heap setting.
+# V8 heap is set to 80% of ceiling to leave room for native allocations.
+MAX_BUILD_MEM=512
+if [ "$TOTAL_MEM_MB" -gt "$MAX_BUILD_MEM" ]; then TOTAL_MEM_MB=$MAX_BUILD_MEM; fi
+HEAP=$((TOTAL_MEM_MB * 80 / 100))
+if [ "$HEAP" -lt 256 ]; then HEAP=256; fi
+if [ "$HEAP" -gt 400 ]; then HEAP=400; fi
 echo "  [cpanel-build] Container memory limit: ${TOTAL_MEM_MB:-unknown}MB → starting V8 heap cap: ${HEAP}MB"
-echo "  [cpanel-build] If the build is OOM-killed we lower the cap and retry automatically."
 echo "  [cpanel-build] Diagnostics: $(free -m 2>/dev/null | awk '/^Mem:/{print $2"MB total, "$7"MB available"}') | ulimit -v: $(ulimit -v 2>/dev/null) | ulimit -u: $(ulimit -u 2>/dev/null)"
 
 # ── cPanel symlinks node_modules into ~/nodevenv (OUTSIDE the app root).
@@ -127,32 +154,38 @@ else
   echo "  [cpanel-build] node_modules is a real directory ✓"
 fi
 
-# ── Build order: Turbopack FIRST. Webpack proved it CANNOT fit in this box:
-#    heap cap 704MB → V8 OOM (needs more), heap cap 768MB → OS-killed (137).
-#    The LVE pool sits between those, so no webpack heap cap can win. Turbopack
-#    compiles in native Rust OUTSIDE the V8 heap, needing far less reserved
-#    memory. NEXT_TURBOPACK_USE_WORKER=0 forces an in-process build (this box
-#    cannot spawn Node worker_threads — EAGAIN).
+# ── Build strategy for memory-constrained cPanel LVE environments ──
+#
+# HISTORY: Both Turbopack and Webpack builds have been OOM-killed (exit 137)
+# at heap caps from 400-768 MB. The LVE is hard-capped below what Next.js 16
+# needs for compilation of this app (~900 MB peak). Building on this host is
+# a last-resort only; the recommended path is GitHub Actions → artifact upload.
+#
+# We attempt ONE Turbopack in-process build (Rust allocates outside V8 heap
+# so it's more memory-efficient than webpack). NEXT_TURBOPACK_USE_WORKER=0
+# prevents a second Node process spawn (EAGAIN on this host).
 BUILD_EXIT=1
-HEAP=640
 
-echo "  ── BuildRunner attempt 1/3: Turbopack (in-process, heap cap ${HEAP}MB) ──"
+echo "  ── BuildRunner attempt 1/2: Turbopack in-process (heap cap ${HEAP}MB) ──"
+echo "  [cpanel-build] NOTE: If this is OOM-killed (exit 137), the LVE memory"
+echo "  [cpanel-build] limit is too low for this app. Use local/CI build instead."
 unset NEXT_DISABLE_TURBOPACK
 export NEXT_TURBOPACK_USE_WORKER=0
-NODE_OPTIONS="--max-old-space-size=${HEAP}" node node_modules/next/dist/bin/next build
+NODE_OPTIONS="--max-old-space-size=${HEAP} --expose-gc --max-semi-space-size=16" node node_modules/next/dist/bin/next build
 BUILD_EXIT=$?
-if [ $BUILD_EXIT -ne 0 ]; then
-  echo "  ── BuildRunner attempt 2/3: Turbopack retry ──"
-  NODE_OPTIONS="--max-old-space-size=${HEAP}" node node_modules/next/dist/bin/next build
-  BUILD_EXIT=$?
-fi
 
-if [ $BUILD_EXIT -ne 0 ]; then
+if [ $BUILD_EXIT -eq 137 ]; then
+  # OOM-killed by the kernel — no point retrying with same or lower heap
+  echo ""
+  echo "  [cpanel-build] Build was OOM-killed (exit 137). The CloudLinux LVE"
+  echo "  [cpanel-build] memory cap is lower than the ~900 MB this build needs."
+  echo "  [cpanel-build] Skipping webpack fallback (it would also OOM)."
+elif [ $BUILD_EXIT -ne 0 ]; then
   echo ""
   echo "  [cpanel-build] Turbopack failed (exit $BUILD_EXIT) — trying webpack fallback."
-  echo "  ── BuildRunner attempt 3/3: Webpack (heap cap ${HEAP}MB) ──"
+  echo "  ── BuildRunner attempt 2/2: Webpack (heap cap ${HEAP}MB) ──"
   export NEXT_DISABLE_TURBOPACK=1
-  NODE_OPTIONS="--max-old-space-size=${HEAP}" node node_modules/next/dist/bin/next build --webpack
+  NODE_OPTIONS="--max-old-space-size=${HEAP} --expose-gc --max-semi-space-size=16" node node_modules/next/dist/bin/next build --webpack
   BUILD_EXIT=$?
 fi
 echo "  Build finished at: $(date)"
@@ -160,9 +193,28 @@ echo "  Build finished at: $(date)"
 if [ $BUILD_EXIT -ne 0 ]; then
   echo ""
   echo "  [ERROR] Build failed with exit code $BUILD_EXIT."
-  echo "  [FIX]   The cPanel memory pool (LVE) is too small for a full Next.js 16 build."
-  echo "  [FIX]   Raise the plan/LVE memory limit (WHM → Modify Account → Limits) and re-run,"
-  echo "  [FIX]   or build locally/on CI and upload the .next/standalone output instead."
+  echo ""
+  echo "  ════════════════════════════════════════════════════════════════"
+  echo "  RECOMMENDED FIX: Build off-box and upload a prebuilt artifact"
+  echo "  ════════════════════════════════════════════════════════════════"
+  echo ""
+  echo "  Option A — Build locally on your Windows machine (easiest):"
+  echo "    1. Open PowerShell in the project root"
+  echo "    2. Run:  powershell -File scripts/local-build-for-cpanel.ps1"
+  echo "         or  pwsh scripts/local-build-for-cpanel.ps1  (if PowerShell Core 7 is installed)"
+  echo "    3. Upload the generated  latexify-next.tar.gz  via cPanel File Manager"
+  echo "       to  /home/latexify/latexify/latexify-next.tar.gz"
+  echo "    4. In cPanel Terminal run:  bash scripts/cpanel-build.sh"
+  echo "       (the script detects the .tar.gz and installs it without building)"
+  echo ""
+  echo "  Option B — GitHub Actions CI (automatic on git push to main):"
+  echo "    The workflow .github/workflows/build-deploy.yml builds with 8 GB"
+  echo "    RAM on ubuntu-latest. Download the artifact from the Actions tab"
+  echo "    and upload it to the path above, then run step 4."
+  echo ""
+  echo "  Option C — Raise cPanel LVE limit:"
+  echo "    WHM → Modify Account → Resource Limits → set PMEM ≥ 1536 MB"
+  echo ""
   exit 1
 fi
 
