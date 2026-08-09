@@ -20,6 +20,13 @@ if [ ! -f "$ARTIFACT" ]; then
   exit 1
 fi
 
+if ! tar -tzf "$ARTIFACT" >/dev/null 2>&1; then
+  echo "[cpanel-deploy] ERROR: Corrupted or truncated archive file detected at ${ARTIFACT}"
+  echo "[cpanel-deploy] Removing corrupted file. Please re-upload latexify-next.tar.gz once upload reaches 100%."
+  rm -f "$ARTIFACT" 2>/dev/null || true
+  exit 1
+fi
+
 echo "[cpanel-deploy] Installing prebuilt .next from $(basename "$ARTIFACT") into ${APP_DIR}"
 cd "$APP_DIR"
 

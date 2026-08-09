@@ -40,13 +40,18 @@ ARTIFACT_LOCATIONS=(
 FOUND_ARTIFACT=""
 for loc in "${ARTIFACT_LOCATIONS[@]}"; do
   if [ -f "$loc" ]; then
-    FOUND_ARTIFACT="$loc"
-    break
+    if tar -tzf "$loc" >/dev/null 2>&1; then
+      FOUND_ARTIFACT="$loc"
+      break
+    else
+      echo "[cpanel-build] WARNING: Found corrupted/incomplete artifact at: ${loc} — removing corrupted file."
+      rm -f "$loc" 2>/dev/null || true
+    fi
   fi
 done
 
 if [ -n "$FOUND_ARTIFACT" ]; then
-  echo "[cpanel-build] Found prebuilt artifact at: ${FOUND_ARTIFACT} — installing it (no build needed)."
+  echo "[cpanel-build] Found valid prebuilt artifact at: ${FOUND_ARTIFACT} — installing it (no build needed)."
   bash scripts/cpanel-deploy-artifact.sh "${FOUND_ARTIFACT}"
   exit $?;
 fi
