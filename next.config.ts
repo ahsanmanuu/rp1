@@ -1,10 +1,10 @@
 import type { NextConfig } from "next";
 import path from "path";
 
-// Configure threadpool size safely without overloading low-memory environments (like cPanel)
-if (typeof process !== 'undefined' && process.env.CPANEL_BUILD !== 'true') {
+// Configure threadpool size safely without overloading low-memory environments
+if (typeof process !== 'undefined') {
   if (!process.env.UV_THREADPOOL_SIZE) {
-    process.env.UV_THREADPOOL_SIZE = "16";
+    process.env.UV_THREADPOOL_SIZE = "4";
   }
 }
 

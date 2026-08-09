@@ -5,9 +5,9 @@ import sharp from 'sharp';
 import { randomBytes } from 'crypto';
 import { getClient } from '@/lib/prisma';
 
-// Configure Sharp image processing engine cache and threadpool buffers for maximum upload throughput
-sharp.concurrency(4);
-sharp.cache({ memory: 256, items: 200, files: 0 });
+// Configure Sharp for low-resource environments (Render 512MB limit)
+sharp.concurrency(1);
+sharp.cache({ memory: 16, items: 20, files: 0 });
 
 const IMAGE_ENHANCE_CACHE = new Map<string, Buffer>();
 
