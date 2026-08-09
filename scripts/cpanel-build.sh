@@ -33,9 +33,14 @@ cd "$APP_DIR" || exit 1
 ARTIFACT_LOCATIONS=(
   "${APP_DIR}/latexify-next.tar.gz"
   "/home/${USER_NAME}/latexify-next.tar.gz"
+  "${PUBLIC_HTML}/latexify-next.tar.gz"
+  "${APP_DIR}/public/latexify-next.tar.gz"
+  "${APP_DIR}/tmp/latexify-next.tar.gz"
   "${APP_DIR}/latexify-next-build.tar.gz"
   "/home/${USER_NAME}/latexify-next-build.tar.gz"
-  "${PUBLIC_HTML}/latexify-next.tar.gz"
+  "${PUBLIC_HTML}/latexify-next-build.tar.gz"
+  "${APP_DIR}/latexify-standalone.tar.gz"
+  "/home/${USER_NAME}/latexify-standalone.tar.gz"
   "${APP_DIR}/latexify-next.tar"
 )
 
@@ -56,6 +61,29 @@ if [ -n "$FOUND_ARTIFACT" ]; then
   echo "[cpanel-build] Found valid prebuilt artifact at: ${FOUND_ARTIFACT} — installing it (no build needed)."
   bash scripts/cpanel-deploy-artifact.sh "${FOUND_ARTIFACT}"
   exit $?;
+fi
+
+# ── If no prebuilt artifact was found, verify if host has memory to build ──
+# Building Next.js 16 in-process requires ~900 MB RAM. cPanel CloudLinux LVE pool is capped at 512 MB.
+# If no artifact is uploaded and --force-build is not set, stop with clear upload instructions.
+if [ "${1:-}" != "--force-build" ]; then
+  echo ""
+  echo "  ════════════════════════════════════════════════════════════════"
+  echo "  [cpanel-build] ERROR: Prebuilt artifact NOT FOUND!"
+  echo "  ════════════════════════════════════════════════════════════════"
+  echo "  This cPanel server has a 512 MB memory limit (LVE pool)."
+  echo "  Compiling Next.js 16 on this host will result in Exit 137 (OOM)."
+  echo ""
+  echo "  REQUIRED ACTION:"
+  echo "    1. Upload  latexify-next.tar.gz  via cPanel File Manager to:"
+  echo "       /home/${USER_NAME}/latexify/latexify-next.tar.gz"
+  echo "       (or /home/${USER_NAME}/latexify-next.tar.gz)"
+  echo ""
+  echo "    2. Re-run in cPanel Terminal:"
+  echo "       cd ~/latexify && bash scripts/cpanel-build.sh"
+  echo "  ════════════════════════════════════════════════════════════════"
+  echo ""
+  exit 1
 fi
 
 mkdir -p tmp
