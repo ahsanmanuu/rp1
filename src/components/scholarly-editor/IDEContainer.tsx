@@ -551,8 +551,9 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
         const pollMaxWaitMs = 30 * 60 * 1000;
         const pollStartedAt = Date.now();
         // Grace window for transient 404s (server/PB restarting right after
-        // the POST persisted the bytes): keep polling before declaring lost.
-        const NOT_FOUND_RETRY_LIMIT = 30;
+        // the POST persisted the bytes): keep polling (~2min) before declaring
+        // lost.
+        const NOT_FOUND_RETRY_LIMIT = 60;
         let notFoundStreak = 0;
         let pollSettled = false;
         while (!pollSettled && Date.now() - pollStartedAt < pollMaxWaitMs) {

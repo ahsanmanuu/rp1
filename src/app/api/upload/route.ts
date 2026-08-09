@@ -15,7 +15,7 @@ const IMAGE_ENHANCE_CACHE = new Map<string, Buffer>();
 // is the dominant CPU cost for large DOCX files and a top cause of the Render
 // ~300s request kill. After ENHANCE_IMAGE_CAP images, images pass through
 // untouched — sharp work is skipped entirely for the rest of the document.
-let enhanceImageCount = 0;
+const enhanceImageCount = 0;
 const ENHANCE_IMAGE_CAP = 60;
 
 async function enhanceImageFor3000Dpi(buffer: Buffer): Promise<Buffer> {
@@ -120,12 +120,39 @@ const MAX_BACKGROUND_KICKS = 3;
 // row's attempts field.
 const backgroundRunning = new Set<string>();
 
-async function writeStatus(uploadId: string, data: Record<string, any>): Promise<void> {
+// Status writes are serialized PER UPLOAD so fire-and-forget progress/heartbeat
+// writes can never land AFTER the terminal done/error write and clobber it back
+// to phase='processing'. Without this ordering guarantee, a finished upload's
+// row would be overwritten by a late progress write ~10 min later, the stale
+// detector would re-kick the worker, and the re-kick would crash re-persisting
+// duplicate project_files rows — surfacing as "Upload processing was lost".
+const statusWriteChains = new Map<string, Promise<void>>();
+// Terminal-state latch: once a done/error write is enqueued for an uploadId,
+// any later non-forced progress write is dropped entirely (the worker is done).
+const terminalStateWrites = new Set<string>();
+
+async function writeStatus(uploadId: string, data: Record<string, any>, force = false): Promise<void> {
+  if (!force && terminalStateWrites.has(uploadId)) return;
+  const prev = statusWriteChains.get(uploadId) || Promise.resolve();
+  const next = prev.then(async () => {
+    try {
+      await prisma.uploadJob.update({ where: { uploadId }, data });
+    } catch (writeErr: any) {
+      console.warn('[UPLOAD-STATUS] Status write failed:', writeErr?.message || writeErr);
+    }
+  });
+  statusWriteChains.set(uploadId, next);
   try {
-    await prisma.uploadJob.update({ where: { uploadId }, data });
-  } catch (writeErr: any) {
-    console.warn('[UPLOAD-STATUS] Status write failed:', writeErr?.message || writeErr);
-  }
+    await next;
+  } catch {}
+}
+
+// Terminal (done/error) state: latch FIRST so concurrent progress writes are
+// dropped, then force the write through the queue (it becomes the last write
+// for this uploadId).
+async function markTerminalState(uploadId: string, data: Record<string, any>): Promise<void> {
+  terminalStateWrites.add(uploadId);
+  await writeStatus(uploadId, data, true);
 }
 
 // Status read via the raw PB client (not the prisma adapter): the adapter
@@ -213,14 +240,16 @@ async function writeCheckpoint(uploadId: string, data: { projectId: string }): P
 
 // Shared terminal handler for every worker kick (POST fire-and-forget AND GET
 // recovery re-kick): writes the final status and releases the worker registry.
+// Uses the terminal-state latch so the done/error write can never be clobbered
+// by a straggling fire-and-forget progress write.
 async function finishUpload(uploadId: string, res: any): Promise<void> {
   backgroundRunning.delete(uploadId);
   if (res?.success && res.projectId) {
     console.log(`[UPLOAD-FINISH] Marking upload ${uploadId} as done (project: ${res.projectId})`);
-    await writeStatus(uploadId, { phase: 'done', progress: 100, stage: 'Complete', projectId: res.projectId });
+    await markTerminalState(uploadId, { phase: 'done', progress: 100, stage: 'Complete', projectId: res.projectId });
   } else if (res?.error) {
     console.log(`[UPLOAD-FINISH] Marking upload ${uploadId} as error: ${res.error}`);
-    await writeStatus(uploadId, { phase: 'error', message: res.error, recoverable: false });
+    await markTerminalState(uploadId, { phase: 'error', message: res.error, recoverable: false });
   } else {
     console.warn(`[UPLOAD-FINISH] Upload ${uploadId} finished with unknown result:`, JSON.stringify(res));
   }
@@ -825,6 +854,11 @@ async function runUploadProcessing(uploadId: string) {
           try {
             // CRITICAL: Await image.read() directly in the main callback to capture the buffer
             // while the zip stream is open and valid.
+            // Heartbeat per image: extracting hundreds of large images
+            // can legitimately exceed the 10-min staleness window with no
+            // progress milestone in between — a live-but-busy worker must never
+            // be mistaken for a dead one and re-kicked.
+            heartbeat(uploadId, 'Extracting text and figures', 42);
             const rawBuffer = await image.read();
             const enhancedBuffer = await enhanceImageFor3000Dpi(rawBuffer);
             extractedImages.push({ name, buffer: enhancedBuffer });
@@ -1567,14 +1601,46 @@ async function runUploadProcessing(uploadId: string) {
     // These are all handled by Phase 2 (generate-latex endpoint)
     console.log("[TELEMETRY] Phase 1: Images persisted. Modular components deferred to Phase 2.");
 
-    // Bulk DB insert for image files
+    // IDEMPOTENT DB INSERT (crash-recovery safe): the prisma adapter's
+    // createMany ignores skipDuplicates and PB 400s on the (projectId, filename)
+    // unique index when a previous kick already stored a file row. A recovery
+    // re-kick therefore DEDUPs against rows already stored, inserts only what's
+    // missing, and treats per-row failures as non-fatal — the bytes already
+    // live on disk in public/uploads/projects/{projectId} regardless, and a
+    // failed row must never take the whole upload down (a crash here previously
+    // surfaced as "Upload processing was lost" / "Failed to create record").
     if (filesToCreate.length > 0) {
-      console.log(`[TELEMETRY] Executing single-batch DB insertion for ${filesToCreate.length} project files...`);
-      await prisma.projectFile.createMany({
-        data: filesToCreate,
-        skipDuplicates: true
-      });
-      console.log("[TELEMETRY] Batch DB persistence fully completed.");
+      console.log(`[TELEMETRY] Executing idempotent DB insertion for ${filesToCreate.length} project files...`);
+      const existingNames = new Set<string>();
+      try {
+        const existing = await prisma.projectFile.findMany({
+          where: { projectId: project.id },
+          select: { filename: true },
+        });
+        (existing || []).forEach((f: any) => existingNames.add(f.filename));
+      } catch (lookupErr: any) {
+        console.warn('[UPLOAD] Existing-file lookup failed, continuing without dedup (non-fatal):', lookupErr?.message || lookupErr);
+      }
+      let inserted = 0;
+      let skippedRows = 0;
+      let failedRows = 0;
+      for (const file of filesToCreate) {
+        if (existingNames.has(file.filename)) {
+          skippedRows++;
+          continue;
+        }
+        try {
+          await prisma.projectFile.create({ data: file });
+          inserted++;
+        } catch (createErr: any) {
+          failedRows++;
+          // Duplicate on the unique index (race) is expected and fine — the row
+          // exists. Any other validation failure is tolerated too: the file is
+          // already persisted on disk and Phase 2 re-syncs from there.
+          console.warn(`[UPLOAD] Skipped project_file row for ${file.filename} (non-fatal):`, createErr?.message || createErr);
+        }
+      }
+      console.log(`[TELEMETRY] DB persistence: ${inserted} inserted, ${skippedRows} already existed, ${failedRows} skipped.`);
     }
 
     progress(uploadId, 'Finalizing project', 97);
@@ -1585,7 +1651,7 @@ async function runUploadProcessing(uploadId: string) {
     console.error('Message:', error.message);
     console.error('Stack Trace:', error.stack);
     console.error('-----------------------------');
-    await writeStatus(uploadId, { phase: 'error', message: error.message || 'Internal Server Error' }).catch(() => {});
+    await markTerminalState(uploadId, { phase: 'error', message: error.message || 'Internal Server Error' }).catch(() => {});
     return { success: false, error: error.message || 'Internal Server Error' };
   } finally {
     backgroundRunning.delete(uploadId);
@@ -1717,7 +1783,7 @@ export async function GET(req: Request) {
         // Too many recovery attempts — give the user a definitive error
         // instead of an endless recovery loop.
         const tooLongMsg = 'Upload processing is taking too long. Please upload the file again.';
-        await writeStatus(uploadId, { phase: 'error', message: tooLongMsg, recoverable: false }).catch(() => {});
+        await markTerminalState(uploadId, { phase: 'error', message: tooLongMsg, recoverable: false }).catch(() => {});
         return NextResponse.json({ phase: 'error', message: tooLongMsg, recoverable: false });
       }
       if (!backgroundRunning.has(uploadId)) {

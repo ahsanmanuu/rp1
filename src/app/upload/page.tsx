@@ -410,10 +410,10 @@ function UploadContent() {
         // A 404 right after the POST succeeded means the status row couldn't
         // be read (server restarting / storage temporarily unavailable) — the
         // POST already persisted the bytes, so the row must exist. Wait out
-        // the restart window (~60s at the 2s poll interval) before declaring
+        // the restart window (~2min at the 2s poll interval) before declaring
         // the upload lost, so a deploy/OOM restart never kills a recoverable
         // upload.
-        const NOT_FOUND_RETRY_LIMIT = 30;
+        const NOT_FOUND_RETRY_LIMIT = 60;
         let lastUpdatedAt: number | null = null;
         let lastActivityAt = Date.now();
         let notFoundStreak = 0;
