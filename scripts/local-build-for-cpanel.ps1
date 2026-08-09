@@ -41,6 +41,15 @@ Write-Host "  Build started at: $buildStart" -ForegroundColor Gray
 $env:NODE_ENV = "production"
 $env:NEXT_TELEMETRY_DISABLED = "1"
 $env:DISABLE_ESLINT_PLUGIN = "true"
+
+if (Test-Path ".next") {
+    Write-Host "  Cleaning prior build cache..." -ForegroundColor Gray
+    if (Test-Path ".next\standalone\public\uploads") {
+        try { Remove-Item -Recurse -Force ".next\standalone\public\uploads" -ErrorAction SilentlyContinue } catch {}
+    }
+    try { Remove-Item -Recurse -Force ".next" -ErrorAction SilentlyContinue } catch {}
+}
+
 node --max-old-space-size=8192 node_modules/next/dist/bin/next build
 
 if ($LASTEXITCODE -ne 0) {
@@ -60,7 +69,14 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "[ERROR] Standalone packaging failed" -ForegroundColor Red
     exit 1
 }
-$sizeStr = $sizeMB.ToString() + " MB"
+
+$OutputTar = Join-Path $ProjectRoot "latexify-next.tar.gz"
+$sizeStr = "N/A"
+if (Test-Path $OutputTar) {
+    $fileItem = Get-Item $OutputTar
+    $sizeMB = [math]::Round(($fileItem.Length / 1MB), 2)
+    $sizeStr = "$sizeMB MB"
+}
 Write-Host ("  OK: Artifact created: " + $OutputTar + " (" + $sizeStr + ")") -ForegroundColor Green
 
 Write-Host ""
@@ -74,6 +90,7 @@ Write-Host "  2. Navigate to: /home/latexify/latexify/" -ForegroundColor White
 Write-Host ("  3. Upload: latexify-next.tar.gz (" + $sizeStr + ")") -ForegroundColor White
 Write-Host "  4. In cPanel Terminal, run:" -ForegroundColor White
 Write-Host "       cd ~/latexify" -ForegroundColor Cyan
-Write-Host "       bash scripts/cpanel-install-artifact.sh" -ForegroundColor Cyan
+Write-Host "       bash scripts/cpanel-build.sh" -ForegroundColor Cyan
+Write-Host "       (or: bash scripts/cpanel-install-artifact.sh)" -ForegroundColor Cyan
 Write-Host "  5. Go to: cPanel -> Setup Node.js App -> Restart" -ForegroundColor White
 Write-Host ""

@@ -20,7 +20,8 @@ if [ ! -f "$ARTIFACT" ]; then
   exit 1
 fi
 
-if ! tar -tzf "$ARTIFACT" >/dev/null 2>&1; then
+# Thorough integrity check: test gzip payload + tar archive headers
+if ! gzip -t "$ARTIFACT" >/dev/null 2>&1 || ! tar -tf "$ARTIFACT" >/dev/null 2>&1; then
   echo "[cpanel-deploy] ERROR: Corrupted or truncated archive file detected at ${ARTIFACT}"
   echo "[cpanel-deploy] Removing corrupted file. Please re-upload latexify-next.tar.gz once upload reaches 100%."
   rm -f "$ARTIFACT" 2>/dev/null || true
@@ -30,28 +31,54 @@ fi
 echo "[cpanel-deploy] Installing prebuilt .next from $(basename "$ARTIFACT") into ${APP_DIR}"
 cd "$APP_DIR"
 
-# 1. Move the current build aside (kept for instant rollback)
+# 1. Move the current build aside (kept for instant rollback if extraction fails)
+HAS_BACKUP=false
 if [ -d ".next" ]; then
   rm -rf "$BACKUP_DIR"
   mv .next "$BACKUP_DIR"
+  HAS_BACKUP=true
   echo "[cpanel-deploy] Moved current .next to ${BACKUP_DIR}"
 fi
 
-# 2. Extract the standalone output — the tar is rooted at .next/standalone/*
+# 2. Extract the standalone output into .next/standalone
 mkdir -p .next/standalone
-tar -xzf "$ARTIFACT" -C .next/standalone
-echo "[cpanel-deploy] Extracted standalone output"
+EXTRACT_SUCCESS=true
+tar -xzf "$ARTIFACT" -C .next/standalone 2>/tmp/cpanel_deploy_tar_err.log || EXTRACT_SUCCESS=false
 
-# 3. The standalone server expects its static files inside itself; the
-#    artifact already bundles static + public, so nothing more to copy.
+if [ "$EXTRACT_SUCCESS" = false ] || [ ! -f ".next/standalone/server.js" ]; then
+  echo "[cpanel-deploy] ERROR: Extraction failed or server.js missing!"
+  cat /tmp/cpanel_deploy_tar_err.log 2>/dev/null || true
+  rm -f /tmp/cpanel_deploy_tar_err.log 2>/dev/null || true
+  rm -rf .next
+  if [ "$HAS_BACKUP" = true ] && [ -d "$BACKUP_DIR" ]; then
+    mv "$BACKUP_DIR" .next
+    echo "[cpanel-deploy] ROLLBACK SUCCESSFUL: Restored existing .next build."
+  fi
+  rm -f "$ARTIFACT" 2>/dev/null || true
+  exit 1
+fi
+rm -f /tmp/cpanel_deploy_tar_err.log 2>/dev/null || true
+echo "[cpanel-deploy] Extracted standalone output successfully."
 
-rm -f "$ARTIFACT"
+# 3. Ensure static assets are present inside standalone directory
+if [ -d "public" ] && [ -d ".next/standalone" ]; then
+  mkdir -p .next/standalone/public
+  cp -R public/* .next/standalone/public/ 2>/dev/null || true
+fi
+if [ -d ".next/static" ] && [ -d ".next/standalone" ]; then
+  mkdir -p .next/standalone/.next/static
+  cp -R .next/static/* .next/standalone/.next/static/ 2>/dev/null || true
+fi
+
+# Clean up backup now that extraction succeeded
+rm -rf "$BACKUP_DIR" 2>/dev/null || true
+rm -f "$ARTIFACT" 2>/dev/null || true
 echo "[cpanel-deploy] Removed artifact tarball"
 
 # 4. Force cPanel Passenger / LiteSpeed to restart the Node app
 mkdir -p tmp
 touch tmp/restart.txt
 
-echo "[cpanel-deploy] ✓ Deployed. Standalone server.js:"
+echo "[cpanel-deploy] ✓ Deployed successfully. Standalone server.js:"
 ls -la .next/standalone/server.js 2>/dev/null || echo "  (server.js not found)"
 echo "[cpanel-deploy] Visit the site to confirm it's live."

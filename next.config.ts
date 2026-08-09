@@ -10,9 +10,7 @@ if (typeof process !== 'undefined' && process.env.CPANEL_BUILD !== 'true') {
 
 // True when building inside the memory-constrained cPanel shared hosting:
 // enables every trick we have to keep peak memory under the container limit.
-const IS_CONSTRAINED =
-  process.env.CPANEL_BUILD === 'true' ||
-  Boolean(process.env.NODE_OPTIONS?.includes('max-old-space-size='));
+const IS_CONSTRAINED = process.env.CPANEL_BUILD === 'true';
 
 const nextConfig: NextConfig = {
   output: 'standalone',
@@ -251,8 +249,7 @@ const nextConfig: NextConfig = {
   },
 
   experimental: {
-    cpus: 1,
-    workerThreads: false,
+    ...(IS_CONSTRAINED ? { cpus: 1, workerThreads: false } : {}),
     // Keeps webpack's string-cache pooling small — real peak-memory win on
     // tight cPanel containers (Next 16 supports this natively).
     webpackMemoryOptimizations: IS_CONSTRAINED,

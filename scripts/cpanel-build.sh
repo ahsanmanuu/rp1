@@ -33,6 +33,8 @@ cd "$APP_DIR" || exit 1
 ARTIFACT_LOCATIONS=(
   "${APP_DIR}/latexify-next.tar.gz"
   "/home/${USER_NAME}/latexify-next.tar.gz"
+  "${APP_DIR}/latexify-next-build.tar.gz"
+  "/home/${USER_NAME}/latexify-next-build.tar.gz"
   "${PUBLIC_HTML}/latexify-next.tar.gz"
   "${APP_DIR}/latexify-next.tar"
 )
@@ -40,7 +42,7 @@ ARTIFACT_LOCATIONS=(
 FOUND_ARTIFACT=""
 for loc in "${ARTIFACT_LOCATIONS[@]}"; do
   if [ -f "$loc" ]; then
-    if tar -tzf "$loc" >/dev/null 2>&1; then
+    if gzip -t "$loc" >/dev/null 2>&1 && tar -tf "$loc" >/dev/null 2>&1; then
       FOUND_ARTIFACT="$loc"
       break
     else
