@@ -482,6 +482,7 @@ async function runUploadProcessing(uploadId: string) {
     let buffer: Buffer | null = null;
     if (typeof job.rawBytes === 'string' && job.rawBytes) buffer = Buffer.from(job.rawBytes, 'base64');
     else if (Buffer.isBuffer(job.rawBytes)) buffer = job.rawBytes;
+    (job as any).rawBytes = null; // Release base64 string from job object for GC immediately
     if (!buffer) throw new Error('Upload bytes not found');
     // Plain file object — the pipeline only uses .name (and occasionally .size).
     const file: any = { name: job.fileName, size: job.size };
@@ -840,6 +841,12 @@ async function runUploadProcessing(uploadId: string) {
         tableCount: Math.max(0, validTables),
         equationCount: finalEquationCount,
       };
+
+      // CRITICAL MEMORY RELEASE: Close JSDOM window immediately after groundTruth extraction.
+      // The JSDOM window object holds 50-150MB of C++ / JS memory that MUST be freed before
+      // mammoth starts extracting image buffers, preventing peak memory from exceeding 512MB limit.
+      try { (dom as any)?.window?.close?.(); } catch {}
+      (dom as any) = null;
 
       console.log("[TELEMETRY] Step 4: Extracting Images (Parallel Mode)");
       // Fixed: Removed local const declaration of extractedImages to prevent shadowing outer array
