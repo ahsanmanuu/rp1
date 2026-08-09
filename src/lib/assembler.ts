@@ -170,19 +170,30 @@ export class LatexAssembler {
       "\\providecommand{\\naturalwidth}{0.9\\textwidth}",
       "\\catcode`\\@=12",
       "\\PassOptionsToPackage{export}{graphicx}",
-      "\\PassOptionsToPackage{export}{adjustbox}",
       "\\usepackage[T1]{fontenc}",
       "\\usepackage[utf8]{inputenc}",
       "\\ifdefined\\DeclareUnicodeCharacter\\DeclareUnicodeCharacter{200B}{}\\fi",
-      "\\usepackage{graphicx}",
+      "\\catcode`\\@=11",
+      "\\@ifpackageloaded{graphicx}{}{\\usepackage{graphicx}}",
+      "\\@ifpackageloaded{adjustbox}{}{\\PassOptionsToPackage{export}{adjustbox}\\usepackage{adjustbox}}",
       "\\makeatletter",
       "\\expandafter\\let\\csname equation*\\endcsname\\relax",
       "\\expandafter\\let\\csname endequation*\\endcsname\\relax",
       "\\makeatother",
-      "\\usepackage{amsmath,amsfonts,amssymb}",
-      "\\usepackage{booktabs,multirow,array,tabularx,adjustbox}",
-      "\\usepackage{float,caption}",
-      "\\usepackage{url,xurl}",
+      "\\@ifpackageloaded{amsmath}{}{\\usepackage{amsmath}}",
+      "\\@ifpackageloaded{amsfonts}{}{\\usepackage{amsfonts}}",
+      "\\@ifpackageloaded{amssymb}{}{\\usepackage{amssymb}}",
+      "\\@ifpackageloaded{booktabs}{}{\\usepackage{booktabs}}",
+      "\\@ifpackageloaded{multirow}{}{\\usepackage{multirow}}",
+      "\\@ifpackageloaded{array}{}{\\usepackage{array}}",
+      "\\@ifpackageloaded{tabularx}{}{\\usepackage{tabularx}}",
+      "\\@ifpackageloaded{float}{}{\\usepackage{float}}",
+      "\\@ifpackageloaded{caption}{}{\\usepackage{caption}}",
+      "\\@ifpackageloaded{url}{}{\\usepackage{url}}",
+      "\\@ifpackageloaded{xurl}{}{\\usepackage{xurl}}",
+      "\\@ifpackageloaded{algorithm}{}{\\usepackage{algorithm}}",
+      "\\@ifpackageloaded{algpseudocode}{}{\\@ifpackageloaded{algorithmic}{}{\\usepackage{algpseudocode}}}",
+      "\\catcode`\\@=12",
       "\\emergencystretch=3em",
       "\\righthyphenmin=2",
       "",
@@ -204,8 +215,6 @@ export class LatexAssembler {
     ];
 
     // Standardize to algorithm and algpseudocode because our generator output is always algpseudocode-compatible
-    preamble.push("\\usepackage{algorithm}", "\\usepackage{algpseudocode}");
-
     preamble.push(
       "\\usepackage{iftex,microtype}",
       "\\ifdefined\\pdfpxdimen\\pdfpxdimen=1in/3000\\fi",
@@ -1110,7 +1119,7 @@ export class LatexAssembler {
     const widthParam = twoColWide ? '{\\textwidth}' : '{\\linewidth}';
     const activeSpec = fullSpec;
 
-    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n\\caption{${caption}}\n\\label{${labelKey}}\n\\renewcommand{\\arraystretch}{1.3}\n\\begin{adjustbox}{max width=${twoColWide ? '\\textwidth' : '\\linewidth'}}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}\n\\end{adjustbox}\n\\end{${tableEnv}}\n`;
+    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n\\caption{${caption}}\n\\label{${labelKey}}\n\\renewcommand{\\arraystretch}{1.3}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}\n\\end{${tableEnv}}\n`;
   }
 
 
@@ -1323,7 +1332,8 @@ export class LatexAssembler {
     const algoEnv = (node as any).twoColumn ? 'algorithm*' : 'algorithm';
     const placement = (node as any).twoColumn ? 't' : 'H'; // Force H to guarantee perfect ordering!
 
-    const algoBody = `\n\\begin{${algoEnv}}[${placement}]\n\\caption{${escapedTitle}}\n\\begin{adjustbox}{max width=\\linewidth}\n\\begin{minipage}{\\linewidth}\n\\begin{algorithmic}[1]\n${items.join('\n')}\n\\end{algorithmic}\n\\end{minipage}\n\\end{adjustbox}\n\\end{${algoEnv}}\n`;
+    const labelSuffix = Math.random().toString(36).substring(2, 7);
+    const algoBody = `\n\\begin{${algoEnv}}[${placement}]\n\\caption{${escapedTitle}}\n\\label{alg:${labelSuffix}}\n\\begin{algorithmic}[1]\n${items.join('\n')}\n\\end{algorithmic}\n\\end{${algoEnv}}\n`;
     return algoBody;
   }
 
