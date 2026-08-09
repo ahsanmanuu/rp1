@@ -61,6 +61,8 @@ prisma/*.db*
 
 # off-box deploy artifact
 /latexify-next.tar.gz
+/latexify-next-build.tar.gz
+/build-artifact.zip
 
 # local dev artifacts / implementation notes
 implementation_plan.md
