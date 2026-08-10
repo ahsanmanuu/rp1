@@ -137,7 +137,7 @@ export default function AiPlanSubscribeModal({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md px-4 py-4"
+          className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-900/70 backdrop-blur-md px-4 py-4"
           onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
           <motion.div

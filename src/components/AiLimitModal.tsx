@@ -226,7 +226,11 @@ export default function AiLimitModal({ open, onClose, data }: AiLimitModalProps)
               <button
                 onClick={() => {
                   onClose();
-                  window.dispatchEvent(new CustomEvent('open-ai-subscription'));
+                  // Small delay ensures the exit animation clears before
+                  // the plan modal (z-[100000]) opens on top.
+                  setTimeout(() => {
+                    window.dispatchEvent(new CustomEvent('open-ai-subscription'));
+                  }, 50);
                 }}
                 style={{
                   flex: 1,
