@@ -43,10 +43,10 @@ export interface ModularMappingResult {
 const HAS_STRONG_PROVIDER = !!(process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
 // Generous windows — a 20MB doc has ~3.3M chars; we keep as much as the AI
 // model can reasonably process (Gemini 2.5 Flash supports 1M+ context).
-const WINDOW_HEAD = HAS_STRONG_PROVIDER ? 350000 : 120000;
-const WINDOW_TAIL = HAS_STRONG_PROVIDER ? 100000 : 30000;
-const PASS_TIMEOUT_MS = 300_000;
-const RETRY_TIMEOUT_MS = 120_000;
+const WINDOW_HEAD = HAS_STRONG_PROVIDER ? 500000 : 120000;
+const WINDOW_TAIL = HAS_STRONG_PROVIDER ? 150000 : 30000;
+const PASS_TIMEOUT_MS = 420_000;
+const RETRY_TIMEOUT_MS = 180_000;
 
 const AI_MODEL_OVERRIDE = process.env.OPENROUTER_API_KEY
   ? 'google/gemini-2.5-flash-001'
@@ -506,7 +506,7 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     }).join('\n');
     const combined = [structured.fullText, bodyTextFull].filter(Boolean).join('\n').trim();
     // Cap at generous limit — Gemini 2.5 Flash handles 1M+ tokens
-    const MAX_CHARS = HAS_STRONG_PROVIDER ? 500000 : 200000;
+    const MAX_CHARS = HAS_STRONG_PROVIDER ? 700000 : 200000;
     if (combined.length <= MAX_CHARS) return combined;
     // For very large docs: head 70% + tail 30% (preserves references at end)
     const headLen = Math.floor(MAX_CHARS * 0.7);
@@ -600,8 +600,12 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     console.warn(`[AI-MODULAR] WARNING: ${expectedSectionCount} sections expected but 0 section files generated. AI mapping is unreliable — falling back.`);
     return null;
   }
-  if (expectedSectionCount > 0 && sectionFileCount < expectedSectionCount * 0.4) {
-    console.warn(`[AI-MODULAR] WARNING: Only ${sectionFileCount}/${expectedSectionCount} section files generated (< 40% coverage). AI mapping may produce incomplete output.`);
+  if (expectedSectionCount > 0 && sectionFileCount < expectedSectionCount * 0.3) {
+    console.warn(`[AI-MODULAR] WARNING: Only ${sectionFileCount}/${expectedSectionCount} section files generated (< 30% coverage). AI mapping is unreliable — falling back to deterministic assembler.`);
+    return null;
+  }
+  if (expectedSectionCount > 0 && sectionFileCount < expectedSectionCount * 0.5) {
+    console.warn(`[AI-MODULAR] WARNING: Only ${sectionFileCount}/${expectedSectionCount} section files generated (< 50% coverage). AI mapping may produce incomplete output.`);
   }
 
   if (files.length === 0) {

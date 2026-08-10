@@ -1231,13 +1231,13 @@ register({
   name: 'Doc2LaTeX Modular LaTeX Mapper',
   description: 'Writes faithful, modular, template-compliant LaTeX files (sections, floats, metadata, bibliography) for a client-extracted DOCX manuscript from its verified AI structure',
   temperature: 0.1,
-  maxTokens: 32768,
+  maxTokens: 65536,
   rateLimit: 10,
   buildSystemPrompt(ctx) {
     const scope = String(ctx.scope || 'sections');
     const templateId = String(ctx.templateId || 'article_lncs');
     const documentTitle = String(ctx.documentTitle || 'Untitled Document');
-    const textWindow = String(ctx.textWindow || '').substring(0, 180000);
+    const textWindow = String(ctx.textWindow || '').substring(0, 600000);
     const verdict = JSON.stringify(ctx.verdict || {});
     const figureFiles = (ctx.figureFiles as string[]) || [];
 
@@ -1350,12 +1350,13 @@ Emit ONE LaTeX file per verified section heading from input B's "sections" array
 ${commonInputs()}
 
 ## SECTION FILE RULES
-1. File naming: "sections/01_introduction.tex", "sections/02_related_work.tex" — two-digit index, lowercase slug of the heading (max 40 chars). NEVER skip, merge or reorder sections: every heading in input B's sections array gets exactly one file. If the evidence for a section is missing from the window, still emit the file with the verbatim heading and the closest available paragraphs that provably belong to it.
+1. File naming: "sections/01_introduction.tex", "sections/02_related_work.tex" — two-digit index, lowercase slug of the heading (max 40 chars). NEVER skip, merge or reorder sections: every heading in input B's sections array gets exactly one file. If the evidence for a section is partially missing from the window, emit the file with the verbatim heading and ALL available paragraphs that provably belong to it — include every sentence you can find in the text window that logically belongs after this heading and before the next heading.
 2. Heading level mapping: level 1 → \\section{<verbatim>}, level 2 → \\subsection{<verbatim>}, level 3 → \\subsubsection{<verbatim>}. Strip numbering ("1.", "1.1", "1.1.2", "I.") from the heading text; keep the words EXACT.
-3. Content: render paragraphs faithfully; lists as itemize/enumerate; inline math as $...$; display math as \\begin{equation}...\\end{equation} ONLY when the evidence clearly shows a standalone display equation (with or without a trailing equation number).
-4. Floats: when a verified figure/table/algorithm caption from input B occurs inside this section, insert the float where it belongs as a single INPUT line: \\input{floats/figures/N.tex}, \\input{floats/tables/N.tex} or \\input{floats/algorithms/N.tex} (N = 1-based index from the verified list). Never inline the float environment itself in section files.
-5. The "References"/"Bibliography" heading in the sections array is NOT a section file — skip it (the bibliography file is generated separately). Same for "Acknowledgements" only if input B lists it as a section: emit it as a normal section file.
-6. Never split a paragraph mid-sentence, never duplicate text, never emit empty files.`;
+3. Content: render paragraphs faithfully; lists as itemize/enumerate; inline math as $...$; display math as \\begin{equation}...\\end{equation} ONLY when the evidence clearly shows a standalone display equation (with or without a trailing equation number). Include EVERY paragraph, sentence, and piece of evidence that belongs to this section — never omit content.
+4. Citations: convert every bracketed citation marker [N] to \\cite{refN}. Include citations inline in the paragraph text exactly where they appear in the source.
+5. Floats: when a verified figure/table/algorithm caption from input B occurs inside this section, insert the float where it belongs as a single INPUT line: \\input{floats/figures/N.tex}, \\input{floats/tables/N.tex} or \\input{floats/algorithms/N.tex} (N = 1-based index from the verified list). Never inline the float environment itself in section files.
+6. The "References"/"Bibliography" heading in the sections array is NOT a section file — skip it (the bibliography file is generated separately). Same for "Acknowledgements" only if input B lists it as a section: emit it as a normal section file.
+7. Never split a paragraph mid-sentence, never duplicate text, never emit empty files. Every section file MUST contain substantial content — at minimum the section heading and all available body text for that section.`;
 
     }
 
