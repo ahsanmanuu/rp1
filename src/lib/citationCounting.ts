@@ -79,10 +79,23 @@ export function mergeCitations(text: string): string {
 /**
  * Count unique in-text citation numbers from raw document HTML.
  * Reference-list entries are excluded; instructional bracket usage is excluded.
+ * False positive exclusions: "[1.0]", "[Table 1]", "[Fig. 1]", "[n]",
+ * mathematical ranges like "[0, 1]".
  */
 export function countCitationsFromHtml(rawHtml: string): number {
   const mergedHtml = mergeCitations(stripReferenceEntriesFromHtml(rawHtml || ''));
-  const rawBracketMatches = mergedHtml.match(/(?<!\b(?:interval|range|scale|domain|coordinates|matrix|vector|box|bounds|values|pixel|pixels|from|to|between|like|such\s+as|e\.g\.?|eg\.?|bracket|for\s+example|example)\s*(?:\[\s*\d{1,3}\s*\]\s*[,;\s]*)*)\[\s*\d{1,3}(?:\s*[,;\u2013\-]\s*\d{1,3})*\s*\]/gi) || [];
+  // Exclude brackets that are clearly NOT citations:
+  // - [N.N] (decimal numbers like [1.0], [2.5])
+  // - [Table N], [Fig. N], [Figure N], [Alg. N] (component references)
+  // - [n], [x], [i], [k] (single lowercase variable names)
+  // - [0, 1], [0.0, 1.0] (mathematical ranges)
+  // Then match standard citation patterns [N], [N,M], [N-M]
+  const cleanedHtml = mergedHtml
+    .replace(/\[\s*\d+\.\d+\s*\]/gi, '')          // [1.0], [2.5]
+    .replace(/\[(?:table|fig(?:ure)?|alg(?:orithm)?|eq(?:uation)?)\.?\s*\d+\]/gi, '') // [Table 1], [Fig. 1]
+    .replace(/\[\s*[a-z]\s*\]/gi, '')              // [n], [x], [i]
+    .replace(/\[\s*\d+(?:\.\d+)?\s*,\s*\d+(?:\.\d+)?\s*\]/gi, ''); // [0, 1]
+  const rawBracketMatches = cleanedHtml.match(/(?<!\b(?:interval|range|scale|domain|coordinates|matrix|vector|box|bounds|values|pixel|pixels|from|to|between|like|such\s+as|e\.g\.?|eg\.?|bracket|for\s+example|example)\s*(?:\[\s*\d{1,3}\s*\]\s*[,;\s]*)*)\[\s*\d{1,3}(?:\s*[,;\u2013\-]\s*\d{1,3})*\s*\]/gi) || [];
   const seen = new Set<number>();
   for (const m of rawBracketMatches) {
     const inner = m.replace(/[\[\]\s]/g, '');

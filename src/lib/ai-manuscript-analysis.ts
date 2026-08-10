@@ -61,8 +61,8 @@ export interface AiStructureVerdict {
 // dead preferred key → auth-skip → a slower secondary provider like opencode).
 // Worst case = max(passA, passB) + margin, still well under the ~300s platform
 // request cap so the upload request always completes.
-const FRONTMATTER_PASS_TIMEOUT_MS = 45000;
-const STRUCTURE_PASS_TIMEOUT_MS = 75000;
+const FRONTMATTER_PASS_TIMEOUT_MS = 60000;
+const STRUCTURE_PASS_TIMEOUT_MS = 90000;
 
 // Extra budget for the scoped count re-verification pass (only fires when the
 // AI's count disagrees with the deterministic count by more than 1).
@@ -90,10 +90,16 @@ function withAbortableTimeout<T>(
 
 // Max characters of manuscript text sent to the AI (front + tail preserved).
 // Large window ensures mid-document figures, tables, equations, and sections
-// are visible to the AI. 120K head + 30K tail covers 90%+ of typical manuscripts.
+// are visible to the AI. 350K head + 100K tail covers 99%+ of typical
+// manuscripts including very large 20MB docs. The front-matter window is also
+// generous (25K+30K) to capture titles/authors that appear after long abstracts
+// or preamble text.
 const HAS_STRONG_PROVIDER = !!(process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
-const FULL_TEXT_LIMIT = HAS_STRONG_PROVIDER ? 120000 : 60000;
-const FULL_TEXT_TAIL = HAS_STRONG_PROVIDER ? 30000 : 15000;
+const FULL_TEXT_LIMIT = HAS_STRONG_PROVIDER ? 350000 : 120000;
+const FULL_TEXT_TAIL = HAS_STRONG_PROVIDER ? 100000 : 30000;
+// Front-matter windows: generous to capture titles/authors after long preambles
+const FRONTMATTER_TEXT_LIMIT = HAS_STRONG_PROVIDER ? 25000 : 12000;
+const FRONTMATTER_HTML_LIMIT = HAS_STRONG_PROVIDER ? 30000 : 15000;
 
 // Strongest configured provider for structure passes (fallback via provider
 // chain in callLLM). null → registry default model.
@@ -285,13 +291,21 @@ function normalizeVerdict(raw: any): AiStructureVerdict | null {
  * Deterministic in-text citation counter (PDF/plain-text path; the HTML path
  * reuses the exact shared countCitationsFromHtml so client and server always
  * agree). Reference-list region is excluded like the HTML counter does.
+ * False positive exclusions: "[1.0]", "[Table 1]", "[Fig. 1]", "[n]",
+ * mathematical ranges like "[0, 1]".
  */
 function countCitationsFromPlainText(text: string): number {
   const cut = (text || '').replace(
     /\n\s*(?:\d+[.)]\s*)?(?:references|bibliography|literature\s+cited)\s*[:.\-]?[^\n]*$/i,
     ''
   );
-  const matches = cut.match(/\[\s*\d{1,3}(?:\s*[,;\u2013\-]\s*\d{1,3})*\s*\]/g) || [];
+  // Exclude brackets that are clearly NOT citations (same as HTML counter)
+  const cleaned = cut
+    .replace(/\[\s*\d+\.\d+\s*\]/gi, '')          // [1.0], [2.5]
+    .replace(/\[(?:table|fig(?:ure)?|alg(?:orithm)?|eq(?:uation)?)\.?\s*\d+\]/gi, '') // [Table 1], [Fig. 1]
+    .replace(/\[\s*[a-z]\s*\]/gi, '')              // [n], [x], [i]
+    .replace(/\[\s*\d+(?:\.\d+)?\s*,\s*\d+(?:\.\d+)?\s*\]/gi, ''); // [0, 1]
+  const matches = cleaned.match(/\[\s*\d{1,3}(?:\s*[,;\u2013\-]\s*\d{1,3})*\s*\]/g) || [];
   const seen = new Set<number>();
   for (const m of matches) {
     const parts = m.replace(/[\[\]\s]/g, '').split(/[,;\u2013\-]/).filter(Boolean);
@@ -537,13 +551,14 @@ export async function analyzeManuscriptStructure(
       return null;
     }
 
-    const frontMatter = plainText.substring(0, 12000);
+    const frontMatter = plainText.substring(0, FRONTMATTER_TEXT_LIMIT);
     // Pass raw HTML front matter when available — preserves bold/italic/font-size
     // cues that indicate title, author names, and affiliation markers (superscripts).
     const frontMatterHtml = opts.html
-      ? opts.html.substring(0, 15000)
+      ? opts.html.substring(0, FRONTMATTER_HTML_LIMIT)
       : '';
     // Extract raw author/affiliation lines from body nodes for cross-reference.
+    // Increased limit to 30 to handle papers with many authors.
     const rawAuthorLines: string[] = [];
     const rawAffilLines: string[] = [];
     for (const n of deepData.body || []) {
@@ -604,11 +619,11 @@ export async function analyzeManuscriptStructure(
               email: a.email || null,
               affiliationIds: a.affiliationIds || [],
             })),
-            organizations: (deepData.organizations || []).slice(0, 20),
+            organizations: (deepData.organizations || []).slice(0, 30),
             abstractLength: (deepData.abstract || '').length,
             keywords: deepData.keywords,
-            rawAuthorLines: rawAuthorLines.slice(0, 10),
-            rawAffilLines: rawAffilLines.slice(0, 10),
+            rawAuthorLines: rawAuthorLines.slice(0, 30),
+            rawAffilLines: rawAffilLines.slice(0, 30),
           },
         },
         signal: passAController.signal,
@@ -657,10 +672,10 @@ export async function analyzeManuscriptStructure(
     // LaTeX code for all figures, tables, math, algorithms, abstract, and sections.
     const [resA, resB] = await Promise.all([passA, passB]);
 
-    const rawA = resA && resA.success && resA.data && !(resA.data as any)._failSafe && !(resA.data as any)._partial
+    const rawA = resA && resA.success && resA.data && !(resA.data as any)._failSafe
       ? (resA.data as any)
       : null;
-    const rawB = resB && resB.success && resB.data && !(resB.data as any)._failSafe && !(resB.data as any)._partial
+    const rawB = resB && resB.success && resB.data && !(resB.data as any)._failSafe
       ? (resB.data as any)
       : null;
 
@@ -744,7 +759,7 @@ export async function analyzeManuscriptStructure(
           recountController
         );
         const rawRecount =
-          recount && recount.success && recount.data && !(recount.data as any)._failSafe && !(recount.data as any)._partial
+          recount && recount.success && recount.data && !(recount.data as any)._failSafe
             ? (recount.data as any)
             : null;
         if (rawRecount?.components && typeof rawRecount.components === 'object') {

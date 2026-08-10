@@ -883,10 +883,10 @@ register({
   name: 'Manuscript Structure Analyzer',
   description: 'AI-driven structural verification of converted manuscripts: exact title, authors, affiliations, abstract, keywords, section hierarchy, component counts (figures/charts/tables/equations/pseudocode/citations/references) and reference list',
   temperature: 0.05,
-  maxTokens: 16384,
+  maxTokens: 32768,
   rateLimit: 20,
   buildSystemPrompt(ctx) {
-    const fullText = String(ctx.fullText || ctx.frontMatter || '').substring(0, 200000);
+    const fullText = String(ctx.fullText || ctx.frontMatter || '').substring(0, 450000);
     const documentTitle = String(ctx.documentTitle || 'Untitled Document');
     const sectionTitles = (ctx.sectionTitles as string[]) || [];
     const figureCaptions = (ctx.figureCaptions as string[]) || [];
@@ -1015,7 +1015,7 @@ register({
   maxTokens: 6144,
   rateLimit: 20,
   buildSystemPrompt(ctx) {
-    const frontMatter = String(ctx.frontMatter || '').substring(0, 12000);
+    const frontMatter = String(ctx.frontMatter || '').substring(0, 25000);
     const documentTitle = String(ctx.documentTitle || 'Untitled Document');
     const heuristic = JSON.stringify(ctx.heuristic || {});
     const frontMatterHtml = String((ctx as any).frontMatterHtml || '');
@@ -1023,7 +1023,7 @@ register({
     return `You are a world-class scholarly document front-matter extraction engine with 20 years of experience in academic publishing (IEEE, ACM, Springer LNCS, Elsevier, Nature). Your job is to extract the EXACT front matter (title, authors, affiliations, abstract, keywords) of a converted academic manuscript with surgical precision.
 
 ## INPUTS
-### A. Document text (plain text — first ~12000 characters of the manuscript):
+### A. Document text (plain text — first ~25000 characters of the manuscript):
 """TEXT
 ${frontMatter}
 """

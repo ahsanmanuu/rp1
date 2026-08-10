@@ -725,21 +725,18 @@ async function runUploadProcessing(uploadId: string) {
       const mathData: { latex: string, isDisplay: boolean }[] = [];
       allMathNodes.forEach((node: any) => {
         // HEADING-LIKE MATH GUARD: Word sometimes wraps section headings / titles in
-        // OMML math elements (auto-formatting). Extracting those as math turns a
-        // heading like "6. AI-Assisted Responsible Citation (ARC) Framework" into a
-        // \begin{equation} in the compiled PDF. If the math content reads like a
-        // heading (numbered title, or mostly-English words with no math operators),
-        // leave the node untouched so mammoth renders it as plain text instead.
+        // OMML math elements (auto-formatting). Only skip nodes that are CLEARLY
+        // section headings (contain section/chapter/appendix keywords, or match
+        // numbered heading patterns like "1. Introduction"). Do NOT skip equations
+        // that happen to start with a number or contain words — real equations
+        // frequently use words (e.g., "let n be...", "for all x in X").
         const rawMathText = (node.textContent || '').trim();
         const headingLikeMath =
           rawMathText.length > 0 && (
-            /^\s*(?:section|chapter|appendix|part)?\s*\d+(?:\.\d+)*[.\s:]+[A-Za-z]/.test(rawMathText) ||
-            /^\d+\.\s+[A-Z]/.test(rawMathText)
+            /^\s*(?:section|chapter|appendix|part|abstract|keywords|references)\s+\d/i.test(rawMathText) ||
+            /^\s*\d+(?:\.\d+)*\.\s+[A-Z][a-z]+(?:\s+[a-z]+){2,}/.test(rawMathText)
           );
-        const mathOperatorCount = (rawMathText.match(/[=+\-*/^<>\u2264\u2265\u2248\u2260\u2211\u222B\u221A_α-ωΑ-Ω]/g) || []).length;
-        const wordCount = (rawMathText.match(/[A-Za-z]{2,}/g) || []).length;
-        const proseLikeMath = rawMathText.length > 15 && mathOperatorCount === 0 && wordCount >= 3;
-        if (headingLikeMath || proseLikeMath) return;
+        if (headingLikeMath) return;
 
         // UNIFIED ROOT FILTER: Only process nodes that are NOT contained within another math node
         let parent: any = node.parentNode;
@@ -760,13 +757,12 @@ async function runUploadProcessing(uploadId: string) {
             const mathText = (node.textContent || '').trim();
             const nonMathText = pText.replace(mathText, '').trim();
             if (nonMathText.length === 0 || /^\s*[\(\d\.\-\s\)]+\s*$/.test(nonMathText)) {
-              // PARAM-ASSIGNMENT GUARD (false positive): a standalone paragraph
-              // like "LR = 0.001" or "n = 100" typed in Word's equation editor
-              // is a parameter assignment, NOT a display equation. Without this,
-              // every such line inflates the equation count in the report.
-              const isParamAssign = /^[A-Za-z][A-Za-z0-9\s_]{0,35}\s*=\s*-?[\d.,+\-eE%×x*]+\s*$/i.test(mathText) ||
-                                    /^[A-Z]{1,6}\s*=\s*-?[\d.,+\-eE%]+$/i.test(mathText) ||
-                                    (mathText.replace(/[A-Za-z0-9\s=.\-+_×*x%,()]/g, '').length === 0 && mathText.length < 40 && /^[A-Za-z][A-Za-z0-9_]*\s*=\s*[\d]/.test(mathText));
+              // PARAM-ASSIGNMENT GUARD (false positive): only skip VERY simple
+              // single-variable assignments like "LR = 0.001" or "n = 100".
+              // Do NOT skip multi-term equations like "E = mc^2" or "f(x) = ax^2 + bx + c"
+              // — those are real display equations even though they have one "=".
+              const isParamAssign = /^[A-Za-z]{1,5}\s*=\s*-?[\d.,]+\s*$/i.test(mathText) ||
+                                    (mathText.length < 25 && /^[A-Za-z][A-Za-z0-9_]*\s*=\s*-?[\d.,]+(?:\s*[×x*]\s*[\d.]+)?\s*$/i.test(mathText));
               if (!isParamAssign) {
                 isDisplay = true;
               }
