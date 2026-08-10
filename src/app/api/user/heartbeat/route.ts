@@ -20,21 +20,12 @@ export async function POST(_req: NextRequest) {
       const now = new Date();
       const newExpiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-      await prisma.userSession.upsert({
+      // Update-only: never re-create a session row that was deleted by sign-out.
+      await prisma.userSession.updateMany({
         where: { sessionToken: token },
-        update: { lastActiveAt: now, expiresAt: newExpiresAt },
-        create: {
-          userId: session.user.id,
-          sessionToken: token,
-          machineId: 'pb_auto_heal',
-          ipAddress: '127.0.0.1',
-          location: 'Active Session',
-          userAgent: 'PocketBase Heartbeat',
-          expiresAt: newExpiresAt,
-          lastActiveAt: now,
-        }
+        data: { lastActiveAt: now, expiresAt: newExpiresAt },
       }).catch((err: any) => {
-        console.warn("[Heartbeat] Non-fatal upsert warning:", err?.message || err);
+        console.warn("[Heartbeat] Non-fatal update warning:", err?.message || err);
       });
     }
 

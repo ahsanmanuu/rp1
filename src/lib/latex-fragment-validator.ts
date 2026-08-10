@@ -39,7 +39,7 @@ const ALLOWED_ENVS = new Set([
 // Commands that must never appear in a validated fragment. Structural
 // commands break the surrounding document; file/definition commands are
 // arbitrary code execution inside LaTeX.
-const FORBIDDEN_PATTERNS: RegExp[] = [
+export const FORBIDDEN_PATTERNS: RegExp[] = [
   /\\documentclass\b/,
   /\\usepackage\b/,
   /\\input\b/,
@@ -209,4 +209,144 @@ export function validateAiLatexFragments(
   const algorithms = normalizeList(o.algorithms, imageFiles);
   if (!figures && !charts && !tables && !algorithms) return null;
   return { figures, charts, tables, algorithms };
+}
+
+// ---------------------------------------------------------------------------
+// DOC2LATEX MODULAR MAPPING VALIDATORS
+// ---------------------------------------------------------------------------
+// The doc2latex-modular agent emits complete FILES (sections, floats,
+// metadata, bibliography) that are \input into a deterministic main.tex.
+// Every file passes these structural guards before the assembler may use it;
+// files that fail are dropped (the mapping falls back to the deterministic
+// ModularLatexAssembler output for the affected scope).
+
+export interface AiModularFile {
+  path: string;
+  content: string;
+}
+
+const FLOAT_PATH_RE = /^(?:floats\/figures|floats\/tables|floats\/algorithms)\/\d+\.tex$/;
+const SECTION_PATH_RE = /^sections\/\d{2}_[a-z0-9_]{1,60}\.tex$/;
+const METADATA_PATHS = new Set([
+  'metadata/title.tex',
+  'metadata/authors.tex',
+  'metadata/abstract.tex',
+  'metadata/keywords.tex',
+  'references/bibliography.tex',
+]);
+
+// Section files may \input our own verified float files (wiring floats into
+// their natural position) — every other \input/\include is forbidden.
+const SECTION_ALLOWED_INPUT_RE = /\\input\s*\{floats\/(?:figures|tables|algorithms)\/\d+\.tex\}/;
+
+/** Balanced \begin{env}/\end{env} nesting over ANY environment names. */
+function envPairsBalanced(latex: string): boolean {
+  const tokens: Array<{ kind: 'begin' | 'end'; env: string }> = [];
+  const combinedRe = /\\begin\{([^{}]+)\}|\\end\{([^{}]+)\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = combinedRe.exec(latex)) !== null) {
+    if (m[1]) tokens.push({ kind: 'begin', env: m[1].trim() });
+    else tokens.push({ kind: 'end', env: m[2].trim() });
+  }
+  const stack: string[] = [];
+  for (const t of tokens) {
+    if (t.kind === 'begin') stack.push(t.env);
+    else {
+      const top = stack.pop();
+      if (top === undefined || top !== t.env) return false;
+    }
+  }
+  return stack.length === 0;
+}
+
+/**
+ * Validates a section file emitted by doc2latex-modular.
+ * Sections legitimately contain \section/\subsection, floats wired in via
+ * \input{floats/...} and \include-free prose — everything else is structural.
+ * Returns the trimmed content when safe, null otherwise.
+ */
+export function sanitizeAiSectionFile(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const s = raw.trim();
+  if (s.length < 30 || s.length > 60000) return null;
+  // \input/\include are allowed ONLY in the exact {floats/...} form (checked
+  // below); every other forbidden command rejects the file outright.
+  const SECTION_EXEMPT_FROM_FORBIDDEN = new Set(['\\input\\b', '\\include\\b']);
+  for (const re of FORBIDDEN_PATTERNS) {
+    if (SECTION_EXEMPT_FROM_FORBIDDEN.has(re.source)) continue;
+    if (re.test(s)) return null;
+  }
+  const stripped = s.replace(SECTION_ALLOWED_INPUT_RE, '');
+  if (/\\input\s*\{|\\include\b|\\import\b|\\subfile\b|\\bibliography\b|\\bibliographystyle\b/.test(stripped)) return null;
+  if (!braceBalance(s)) return null;
+  if (!envPairsBalanced(s)) return null;
+  return s;
+}
+
+/**
+ * Validates a metadata / bibliography file emitted by doc2latex-modular
+ * (metadata/title.tex, metadata/authors.tex, metadata/abstract.tex,
+ * metadata/keywords.tex, references/bibliography.tex). These files are
+ * allowed to declare front-matter content only — never document scaffolding
+ * or executable LaTeX.
+ */
+export function sanitizeAiMetadataFile(raw: unknown, path: string): string | null {
+  if (!METADATA_PATHS.has(path)) return null;
+  if (typeof raw !== 'string') return null;
+  const s = raw.trim();
+  if (s.length < 3 || s.length > 50000) return null;
+  for (const re of FORBIDDEN_PATTERNS) {
+    // \input/\include never belong in metadata files; \maketitle comes from
+    // the deterministic main.tex, never from a metadata input.
+    if (re.test(s)) return null;
+  }
+  if (/\\begin\s*\{document\}|\\end\s*\{document\}|\\documentclass\b/.test(s)) return null;
+  return s;
+}
+
+/**
+ * Normalizes a raw doc2latex-modular response into validated modular files.
+ * `imageFiles` enables float verification for figure/chart fragments.
+ */
+export function normalizeModularFiles(
+  raw: unknown,
+  imageFiles: string[] = []
+): { files: AiModularFile[]; rejected: number } {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { files: [], rejected: 0 };
+  const o = raw as Record<string, unknown>;
+  if (!Array.isArray(o.files)) return { files: [], rejected: 0 };
+  const out: AiModularFile[] = [];
+  let rejected = 0;
+  const seen = new Set<string>();
+  for (const item of o.files) {
+    if (!item || typeof item !== 'object') { rejected++; continue; }
+    const f = item as Record<string, unknown>;
+    const path = typeof f.path === 'string' ? f.path.trim() : '';
+    const content = typeof f.content === 'string' ? f.content : '';
+    if (seen.has(path)) { rejected++; continue; }
+    seen.add(path);
+    if (FLOAT_PATH_RE.test(path)) {
+      const safe = content.trim();
+      // Float files are single environments: strict fragment validation applies.
+      if (safe.length < 20 || safe.length > 4000) { rejected++; continue; }
+      if (!braceBalance(safe) || !bracketBalance(safe)) { rejected++; continue; }
+      for (const re of FORBIDDEN_PATTERNS) {
+        if (re.test(safe)) { rejected++; continue; }
+      }
+      if (!environmentPairsValid(safe)) { rejected++; continue; }
+      if (!imageTargetsExist(safe, imageFiles)) { rejected++; continue; }
+      out.push({ path, content: safe });
+    } else if (path.endsWith('.tex') && SECTION_PATH_RE.test(path)) {
+      const safe = sanitizeAiSectionFile(content);
+      if (!safe) { rejected++; continue; }
+      out.push({ path, content: safe });
+    } else if (path.endsWith('.tex')) {
+      const safe = sanitizeAiMetadataFile(content, path);
+      if (!safe) { rejected++; continue; }
+      out.push({ path, content: safe });
+    } else {
+      rejected++;
+    }
+  }
+  return { files: out, rejected };
 }

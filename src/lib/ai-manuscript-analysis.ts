@@ -57,14 +57,16 @@ export interface AiStructureVerdict {
 // pass never blocks the (fast, small) front-matter pass results. The
 // front-matter pass (small input) is fast; the structure pass (full text)
 // gets more time. Heuristics are the fallback when a pass misses its window.
-// Windows are kept well under the platform request cap (Render starter ~300s)
-// so the upload request always completes: worst case = max(passA, passB).
-const FRONTMATTER_PASS_TIMEOUT_MS = 8000;
-const STRUCTURE_PASS_TIMEOUT_MS = 12000;
+// Pass budgets are generous enough to survive provider fallback chains (e.g. a
+// dead preferred key → auth-skip → a slower secondary provider like opencode).
+// Worst case = max(passA, passB) + margin, still well under the ~300s platform
+// request cap so the upload request always completes.
+const FRONTMATTER_PASS_TIMEOUT_MS = 45000;
+const STRUCTURE_PASS_TIMEOUT_MS = 75000;
 
 // Extra budget for the scoped count re-verification pass (only fires when the
 // AI's count disagrees with the deterministic count by more than 1).
-const RECOUNT_PASS_TIMEOUT_MS = 8000;
+const RECOUNT_PASS_TIMEOUT_MS = 30000;
 
 // Races an AI pass against a deadline. When the deadline wins, the underlying
 // request is ABORTED (via AbortSignal) instead of being left to run as a

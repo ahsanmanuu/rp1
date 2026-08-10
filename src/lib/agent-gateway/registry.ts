@@ -1205,3 +1205,214 @@ Respond with ONLY the JSON object.`;
     throw new Error('AI component LaTeX response did not contain valid JSON');
   },
 });
+
+/**
+ * Doc2LaTeX Modular Mapper — WRITES the modular LaTeX source for a
+ * client-extracted DOCX manuscript (text envelope + verified AI structure).
+ * Called by Phase 2 (generate-latex) after template selection. It replaces the
+ * deterministic ModularLatexAssembler for DOC2LATEX projects: every emitted
+ * file is machine-verified afterwards (float fragments go through
+ * validateAiLatexFragments, section files through the strict structural
+ * guards) so an AI hallucination can never break the pipeline — invalid
+ * output is dropped and the deterministic assembler is used instead.
+ *
+ * Three scoped runs share one agent id:
+ *   scope 'sections'  → sections/NN_slug.tex (headings verbatim, \cite keys
+ *                       mapped to the reference entries, floats wired in as
+ *                       \input{floats/...})
+ *   scope 'floats'    → floats/figures|tables|algorithms/N.tex (single
+ *                       validated float per file, captions verbatim)
+ *   scope 'metadata'  → metadata/title|authors|abstract|keywords.tex +
+ *                       references/bibliography.tex (thebibliography)
+ * main.tex is composed deterministically from the template preamble.
+ */
+register({
+  id: 'doc2latex-modular',
+  name: 'Doc2LaTeX Modular LaTeX Mapper',
+  description: 'Writes faithful, modular, template-compliant LaTeX files (sections, floats, metadata, bibliography) for a client-extracted DOCX manuscript from its verified AI structure',
+  temperature: 0.1,
+  maxTokens: 8192,
+  rateLimit: 10,
+  buildSystemPrompt(ctx) {
+    const scope = String(ctx.scope || 'sections');
+    const templateId = String(ctx.templateId || 'article_lncs');
+    const documentTitle = String(ctx.documentTitle || 'Untitled Document');
+    const textWindow = String(ctx.textWindow || '').substring(0, 60000);
+    const verdict = JSON.stringify(ctx.verdict || {});
+    const figureFiles = (ctx.figureFiles as string[]) || [];
+
+    const templateConventions = (() => {
+      if (templateId.includes('ieee')) {
+        return {
+          style: 'IEEE two-column',
+          title: '\\title{<exact title>}',
+          authors: '\\author{<Author Name>\\thanks{<affiliation>} \\and <Author2>\\thanks{<affiliation2>}}',
+          abstract: '\\begin{abstract}\\end{abstract}',
+          keywords: '\\begin{IEEEkeywords}\\end{IEEEkeywords}',
+          floatPlacement: 'table*/figure* for wide content, [!ht] otherwise',
+        };
+      }
+      if (templateId.includes('acm')) {
+        return {
+          style: 'ACM single-column (\acmConference placeholder)',
+          title: '\\title{<exact title>}',
+          authors: '\\author{<Name>}\\affiliation{<institution>}\\email{<email if present>}',
+          abstract: '\\begin{abstract}\\end{abstract}',
+          keywords: '\\keywords{<k1>, <k2>}',
+          floatPlacement: '[htbp]',
+        };
+      }
+      if (templateId.includes('elsevier')) {
+        return {
+          style: 'Elsevier',
+          title: '\\title{<exact title>}',
+          authors: '\\author{<Name>}\\affiliation{<org>}',
+          abstract: '\\begin{abstract}\\end{abstract}',
+          keywords: '\\begin{keyword}<k1> \\sep <k2>\\end{keyword}',
+          floatPlacement: '[!ht]',
+        };
+      }
+      if (templateId.includes('lncs') || templateId.includes('springer')) {
+        return {
+          style: 'Springer LNCS',
+          title: '\\title{<exact title>}',
+          authors: '\\author{<Name>}\\institute{<institution>}',
+          abstract: '\\begin{abstract}\\end{abstract}',
+          keywords: '\\keywords{<k1>, <k2>}',
+          floatPlacement: '[htbp]',
+        };
+      }
+      if (templateId.includes('scirep') || templateId.includes('nature')) {
+        return {
+          style: 'Single-column scientific',
+          title: '\\title{<exact title>}',
+          authors: '\\author{<Name>}\\affiliation{<institution>}',
+          abstract: '\\begin{abstract}\\end{abstract}',
+          keywords: '\\keywords{<k1>, <k2>}',
+          floatPlacement: '[!ht]',
+        };
+      }
+      return {
+        style: 'Generic article',
+        title: '\\title{<exact title>}',
+        authors: '\\author{<Name> \\and <Name2>}',
+        abstract: '\\begin{abstract}\\end{abstract}',
+        keywords: '\\keywords{<k1>, <k2>}',
+        floatPlacement: '[!ht]',
+      };
+    })();
+
+    const commonInputs = () => `
+## INPUTS
+### A. BALANCED TEXT WINDOW (evidence — head + tail of the document; the middle may be elided for context budget):
+"""TEXT
+${textWindow}
+"""
+
+### B. VERIFIED AI STRUCTURE (ground truth — every title, caption, heading, reference and count here is exact and MUST be reproduced verbatim):
+${verdict}
+
+### C. Image files available to reference (in document order):
+${figureFiles.map((f, i) => `${i + 1}. ${f}`).join('\n') || 'none — no image files present'}
+
+## TARGET TEMPLATE CONVENTIONS
+Template ID: ${templateId} (${templateConventions.style})
+- Title: ${templateConventions.title}
+- Authors: ${templateConventions.authors}
+- Abstract: ${templateConventions.abstract}
+- Keywords: ${templateConventions.keywords}
+- Float placement: ${templateConventions.floatPlacement}
+
+## UNIVERSAL HARD RULES
+1. Content MEMBERSHIP: use ONLY text that actually appears in input A (the evidence). NEVER invent, paraphrase, translate or beautify sentences, headings, captions or references. Where the middle of the document is elided, write the section using every adjacent piece of evidence that exists — but never fabricate content.
+2. Fidelity: preserve paragraph structure; bold/italic only where evidence shows a Word style marker (mammoth HTML bold/italic) — plain text is never bolded or italicized.
+3. Escape special characters in prose: % \\% , # \\# , & \\& , _ \\_ (math mode excluded).
+4. NO structural commands in any file: \\documentclass, \\usepackage, \\newcommand, \\def, \\input, \\include, \\maketitle, \\bibliography, \\bibliographystyle, \\begin{document}, \\begin{thebibliography}, \\write, \\special, \\catcode — none of these may appear in your emitted files.
+5. Citations: convert bracketed markers in the body text to \\cite keys:
+   - "[12]" (numbered style) → \\cite{ref12}
+   - "[1, 7]" → \\cite{ref1,ref7}   "[12-15]" → \\cite{ref12,ref13,ref14,ref15}
+   - "(Smith et al., 2020)" (author-year style) → \\cite{smith2020} (lowercase authors + year, no punctuation; core name only)
+   Keep author-year parenthetical text (e.g. "(Smith et al., 2020)") OUT of the \\cite argument — emit only the marker: \\cite{smith2020}.
+   If the marker cannot be mapped, KEEP the original text as plain text (never invent a key, never drop the marker silently).
+6. Every emitted file must be self-contained inside the document body context (it is \\input into main.tex). No \\end{document}, no document scaffolding.
+7. Labels: \\label{sec:<slug>} for sections, and floats use \\label{fig:N} / \\label{tab:N} / \\label{alg:N} only for entries obtained from the verified structure (never invent labels).
+8. JSON output ONLY: \\{"files\\": [ {"path": "...", "content": "..."} ]} — no markdown fences, no commentary before or after. Paths are relative to the project root. Backslashes and quotes in JSON must be escaped exactly.
+9. RESPONSE BUDGET: be maximally economical. Copy headings/captions/references verbatim but NEVER add explanatory prose, padding, or commentary inside the LaTeX files (no HTML comments, no "%% TODO" notes, no filler).
+
+Document title (for context only): "${documentTitle}"`;
+
+    if (scope === 'sections') {
+      return `You are a world-class scholarly LaTeX typesetting engine with 20 years of experience in academic publishing (IEEE, ACM, Springer LNCS, Elsevier, Nature). Your job is to convert the verified section structure of a manuscript into FAITHFUL modular LaTeX section files.
+
+## YOUR TASK (scope: sections)
+Emit ONE LaTeX file per verified section heading from input B's "sections" array, in document order. Each file contains the section heading (verbatim, numbering stripped) plus every paragraph/list/equation/float-insert belonging to that section, written from the evidence in input A.
+
+${commonInputs()}
+
+## SECTION FILE RULES
+1. File naming: "sections/01_introduction.tex", "sections/02_related_work.tex" — two-digit index, lowercase slug of the heading (max 40 chars). NEVER skip, merge or reorder sections: every heading in input B's sections array gets exactly one file. If the evidence for a section is missing from the window, still emit the file with the verbatim heading and the closest available paragraphs that provably belong to it.
+2. Heading level mapping: level 1 → \\section{<verbatim>}, level 2 → \\subsection{<verbatim>}, level 3 → \\subsubsection{<verbatim>}. Strip numbering ("1.", "1.1", "1.1.2", "I.") from the heading text; keep the words EXACT.
+3. Content: render paragraphs faithfully; lists as itemize/enumerate; inline math as $...$; display math as \\begin{equation}...\\end{equation} ONLY when the evidence clearly shows a standalone display equation (with or without a trailing equation number).
+4. Floats: when a verified figure/table/algorithm caption from input B occurs inside this section, insert the float where it belongs as a single INPUT line: \\input{floats/figures/N.tex}, \\input{floats/tables/N.tex} or \\input{floats/algorithms/N.tex} (N = 1-based index from the verified list). Never inline the float environment itself in section files.
+5. The "References"/"Bibliography" heading in the sections array is NOT a section file — skip it (the bibliography file is generated separately). Same for "Acknowledgements" only if input B lists it as a section: emit it as a normal section file.
+6. Never split a paragraph mid-sentence, never duplicate text, never emit empty files.`;
+
+    }
+
+    if (scope === 'floats') {
+      return `You are a world-class scholarly LaTeX typesetting engine with 20 years of experience in academic publishing (IEEE, ACM, Springer LNCS, Elsevier, Nature). Your job is to generate ONE standalone, compiling LaTeX float file for EVERY verified figure, chart, table and algorithm of a manuscript.
+
+## YOUR TASK (scope: floats)
+${commonInputs()}
+
+## FLOAT FILE RULES
+1. Exactly one float environment per file. File naming:
+   - figures: "floats/figures/N.tex"   charts: "floats/figures/N.tex" too, using the chart image file
+   - tables: "floats/tables/N.tex"
+   - algorithms: "floats/algorithms/N.tex"
+2. figures/charts: \\begin{figure}[${templateConventions.floatPlacement === 'table*/figure* for wide content, [!ht] otherwise' ? '!ht' : templateConventions.floatPlacement}]\\centering\\includegraphics[width=0.9\\linewidth]{<EXACT image filename from input C, in order>}\\caption{<VERBATIM caption from input B>}\\label{fig:N}\\end{figure}
+3. tables: reconstruct the rows/columns ACCURATELY from input A's evidence. Use tabularx (column spec chosen to fit the table, \\hline between rows, \\multicolumn for merged cells, wrap in \\adjustbox{max width=\\linewidth} when the table is wide). Preserve ALL data rows — never truncate. Caption VERBATIM from input B; \\label{tab:N}.
+4. algorithms: use \\begin{algorithm}[${templateConventions.floatPlacement === '[!ht]' ? '!ht' : 'htbp'}]\\caption{<VERBATIM title from input B>}\\begin{algorithmic}[1]\\State ...\\For{...}...\\EndFor\\Return ...\\end{algorithmic}\\end{algorithm}. Reconstruct the pseudocode steps faithfully from input A — keep every step, never truncate.
+5. COUNT INTEGRITY: the verified structure in input B declares the exact component counts (components.figures, components.charts, components.tables, components.pseudocode). Emit EXACTLY that many files per type — never more, never fewer. Index N starts at 1 and increments in document order.
+6. Every file must compile standalone inside a float — no document scaffolding, no \\section, no \\captionof, no structural commands (rule 4 of the universal rules).`;
+    }
+
+    return `You are a world-class scholarly LaTeX typesetting engine with 20 years of experience in academic publishing (IEEE, ACM, Springer LNCS, Elsevier, Nature). Your job is to generate the front-matter LaTeX files and the bibliography file of a manuscript.
+
+## YOUR TASK (scope: metadata)
+${commonInputs()}
+
+## METADATA FILE RULES
+1. "metadata/title.tex" — the manuscript title EXACTLY from input B's title.text, in the template title form: e.g. \\title{<exact title>}. Strip numbering/quotes.
+2. "metadata/authors.tex" — every author from input B's authors array (exact names) with their affiliations from input B's affiliations array, in the template author form (see TARGET TEMPLATE CONVENTIONS). Never invent authors or affiliations.
+3. "metadata/abstract.tex" — the abstract EXACTLY verbatim from input B's abstract.text (strip a leading "Abstract" label) wrapped in the template abstract environment. If the template is IEEE, use \\begin{abstract}...\\end{abstract}.
+4. "metadata/keywords.tex" — keywords EXACTLY from input B's keywords array in the template keywords form. If no keywords exist, omit this file.
+5. "references/bibliography.tex" — the bibliography as a thebibliography block:
+   \\begin{thebibliography}{99}
+   \\bibitem{ref1}<verbatim entry 1>
+   \\bibitem{ref2}<verbatim entry 2>
+   \\end{thebibliography}
+   Rules: one \\bibitem per entry in input B's references array, IN ORDER, verbatim text. Strip any leading "[N]" / "N." / "N)" numbering prefix from each entry (the thebibliography environment numbers entries automatically — a kept "[1]" prefix would double-print). Key assignment: numbered-style documents → ref1, ref2, ... (matching the \\cite{refN} keys the section mapper emits); author-year documents → slug like {smith2020} per entry (first author surname lowercase + year, no punctuation — match how the section mapper emits \\cite for that entry). Never drop, merge, reword or reorder reference entries. If input B has an empty references array, omit the entire file.`;
+  },
+  parseResponse(raw) {
+    try {
+      const parsed = JSON.parse(raw.trim());
+      if (parsed && typeof parsed === 'object' && Array.isArray(parsed.files)) return parsed;
+    } catch { /* continue */ }
+    const json = extractJsonBlock(raw);
+    if (json) {
+      try {
+        const parsed = cleanAndParseJson(json);
+        if (parsed && typeof parsed === 'object' && Array.isArray(parsed.files)) return parsed;
+      } catch { /* continue */ }
+    }
+    try {
+      const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+      const parsed = cleanAndParseJson(cleaned);
+      if (parsed && typeof parsed === 'object' && Array.isArray(parsed.files)) return parsed;
+      return { files: [] };
+    } catch {
+      return { files: [] };
+    }
+  },
+});

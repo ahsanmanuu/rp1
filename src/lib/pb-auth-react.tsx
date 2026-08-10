@@ -217,38 +217,48 @@ export async function signOut(options?: { callbackUrl?: string }) {
     (window as any).__latexy_signOutInProgress = true;
   }
 
-  // Get token before clearing cookies to send in body if needed
-  let existingToken = "";
   if (typeof window !== "undefined") {
-    const match = document.cookie.match(/(?:^|;\s*)pb_token=([^;]*)/);
-    if (match) existingToken = match[1];
-  }
+    // Fire the logout request (server purges cookies + revokes sessions).
+    // Retried once: a slow backend must not leave the HttpOnly pb_token cookie
+    // (which client JS cannot delete) in the browser.
+    const attemptLogout = () =>
+      fetch("/api/auth/pb-logout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+        },
+        cache: "no-store",
+        signal: AbortSignal.timeout(15000),
+      }).then(
+        () => {},
+        () => {}
+      );
 
-  try {
-    await fetch("/api/auth/pb-logout", {
-      method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        "Cache-Control": "no-cache, no-store, must-revalidate" 
-      },
-      body: JSON.stringify({ token: existingToken }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(10000),
-    });
-  } catch (err) {
-    console.error("[signOut] Error calling pb-logout API:", err);
-  } finally {
-    if (typeof window !== "undefined") {
-      try {
-        localStorage.removeItem("auth-token");
-        sessionStorage.clear();
-        document.cookie = "pb_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
-        document.cookie = "admin_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
-        document.cookie = "next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
-        document.cookie = "__Secure-next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
-      } catch {}
-      window.location.href = options?.callbackUrl || "/login";
-    }
+    try {
+      await attemptLogout();
+      await attemptLogout();
+    } catch {}
+
+    // Final safety net: one round-trip to /api/auth/pb-session. If the cookie
+    // survived (timeout race, in-flight poll re-setting it, etc.), the server
+    // treats the missing UserSession row as logged-out and purges the cookie.
+    try {
+      await fetch(`/api/auth/pb-session?_=${Date.now()}`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(10000),
+      });
+    } catch {}
+
+    try {
+      localStorage.removeItem("auth-token");
+      sessionStorage.clear();
+      document.cookie = "pb_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
+      document.cookie = "admin_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
+      document.cookie = "next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
+      document.cookie = "__Secure-next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
+    } catch {}
+    window.location.href = options?.callbackUrl || "/login";
   }
 }
 

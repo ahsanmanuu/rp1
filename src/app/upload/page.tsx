@@ -261,6 +261,29 @@ function UploadContent() {
     setError("");
     let simulatedInterval: any = null;
 
+    // CLIENT-SIDE DOCX EXTRACTION (mammoth in-browser): .docx files are
+    // converted entirely on the device. The text envelope (analysis HTML,
+    // plain text, references, figure manifest names) is sent to the server —
+    // NOT the binary. Figure bytes stay in this browser (IndexedDB) and are
+    // attached as multipart when the user picks a template (Phase 2). If
+    // extraction fails for any reason we transparently fall back to the
+    // legacy server-side binary pipeline.
+    let clientExtract: any = null;
+    const isDocx = typeof targetFile.name === 'string' && targetFile.name.toLowerCase().endsWith('.docx');
+    if (isDocx) {
+      try {
+        const { extractClientDocx } = await import('@/lib/client-doc-extract');
+        clientExtract = await extractClientDocx(targetFile);
+        if (!clientExtract || (!clientExtract.html && !clientExtract.text)) clientExtract = null;
+        if (clientExtract) {
+          console.log(`[UPLOAD] Client-side extraction succeeded: ${(clientExtract.html || '').length} chars HTML, ${(clientExtract.figures || []).length} figure(s)`);
+        }
+      } catch (extractErr: any) {
+        console.warn("[UPLOAD] Client-side DOCX extraction failed — falling back to server-side binary path:", extractErr?.message || extractErr);
+        clientExtract = null;
+      }
+    }
+
     // SESSION-PRESERVATION FLAG: while the upload/analysis XHR is in flight
     // (potentially 10-30 minutes for big files), the 30s session poll may
     // transiently report unauthenticated (cookie hiccup, session row churn).
@@ -285,6 +308,16 @@ function UploadContent() {
     try {
       const formData = new FormData();
       formData.append("file", targetFile);
+      if (clientExtract) {
+        formData.append("clientExtracted", "1");
+        formData.append("analysisHtml", clientExtract.html || "");
+        formData.append("analysisText", clientExtract.text || "");
+        formData.append("referencesText", clientExtract.referencesText || "");
+        formData.append(
+          "figureManifest",
+          JSON.stringify((clientExtract.figures || []).map((f: any) => ({ name: f.name, contentType: f.contentType })))
+        );
+      }
 
       // Step 1: Upload the file — with automatic retry loop for transient network errors
       let uploadData: any;
@@ -479,6 +512,29 @@ function UploadContent() {
         }
         if (!uploadData?.projectId) {
           throw new Error("Connection timed out while processing. The file may be too large or the server is busy. Please try again.");
+        }
+      }
+
+      // Persist the client-side extraction (text envelope + figure BYTES) into
+      // IndexedDB for this project — the figure bytes live only on this device
+      // until template selection attaches them as multipart (Phase 2).
+      if (clientExtract && uploadData?.projectId) {
+        try {
+          const { saveLocalDocument } = await import('@/lib/local-project-store');
+          await saveLocalDocument({
+            projectId: uploadData.projectId,
+            fileName: targetFile.name,
+            savedAt: Date.now(),
+            envelope: {
+              html: clientExtract.html || "",
+              text: clientExtract.text || "",
+              referencesText: clientExtract.referencesText || "",
+              figures: clientExtract.figures || [],
+            },
+          });
+          console.log(`[UPLOAD] Local extraction persisted for project ${uploadData.projectId} (${(clientExtract.figures || []).length} figure(s) on device)`);
+        } catch (localErr: any) {
+          console.warn("[UPLOAD] Failed to persist local document extraction:", localErr?.message || localErr);
         }
       }
 
@@ -1843,6 +1899,22 @@ export default function UploadPage() {
   );
 }
 
+// Convert a data: URL (figure bytes stored in IndexedDB during Phase 1) into
+// a File for multipart attachment at Phase 2.
+const dataUrlToFile = (dataUrl: string, filename: string, contentType: string): File | null => {
+  try {
+    const [head, body] = String(dataUrl).split(',');
+    if (!body) return null;
+    const mime = contentType || (head.match(/^data:([^;]+)/) || [])[1] || 'image/png';
+    const bin = atob(body);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new File([bytes], filename, { type: mime });
+  } catch {
+    return null;
+  }
+};
+
 const TemplateCard = ({ id, name, desc, projectId, router, onError, isCustom, onDelete, projectData }: any) => {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   
@@ -1897,6 +1969,17 @@ const TemplateCard = ({ id, name, desc, projectId, router, onError, isCustom, on
     }
 
     // 2. Phase 2: Generate modular LaTeX with selected template
+    // For client-extracted DOCX projects, attach the figure bytes stored in
+    // IndexedDB as multipart (the server never received the binaries).
+    let localDoc: any = null;
+    try {
+      const { getLocalDocument } = await import('@/lib/local-project-store');
+      localDoc = await getLocalDocument(projectId);
+    } catch (localErr) {
+      console.warn("Failed to read local document extraction:", localErr);
+    }
+    const localFigures = (localDoc?.envelope?.figures || []).filter((f: any) => f && f.name && f.dataUrl);
+
     let attempts = 0;
     const maxAttempts = 3;
     let lastError: any = null;
@@ -1904,11 +1987,34 @@ const TemplateCard = ({ id, name, desc, projectId, router, onError, isCustom, on
     while (attempts < maxAttempts) {
       attempts++;
       try {
-        const res = await fetch("/api/projects/generate-latex", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId, templateId: id })
-        });
+        let res: Response;
+        if (localFigures.length > 0) {
+          // Multipart: figures travel WITH the template request.
+          const fd = new FormData();
+          fd.append('projectId', projectId);
+          fd.append('templateId', id);
+          let attached = 0;
+          for (const fig of localFigures) {
+            const blob = dataUrlToFile(String(fig.dataUrl), String(fig.name), String(fig.contentType || 'image/png'));
+            if (!blob) continue;
+            fd.append('figures', blob, String(fig.name));
+            attached++;
+          }
+          console.log(`[UPLOAD] Attaching ${attached}/${localFigures.length} figure(s) to template request`);
+          res = await fetch("/api/projects/generate-latex", {
+            method: "POST",
+            body: fd
+          });
+          if (attached === 0) {
+            console.warn("[UPLOAD] All figures failed to deserialize — server will proceed without figure files.");
+          }
+        } else {
+          res = await fetch("/api/projects/generate-latex", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId, templateId: id })
+          });
+        }
         const data = await res.json().catch(() => ({}));
         
         if (res.ok && data.success) {

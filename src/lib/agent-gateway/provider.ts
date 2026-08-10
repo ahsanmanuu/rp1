@@ -77,6 +77,7 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
   let lastError: any = null;
 
   for (const provider of providers) {
+    let authFailures = 0;
     const llm = createOpenAICompatible({
       name: provider.name,
       baseURL: provider.baseUrl,
@@ -140,6 +141,21 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
         console.warn(`[LLM Call] Failed ${provider.name}/${modelName}: ${msg}`);
         if (msg.includes('Invalid model name')) {
           console.warn(`[LLM Call] Model ${modelName} not available at ${provider.name}, skipping.`);
+        }
+        // AUTH-CLASS FAILURE FAST-SKIP: 401/403/account errors are provider-wide,
+        // not model-specific — retrying every model of a dead key just burns the
+        // pass timeout budget (and aborts race in before a WORKING provider is
+        // ever reached). After 2 consecutive auth-class failures, move on to the
+        // next provider (e.g. opencode) immediately.
+        const isAuthClassFailure =
+          Number((err as any)?.statusCode) === 401 || Number((err as any)?.statusCode) === 403 ||
+          /unauthorized|forbidden|authentication|invalid api key|api key.*invalid|user not found|no such user|invalid credentials|access denied/i.test(msg);
+        if (isAuthClassFailure) {
+          authFailures += 1;
+          if (authFailures >= 2) {
+            console.warn(`[LLM Call] Provider ${provider.name} rejected auth repeatedly (${authFailures}x) — skipping remaining ${provider.name} models.`);
+            break;
+          }
         }
         await sleep(500);
       }

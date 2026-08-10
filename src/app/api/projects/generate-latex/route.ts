@@ -8,6 +8,8 @@ import { getTemplateById, mapLegacyTemplateId } from '@/lib/templates/registry';
 import { getServerSession } from "@/lib/auth-pb";
 import { calculateDocumentStats } from '@/lib/stats';
 
+export const maxDuration = 300;
+
 /**
  * Phase 2 API: Generate modular LaTeX from structured content + template.
  *
@@ -22,7 +24,32 @@ export async function POST(req: Request) {
     const session = await getServerSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { projectId, templateId } = await req.json();
+    // Accept both multipart (client-carried figures) and legacy JSON bodies.
+    // Figures arrive ONLY for client-extracted DOC2LATEX projects; the Phase-1
+    // figure manifest (stored in structured.json) names exactly which files may
+    // be persisted — anything else is rejected.
+    let projectId = '';
+    let templateId = '';
+    let figureFiles: { name: string; data: Buffer; contentType: string }[] = [];
+    const contentTypeHeader = req.headers.get('content-type') || '';
+    if (contentTypeHeader.includes('multipart/form-data')) {
+      const formData = await req.formData();
+      projectId = String(formData.get('projectId') || '');
+      templateId = String(formData.get('templateId') || '');
+      for (const [key, value] of formData.entries()) {
+        if (key === 'figures' && value instanceof File) {
+          figureFiles.push({
+            name: value.name,
+            data: Buffer.from(await value.arrayBuffer()),
+            contentType: value.type || 'application/octet-stream',
+          });
+        }
+      }
+    } else {
+      const body = await req.json();
+      projectId = body.projectId || '';
+      templateId = body.templateId || '';
+    }
     if (!projectId || !templateId) {
       return NextResponse.json({ error: 'Missing projectId or templateId' }, { status: 400 });
     }
@@ -128,6 +155,37 @@ Include a brief compilation guide (e.g., which LaTeX engine to use: pdfLaTeX/XeL
       }
     }
 
+    // --- PERSIST CLIENT-CARRIED FIGURES (multipart) ---
+    // For client-extracted DOC2LATEX projects the figure bytes never touched
+    // the server at upload time — they are attached here. Only names declared
+    // in the Phase-1 figureManifest are accepted; they land in the project
+    // ROOT (the assembler/mapping conventions reference ./rf_fig_N.ext).
+    if (figureFiles.length > 0) {
+      const manifestNames = new Set(
+        (Array.isArray(structured.figureManifest) ? structured.figureManifest : [])
+          .map((f: any) => f && f.name ? String(f.name) : '')
+          .filter(Boolean)
+      );
+      let savedFigures = 0;
+      let rejectedFigures = 0;
+      if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
+      for (const fig of figureFiles) {
+        const safeName = String(fig.name).replace(/[^a-zA-Z0-9._-]/g, '_');
+        if (manifestNames.size > 0 && !manifestNames.has(fig.name) && !manifestNames.has(safeName)) {
+          rejectedFigures++;
+          console.warn(`[GENERATE-LATEX] Rejected off-manifest figure: ${fig.name}`);
+          continue;
+        }
+        try {
+          fs.writeFileSync(path.join(projectDir, safeName), fig.data);
+          savedFigures++;
+        } catch (figErr: any) {
+          console.warn('[GENERATE-LATEX] Failed to persist figure', safeName, figErr?.message || figErr);
+        }
+      }
+      console.log(`[GENERATE-LATEX] Persisted ${savedFigures} figure(s) to project root (${rejectedFigures} rejected off-manifest)`);
+    }
+
     // --- ASSEMBLE MODULAR LATEX ---
     let modelToUse: any = (structured.body && structured.body.length > 0) ? structured : null;
     let fullLatex = "";
@@ -135,7 +193,40 @@ Include a brief compilation guide (e.g., which LaTeX engine to use: pdfLaTeX/XeL
     let usedOriginalTemplate = false;
 
     if (modelToUse) {
-      console.log(`[GENERATE-LATEX] Assembling from Structured Model...`);
+      // ── AI MODULAR MAPPING (doc2latex-modular agent) ──────────────────
+      // Client-extracted DOC2LATEX projects with an AI structure verdict get
+      // three scoped AI passes (floats/sections/metadata) producing modular
+      // .tex files + a deterministically composed main.tex. Any failure (agent
+      // error, timeout, empty result) falls through to the deterministic
+      // ModularLatexAssembler below — never a blank document.
+      let usedAiModular = false;
+      const projectType = String(structured.projectType || (project as any).projectType || '');
+      if (projectType === 'DOC2LATEX' && structured.aiVerdict) {
+        try {
+          const { runModularAiMapping } = await import('@/lib/ai-modular-mapping');
+          const mapped = await runModularAiMapping({
+            structured: modelToUse,
+            templateId: mapLegacyTemplateId(templateId),
+            templateMainTex,
+            userId: session.user.id,
+            userEmail: session.user.email || undefined,
+            projectId,
+          });
+          if (mapped) {
+            fullLatex = mapped.mainTex;
+            extractedComponents = Object.fromEntries(mapped.files.map((f) => [f.path, f.content]));
+            usedAiModular = true;
+            console.log(`[GENERATE-LATEX] AI modular mapping produced ${mapped.files.length} file(s) (model ${mapped.model}, ${mapped.rejected} rejected)`);
+          } else {
+            console.warn('[GENERATE-LATEX] AI modular mapping returned no viable files — using deterministic assembler.');
+          }
+        } catch (modularErr: any) {
+          console.warn('[GENERATE-LATEX] AI modular mapping failed, falling back to assembler:', modularErr?.message || modularErr);
+        }
+      }
+
+      if (!usedAiModular) {
+        console.log(`[GENERATE-LATEX] Assembling from Structured Model...`);
 
       // Refresh stats from live body before assembling
       if (modelToUse.body && Array.isArray(modelToUse.body)) {
@@ -148,6 +239,7 @@ Include a brief compilation guide (e.g., which LaTeX engine to use: pdfLaTeX/XeL
       const assembled = ModularLatexAssembler.assemble(modelToUse, mapLegacyTemplateId(templateId), templateMainTex);
       fullLatex = assembled.mainTex;
       extractedComponents = assembled.files;
+      }
     } else if (rawHtml) {
       console.log(`[GENERATE-LATEX] First-pass extraction required...`);
       const { DeepDocumentParser } = await import('@/lib/deep-parser');

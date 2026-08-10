@@ -120,6 +120,14 @@ const MAX_BACKGROUND_KICKS = 3;
 // row's attempts field.
 const backgroundRunning = new Set<string>();
 
+// ZERO-COPY BUFFER PASSING: The POST handler and background worker run in
+// the same Node.js process. Instead of base64-encoding a 5-20MB file into
+// PocketBase (which doubles memory: 20MB file → 27MB base64 string + DB I/O
+// + 27MB read-back + 20MB decode = ~94MB of copies), we pass the raw buffer
+// directly via this Map. Disk fallback at tmp/uploads-pending/{uploadId}.bin
+// covers the case where GC collected the Map entry before the worker read it.
+const pendingBuffers = new Map<string, Buffer>();
+
 // Status writes are serialized PER UPLOAD so fire-and-forget progress/heartbeat
 // writes can never land AFTER the terminal done/error write and clobber it back
 // to phase='processing'. Without this ordering guarantee, a finished upload's
@@ -472,18 +480,94 @@ async function runUploadProcessing(uploadId: string) {
     const { ensureContentSizeLimits } = await import('@/lib/pbContentLimits');
     await ensureContentSizeLimits();
 
-    // Durable source of truth: the UploadJob row in Postgres. Re-read on every
-    // kick (including recovery re-kicks) so the worker always operates on the
-    // latest bytes/meta — zero dependency on the ephemeral tmp/ dir.
-    const job = await prisma.uploadJob.findUnique({ where: { uploadId } });
+    // Read job metadata (without rawBytes) from DB.
+    const job = await prisma.uploadJob.findUnique({
+      where: { uploadId },
+      select: { uploadId: true, fileName: true, size: true, templateId: true, userId: true, email: true, name: true, phase: true, projectId: true, attempts: true },
+    });
     if (!job) throw new Error('Upload job not found');
-    // rawBytes is stored base64-encoded in the PocketBase text field (PB has no
-    // native bytes type) — decode it back to a real Buffer for the pipeline.
+
+    // ── CLIENT-EXTRACTED ENVELOPE (durable text payload) ──────────────────
+    // Browser-extracted DOCX: the DB rawBytes hold the text envelope, never a
+    // binary. Try it FIRST — when present, the whole binary pipeline is
+    // skipped (no Map, no disk staging, no raw DOCX bytes anywhere).
+    let clientEnvelope: any = null;
+    const envelopeJob = await prisma.uploadJob.findUnique({ where: { uploadId }, select: { rawBytes: true } });
+    if (envelopeJob?.rawBytes) {
+      // The PocketBase-backed prisma adapter round-trips the envelope as a
+      // JSON string. Handle every shape it can come back as:
+      //   1. plain envelope JSON string        -> parse directly
+      //   2. {"type":"Buffer","data":[...]}    -> unwrap, decode utf-8
+      //   3. legacy base64 text                -> base64 decode
+      let rawText: string | null = null;
+      try {
+        if (Buffer.isBuffer(envelopeJob.rawBytes)) {
+          rawText = envelopeJob.rawBytes.toString('utf-8');
+        } else if (typeof envelopeJob.rawBytes === 'string') {
+          const s = envelopeJob.rawBytes;
+          if (s.trimStart().startsWith('{')) {
+            const obj = JSON.parse(s);
+            if (obj && obj.type === 'Buffer' && Array.isArray(obj.data)) {
+              rawText = Buffer.from(obj.data as number[]).toString('utf-8');
+            } else {
+              rawText = s;
+            }
+          } else {
+            rawText = Buffer.from(s, 'base64').toString('utf-8');
+          }
+        } else if (envelopeJob.rawBytes && typeof envelopeJob.rawBytes === 'object' && (envelopeJob.rawBytes as any).type === 'Buffer') {
+          rawText = Buffer.from((envelopeJob.rawBytes as any).data as number[]).toString('utf-8');
+        }
+      } catch {
+        rawText = null;
+      }
+      if (rawText) {
+        try {
+          const parsed = JSON.parse(rawText);
+          if (parsed && parsed.__clientEnvelope === true) {
+            clientEnvelope = parsed;
+            console.log(`[UPLOAD] Loaded client-extracted envelope from DB (${rawText.length} chars text payload)`);
+          }
+        } catch {
+          // not an envelope — binary fallback below
+        }
+      }
+    }
+
+    // ZERO-COPY: Try in-memory Map first (same-process, zero overhead),
+    // then disk fallback, then DB rawBytes as last resort (recovery re-kick).
     let buffer: Buffer | null = null;
-    if (typeof job.rawBytes === 'string' && job.rawBytes) buffer = Buffer.from(job.rawBytes, 'base64');
-    else if (Buffer.isBuffer(job.rawBytes)) buffer = job.rawBytes;
-    (job as any).rawBytes = null; // Release base64 string from job object for GC immediately
-    if (!buffer) throw new Error('Upload bytes not found');
+    if (!clientEnvelope) {
+      buffer = pendingBuffers.get(uploadId) || null;
+      pendingBuffers.delete(uploadId); // release Map entry for GC
+    } else {
+      pendingBuffers.delete(uploadId);
+    }
+
+    if (!buffer && !clientEnvelope) {
+      // Disk fallback: saved by POST handler at tmp/uploads-pending/{uploadId}.bin
+      const diskPath = path.join(PENDING_DIR, `${uploadId}.bin`);
+      if (fs.existsSync(diskPath)) {
+        buffer = await fs.promises.readFile(diskPath);
+        console.log(`[UPLOAD] Loaded buffer from disk fallback: ${diskPath} (${buffer.length} bytes)`);
+      }
+    }
+
+    if (!buffer && !clientEnvelope) {
+      // Last resort: DB rawBytes (only present for recovery re-kicks after server restart)
+      const fullJob = await prisma.uploadJob.findUnique({ where: { uploadId }, select: { rawBytes: true } });
+      if (fullJob?.rawBytes) {
+        if (typeof fullJob.rawBytes === 'string') buffer = Buffer.from(fullJob.rawBytes, 'base64');
+        else if (Buffer.isBuffer(fullJob.rawBytes)) buffer = fullJob.rawBytes;
+        (fullJob as any).rawBytes = null;
+        console.log(`[UPLOAD] Loaded buffer from DB rawBytes fallback (${buffer?.length || 0} bytes)`);
+      }
+    }
+
+    if (!buffer && !clientEnvelope) throw new Error('Upload bytes not found');
+
+    // Clean up disk staging file (no longer needed)
+    try { fs.promises.unlink(path.join(PENDING_DIR, `${uploadId}.bin`)).catch(() => {}); } catch {}
     // Plain file object — the pipeline only uses .name (and occasionally .size).
     const file: any = { name: job.fileName, size: job.size };
     // Reconstructed session for the background worker: the original request
@@ -501,13 +585,124 @@ async function runUploadProcessing(uploadId: string) {
     let mammothResult = { value: "" };
     let groundTruth: { imageCount?: number; tableCount: number; equationCount: number } | null = null;
 
-    if (file.name.endsWith('.docx')) {
+    if (file.name.endsWith('.docx') && clientEnvelope) {
+      // ════════════════════════════════════════════════════════════════════
+      // CLIENT-EXTRACTED LIGHTWEIGHT PATH: the browser already converted the
+      // DOCX (mammoth in-browser) — the server only receives the text envelope
+      // (HTML with renamed figure <img> tags + plain text + figure manifest).
+      // No AdmZip, no JSDOM/OMML math extraction, no chart engine, no sharp,
+      // no EMF conversion, no binary persistence. The AI structural analysis
+      // (input prompt: structure-frontmatter + structure-analyze) verifies the
+      // structure from the envelope text exactly like the heavy path.
+      // ════════════════════════════════════════════════════════════════════
+      console.log("[TELEMETRY] Step 1: Client-extracted DOCX envelope — lightweight path (no binary transfer)");
+      progress(uploadId, 'Parsing extracted document', 30);
+
+      const html = String(clientEnvelope.html || '');
+      const text = String(clientEnvelope.text || '');
+      const referencesText = String(clientEnvelope.referencesText || '');
+      const figureManifest: any[] = Array.isArray(clientEnvelope.figures)
+        ? clientEnvelope.figures.filter((f: any) => f && f.name)
+        : [];
+      const figureNames = figureManifest.map((f: any) => String(f.name)).filter(Boolean);
+
+      if (!html.trim() && !text.trim()) {
+        throw new Error('Client extraction produced no content for this document');
+      }
+
+      mammothResult = { value: html };
+      finalXml = '';
+
+      if (html.trim()) {
+        console.log("[TELEMETRY] Step 2: Deep Structural Analysis (envelope HTML)");
+        deepData = DeepDocumentParser.parse(html, [], file.name || 'Document.docx', null, '');
+      } else {
+        deepData = {
+          title: file.name,
+          authors: [],
+          keywords: [],
+          abstract: "",
+          contribution: "",
+          body: [{ type: 'paragraph', text }],
+          references: [],
+          stats: {
+            wordCount: text.split(/\s+/).length,
+            charCount: text.length,
+            imageCount: 0,
+            tableCount: 0,
+            equationCount: 0,
+            referenceCount: 0,
+            citationCount: 0,
+            pseudocodeCount: 0,
+          },
+        };
+      }
+
+      // The figure manifest is authoritative for what the AI may reason about
+      // (figures live on the client device until Phase 2 attaches them).
+      (deepData as any).figureManifest = figureManifest;
+      if (figureNames.length > 0 && (!deepData.stats?.imageCount || deepData.stats.imageCount === 0)) {
+        if (!deepData.stats) deepData.stats = {} as any;
+        deepData.stats.imageCount = figureNames.length;
+      }
+      if (referencesText && (!deepData.references || deepData.references.length === 0)) {
+        deepData.references = referencesText
+          .split('\n')
+          .map((l: string) => l.trim())
+          .filter((l: string) => l.length > 10);
+      }
+      if (deepData.stats) deepData.stats.referenceCount = (deepData.references || []).length;
+
+      progress(uploadId, 'Analyzing document structure', 55);
+
+      // --- AI-ASSISTED STRUCTURAL VERIFICATION (from the envelope text) ---
+      try {
+        const { analyzeManuscriptStructure, applyStructureCorrections } = await import('@/lib/ai-manuscript-analysis');
+        const aiRes = await Promise.race([
+          analyzeManuscriptStructure(deepData, {
+            html,
+            filename: file.name,
+            userId: (session?.user as any)?.id ?? null,
+            imageFiles: figureNames,
+            templateId: templateId,
+          }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 90000))
+        ]);
+        if (aiRes) {
+          const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
+          if (aiRes.aiLatex) (deepData as any).aiLatex = aiRes.aiLatex;
+          (deepData as any).aiVerdict = aiRes.verdict;
+          (deepData as any).aiModel = aiRes.model;
+          console.log(`[TELEMETRY] AI structure corrections applied: ${applied.join(', ') || 'none'} (${aiRes.model})`);
+        } else {
+          const ldWarning = (deepData as any).largeDocWarning;
+          if (ldWarning) {
+            console.warn(`[TELEMETRY] ${ldWarning}`);
+            await writeStatus(uploadId, { warning: ldWarning }).catch(() => {});
+          } else {
+            console.warn('[TELEMETRY] AI structural analysis timed out or unavailable — keeping heuristic parse.');
+          }
+        }
+      } catch (aiErr: any) {
+        console.warn('[AI-STRUCTURE] AI structural analysis failed (non-critical):', aiErr?.message || aiErr);
+      }
+
+      progress(uploadId, 'Analyzing document structure', 65);
+
+      // Choose default template based on filename (for metadata only, not assembly)
+      if (file.name.toUpperCase().includes('IEEE')) templateId = 'article_ieee';
+      else if (file.name.toUpperCase().includes('ACM')) templateId = 'article_acm';
+
+      console.log("[TELEMETRY] Phase 1 complete (client-extracted): parsing + AI analysis done. Assembly deferred to Phase 2.");
+      progress(uploadId, 'Phase 1: Analysis complete', 74);
+    } else if (file.name.endsWith('.docx')) {
       console.log("[TELEMETRY] Step 1: Parsing DOCX with AdmZip");
 
       let zip = new AdmZip(buffer!);
+      buffer = null; // AdmZip copies entries internally; release the original 5-20MB buffer for GC
       const documentXml = zip.readAsText('word/document.xml');
       console.log("[TELEMETRY] Step 2: Extracting Math nodes with JSDOM");
-      const dom = new JSDOM(documentXml, { contentType: "text/xml" });
+      let dom: any = new JSDOM(documentXml, { contentType: "text/xml" });
 
       // CRITICAL FIX: querySelectorAll with escaped colons fails in JSDOM for XML namespaces.
       // Use getElementsByTagName which handles namespaced tags correctly.
@@ -589,7 +784,7 @@ async function runUploadProcessing(uploadId: string) {
       // SYNC: Update the zip with markers AND unwrapped oMathPara before mammoth reads it
       // First unwrap surviving m:oMathPara wrappers so mammoth does not silently drop our markers
       const oMathParas = dom.window.document.getElementsByTagName('m:oMathPara');
-      Array.from(oMathParas).forEach(para => {
+      Array.from(oMathParas).forEach((para: any) => {
         const wp = dom.window.document.createElement('w:p');
         while (para.firstChild) wp.appendChild(para.firstChild);
         para.parentNode?.replaceChild(wp, para);
@@ -808,7 +1003,7 @@ async function runUploadProcessing(uploadId: string) {
 
       // 1000% Accuracy: Extract ground truth (Semantic + Positional Law)
       const allTbls = Array.from(dom.window.document.getElementsByTagName('w:tbl'));
-      const validTables = allTbls.filter((tbl, idx) => {
+      const validTables = allTbls.filter((tbl: any, idx) => {
         const text = (tbl.textContent || "").toLowerCase();
         // Rule 1: Structural Integrity (must be a table with content)
         const rows = tbl.getElementsByTagName('w:tr').length;
@@ -1156,12 +1351,12 @@ async function runUploadProcessing(uploadId: string) {
       }
       console.timeEnd("[PERF] Bibliography Extraction");
 
-      // Release the heavy raw buffers for GC: the DOM, AdmZip and raw file
+      // Release the heavy raw buffers for GC: the AdmZip and raw file
       // buffer are no longer needed past bibliography extraction. The staged
       // images (on disk) and deepData are what the rest of the pipeline uses.
+      // (JSDOM window was already released early at ground-truth extraction.)
       buffer = null;
       (zip as any) = null;
-      try { (dom as any)?.window?.close?.(); } catch { /* non-critical */ }
 
       // --- PHASE 1 (Upload): Skip assembly — Phase 2 (generate-latex) handles it ---
       // Assembly is deferred to when the user selects a template. This makes
@@ -1430,25 +1625,32 @@ async function runUploadProcessing(uploadId: string) {
     const pbContentLimit = await ensureContentSizeLimits();
     const structuredJsonBudget = pbContentLimit - 2 * 1024 * 1024;
 
-    const structuredWithXml = JSON.stringify({ ...deepData, rawHtml: mammothResult.value, rawXml: finalXml });
-    let structuredJson: string = structuredWithXml;
-    if (Buffer.byteLength(structuredWithXml, 'utf8') > structuredJsonBudget) {
-      // Pathological document: drop the raw XML (only used for template
-      // re-parses — the route falls back to LaTeX there), then cap rawHtml.
-      const withoutXml = JSON.stringify({ ...deepData, rawHtml: mammothResult.value });
-      if (Buffer.byteLength(withoutXml, 'utf8') <= structuredJsonBudget) {
-        structuredJson = withoutXml;
-      } else {
-        const baseJson = JSON.stringify({ ...deepData, rawHtml: '' });
-        const htmlBudget = Math.max(256 * 1024, structuredJsonBudget - Buffer.byteLength(baseJson, 'utf8'));
-        const fullHtml = String(mammothResult.value || '');
-        structuredJson = JSON.stringify({
-          ...deepData,
-          rawHtml: fullHtml.length > htmlBudget ? fullHtml.slice(0, htmlBudget) : fullHtml,
-        });
+    // MEMORY-SAFE STRUCTURED JSON: Build a single JSON string instead of
+    // creating 3 copies via repeated JSON.stringify + spread operations.
+    // For a 10MB mammothResult.value + 5MB finalXml, the old approach created
+    // 3× 15MB = 45MB of throwaway strings simultaneously.
+    let rawHtmlForDb = mammothResult.value || '';
+    let rawXmlForDb = finalXml || '';
+
+    // Estimate sizes to decide what to include (avoid creating full string just to measure)
+    const deepDataSize = JSON.stringify(deepData).length;
+    const estimatedTotal = deepDataSize + rawHtmlForDb.length + rawXmlForDb.length + 200;
+
+    if (estimatedTotal > structuredJsonBudget) {
+      // Drop XML first (saves 5-10MB)
+      rawXmlForDb = '';
+      if (deepDataSize + rawHtmlForDb.length + 200 > structuredJsonBudget) {
+        // Truncate HTML to fit
+        const htmlBudget = Math.max(256 * 1024, structuredJsonBudget - deepDataSize - 200);
+        rawHtmlForDb = rawHtmlForDb.slice(0, htmlBudget);
       }
-      console.warn(`[TELEMETRY] structuredContent trimmed to ${Buffer.byteLength(structuredJson, 'utf8')} bytes (PB limit ${pbContentLimit})`);
+      console.warn(`[TELEMETRY] structuredContent trimmed (PB limit ${pbContentLimit})`);
     }
+
+    const structuredJson = JSON.stringify({ ...deepData, rawHtml: rawHtmlForDb, rawXml: rawXmlForDb });
+    // Release the large strings immediately after building structuredJson
+    mammothResult.value = '';
+    finalXml = '';
 
     // SAFETY NET: Ensure the user row exists in the DB before creating a project.
     // This prevents FK constraint violations when the DB was wiped/migrated but
@@ -1555,16 +1757,11 @@ async function runUploadProcessing(uploadId: string) {
 
     // Store complete untruncated source document to local project directory on disk
     // to guarantee 100% content fidelity for large 20MB files during Phase 2 template generation.
+    // Re-use structuredJson which already contains rawHtml + rawXml (avoids another 15MB stringify).
     try {
       const projDir = path.join(process.cwd(), 'public', 'uploads', 'projects', project.id);
       if (!fs.existsSync(projDir)) fs.mkdirSync(projDir, { recursive: true });
-      const fullDocPayload = JSON.stringify({
-        ...deepData,
-        rawHtml: mammothResult.value || "",
-        rawXml: finalXml || "",
-        title: deepData.title || file.name,
-      });
-      await fs.promises.writeFile(path.join(projDir, 'source_document.json'), fullDocPayload, 'utf-8');
+      await fs.promises.writeFile(path.join(projDir, 'source_document.json'), structuredJson, 'utf-8');
     } catch (saveErr) {
       console.warn('[UPLOAD] Could not persist source_document.json to disk:', saveErr);
     }
@@ -1700,12 +1897,55 @@ export async function POST(req: Request) {
     const file = formData.get('file') as File;
     if (!file) return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
 
+    // ── CLIENT-EXTRACTED DOCX ENVELOPE (lightweight path) ──────────────────
+    // The browser extracts text + figure manifest itself (mammoth) and sends
+    // NO document bytes: only the analysis HTML/text and the figure manifest
+    // (name/contentType per figure). The server stores that envelope (durable,
+    // recovery-safe) and skips every heavy pipeline stage (AdmZip, JSDOM,
+    // OMML math, charts, sharp, EMF conversion) — the figure bytes stay on the
+    // client device and are attached as multipart at Phase 2 (template select).
+    const isClientExtracted = formData.get('clientExtracted') === '1';
+    const analysisHtml = String(formData.get('analysisHtml') || '');
+    const analysisText = String(formData.get('analysisText') || '');
+    const referencesText = String(formData.get('referencesText') || '');
+    let figureManifest: any[] = [];
+    if (isClientExtracted) {
+      try {
+        const raw = String(formData.get('figureManifest') || '[]');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          figureManifest = parsed
+            .filter((f: any) => f && typeof f.name === 'string' && f.name.trim())
+            .map((f: any) => ({ name: String(f.name).trim(), contentType: String(f.contentType || 'image/png') }));
+        }
+      } catch {
+        figureManifest = [];
+      }
+    }
+
     const uploadId = randomBytes(12).toString('hex');
     const templateId = (formData.get('templateId') || formData.get('template') || 'article_lncs') as string;
     const fileName = file.name || 'document.docx';
 
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    let buffer: Buffer | null = null;
+    let envelopePayload: string | null = null;
+    if (isClientExtracted) {
+      // Envelope payload (no binaries). Stored as a plain JSON STRING in the
+      // rawBytes field (the PocketBase-backed prisma adapter round-trips
+      // strings verbatim — Buffers would be mangled into {"type":"Buffer",...}),
+      // so crash-recovery re-kicks can re-run the lightweight worker without
+      // any client involvement.
+      envelopePayload = JSON.stringify({
+        __clientEnvelope: true,
+        html: analysisHtml,
+        text: analysisText,
+        referencesText,
+        figures: figureManifest,
+      });
+    } else {
+      const arrayBuffer = await file.arrayBuffer();
+      buffer = Buffer.from(arrayBuffer);
+    }
 
     // Lazy GC: purge finished/failed upload jobs older than 24h so the table
     // never accumulates raw bytes without bound (stale rows are worthless).
@@ -1718,19 +1958,35 @@ export async function POST(req: Request) {
       });
     } catch { /* non-critical */ }
 
+    // ZERO-COPY PATH: Pass buffer in-memory + save to disk fallback.
+    // This eliminates the 27MB base64 encoding that was the #1 OOM cause.
+    // (Skipped entirely for client-extracted envelopes — no binaries exist.)
+    if (buffer) {
+      pendingBuffers.set(uploadId, buffer);
+      try {
+        if (!fs.existsSync(PENDING_DIR)) fs.mkdirSync(PENDING_DIR, { recursive: true });
+        fs.writeFileSync(path.join(PENDING_DIR, `${uploadId}.bin`), buffer);
+      } catch (diskErr) {
+        console.warn('[UPLOAD] Disk staging failed (in-memory Map still available):', diskErr);
+      }
+    }
+
+    // Store job metadata in DB WITHOUT rawBytes (saves ~27MB of base64 per upload).
+    // rawBytes is only written as a last-resort fallback for crash recovery —
+    // or (client-extracted) the text envelope itself, which IS the payload.
     await prisma.uploadJob.create({
       data: {
         uploadId,
         fileName,
-        size: buffer.length,
+        size: isClientExtracted ? file.size : (buffer?.length || 0),
         templateId,
         userId: (session.user as any).id,
         email: (session.user as any).email || null,
         name: (session.user as any).name || null,
-        rawBytes: buffer.toString('base64'),
         phase: 'processing',
         stage: 'Uploading document',
         progress: 4,
+        ...(envelopePayload ? { rawBytes: envelopePayload } : {}),
       },
     });
 

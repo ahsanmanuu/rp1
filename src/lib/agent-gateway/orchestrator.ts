@@ -279,7 +279,7 @@ export async function routeToAgent(req: GatewayRequest): Promise<GatewayResponse
   } catch (dbErr) {
     console.warn(`[AiContextConfig] Failed to fetch prompt overrides for agent ${req.agent}:`, dbErr);
   }
-  const needsJson = req.agent === 'reviewer' || req.agent === 'extract' || req.agent === 'diagram' || req.agent === 'structure-analyze' || req.agent === 'structure-frontmatter' || req.agent === 'structure-latex';
+  const needsJson = req.agent === 'reviewer' || req.agent === 'extract' || req.agent === 'diagram' || req.agent === 'structure-analyze' || req.agent === 'structure-frontmatter' || req.agent === 'structure-latex' || req.agent === 'doc2latex-modular';
   const messages = req.messages && req.messages.length > 0
     ? [{ role: 'system' as const, content: systemContent }, ...req.messages]
     : [

@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
           const { pbAdmin } = await import("@/lib/pb");
           const admPb = await pbAdmin();
           const allUsers = await admPb.collection("users").getFullList({ requestKey: null });
-          let matchedUser = allUsers.find(
+          const matchedUser = allUsers.find(
             (u: any) => u.email && u.email.trim().toLowerCase() === cleanEmail
           );
 
@@ -192,7 +192,29 @@ export async function POST(req: NextRequest) {
         },
       });
     } catch (sessionErr: any) {
-      console.warn("[AUTH pb-login] Failed to persist session record (non-fatal):", sessionErr.message);
+      // The UserSession row is the source of truth for every subsequent request —
+      // a login without it cannot stay authenticated. Retry once before failing.
+      console.warn("[AUTH pb-login] Session persist failed, retrying:", sessionErr.message);
+      try {
+        await prisma.userSession.create({
+          data: {
+            userId,
+            sessionToken,
+            machineId: clientMachineId,
+            ipAddress,
+            location,
+            userAgent,
+            lastActiveAt: new Date(),
+            expiresAt,
+          },
+        });
+      } catch (sessionErr2: any) {
+        console.error("[AUTH pb-login] Session persist failed twice:", sessionErr2.message);
+        return NextResponse.json(
+          { error: "Failed to establish a session. Please try again." },
+          { status: 500 }
+        );
+      }
     }
 
     const { logUserActivity } = await import("@/lib/security");
