@@ -59,7 +59,15 @@ export function useGlobalQuotas() {
       }
 
       const url = fresh ? '/api/user/quota-status?fresh=1' : '/api/user/quota-status';
-      const res = await fetch(url, { cache: 'no-store' });
+      const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+      const headers: Record<string, string> = {};
+      if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
+      const res = await fetch(url, { cache: 'no-store', headers });
+      if (res.status === 401) {
+        setLoading(false);
+        setError(null);
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: QuotaStatus = await res.json();
 

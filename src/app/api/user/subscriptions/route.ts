@@ -233,7 +233,8 @@ export async function GET(req: NextRequest) {
     };
 
     // ── 5. AI plan summary (mirrors ai-cap/status shape) ──
-    const dailyCap = user.aiDailyCapOverride || plan?.dailyTokenCap || 0;
+    const freeDefaultCap = plan?.name === 'pro' ? 50000 : plan?.name === 'enterprise' ? 200000 : 10000;
+    const dailyCap = user.aiDailyCapOverride || (plan?.dailyTokenCap && plan.dailyTokenCap > 0 ? plan.dailyTokenCap : freeDefaultCap);
     const usedToday = summary?.totalTokens ?? 0;
     const remaining = Math.max(0, dailyCap - usedToday);
     const isCapped = remaining === 0 && dailyCap > 0;
@@ -254,7 +255,7 @@ export async function GET(req: NextRequest) {
       priceINR: plan?.priceINR ?? 0,
       status: aiPlanExpired ? "expired" : (plan && plan.name !== "free" ? "active" : "free"),
       isPremiumTier: !!plan && plan.name !== "free",
-      startsAt: iso(aiPlanStartsAt),
+      startsAt: iso(aiPlanStartsAt) || memberSince,
       expiresAt: iso(aiPlanExpiresAt),
       remainingDays: remainingDays(aiPlanExpiresAt),
       durationDays: durationDays(aiPlanStartsAt, aiPlanExpiresAt),

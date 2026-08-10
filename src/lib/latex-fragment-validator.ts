@@ -160,6 +160,24 @@ function imageTargetsExist(latex: string, imageFiles: string[]): boolean {
 function sanitizeFragment(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   let s = raw.trim();
+  // Strip invalid UTF-8 characters that cause TeX compilation errors
+  s = s
+    .replace(/[\uFFFD]/g, '')
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/[\uE000-\uF8FF]/g, '')
+    .replace(/[\uFFFC-\uFFFE]/g, '')
+    .replace(/[\u2000-\u200A]/g, ' ')
+    .replace(/[\u202F\u00A0]/g, ' ')
+    .replace(/[\u200B\u200C\u200D\uFEFF]/g, '')
+    .replace(/\u2013/g, '--')
+    .replace(/\u2014/g, '---')
+    .replace(/\u2018/g, '`')
+    .replace(/\u2019/g, "'")
+    .replace(/\u201C/g, '``')
+    .replace(/\u201D/g, "''")
+    .replace(/\u2212/g, '-');
   if (s.length < 20 || s.length > 4000) return null;
   // Strip a single trailing newline/space
   s = s.replace(/\s+$/g, '');
@@ -267,7 +285,25 @@ function envPairsBalanced(latex: string): boolean {
  */
 export function sanitizeAiSectionFile(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
-  const s = raw.trim();
+  let s = raw.trim();
+  // Strip invalid UTF-8 characters that cause TeX compilation errors
+  s = s
+    .replace(/[\uFFFD]/g, '')
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/[\uE000-\uF8FF]/g, '')
+    .replace(/[\uFFFC-\uFFFE]/g, '')
+    .replace(/[\u2000-\u200A]/g, ' ')
+    .replace(/[\u202F\u00A0]/g, ' ')
+    .replace(/[\u200B\u200C\u200D\uFEFF]/g, '')
+    .replace(/\u2013/g, '--')
+    .replace(/\u2014/g, '---')
+    .replace(/\u2018/g, '`')
+    .replace(/\u2019/g, "'")
+    .replace(/\u201C/g, '``')
+    .replace(/\u201D/g, "''")
+    .replace(/\u2212/g, '-');
   if (s.length < 30 || s.length > 60000) return null;
   // \input/\include are allowed ONLY in the exact {floats/...} form (checked
   // below); every other forbidden command rejects the file outright.
@@ -293,7 +329,25 @@ export function sanitizeAiSectionFile(raw: unknown): string | null {
 export function sanitizeAiMetadataFile(raw: unknown, path: string): string | null {
   if (!METADATA_PATHS.has(path)) return null;
   if (typeof raw !== 'string') return null;
-  const s = raw.trim();
+  let s = raw.trim();
+  // Strip invalid UTF-8 characters that cause TeX compilation errors
+  s = s
+    .replace(/[\uFFFD]/g, '')
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/[\uE000-\uF8FF]/g, '')
+    .replace(/[\uFFFC-\uFFFE]/g, '')
+    .replace(/[\u2000-\u200A]/g, ' ')
+    .replace(/[\u202F\u00A0]/g, ' ')
+    .replace(/[\u200B\u200C\u200D\uFEFF]/g, '')
+    .replace(/\u2013/g, '--')
+    .replace(/\u2014/g, '---')
+    .replace(/\u2018/g, '`')
+    .replace(/\u2019/g, "'")
+    .replace(/\u201C/g, '``')
+    .replace(/\u201D/g, "''")
+    .replace(/\u2212/g, '-');
   if (s.length < 3 || s.length > 50000) return null;
   for (const re of FORBIDDEN_PATTERNS) {
     // \input/\include never belong in metadata files; \maketitle comes from

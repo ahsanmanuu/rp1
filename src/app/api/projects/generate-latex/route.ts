@@ -137,7 +137,7 @@ Include a brief compilation guide (e.g., which LaTeX engine to use: pdfLaTeX/XeL
             projectId,
             documentTitle: project.title,
             templateId,
-            documentText: (docText || '').slice(0, 50000),
+            documentText: (docText || '').slice(0, 180000),
           }
         });
       } catch (aiErr) {

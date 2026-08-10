@@ -17,12 +17,24 @@ export async function GET() {
 
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { membership: true },
+      select: { membership: true, membershipExpiresAt: true },
     });
 
-    const membership = user?.membership || "free";
-    if (membership !== "free") {
-      return NextResponse.json({ limitReached: false, count: 0, max: null });
+    const now = new Date();
+    let membership = user?.membership || "free";
+    const isExpired = membership !== "free" && user?.membershipExpiresAt && new Date(user.membershipExpiresAt) <= now;
+
+    if (isExpired) {
+      await prisma.user.update({
+        where: { id: session.user.id },
+        data: { membership: "free", membershipExpiresAt: null }
+      }).catch(() => {});
+      membership = "free";
+    }
+
+    const isPremium = membership !== "free" && (!user?.membershipExpiresAt || new Date(user.membershipExpiresAt) > now);
+    if (isPremium) {
+      return NextResponse.json({ limitReached: false, count: 0, max: null, membership });
     }
 
     const [projectCount, citationCount, reviewCount] = await Promise.all([

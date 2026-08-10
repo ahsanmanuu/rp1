@@ -68,7 +68,10 @@ export function useSubscriptionsRealtime(options: UseSubscriptionsOptions = {}) 
         const url = fresh
           ? '/api/user/subscriptions?fresh=1'
           : '/api/user/subscriptions';
-        const res = await fetch(url, { cache: 'no-store' });
+        const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+        const headers: Record<string, string> = {};
+        if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
+        const res = await fetch(url, { cache: 'no-store', headers });
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           throw new Error(body?.error || `Failed to load subscriptions (${res.status})`);
@@ -93,12 +96,16 @@ export function useSubscriptionsRealtime(options: UseSubscriptionsOptions = {}) 
       } catch (err: any) {
         if (!mountedRef.current) return;
         const msg = err.message || 'Failed to sync subscriptions';
-        console.warn('[SubscriptionsRealtime] Sync error:', msg);
-        onErrorRef.current?.(msg);
+        const lower = msg.toLowerCase();
+        const isUnauthOrOffline = lower.includes('unauthorized') || msg.includes('401') || lower.includes('offline') || msg.includes('503');
+        if (!isUnauthOrOffline) {
+          console.warn('[SubscriptionsRealtime] Sync error:', msg);
+          onErrorRef.current?.(msg);
+        }
         setState(prev => ({
           ...prev,
           loading: false,
-          error: msg,
+          error: isUnauthOrOffline ? null : msg,
           data: prev.data || FALLBACK,
         }));
       }

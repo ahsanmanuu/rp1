@@ -32,48 +32,61 @@ const TEXT_FIELD_TARGETS: Record<string, { field: string; max: number }[]> = {
 export async function ensureContentSizeLimits(): Promise<number> {
   if (_ensureDone) return _appliedMaxSize;
   try {
-    const admPb = await pbAdmin();
+    // Timeout guard: if PB admin auth or schema updates hang, return the
+    // safe 5MB default rather than blocking the entire upload pipeline.
+    const result = await Promise.race([
+      (async () => {
+        const admPb = await pbAdmin();
 
-    for (const [collectionName, fieldNames] of Object.entries(FIELD_TARGETS)) {
-      const col = await admPb.collections.getOne(collectionName).catch(() => null);
-      if (!col) continue;
-      const fields = (col as any).fields || (col as any).schema || [];
-      let changed = false;
-      const nextFields = (fields as any[]).map((f: any) => {
-        if (fieldNames.includes(f.name) && Number(f.maxSize || 0) < PB_CONTENT_MAX_SIZE) {
-          changed = true;
-          return { ...f, maxSize: PB_CONTENT_MAX_SIZE };
+        for (const [collectionName, fieldNames] of Object.entries(FIELD_TARGETS)) {
+          const col = await admPb.collections.getOne(collectionName).catch(() => null);
+          if (!col) continue;
+          const fields = (col as any).fields || (col as any).schema || [];
+          let changed = false;
+          const nextFields = (fields as any[]).map((f: any) => {
+            if (fieldNames.includes(f.name) && Number(f.maxSize || 0) < PB_CONTENT_MAX_SIZE) {
+              changed = true;
+              return { ...f, maxSize: PB_CONTENT_MAX_SIZE };
+            }
+            return f;
+          });
+          if (changed) {
+            await admPb.collections.update(col.id, { fields: nextFields });
+            console.log(`[PB_LIMITS] Raised ${collectionName} [${fieldNames.join(', ')}] maxSize to ${PB_CONTENT_MAX_SIZE}`);
+          }
         }
-        return f;
-      });
-      if (changed) {
-        await admPb.collections.update(col.id, { fields: nextFields });
-        console.log(`[PB_LIMITS] Raised ${collectionName} [${fieldNames.join(', ')}] maxSize to ${PB_CONTENT_MAX_SIZE}`);
-      }
-    }
 
-    for (const [collectionName, targets] of Object.entries(TEXT_FIELD_TARGETS)) {
-      const col = await admPb.collections.getOne(collectionName).catch(() => null);
-      if (!col) continue;
-      const fields = (col as any).fields || (col as any).schema || [];
-      let changed = false;
-      const nextFields = (fields as any[]).map((f: any) => {
-        const target = targets.find(t => t.field === f.name);
-        if (target && Number(f.max || 0) < target.max) {
-          changed = true;
-          return { ...f, max: target.max };
+        for (const [collectionName, targets] of Object.entries(TEXT_FIELD_TARGETS)) {
+          const col = await admPb.collections.getOne(collectionName).catch(() => null);
+          if (!col) continue;
+          const fields = (col as any).fields || (col as any).schema || [];
+          let changed = false;
+          const nextFields = (fields as any[]).map((f: any) => {
+            const target = targets.find(t => t.field === f.name);
+            if (target && Number(f.max || 0) < target.max) {
+              changed = true;
+              return { ...f, max: target.max };
+            }
+            return f;
+          });
+          if (changed) {
+            await admPb.collections.update(col.id, { fields: nextFields });
+            console.log(`[PB_LIMITS] Raised ${collectionName} text fields max`);
+          }
         }
-        return f;
-      });
-      if (changed) {
-        await admPb.collections.update(col.id, { fields: nextFields });
-        console.log(`[PB_LIMITS] Raised ${collectionName} text fields max`);
-      }
-    }
 
-    _appliedMaxSize = PB_CONTENT_MAX_SIZE;
-    _ensureDone = true;
-    return _appliedMaxSize;
+        _appliedMaxSize = PB_CONTENT_MAX_SIZE;
+        _ensureDone = true;
+        return _appliedMaxSize;
+      })(),
+      new Promise<number>((resolve) => setTimeout(() => {
+        console.warn('[PB_LIMITS] Timeout (15s) — keeping 5MB default');
+        _ensureDone = true;
+        resolve(5 * 1024 * 1024);
+      }, 15_000)),
+    ]);
+
+    return result;
   } catch (err: any) {
     console.warn("[PB_LIMITS] Ensure failed (non-fatal), keeping 5MB default:", err?.message);
     _ensureDone = true;

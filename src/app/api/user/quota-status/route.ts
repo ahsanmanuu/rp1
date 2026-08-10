@@ -91,7 +91,8 @@ export async function GET(req: NextRequest) {
     const reviewCount = await prisma.paperReview.count({ where: { userId } });
     const totalProjects = projectCount + citationCount + reviewCount;
 
-    const dailyCap = user.aiDailyCapOverride || plan?.dailyTokenCap || 0;
+    const defaultCap = plan?.name === 'pro' ? 50000 : plan?.name === 'enterprise' ? 200000 : 10000;
+    const dailyCap = user.aiDailyCapOverride || (plan?.dailyTokenCap && plan.dailyTokenCap > 0 ? plan.dailyTokenCap : defaultCap);
     const usedToday = usage?.totalTokens ?? 0;
     const remaining = Math.max(0, dailyCap - usedToday);
     const isCapped = remaining === 0 && dailyCap > 0;

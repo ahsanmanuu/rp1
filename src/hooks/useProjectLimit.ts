@@ -29,7 +29,14 @@ export function useProjectLimit() {
     }
 
     try {
-      const res = await fetch("/api/projects/limit-status");
+      const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+      const authHeaders: Record<string, string> = {};
+      if (storedToken) authHeaders["Authorization"] = `Bearer ${storedToken}`;
+      const res = await fetch("/api/projects/limit-status", { headers: authHeaders });
+      if (res.status === 401) {
+        setLimitChecked(true);
+        return;
+      }
       const data = await res.json();
       if (data.limitReached) {
         setShowLimitModal(true);

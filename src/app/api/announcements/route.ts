@@ -11,7 +11,7 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 };
 
 let cache: { data: any; expiry: number } | null = null;
-let inflight: Promise<NextResponse> | null = null;
+let inflightData: Promise<any> | null = null;
 const CACHE_TTL = 15_000;
 
 export async function GET(req: NextRequest) {
@@ -20,9 +20,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(cache.data);
   }
 
-  if (inflight) return inflight;
+  if (inflightData) {
+    try {
+      const data = await inflightData;
+      return NextResponse.json(data);
+    } catch {
+      // Fall through
+    }
+  }
 
-  inflight = (async () => {
+  inflightData = (async () => {
     try {
       const announcements = await withTimeout(
         prisma.announcement.findMany({
@@ -40,26 +47,20 @@ export async function GET(req: NextRequest) {
         []
       );
 
-      // Guard: PocketBase may return non-array on auth failure
       const safeAnnouncements = Array.isArray(announcements) ? announcements : [];
-
       const data = { success: true, announcements: safeAnnouncements };
       cache = { data, expiry: Date.now() + CACHE_TTL };
-
-      return NextResponse.json(data, {
-        headers: { 'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=30' },
-      });
+      return data;
     } catch (error: any) {
-      // Return empty list gracefully — never 500 the announcements endpoint.
-      // Transient PocketBase / DB errors should fail silently so the banner
-      // doesn't show a console error on every page load during compilation.
       console.warn('[Announcements API] Transient error (returning empty list):', error?.message || error);
-      const fallback = { success: true, announcements: [] };
-      return NextResponse.json(fallback, { status: 200 });
+      return { success: true, announcements: [] };
     } finally {
-      inflight = null;
+      inflightData = null;
     }
   })();
 
-  return inflight;
+  const resultData = await inflightData;
+  return NextResponse.json(resultData, {
+    headers: { 'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=30' },
+  });
 }

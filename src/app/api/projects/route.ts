@@ -91,10 +91,13 @@ export async function POST(req: Request) {
     // Check project limits for Free tier
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { membership: true }
+      select: { membership: true, membershipExpiresAt: true }
     });
 
-    if (user?.membership === 'free' || !user?.membership) {
+    const now = new Date();
+    const isFreeOrExpired = !user || user.membership === 'free' || (user.membershipExpiresAt && new Date(user.membershipExpiresAt) <= now);
+
+    if (isFreeOrExpired) {
       const [projectCount, citationCount, reviewCount] = await Promise.all([
         prisma.project.count({ where: { userId: session.user.id } }),
         prisma.citationProject.count({ where: { userId: session.user.id } }),

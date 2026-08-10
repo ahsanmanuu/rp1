@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useSession } from "@/lib/pb-auth-react";
 import Sidebar from '@/components/Sidebar';
 import dynamic from 'next/dynamic';
-const ChatWidget = dynamic(() => import('@/components/ChatWidget'), { ssr: false });
+import { safeDynamicImport } from '@/lib/safeImport';
+const ChatWidget = dynamic(() => safeDynamicImport(() => import('@/components/ChatWidget')), { ssr: false });
 import ChunkSafe from "@/components/ChunkSafe";
 import ProLoader from "@/components/ProLoader";
 import {

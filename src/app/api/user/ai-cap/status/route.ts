@@ -169,8 +169,9 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const dailyCap = user.aiDailyCapOverride || plan?.dailyTokenCap || 0;
-    const planName = plan?.label ?? "None";
+    const defaultCap = plan?.name === 'pro' ? 50000 : plan?.name === 'enterprise' ? 200000 : 10000;
+    const dailyCap = user.aiDailyCapOverride || (plan?.dailyTokenCap && plan.dailyTokenCap > 0 ? plan.dailyTokenCap : defaultCap);
+    const planName = plan?.label ?? "Free Tier";
 
     const effectiveDailyCap = ruleMatch?.matched && ruleMatch.capType === 'daily_tokens' && ruleMatch.capValue !== undefined
       ? Math.min(dailyCap || Infinity, ruleMatch.capValue)

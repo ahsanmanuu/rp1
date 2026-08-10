@@ -26,8 +26,13 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const emailParam = urlParams.get('email');
       const savedEmail = localStorage.getItem('remembered_email');
-      if (savedEmail) {
+      
+      if (emailParam) {
+        setEmail(emailParam);
+      } else if (savedEmail) {
         setEmail(savedEmail);
         setRememberMe(true);
       }
@@ -135,6 +140,10 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (password.length < 8) {
+      setError("Access key (password) must be at least 8 characters long.");
+      return;
+    }
     setLoading(true);
     setError("");
 
@@ -217,7 +226,7 @@ export default function LoginPage() {
           </motion.div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-3 md:space-y-4 w-full" autoComplete="off">
+        <form onSubmit={handleSubmit} className="space-y-3 md:space-y-4 w-full" autoComplete="off" data-lpignore="true">
           <div className="space-y-2 w-full">
             <label className="block text-[11px] font-black uppercase tracking-[0.15em] px-1 text-[var(--accent-primary)] dark:text-[var(--accent-primary)]">Email Identity</label>
             <div className="relative group">

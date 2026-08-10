@@ -153,6 +153,40 @@ export function breakLongWords(tex: string): string {
 
 export function applyFinalSanitizationSieve(content: string): string {
   if (!content) return "";
+
+  // ROBUST UTF-8 SANITIZATION: strip ALL invalid/non-ASCII bytes that cause
+  // "Invalid UTF-8 byte" errors in TeX engines (tectonic, pdflatex, xelatex).
+  // This runs FIRST so downstream regexes operate on clean ASCII+valid-Unicode.
+  //   - Remove replacement characters, lone surrogates, invalid byte sequences
+  //   - Keep valid Unicode (emoji, CJK, accented Latin, etc.) via \DeclareUnicodeCharacter in preamble
+  //   - Convert common problematic chars to LaTeX-safe equivalents
+  content = content
+    // Strip U+FFFD (replacement character) and other invalid surrogates
+    .replace(/[\uFFFD]/g, '')
+    // Strip lone surrogates (U+D800-U+DBFF without matching U+DC00-U+DFFF)
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+    // Strip control chars except tab/newline/carriage-return
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    // Strip private-use area characters (U+E000-U+F8FF) that cause encoding issues
+    .replace(/[\uE000-\uF8FF]/g, '')
+    // Strip object/replacement characters
+    .replace(/[\uFFFC-\uFFFE]/g, '')
+    // Normalize problematic whitespace to regular space
+    .replace(/[\u2000-\u200A]/g, ' ')
+    .replace(/[\u202F\u00A0]/g, ' ')
+    .replace(/[\u200B\u200C\u200D\uFEFF]/g, '')
+    // Normalize em-dash and en-dash for pdflatex compatibility
+    .replace(/\u2013/g, '--')
+    .replace(/\u2014/g, '---')
+    // Convert smart quotes to LaTeX equivalents
+    .replace(/\u2018/g, '`')
+    .replace(/\u2019/g, "'")
+    .replace(/\u201C/g, '``')
+    .replace(/\u201D/g, "''")
+    // Convert minus sign to hyphen
+    .replace(/\u2212/g, '-');
+
   let sanitized = breakLongWords(content);
 
   // 0. Universal Unicode & Delimiter Sieve
@@ -524,8 +558,24 @@ export function autoHealLatex(latex: string): string {
   raw = raw.replace(/\\addtokomafont\{.*?\}/g, "");
   raw = raw.replace(/\\setkomafont\{.*?\}/g, "");
   
-  // SANITIZE UNICODE (pdflatex hates zero-width spaces and others)
-  raw = raw.replace(/[\u200B\u200C\u200D\uFEFF]/g, "").replace(/[\u202F\u00A0]/g, " ");
+  // SANITIZE UNICODE (pdflatex hates zero-width spaces and other invalid chars)
+  raw = raw
+    .replace(/[\uFFFD]/g, '')
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/[\uE000-\uF8FF]/g, '')
+    .replace(/[\uFFFC-\uFFFE]/g, '')
+    .replace(/[\u2000-\u200A]/g, ' ')
+    .replace(/[\u202F\u00A0]/g, ' ')
+    .replace(/[\u200B\u200C\u200D\uFEFF]/g, '')
+    .replace(/\u2013/g, '--')
+    .replace(/\u2014/g, '---')
+    .replace(/\u2018/g, '`')
+    .replace(/\u2019/g, "'")
+    .replace(/\u201C/g, '``')
+    .replace(/\u201D/g, "''")
+    .replace(/\u2212/g, '-');
 
   // 2. DETECT COMPLETE DOCUMENT STRUCTURE
   const hasDocumentEnv = raw.includes('\\begin{document}') && raw.includes('\\end{document}');

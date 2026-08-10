@@ -45,12 +45,15 @@ export async function seedAiCapsDemoData() {
       const existing = seen.get(p.name);
       if (existing) {
         planMap.set(p.name, existing.id);
-        // Number fields default to 0 in PB after migration — backfill prices for
-        // paid plans only (free plans legitimately stay at 0).
-        const unset = existing.priceINR === undefined || existing.priceINR === null || (existing.priceINR === 0 && p.name !== 'free');
-        if (unset && existing.priceINR !== p.priceINR) {
+        const unsetPrice = existing.priceINR === undefined || existing.priceINR === null || (existing.priceINR === 0 && p.name !== 'free');
+        const unsetCap = !existing.dailyTokenCap || existing.dailyTokenCap === 0;
+        const updateData: Record<string, any> = {};
+        if (unsetPrice && existing.priceINR !== p.priceINR) updateData.priceINR = p.priceINR;
+        if (unsetCap) updateData.dailyTokenCap = p.dailyTokenCap;
+
+        if (Object.keys(updateData).length > 0) {
           try {
-            await pb.collection("ai_cap_plans").update(existing.id, { priceINR: p.priceINR }, { requestKey: `seed_price_${p.name}_${uid()}` });
+            await pb.collection("ai_cap_plans").update(existing.id, updateData, { requestKey: `seed_upd_${p.name}_${uid()}` });
           } catch {}
         }
       } else {

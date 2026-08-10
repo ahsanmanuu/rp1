@@ -260,6 +260,7 @@ async function finishUpload(uploadId: string, res: any): Promise<void> {
     await markTerminalState(uploadId, { phase: 'error', message: res.error, recoverable: false });
   } else {
     console.warn(`[UPLOAD-FINISH] Upload ${uploadId} finished with unknown result:`, JSON.stringify(res));
+    await markTerminalState(uploadId, { phase: 'error', message: 'Processing completed with unexpected result', recoverable: false });
   }
 }
 
@@ -478,7 +479,17 @@ async function runUploadProcessing(uploadId: string) {
     // the first call (cached) and prevents PB 400 "Failed to create record"
     // on large content payloads.
     const { ensureContentSizeLimits } = await import('@/lib/pbContentLimits');
-    await ensureContentSizeLimits();
+    {
+      const limitsPromise = ensureContentSizeLimits();
+      let limitsTimer: ReturnType<typeof setTimeout> | null = null;
+      await Promise.race([
+        limitsPromise.finally(() => { if (limitsTimer) clearTimeout(limitsTimer); }),
+        new Promise<number>((resolve) => { limitsTimer = setTimeout(() => {
+          console.warn('[UPLOAD] ensureContentSizeLimits timed out (15s), continuing with 5MB default');
+          resolve(5 * 1024 * 1024);
+        }, 15_000); }),
+      ]);
+    }
 
     // Read job metadata (without rawBytes) from DB.
     const job = await prisma.uploadJob.findUnique({
@@ -1660,7 +1671,15 @@ async function runUploadProcessing(uploadId: string) {
     const sessionUserName: string = session.user.name || "User";
     console.log(`[TELEMETRY] Session userId: ${sessionUserId}, email: ${sessionUserEmail}`);
 
-    const existingUser = await prisma.user.findUnique({ where: { id: sessionUserId } });
+    let existingUser: any = null;
+    {
+      const dbPromise = prisma.user.findUnique({ where: { id: sessionUserId } });
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      existingUser = await Promise.race([
+        dbPromise.finally(() => { if (timer) clearTimeout(timer); }),
+        new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), 15_000); }),
+      ]);
+    }
     if (!existingUser) {
       console.warn(`[TELEMETRY] User row missing for id=${sessionUserId} — upserting now to satisfy FK constraint`);
       // Check if email conflicts with another row
@@ -1870,10 +1889,13 @@ export async function POST(req: Request) {
     // Check project limits for Free tier
     const user = await prisma.user.findUnique({
       where: { id: (session.user as any).id },
-      select: { membership: true }
+      select: { membership: true, membershipExpiresAt: true }
     });
 
-    if (user?.membership === 'free' || !user?.membership) {
+    const now = new Date();
+    const isFreeOrExpired = !user || user.membership === 'free' || (user.membershipExpiresAt && new Date(user.membershipExpiresAt) <= now);
+
+    if (isFreeOrExpired) {
       const [projectsCount, citationCount, reviewCount] = await Promise.all([
         prisma.project.count({ where: { userId: (session.user as any).id } }),
         prisma.citationProject.count({ where: { userId: (session.user as any).id } }),
@@ -1991,9 +2013,21 @@ export async function POST(req: Request) {
     });
 
     // Fire-and-forget background processing — the UploadJob row is the contract.
-    void runUploadProcessing(uploadId)
-      .then((res: any) => finishUpload(uploadId, res))
+    // Wrap in a global 10-minute timeout so a hung step (DB, PB, AI) never
+    // leaves the upload stuck in "processing" forever.
+    // IMPORTANT: We clear the timeout when processing finishes to avoid an
+    // unhandled rejection (Node.js 15+ terminates the process on unhandled
+    // rejections, which is what was causing the 500 cascade on ALL routes).
+    const PIPELINE_TIMEOUT_MS = 10 * 60 * 1000;
+    const bgProcessing = runUploadProcessing(uploadId);
+    const timeoutId = setTimeout(() => {
+      bgProcessing.catch(() => {}); // prevent unhandled if processing still pending
+      finishUpload(uploadId, { success: false, error: 'Processing timed out after 10 minutes', recoverable: false });
+    }, PIPELINE_TIMEOUT_MS);
+    bgProcessing
+      .then((res: any) => { clearTimeout(timeoutId); finishUpload(uploadId, res); })
       .catch((bgErr: any) => {
+        clearTimeout(timeoutId);
         console.error('[UPLOAD-BACKGROUND] Fatal background error:', bgErr?.message || bgErr);
         finishUpload(uploadId, { success: false, error: bgErr?.message || 'Internal processing error' });
       });

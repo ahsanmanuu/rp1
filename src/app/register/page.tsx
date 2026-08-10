@@ -33,6 +33,10 @@ export default function RegisterPage() {
   }, []);
 
   const performSubmit = async () => {
+    if (password.length < 8) {
+      setError("Access key (password) must be at least 8 characters long.");
+      return;
+    }
     setLoading(true);
     setError("");
 
@@ -118,6 +122,10 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (password.length < 8) {
+      setError("Access key (password) must be at least 8 characters long.");
+      return;
+    }
     if (!termsAccepted) {
       setShowTermsPopup(true);
       setTermsScrolledToBottom(false);
@@ -151,10 +159,21 @@ export default function RegisterPage() {
           <motion.div 
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
-            className="flex items-center gap-3 p-3 mb-5 bg-rose-500/10 border border-rose-500/20 text-rose-500 rounded-2xl text-xs font-bold overflow-hidden"
+            className="flex flex-col gap-2 p-3.5 mb-5 bg-rose-500/10 border border-rose-500/20 text-rose-500 rounded-2xl text-xs font-bold overflow-hidden"
           >
-            <AlertCircle size={18} className="flex-shrink-0" />
-            <span>{error}</span>
+            <div className="flex items-center gap-3">
+              <AlertCircle size={18} className="flex-shrink-0" />
+              <span className="flex-1">{error}</span>
+            </div>
+            {error.toLowerCase().includes("already registered") && (
+              <Link
+                href={`/login${email ? `?email=${encodeURIComponent(email)}` : ''}`}
+                className="self-end mt-1 px-3 py-1.5 bg-rose-500 text-white rounded-xl text-[11px] font-black hover:bg-rose-600 transition-colors shadow-sm flex items-center gap-1"
+              >
+                <span>Log In Instead</span>
+                <span className="text-sm">→</span>
+              </Link>
+            )}
           </motion.div>
         )}
 
@@ -194,7 +213,10 @@ export default function RegisterPage() {
           </div>
 
           <div className="space-y-2 w-full">
-            <label className="block text-[11px] font-black uppercase tracking-[0.15em] px-1 text-[var(--accent-primary)]">Access Key</label>
+            <div className="flex justify-between items-center px-1">
+              <label className="block text-[11px] font-black uppercase tracking-[0.15em] text-[var(--accent-primary)]">Access Key</label>
+              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500">Min. 8 chars</span>
+            </div>
             <div className="relative group">
               <div className="absolute left-5 top-1/2 -translate-y-1/2 transition-colors group-focus-within:text-[var(--accent-primary)] text-slate-400 dark:text-slate-500">
                 <Lock size={20} />
@@ -205,7 +227,7 @@ export default function RegisterPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
-                minLength={6}
+                minLength={8}
                 className="w-full pl-14 pr-5 py-3 rounded-2xl bg-slate-100 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-semibold text-base outline-none focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-transparent transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 shadow-sm"
               />
             </div>

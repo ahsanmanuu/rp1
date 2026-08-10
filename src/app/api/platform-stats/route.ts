@@ -11,7 +11,7 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 };
 
 let cache: { data: any; expiry: number } | null = null;
-let inflight: Promise<NextResponse> | null = null;
+let inflightData: Promise<any> | null = null;
 const CACHE_TTL = 30_000;
 
 export async function GET() {
@@ -20,9 +20,16 @@ export async function GET() {
     return NextResponse.json(cache.data);
   }
 
-  if (inflight) return inflight;
+  if (inflightData) {
+    try {
+      const data = await inflightData;
+      return NextResponse.json(data);
+    } catch {
+      // Fall through
+    }
+  }
 
-  inflight = (async () => {
+  inflightData = (async () => {
     try {
       const [userCount, projectCount, templateCount, recentUsers] = await Promise.all([
         withTimeout(prisma.user.count(), 4000, 10),
@@ -39,51 +46,51 @@ export async function GET() {
         ),
       ]);
 
-    const defaultInitials = ['E', 'J', 'S', 'A', 'R'];
-    const initials = recentUsers.map((u: any) => {
-      const namePart = u.name ? u.name.trim() : '';
-      if (namePart) return namePart[0].toUpperCase();
-      const emailPart = u.email ? u.email.trim() : '';
-      if (emailPart) return emailPart[0].toUpperCase();
-      return 'S';
-    });
+      const defaultInitials = ['E', 'J', 'S', 'A', 'R'];
+      const initials = recentUsers.map((u: any) => {
+        const namePart = u.name ? u.name.trim() : '';
+        if (namePart) return namePart[0].toUpperCase();
+        const emailPart = u.email ? u.email.trim() : '';
+        if (emailPart) return emailPart[0].toUpperCase();
+        return 'S';
+      });
 
-    while (initials.length < 5) {
-      initials.push(defaultInitials[initials.length]);
+      while (initials.length < 5) {
+        initials.push(defaultInitials[initials.length]);
+      }
+
+      const data = {
+        success: true,
+        systemsOperational: true,
+        scholarsActive: 18450 + userCount * 3,
+        initials,
+        totalResearchers: 50000 + userCount,
+        pagesCompiled: 1200000 + projectCount * 14,
+        journalTemplates: Math.max(55, templateCount),
+        uptime: 100.0,
+      };
+
+      cache = { data, expiry: Date.now() + CACHE_TTL };
+      return data;
+    } catch (error) {
+      console.error("Error fetching platform stats:", error);
+      return {
+        success: false,
+        systemsOperational: true,
+        scholarsActive: 18450,
+        initials: ['E', 'J', 'S', 'A', 'R'],
+        totalResearchers: 50000,
+        pagesCompiled: 1200000,
+        journalTemplates: 55,
+        uptime: 100.0
+      };
+    } finally {
+      inflightData = null;
     }
-
-    const data = {
-      success: true,
-      systemsOperational: true,
-      scholarsActive: 18450 + userCount * 3,
-      initials,
-      totalResearchers: 50000 + userCount,
-      pagesCompiled: 1200000 + projectCount * 14,
-      journalTemplates: Math.max(55, templateCount),
-      uptime: 100.0,
-    };
-
-    cache = { data, expiry: Date.now() + CACHE_TTL };
-
-    return NextResponse.json(data, {
-      headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' },
-    });
-  } catch (error) {
-    console.error("Error fetching platform stats:", error);
-    return NextResponse.json({
-      success: false,
-      systemsOperational: true,
-      scholarsActive: 18450,
-      initials: ['E', 'J', 'S', 'A', 'R'],
-      totalResearchers: 50000,
-      pagesCompiled: 1200000,
-      journalTemplates: 55,
-      uptime: 100.0
-    });
-  } finally {
-    inflight = null;
-  }
   })();
 
-  return inflight;
+  const resultData = await inflightData;
+  return NextResponse.json(resultData, {
+    headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' },
+  });
 }

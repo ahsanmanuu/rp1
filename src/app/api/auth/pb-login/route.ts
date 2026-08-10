@@ -39,6 +39,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing email or password" }, { status: 400 });
     }
 
+    if (password.length < 8) {
+      return NextResponse.json({ error: "Access key (password) must be at least 8 characters long." }, { status: 400 });
+    }
+
     const cleanEmail = email.trim().toLowerCase();
     const pb = createPb();
 
@@ -66,10 +70,7 @@ export async function POST(req: NextRequest) {
         try {
           const { pbAdmin } = await import("@/lib/pb");
           const admPb = await pbAdmin();
-          const allUsers = await admPb.collection("users").getFullList({ requestKey: null });
-          const matchedUser = allUsers.find(
-            (u: any) => u.email && u.email.trim().toLowerCase() === cleanEmail
-          );
+          const matchedUser = await admPb.collection("users").getFirstListItem(`email = "${cleanEmail}"`).catch(() => null);
 
           const dbUser = await prisma.user.findFirst({
             where: { email: cleanEmail }
@@ -143,10 +144,10 @@ export async function POST(req: NextRequest) {
       clientMachineId = "fp_" + crypto.createHash("md5").update(`${ipAddress}-${userAgent}`).digest("hex");
     }
 
-    // Clean up previous user sessions for this user so fresh login completes smoothly
+    // Clean up expired user sessions for this user so fresh login completes smoothly
     try {
       await prisma.userSession.deleteMany({
-        where: { userId },
+        where: { userId, expiresAt: { lt: new Date() } },
       });
     } catch (cleanErr) {
       console.warn("[AUTH pb-login] Session cleanup warning (non-fatal):", cleanErr);
@@ -230,15 +231,13 @@ export async function POST(req: NextRequest) {
       role: record.role || "user",
     };
 
-    const cookieStore = await cookies();
-    cookieStore.set("pb_token", authData.token, {
+    const response = NextResponse.json({ success: true, user, token: authData.token });
+    response.cookies.set("pb_token", authData.token, {
       path: "/",
       httpOnly: true,
       sameSite: "lax",
       maxAge: 7 * 24 * 60 * 60,
     });
-
-    const response = NextResponse.json({ success: true, user, token: authData.token });
     return response;
   } catch (err: any) {
     console.error("[AUTH pb-login] Login error:", err?.status, err?.message || err, err?.data ? JSON.stringify(err.data) : "");

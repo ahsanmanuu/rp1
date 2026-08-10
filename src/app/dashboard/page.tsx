@@ -21,8 +21,9 @@ import AiSubscriptionCard from "@/components/dashboard/AiSubscriptionCard";
 import AiPlanSubscribeModal from "@/components/dashboard/AiPlanSubscribeModal";
 import ProjectLimitModal from "@/components/ProjectLimitModal";
 import AiLimitModal from "@/components/AiLimitModal";
-const ProjectStats = dynamic(() => import("@/components/ProjectStats").then(m => m.ProjectStats), { ssr: false });
-const ChatWidget = dynamic(() => import("@/components/ChatWidget"), { ssr: false });
+import { safeDynamicImport } from "@/lib/safeImport";
+const ProjectStats = dynamic(() => safeDynamicImport(() => import("@/components/ProjectStats").then(m => m.ProjectStats)), { ssr: false });
+const ChatWidget = dynamic(() => safeDynamicImport(() => import("@/components/ChatWidget")), { ssr: false });
 import ChunkSafe from "@/components/ChunkSafe";
 import ProLoader from "@/components/ProLoader";
 import { 
@@ -327,19 +328,41 @@ export default function DashboardPage() {
     }
   };
 
+  function formatDateSafe(d: any, fallback = "—"): string {
+    if (!d) return fallback;
+    try {
+      const dt = new Date(d);
+      if (isNaN(dt.getTime())) return fallback;
+      return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch {
+      return fallback;
+    }
+  }
+
   // Membership with safe defaults (never null in template, loading/error handled separately)
-  const membership = useMemo(() => rawMembership ?? {
-    membership: 'free',
-    membershipExpiresAt: null,
-    memberSince: new Date().toISOString(),
-    joiningDate: new Date().toISOString(),
-    totalDays: 0,
-    points: 0,
-    subscriptionCount: 0,
-    projectsCount: 0,
-    showReminder: false,
-    success: false,
-  } as any, [rawMembership]);
+  const membership = useMemo(() => {
+    const fallbackDate = new Date().toISOString();
+    if (!rawMembership) {
+      return {
+        membership: 'free',
+        membershipExpiresAt: null,
+        memberSince: fallbackDate,
+        joiningDate: fallbackDate,
+        totalDays: 0,
+        points: 0,
+        subscriptionCount: 0,
+        projectsCount: 0,
+        showReminder: false,
+        success: false,
+      } as any;
+    }
+    const rm = rawMembership as any;
+    return {
+      ...rm,
+      joiningDate: rm.joiningDate || rm.memberSince || rm.startsAt || fallbackDate,
+      memberSince: rm.memberSince || rm.joiningDate || rm.startsAt || fallbackDate,
+    };
+  }, [rawMembership]);
 
   // Live auto-counter for the membership subscription (ticks every second, silent)
   const membershipCounter = useCountdown(rawMembership?.membershipExpiresAt ?? null, 1000);
@@ -840,7 +863,7 @@ export default function DashboardPage() {
                 )}
 
                 {/* Error banner */}
-                {membershipError && (
+                {membershipError && !membershipError.toLowerCase().includes("unauthorized") && (
                   <div className="absolute top-4 left-4 right-4 z-20 bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-2.5 flex items-center gap-2">
                     <span className="material-symbols-outlined text-rose-500 text-[18px]">error_outline</span>
                     <span className="text-[11px] font-bold text-rose-500 flex-1">{membershipError}</span>
@@ -889,7 +912,7 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-2 text-[11px] font-semibold text-secondary min-w-0">
                       <span className="material-symbols-outlined text-primary text-[16px] shrink-0">play_circle</span>
                       <span className="truncate">
-                        Start: <strong className="text-on-surface">{new Date(membership.joiningDate || membership.memberSince).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</strong>
+                        Start: <strong className="text-on-surface">{formatDateSafe(membership.joiningDate || membership.memberSince)}</strong>
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-[11px] font-semibold text-secondary min-w-0">
@@ -990,11 +1013,11 @@ export default function DashboardPage() {
                   <div suppressHydrationWarning className="mt-6 pt-4 border-t border-outline/10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10 text-xs font-semibold text-secondary">
                     <div className="flex items-center gap-2">
                       <span className="material-symbols-outlined text-primary text-[18px] shrink-0">calendar_month</span>
-                      <span suppressHydrationWarning>Joined: <strong className="text-on-surface">{new Date(membership.joiningDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</strong></span>
+                      <span suppressHydrationWarning>Joined: <strong className="text-on-surface">{formatDateSafe(membership.joiningDate)}</strong></span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="material-symbols-outlined text-primary text-[18px] shrink-0">verified</span>
-                      <span suppressHydrationWarning>Plan activated: <strong className="text-on-surface">{new Date(membership.memberSince).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</strong> ({membership.totalDays} day{membership.totalDays > 1 ? 's' : ''} active)</span>
+                      <span suppressHydrationWarning>Plan activated: <strong className="text-on-surface">{formatDateSafe(membership.memberSince)}</strong> ({membership.totalDays} day{membership.totalDays > 1 ? 's' : ''} active)</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="material-symbols-outlined text-primary text-[18px] shrink-0">autorenew</span>

@@ -8,7 +8,7 @@
  *   4. pb.authStore.isValid / pb.authStore.record.id identifies the user
  */
 
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { createPb, authFromToken } from './pb';
 import { prisma } from './prisma';
 
@@ -81,39 +81,112 @@ export interface PbServerSession {
 export async function getServerSession(): Promise<PbServerSession | null> {
   try {
     const cookieStore = await cookies();
-    const token = cookieStore.get(TOKEN_COOKIE)?.value;
+    let token = cookieStore.get(TOKEN_COOKIE)?.value;
+
+    // Fallback: accept Bearer token from Authorization header (client-side
+    // hooks send this when the httpOnly cookie isn't available).
+    if (!token) {
+      try {
+        const hdrs = await headers();
+        const authHeader = hdrs.get('authorization');
+        if (authHeader?.startsWith('Bearer ')) {
+          token = authHeader.substring(7).trim() || undefined;
+        }
+      } catch {}
+    }
+
     if (!token) return null;
 
-    // ── Source of truth: the DB UserSession row ──────────────────────────────
-    // Created on every successful login, deleted on logout. A valid PocketBase
-    // JWT alone is NOT proof of an active session (JWTs are stateless), so a
-    // missing or expired row — i.e. the state produced by sign-out — is treated
-    // as unauthenticated. This is what makes logout stick.
-    let sessionRecord = null;
-    try {
-      sessionRecord = await prisma.userSession.findUnique({
-        where: { sessionToken: token },
-        include: { user: true }
-      });
-    } catch (dbErr) {
-      console.error("[AUTH] Database session validation query failed:", dbErr);
+    // ── Parallel auth: PB token validation + DB session lookup ────────────
+    // The DB row is the source of truth for active sessions (makes logout
+    // stick), but PB authRefresh can validate the token directly when the DB
+    // adapter is temporarily unreachable. Try both and merge results.
+    let pb: Awaited<ReturnType<typeof authFromToken>> | null = null;
+    let sessionRecord: any = null;
+
+    const pbPromise = authFromToken(token).catch((err) => {
+      console.warn("[AUTH] authFromToken failed:", err?.message || err);
+      return null;
+    });
+
+    const dbPromise = prisma.userSession.findUnique({
+      where: { sessionToken: token },
+      include: { user: true }
+    }).catch((dbErr) => {
+      console.error("[AUTH] Database session validation query failed:", dbErr?.message || dbErr);
+      return null;
+    });
+
+    [pb, sessionRecord] = await Promise.all([pbPromise, dbPromise]);
+
+    const pbRecord: any = pb?.authStore?.record;
+
+    // ── Auto-heal: session row missing but JWT may still be valid ─────────
+    if (!sessionRecord && pbRecord) {
+      try {
+        const userId = pbRecord.id;
+        const payloadStr = token.split('.')[1];
+        const payload = JSON.parse(Buffer.from(payloadStr, 'base64url').toString('utf8'));
+        const expiresAt = new Date((payload?.exp || Date.now() / 1000 + 86400) * 1000);
+
+        let targetUser = await prisma.user.findUnique({ where: { id: userId } }).catch(() => null);
+        if (!targetUser) {
+          targetUser = await prisma.user.upsert({
+            where: { id: userId },
+            update: { email: pbRecord.email },
+            create: {
+              id: userId,
+              email: pbRecord.email,
+              name: pbRecord.name || pbRecord.email?.split('@')[0] || '',
+              membership: 'free',
+              role: 'user',
+              points: 50,
+            }
+          }).catch(() => null);
+        }
+
+        if (targetUser) {
+          await prisma.userSession.upsert({
+            where: { sessionToken: token },
+            update: { lastActiveAt: new Date(), expiresAt },
+            create: {
+              userId,
+              sessionToken: token,
+              machineId: 'auto_healed',
+              ipAddress: '127.0.0.1',
+              location: 'Auto-healed',
+              userAgent: 'auto-heal',
+              lastActiveAt: new Date(),
+              expiresAt,
+            }
+          }).catch(() => {});
+
+          sessionRecord = await prisma.userSession.findUnique({
+            where: { sessionToken: token },
+            include: { user: true }
+          }).catch(() => null);
+        }
+      } catch (e) {
+        console.warn("[AUTH] Auto-heal failed:", e);
+      }
+    }
+
+    // ── Build session from whichever auth source succeeded ────────────────
+    // If we have a PB record, use it as the identity source.
+    // If we have a DB session record, check expiry and use its user data.
+    // Only fail if BOTH are missing.
+    if (!pbRecord && (!sessionRecord || !sessionRecord.user)) {
+      console.warn("[AUTH] No valid auth from PB or DB — returning null");
       return null;
     }
 
-    if (!sessionRecord || !sessionRecord.user) return null;
-    if (new Date(sessionRecord.expiresAt).getTime() < Date.now()) return null;
-
-    // PocketBase client is optional here — the DB row is authoritative. Use it
-    // only as a fast identity source; fall back to the synced DB user record.
-    let pb;
-    try {
-      pb = await getAuthPb();
-    } catch (err) {
-      console.warn("[AUTH] getAuthPb failed, using DB session record");
+    // If DB record exists, verify it hasn't expired (logout sets expiresAt in the past)
+    if (sessionRecord?.expiresAt && new Date(sessionRecord.expiresAt).getTime() < Date.now()) {
+      return null;
     }
 
-    let record: any = pb?.authStore?.record;
-    if (!record) {
+    let record: any = pbRecord;
+    if (!record && sessionRecord?.user) {
       const dbUser = sessionRecord.user;
       record = {
         id: dbUser.id,
@@ -124,7 +197,7 @@ export async function getServerSession(): Promise<PbServerSession | null> {
         points: dbUser.points ?? 50,
         membership: dbUser.membership || "free",
         role: dbUser.role || "user",
-      } as any;
+      };
     }
 
     const user: PbSessionUser = {

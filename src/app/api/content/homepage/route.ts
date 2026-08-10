@@ -5,7 +5,7 @@ import * as path from 'path';
 export const dynamic = 'force-dynamic';
 
 let cache: { data: any; expiry: number } | null = null;
-let inflight: Promise<NextResponse> | null = null;
+let inflightData: Promise<any> | null = null;
 const CACHE_TTL = 30_000;
 
 function getJsonFallbackData(): any {
@@ -81,53 +81,62 @@ export async function GET() {
     return NextResponse.json(cache.data);
   }
 
-  if (inflight) return inflight;
-
-  inflight = (async () => {
-  try {
-    const { pbAdmin } = await import('@/lib/pb');
-    let pb;
+  if (inflightData) {
     try {
-      const pbPromise = pbAdmin();
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('PocketBase timeout')), 2500));
-      pb = await Promise.race([pbPromise, timeoutPromise]) as any;
-    } catch (pbErr: any) {
-      console.warn('[PB_ERROR] Falling back to static data:', pbErr?.message || pbErr);
-      const fallbackData = getJsonFallbackData();
-      const fallbackResponse = NextResponse.json({ success: true, data: fallbackData });
-      cache = { data: { success: true, data: fallbackData }, expiry: Date.now() + CACHE_TTL * 5 }; // Longer cache for fallback
-      return fallbackResponse;
+      const data = await inflightData;
+      return NextResponse.json(data);
+    } catch {
+      // Fall through to retry
     }
-    
-    const results = await Promise.allSettled(
-      COLLECTIONS.map(({ key, collection, filter, sort }) =>
-        (async () => {
-          try {
-            const opts: any = { sort: sort || undefined };
-            if (filter) opts.filter = filter;
-            const records = await pb.collection(collection).getFullList({ ...opts, $autoCancel: false });
-            return { key, records };
-          } catch {
-            return { key, records: [] };
-          }
-        })()
-      )
-    );
-    const data: Record<string, any[]> = {};
-    for (const r of results) {
-      if (r.status === 'fulfilled') {
-        data[r.value.key] = r.value.records;
-      }
-    }
-    const response = NextResponse.json({ success: true, data: rewriteUrls(data) });
-    cache = { data: { success: true, data: rewriteUrls(data) }, expiry: Date.now() + CACHE_TTL };
-    return response;
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
-  } finally {
-    inflight = null;
   }
+
+  inflightData = (async () => {
+    try {
+      const { pbAdmin } = await import('@/lib/pb');
+      let pb;
+      try {
+        const pbPromise = pbAdmin();
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('PocketBase timeout')), 2500));
+        pb = await Promise.race([pbPromise, timeoutPromise]) as any;
+      } catch (pbErr: any) {
+        console.warn('[PB_ERROR] Falling back to static data:', pbErr?.message || pbErr);
+        const fallbackData = getJsonFallbackData();
+        const resData = { success: true, data: fallbackData };
+        cache = { data: resData, expiry: Date.now() + CACHE_TTL * 5 };
+        return resData;
+      }
+      
+      const results = await Promise.allSettled(
+        COLLECTIONS.map(({ key, collection, filter, sort }) =>
+          (async () => {
+            try {
+              const opts: any = { sort: sort || undefined };
+              if (filter) opts.filter = filter;
+              const records = await pb.collection(collection).getFullList({ ...opts, $autoCancel: false });
+              return { key, records };
+            } catch {
+              return { key, records: [] };
+            }
+          })()
+        )
+      );
+      const data: Record<string, any[]> = {};
+      for (const r of results) {
+        if (r.status === 'fulfilled') {
+          data[r.value.key] = r.value.records;
+        }
+      }
+      const resData = { success: true, data: rewriteUrls(data) };
+      cache = { data: resData, expiry: Date.now() + CACHE_TTL };
+      return resData;
+    } catch (err: any) {
+      const fallbackData = getJsonFallbackData();
+      return { success: true, data: fallbackData };
+    } finally {
+      inflightData = null;
+    }
   })();
 
-  return inflight;
+  const resultData = await inflightData;
+  return NextResponse.json(resultData);
 }

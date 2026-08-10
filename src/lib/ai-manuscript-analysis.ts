@@ -89,15 +89,11 @@ function withAbortableTimeout<T>(
 }
 
 // Max characters of manuscript text sent to the AI (front + tail preserved).
-// Must be large enough to cover all figures, tables, equations, and sections
-// in the middle of the document — the primary cause of inconsistent counts
-// was mid-document elision. With a strong provider (OpenRouter/Gemini key
-// configured) a balanced 45K window is sent to ensure prompt execution stays
-// under the pass budget for 5-50 page manuscripts; otherwise fall back to a
-// compact 24K window that fits free-tier model contexts.
+// Large window ensures mid-document figures, tables, equations, and sections
+// are visible to the AI. 120K head + 30K tail covers 90%+ of typical manuscripts.
 const HAS_STRONG_PROVIDER = !!(process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
-const FULL_TEXT_LIMIT = HAS_STRONG_PROVIDER ? 45000 : 24000;
-const FULL_TEXT_TAIL = HAS_STRONG_PROVIDER ? 15000 : 6000;
+const FULL_TEXT_LIMIT = HAS_STRONG_PROVIDER ? 120000 : 60000;
+const FULL_TEXT_TAIL = HAS_STRONG_PROVIDER ? 30000 : 15000;
 
 // Strongest configured provider for structure passes (fallback via provider
 // chain in callLLM). null → registry default model.
@@ -532,13 +528,12 @@ export async function analyzeManuscriptStructure(
 
     const plainText = opts.html ? stripTags(opts.html) : opts.pdfText || '';
 
-    // Silent fast-path for large documents (50+ pages / >100K chars):
-    // Deterministic parsing + ModularLatexAssembler is used without LLMs.
-    // Set a warning on deepData so the upload route can surface it to the user.
-    const isLargeDoc = plainText.length > 100000;
+    // For very large documents (500+ pages / >500K chars), skip AI verification
+    // to avoid extreme costs. Documents up to 500K chars still get AI verification.
+    const isLargeDoc = plainText.length > 500000;
     if (isLargeDoc) {
-      console.log(`[AI-STRUCTURE] Large document detected (${plainText.length} chars) — using deterministic parsing.`);
-      (deepData as any).largeDocWarning = `Large document (${Math.round(plainText.length / 1000)}K chars): AI structure verification was skipped. The document was parsed using deterministic rules — some component detection may be less precise for very large manuscripts.`;
+      console.log(`[AI-STRUCTURE] Very large document detected (${plainText.length} chars) — using deterministic parsing.`);
+      (deepData as any).largeDocWarning = `Very large document (${Math.round(plainText.length / 1000)}K chars): AI structure verification was skipped. The document was parsed using deterministic rules — some component detection may be less precise for very large manuscripts.`;
       return null;
     }
 

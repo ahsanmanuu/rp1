@@ -17,22 +17,35 @@ export function isDisposableEmail(email: string): boolean {
   return DISPOSABLE_DOMAINS.has(domain);
 }
 
+const ANOMALY_CACHE = new Map<string, { blocked: boolean; blockedUntil: Date | null; reason: string | null; expiry: number }>();
+const ANOMALY_TTL_MS = 30_000; // 30 seconds
+
+const LOG_THROTTLE_CACHE = new Map<string, number>();
+const LOG_THROTTLE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 /**
- * Logs a user's session IP and location.
+ * Logs a user's session IP and location (throttled to 1 log per 5 min per user+IP).
  */
 export async function logUserActivity(userId: string, ipAddress: string, location?: string, userAgent?: string) {
-  try {
-    await prisma.userSessionActivity.create({
-      data: {
-        userId,
-        ipAddress: ipAddress || "unknown",
-        location: location || "Unknown Location",
-        userAgent: userAgent || "Unknown"
-      }
-    });
-  } catch (e) {
-    console.warn("[Security Audit] Failed to log user session activity:", e);
+  const key = `${userId}:${ipAddress || 'unknown'}`;
+  const now = Date.now();
+  const lastLogged = LOG_THROTTLE_CACHE.get(key);
+  if (lastLogged && now - lastLogged < LOG_THROTTLE_TTL_MS) {
+    return;
   }
+  LOG_THROTTLE_CACHE.set(key, now);
+
+  // Background non-blocking execution
+  prisma.userSessionActivity.create({
+    data: {
+      userId,
+      ipAddress: ipAddress || "unknown",
+      location: location || "Unknown Location",
+      userAgent: userAgent || "Unknown"
+    }
+  }).catch((e: any) => {
+    console.warn("[Security Audit] Failed to log user session activity:", e);
+  });
 }
 
 /**
@@ -61,6 +74,12 @@ export async function checkUserAnomaly(
   ipAddress?: string, 
   location?: string
 ): Promise<{ blocked: boolean; blockedUntil: Date | null; reason: string | null }> {
+  // Fast path: check in-memory anomaly cache
+  const cached = ANOMALY_CACHE.get(userId);
+  if (cached && cached.expiry > Date.now()) {
+    return { blocked: cached.blocked, blockedUntil: cached.blockedUntil, reason: cached.reason };
+  }
+
   const now = new Date();
   
   // 1. Fetch user status and block settings
@@ -73,30 +92,36 @@ export async function checkUserAnomaly(
 
   // Check if currently blocked
   if (user.blockedUntil && user.blockedUntil > now) {
-    return { 
+    const res = { 
       blocked: true, 
       blockedUntil: user.blockedUntil, 
       reason: user.points >= 999999 ? "System Administrator block override" : "You have overused the tools. Please try again after 2 hours." 
     };
+    ANOMALY_CACHE.set(userId, { ...res, expiry: Date.now() + 5000 });
+    return res;
   }
 
   // If blacklisted, block permanently
   if (user.status === 'blacklisted') {
-    return { 
+    const res = { 
       blocked: true, 
       blockedUntil: new Date(now.getTime() + 100 * 365 * 24 * 60 * 60 * 1000), 
       reason: "This account has been permanently blacklisted by administrators." 
     };
+    ANOMALY_CACHE.set(userId, { ...res, expiry: Date.now() + 30000 });
+    return res;
   }
 
   // Admin bypass
   if (user.email === 'admin@latexify.io') {
-    return { blocked: false, blockedUntil: null, reason: null };
+    const res = { blocked: false, blockedUntil: null, reason: null };
+    ANOMALY_CACHE.set(userId, { ...res, expiry: Date.now() + ANOMALY_TTL_MS });
+    return res;
   }
 
   // 2. IP / Location Anomaly Detection (IP Hopping)
   if (ipAddress) {
-    await logUserActivity(userId, ipAddress, location);
+    logUserActivity(userId, ipAddress, location);
 
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
     const activities = await prisma.userSessionActivity.findMany({
@@ -115,21 +140,16 @@ export async function checkUserAnomaly(
           status: "abnormal",
           blockedUntil: blockExpiry
         }
-      });
-      
-      await prisma.announcement.create({
-        data: {
-          title: "Security Threat Blocked",
-          content: `User ${user.email} blocked for 2h due to IP conflict (IPs: ${uniqueIps.size}, Locations: ${uniqueLocations.size}).`,
-          priority: "critical",
-          startsAt: new Date(),
-          isActive: true
-        }
-      });
-
-      return { blocked: true, blockedUntil: blockExpiry, reason: "Multiple login conflicts / IP hopping detected" };
+      }).catch(() => {});
+      const res = { blocked: true, blockedUntil: blockExpiry, reason: "Multiple IP addresses or location changes detected within a short period." };
+      ANOMALY_CACHE.set(userId, { ...res, expiry: Date.now() + 10000 });
+      return res;
     }
   }
+
+  const res = { blocked: false, blockedUntil: null, reason: null };
+  ANOMALY_CACHE.set(userId, { ...res, expiry: Date.now() + ANOMALY_TTL_MS });
+  return res;
 
   // 3. AI API Overusage Check
   const fiveMinsAgo = new Date(now.getTime() - 5 * 60 * 1000);

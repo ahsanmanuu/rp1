@@ -59,11 +59,27 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${outfit.variable} ${jetbrains.variable} ${newsreader.variable}`} suppressHydrationWarning>
       <head>
-        <link rel="preload" href="/fonts/material-symbols-outlined.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
         <Script id="chunk-retry" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: `
           (function(){
             var lastReload = 0;
+            if (typeof window !== 'undefined' && window.fetch) {
+              var _origFetch = window.fetch;
+              window.fetch = function(input, init) {
+                var url = typeof input === 'string' ? input : (input && input.url) ? input.url : '';
+                var strUrl = String(url || '').toLowerCase();
+                if (strUrl.indexOf('chrome-extension://') === 0 || strUrl.indexOf('moz-extension://') === 0 || strUrl.indexOf('safari-extension://') === 0 || strUrl.indexOf('couponcollection') !== -1 || strUrl.indexOf('affiliatecashback') !== -1 || strUrl.indexOf('invalid/') !== -1) {
+                  return Promise.resolve(new Response(JSON.stringify({ blocked: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+                }
+                return _origFetch.apply(this, arguments);
+              };
+            }
+            function isExtensionError(e){
+              var m = (e && (e.message || e.stack || e.name || (e.reason && (e.reason.message || e.reason.stack)))) || '';
+              var str = String(m).toLowerCase();
+              return str.indexOf('chrome-extension://') !== -1 || str.indexOf('moz-extension://') !== -1 || str.indexOf('safari-extension://') !== -1 || str.indexOf('couponcollection') !== -1 || str.indexOf('affiliatecashback') !== -1 || str.indexOf('invalid/') !== -1;
+            }
             function isChunkError(e){
+              if (isExtensionError(e)) return false;
               var m = (e && (e.message || e.name || (e.reason && e.reason.message))) || '';
               return m.indexOf('Loading chunk') !== -1 || m.indexOf('Loading CSS') !== -1 || m.indexOf('ChunkLoadError') !== -1 || m.indexOf('Failed to fetch dynamically imported module') !== -1 || m.indexOf('ImportModuleError') !== -1;
             }
@@ -86,6 +102,7 @@ export default function RootLayout({
               return null;
             }
             function retryResource(url, tagName, attempt){
+              if (url && isExtensionError(url)) return;
               attempt = attempt || 0;
               if (attempt > 2) { forceReload(); return; }
               var ts = Date.now();
@@ -104,6 +121,10 @@ export default function RootLayout({
             }
 
             window.addEventListener('error', function(e) {
+              if (isExtensionError(e) || isExtensionError(e.target && e.target.src)) {
+                e.preventDefault && e.preventDefault();
+                return;
+              }
               var t = e.target || {};
               if ((t.tagName === 'SCRIPT' && t.src && t.src.indexOf('/_next/static/chunks/') !== -1) ||
                   (t.tagName === 'LINK' && t.rel === 'stylesheet' && t.href && t.href.indexOf('/_next/static/') !== -1)) {
@@ -113,6 +134,10 @@ export default function RootLayout({
             }, true);
 
             window.addEventListener('unhandledrejection', function(e) {
+              if (isExtensionError(e.reason)) {
+                e.preventDefault();
+                return;
+              }
               if (isChunkError(e.reason)) {
                 e.preventDefault();
                 var msg = (e.reason && e.reason.message) || '';

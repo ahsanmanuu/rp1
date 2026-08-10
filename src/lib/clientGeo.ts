@@ -31,7 +31,7 @@ async function fetchGeoInfo(ip: string | null, userAgent: string | null, headerC
   let country: string | null = headerCountry || null;
   let resolvedIp = ip || "127.0.0.1";
 
-  if (!ip || ip === "127.0.0.1" || ip === "::1" || ip === "localhost") {
+  if (!ip || ip === "127.0.0.1" || ip === "::1" || ip === "localhost" || ip.includes("127.0.0.1") || ip.includes("::ffff:")) {
     return {
       ipAddress: "127.0.0.1",
       location: location || "Localhost",

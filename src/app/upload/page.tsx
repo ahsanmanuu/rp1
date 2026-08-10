@@ -26,9 +26,11 @@ import "./print.css";
 
 import ScholarlySplashScreen from "@/components/ScholarlySplashScreen";
 
+import { safeDynamicImport } from "@/lib/safeImport";
+
 // Heavy Analysis & Feedback Components
-const ProjectStats = dynamic(() => import("@/components/ProjectStats").then(m => m.ProjectStats), { ssr: false });
-const ScholarlyAnalysisModal = dynamic(() => import("@/components/ScholarlyAnalysisModal"), { ssr: false });
+const ProjectStats = dynamic(() => safeDynamicImport(() => import("@/components/ProjectStats").then(m => m.ProjectStats)), { ssr: false });
+const ScholarlyAnalysisModal = dynamic(() => safeDynamicImport(() => import("@/components/ScholarlyAnalysisModal")), { ssr: false });
 
 function UploadContent() {
   const router = useRouter();
@@ -49,14 +51,19 @@ function UploadContent() {
   const [projectsLoading, setProjectsLoading] = useState(true);
   const { showLimitModal, setShowLimitModal } = useProjectLimit();
 
-  // Fetch reports and projects
+  // Fetch reports and projects — only after session is confirmed
   useEffect(() => {
+    if (status !== "authenticated") return;
     const fetchData = async () => {
       try {
+        const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+        const authHeaders: Record<string, string> = {};
+        if (storedToken) authHeaders["Authorization"] = `Bearer ${storedToken}`;
+
         const [repRes, docRes, studioRes] = await Promise.all([
-          fetch('/api/reports'),
-          fetch('/api/projects?type=DOC2LATEX'),
-          fetch('/api/projects?type=LATEX_STUDIO')
+          fetch('/api/reports', { headers: authHeaders }),
+          fetch('/api/projects?type=DOC2LATEX', { headers: authHeaders }),
+          fetch('/api/projects?type=LATEX_STUDIO', { headers: authHeaders })
         ]);
         
         let fetchedReports = [];
@@ -295,8 +302,12 @@ function UploadContent() {
     // Pre-fetch templates in parallel with the upload. Race with a 10s
     // timeout so a slow /api/templates endpoint can never hang the entire
     // upload flow (the templatesPromise feeds a Promise.all later).
+    const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+    const templateHeaders: Record<string, string> = {};
+    if (storedToken) templateHeaders["Authorization"] = `Bearer ${storedToken}`;
+
     const templatesPromise = Promise.race([
-      fetch('/api/templates', { cache: 'no-store' })
+      fetch('/api/templates', { cache: 'no-store', headers: templateHeaders })
         .then(res => res.json())
         .catch(err => {
           console.error("Template pre-fetch failed:", err);
@@ -336,20 +347,21 @@ function UploadContent() {
             const xhr = new XMLHttpRequest();
             xhr.open("POST", "/api/upload");
             xhr.timeout = xhrTimeoutMs;
+            if (storedToken) xhr.setRequestHeader("Authorization", `Bearer ${storedToken}`);
             
             let simulatedProgress = 0;
 
-            // Start simulated progress immediately from 0 to 48% to ensure it never gets stuck at 0%
+            // Start smooth progress from 0 to 35% during initial file bytes preparation
             simulatedInterval = setInterval(() => {
-              if (simulatedProgress < 48) {
-                simulatedProgress += (48 - simulatedProgress) * 0.05 + 0.5;
-                setAnalysisProgress(Math.round(simulatedProgress));
+              if (simulatedProgress < 35) {
+                simulatedProgress += 1;
+                setAnalysisProgress(simulatedProgress);
               }
-            }, 100);
+            }, 150);
 
             xhr.upload.onprogress = (event) => {
               if (event.lengthComputable) {
-                 const percent = Math.round((event.loaded / event.total) * 50);
+                 const percent = Math.round((event.loaded / event.total) * 45);
                  simulatedProgress = Math.max(simulatedProgress, percent);
                  setAnalysisProgress(simulatedProgress);
               }
@@ -357,24 +369,22 @@ function UploadContent() {
 
             xhr.upload.onload = () => {
               if (simulatedInterval) clearInterval(simulatedInterval);
-              simulatedProgress = Math.max(50, simulatedProgress);
+              simulatedProgress = Math.max(45, simulatedProgress);
               setAnalysisProgress(simulatedProgress);
 
+              // Smoothly creep upward from 45% to 70% while the server runs AI analysis & document synthesis.
+              // Cap at 70% so the server's real progress values (82%, 88%, 97%) can take over via polling.
               simulatedInterval = setInterval(() => {
-                simulatedProgress += (99.4 - simulatedProgress) * 0.01;
-                setAnalysisProgress(Math.min(99.4, simulatedProgress));
-              }, 40);
+                if (simulatedProgress < 70) {
+                  simulatedProgress += (70 - simulatedProgress) * 0.015 + 0.05;
+                  setAnalysisProgress(Math.min(70, Math.round(simulatedProgress)));
+                }
+              }, 250);
             };
 
             xhr.onload = () => {
               if (simulatedInterval) clearInterval(simulatedInterval);
-              simulatedProgress = Math.max(99.4, simulatedProgress);
-              setAnalysisProgress(simulatedProgress);
-
-              simulatedInterval = setInterval(() => {
-                simulatedProgress += (95 - simulatedProgress) * 0.005;
-                setAnalysisProgress(Math.min(95, simulatedProgress));
-              }, 120);
+              setAnalysisProgress(100);
 
               if (xhr.status >= 200 && xhr.status < 300) {
                 try {
@@ -431,6 +441,9 @@ function UploadContent() {
       // takes longer). Poll the processing status until it completes, then
       // continue with the existing project-sync flow below.
       if (uploadData?.pending && uploadData?.uploadId) {
+        // The simulated progress interval is no longer needed — the server
+        // provides real progress via polling from this point onward.
+        if (simulatedInterval) { clearInterval(simulatedInterval); simulatedInterval = null; }
         const pollUploadId = uploadData.uploadId;
         // Total timeout: 60 min (large DOCX + AI analysis can be slow).
         const pollMaxWaitMs = 60 * 60 * 1000;

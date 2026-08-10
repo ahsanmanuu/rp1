@@ -14,6 +14,13 @@ export async function POST(req: Request) {
       );
     }
 
+    if (password.length < 8) {
+      return NextResponse.json(
+        { error: "Access key (password) must be at least 8 characters long." },
+        { status: 400 }
+      );
+    }
+
     const { isDisposableEmail } = await import("@/lib/security");
     if (isDisposableEmail(email)) {
       return NextResponse.json(
@@ -25,7 +32,7 @@ export async function POST(req: Request) {
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = name ? name.trim() : null;
 
-    // 1. Strict Duplicate Checks in PocketBase
+    // 1. Strict Duplicate Checks in PocketBase / Prisma DB
     const existingUserByEmail = await prisma.user.findUnique({
       where: { email: cleanEmail }
     });
@@ -105,8 +112,12 @@ export async function POST(req: Request) {
         userPayload.aiCapPlanId = freePlan.id;
       }
 
-      record = await admPb.collection("users").create(userPayload).catch(async () => {
-        // Fallback: create with core auth fields if custom schema fields are missing or restricted
+      record = await admPb.collection("users").create(userPayload).catch(async (primaryErr: any) => {
+        // If primary payload creation failed due to custom schema fields, retry with core auth fields
+        const isFieldErr = primaryErr?.data?.data && Object.keys(primaryErr.data.data).length > 0;
+        if (isFieldErr && (primaryErr.data.data.email || primaryErr.data.data.password || primaryErr.data.data.name)) {
+          throw primaryErr;
+        }
         return await admPb.collection("users").create({
           email: cleanEmail,
           password,
@@ -121,7 +132,24 @@ export async function POST(req: Request) {
         await admPb.collection("users").update(record.id, { verified: true });
       } catch {}
     } catch (pbErr: any) {
-      console.warn("[Register API] PocketBase user creation failed, falling back to Prisma DB:", pbErr?.message || pbErr);
+      console.warn("[Register API] PocketBase user creation failed:", pbErr?.message || pbErr);
+
+      // Extract field-level validation errors from PocketBase if available
+      const details = pbErr?.data?.data || pbErr?.response?.data || {};
+      const firstErrorKey = Object.keys(details)[0];
+      if (firstErrorKey) {
+        const firstErrorObj = details[firstErrorKey];
+        const rawMsg = firstErrorObj?.message || pbErr?.message || "Validation failed";
+        let userMsg = `${firstErrorKey}: ${rawMsg}`;
+        if (firstErrorKey === "password") {
+          userMsg = "Access key (password) must be at least 8 characters long.";
+        } else if (firstErrorKey === "email") {
+          userMsg = "A user with this email address is already registered or invalid.";
+        }
+        return NextResponse.json({ error: userMsg }, { status: 400 });
+      }
+
+      // If PocketBase fails due to network/unavailable, fallback to Prisma DB with user ID
       try {
         const generateId = () => Array.from({ length: 15 }, () => Math.floor(Math.random() * 36).toString(36)).join('');
         const fallbackUserId = generateId();
@@ -145,9 +173,7 @@ export async function POST(req: Request) {
           name: prismaUser.name,
         };
       } catch (prismaFallbackErr: any) {
-        const details = pbErr?.data?.data || pbErr?.response?.data || {};
-        const firstError = Object.values(details)[0] as any;
-        const raw = firstError?.message || pbErr?.message || prismaFallbackErr?.message || "Registration failed in authentication database.";
+        const raw = pbErr?.message || prismaFallbackErr?.message || "Registration failed in authentication database.";
         const message = typeof raw === 'string' ? raw : JSON.stringify(raw);
         return NextResponse.json({ error: message }, { status: 400 });
       }

@@ -54,7 +54,14 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
     if (!isBackground) setState(prev => ({ ...prev, loading: true }));
 
     try {
-      const res = await fetch('/api/user/location');
+      const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+      const headers: Record<string, string> = {};
+      if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
+      const res = await fetch('/api/user/location', { headers });
+      if (res.status === 401) {
+        if (mountedRef.current) setState(prev => ({ ...prev, loading: false, error: null }));
+        return;
+      }
       if (!res.ok) throw new Error(`Failed to fetch location (${res.status})`);
       const data = await res.json();
       if (!mountedRef.current) return;
@@ -71,12 +78,13 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
         setState(prev => ({ ...prev, loading: false, error: data.error || 'Unknown error' }));
         onErrorRef.current?.(data.error || 'Unknown error');
       }
-    } catch (err: any) {
-      if (!mountedRef.current) return;
-      const msg = err?.message || 'Failed to fetch location';
-      setState(prev => ({ ...prev, loading: false, error: msg }));
-      onErrorRef.current?.(msg);
-    }
+      } catch (err: any) {
+        if (!mountedRef.current) return;
+        const msg = err?.message || 'Failed to fetch location';
+        const isUnauth = msg.toLowerCase().includes('unauthorized') || msg.includes('401');
+        if (!isUnauth) onErrorRef.current?.(msg);
+        setState(prev => ({ ...prev, loading: false, error: isUnauth ? null : msg }));
+      }
   }, []);
 
   const updateBrowserLocation = useCallback(async () => {
@@ -96,9 +104,12 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
 
       const { latitude, longitude } = pos.coords;
 
+      const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+      const postHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (storedToken) postHeaders["Authorization"] = `Bearer ${storedToken}`;
       const res = await fetch('/api/user/location', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: postHeaders,
         body: JSON.stringify({ latitude, longitude }),
       });
 
@@ -119,9 +130,12 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
 
       // Exception handling: POST to notify server that geolocation access was denied/failed
       try {
+        const fallbackToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+        const fallbackHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (fallbackToken) fallbackHeaders["Authorization"] = `Bearer ${fallbackToken}`;
         const res = await fetch('/api/user/location', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: fallbackHeaders,
           body: JSON.stringify({ latitude: null, longitude: null }),
         });
         if (res.ok) {

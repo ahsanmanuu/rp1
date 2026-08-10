@@ -42,9 +42,9 @@ export interface ModularMappingResult {
 }
 
 const HAS_STRONG_PROVIDER = !!(process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
-const WINDOW_HEAD = HAS_STRONG_PROVIDER ? 45000 : 24000;
-const WINDOW_TAIL = HAS_STRONG_PROVIDER ? 15000 : 6000;
-const PASS_TIMEOUT_MS = 120_000;
+const WINDOW_HEAD = HAS_STRONG_PROVIDER ? 120000 : 60000;
+const WINDOW_TAIL = HAS_STRONG_PROVIDER ? 30000 : 15000;
+const PASS_TIMEOUT_MS = 300_000;
 
 const AI_MODEL_OVERRIDE = process.env.OPENROUTER_API_KEY
   ? 'google/gemini-2.5-flash-001'
@@ -186,7 +186,22 @@ function defaultPreamble(templateId: string): string[] {
     '\\usepackage{caption}',
     '\\usepackage{enumitem}',
     '\\usepackage{parskip}',
+    '\\usepackage{placeins}',
+    '\\usepackage{microtype}',
     '\\usepackage[colorlinks=true,allcolors=blue]{hyperref}',
+    // Declare common Unicode characters for pdflatex compatibility
+    '\\DeclareUnicodeCharacter{200B}{}',
+    '\\DeclareUnicodeCharacter{202F}{ }',
+    '\\DeclareUnicodeCharacter{00A0}{ }',
+    '\\DeclareUnicodeCharacter{2019}{\\textquotesingle}',
+    '\\DeclareUnicodeCharacter{201C}{``}',
+    '\\DeclareUnicodeCharacter{201D}{\'\'}',
+    '\\DeclareUnicodeCharacter{207B}{\\ensuremath{^{-}}}',
+    '\\DeclareUnicodeCharacter{025B}{\\ensuremath{\\epsilon}}',
+    '\\DeclareUnicodeCharacter{2126}{\\ensuremath{\\Omega}}',
+    '\\DeclareUnicodeCharacter{2013}{--}',
+    '\\DeclareUnicodeCharacter{2014}{---}',
+    '\\DeclareUnicodeCharacter{2212}{-}',
     ...GRAPHICS_PATH_LINES,
   ];
 }

@@ -1280,6 +1280,23 @@ export async function runHardenedPipeline(
             };
 
             activeFiles.forEach(f => { if (typeof f.content !== 'string') f.content = String(f.content || ''); });
+
+            // ROBUST UTF-8 SANITIZATION: strip invalid bytes from .tex files
+            // before writing to disk to prevent "Invalid UTF-8 byte" TeX errors.
+            const stripInvalidUtf8 = (text: string): string => {
+              return text
+                .replace(/[\uFFFD]/g, '')
+                .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+                .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+                .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+                .replace(/[\uE000-\uF8FF]/g, '')
+                .replace(/[\uFFFC-\uFFFE]/g, '');
+            };
+            activeFiles.forEach(f => {
+              if (f.path.endsWith('.tex') && typeof f.content === 'string') {
+                f.content = stripInvalidUtf8(f.content);
+              }
+            });
             console.log(`[TECTONIC] Writing ${activeFiles.length} files to temp dir: ${activeFiles.map(f => `${f.path}(${typeof f.content === 'string' && f.content.startsWith('data:') ? 'BIN:' + f.content.split(';')[0].split(':')[1] : (typeof f.content === 'string' ? f.content.length : 0) + 'b'})`).join(', ')}`);
             try {
                 await Promise.all(activeFiles.map(async (f) => {

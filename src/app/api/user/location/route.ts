@@ -44,18 +44,31 @@ export async function GET(_req: NextRequest) {
       select: { id: true, latitude: true, longitude: true, location: true, ipAddress: true, createdAt: true },
     });
 
+    if (latest && (latest.location || latest.latitude != null)) {
+      return NextResponse.json({
+        success: true,
+        location: {
+          id: latest.id,
+          latitude: latest.latitude,
+          longitude: latest.longitude,
+          locationName: latest.location,
+          ipAddress: latest.ipAddress,
+          updatedAt: latest.createdAt,
+        },
+      });
+    }
+
+    const geo = await getClientGeoInfo(_req);
     return NextResponse.json({
       success: true,
-      location: latest
-        ? {
-            id: latest.id,
-            latitude: latest.latitude,
-            longitude: latest.longitude,
-            locationName: latest.location,
-            ipAddress: latest.ipAddress,
-            updatedAt: latest.createdAt,
-          }
-        : null,
+      location: {
+        id: "geo_fallback",
+        latitude: null,
+        longitude: null,
+        locationName: geo?.location || "Localhost",
+        ipAddress: geo?.ipAddress || "127.0.0.1",
+        updatedAt: new Date().toISOString(),
+      },
     });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

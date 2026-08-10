@@ -883,7 +883,7 @@ register({
   name: 'Manuscript Structure Analyzer',
   description: 'AI-driven structural verification of converted manuscripts: exact title, authors, affiliations, abstract, keywords, section hierarchy, component counts (figures/charts/tables/equations/pseudocode/citations/references) and reference list',
   temperature: 0.05,
-  maxTokens: 8192,
+  maxTokens: 16384,
   rateLimit: 20,
   buildSystemPrompt(ctx) {
     const fullText = String(ctx.fullText || ctx.frontMatter || '').substring(0, 200000);
@@ -1119,11 +1119,11 @@ register({
   name: 'Manuscript Component LaTeX Generator',
   description: 'Identifies manuscript components (figures, charts, tables, algorithms) from the full text, counts them, and creates modular LaTeX code for each component',
   temperature: 0.05,
-  maxTokens: 8192,
+  maxTokens: 32768,
   rateLimit: 20,
   buildSystemPrompt(ctx) {
     const hasStrongProvider = !!(process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
-    const textLimit = hasStrongProvider ? 80000 : 24000;
+    const textLimit = hasStrongProvider ? 180000 : 80000;
     const fullText = String(ctx.fullText || '').substring(0, textLimit);
     const imageMap = JSON.stringify(ctx.imageMap || []);
     const figureCaptions = (ctx.figureCaptions as string[]) || [];
@@ -1231,13 +1231,13 @@ register({
   name: 'Doc2LaTeX Modular LaTeX Mapper',
   description: 'Writes faithful, modular, template-compliant LaTeX files (sections, floats, metadata, bibliography) for a client-extracted DOCX manuscript from its verified AI structure',
   temperature: 0.1,
-  maxTokens: 8192,
+  maxTokens: 32768,
   rateLimit: 10,
   buildSystemPrompt(ctx) {
     const scope = String(ctx.scope || 'sections');
     const templateId = String(ctx.templateId || 'article_lncs');
     const documentTitle = String(ctx.documentTitle || 'Untitled Document');
-    const textWindow = String(ctx.textWindow || '').substring(0, 60000);
+    const textWindow = String(ctx.textWindow || '').substring(0, 180000);
     const verdict = JSON.stringify(ctx.verdict || {});
     const figureFiles = (ctx.figureFiles as string[]) || [];
 

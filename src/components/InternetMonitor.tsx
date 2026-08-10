@@ -111,8 +111,7 @@ export default function InternetMonitor() {
         const res = await fetch("/api/health", { method: "GET", signal: controller.signal, cache: "no-store" });
         clearTimeout(timeout);
         if (!res.ok) {
-          // Server responded but with error — server is reachable, not offline
-          console.log("[InternetMonitor] Health check returned", res.status, "— server reachable");
+          // Server responded with non-200 — server is reachable
         }
       } catch (err: any) {
         // Only force offline if navigator.onLine is also false (real disconnect)
@@ -245,15 +244,23 @@ export default function InternetMonitor() {
 
         return response;
       } catch (error: any) {
-        // Don't force offline for server errors, CORS, timeouts — those aren't "no internet"
-        if (error instanceof TypeError && (error.message.includes("Failed to fetch") || error.message.includes("NetworkError"))) {
+        const errStr = String(error?.message || error || "");
+        const isNetworkErr =
+          error instanceof TypeError ||
+          errStr.includes("Failed to fetch") ||
+          errStr.includes("NetworkError") ||
+          errStr.includes("ERR_NETWORK_IO_SUSPENDED") ||
+          errStr.includes("ERR_INTERNET_DISCONNECTED") ||
+          error?.name === "AbortError";
+
+        if (isNetworkErr) {
           if (isEffectivelyOffline() && isMountedRef.current) {
-            console.warn("[OfflineSync] Confirmed offline:", error.message);
+            console.warn("[OfflineSync] Confirmed offline/suspended:", errStr);
             setStatus("offline");
             setIsVisible(true);
           }
           // Return 503 instead of throwing — callers check res.ok
-          return new Response(JSON.stringify({ error: "offline", message: "No internet connection" }), {
+          return new Response(JSON.stringify({ error: "offline", message: "Network suspended or disconnected" }), {
             status: 503,
             statusText: "Offline",
             headers: { "Content-Type": "application/json" },

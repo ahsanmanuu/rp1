@@ -22,7 +22,9 @@ function formatTokens(n: number): string {
 function fmtDate(d: string | null | undefined, fallback = "—"): string {
   if (!d) return fallback;
   try {
-    return new Date(d).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return fallback;
+    return dt.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
   } catch {
     return fallback;
   }
@@ -43,13 +45,13 @@ export default function AiSubscriptionCard({
   const resetCounter = useCountdown(plan.quotaResetAt, 1000);
 
   const usedToday = Number(plan.usedToday ?? plan.used ?? 0) || 0;
-  const dailyLimit = Number(plan.limit ?? plan.dailyTokenCap ?? 0) || 0;
+  const dailyLimit = Number(plan.limit ?? plan.dailyTokenCap ?? 0) || (isFree ? 10000 : 50000);
   const remainingTokens =
-    plan.remaining != null
+    plan.remaining != null && plan.dailyTokenCap && plan.dailyTokenCap > 0
       ? Math.max(0, Number(plan.remaining))
       : Math.max(0, dailyLimit - usedToday);
   const percentage =
-    plan.percentage != null
+    plan.percentage != null && plan.dailyTokenCap && plan.dailyTokenCap > 0
       ? Number(plan.percentage)
       : dailyLimit > 0
         ? (usedToday / dailyLimit) * 100
@@ -93,7 +95,7 @@ export default function AiSubscriptionCard({
       )}
 
       {/* Error banner */}
-      {error && (
+      {error && !error.toLowerCase().includes("unauthorized") && (
         <div className="absolute top-4 left-4 right-4 z-20 bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-2.5 flex items-center gap-2">
           <span className="material-symbols-outlined text-rose-500 text-[18px]">error_outline</span>
           <span className="text-[11px] font-bold text-rose-500 flex-1">{error}</span>
@@ -139,7 +141,7 @@ export default function AiSubscriptionCard({
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Daily AI Quota</span>
             </div>
             <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-primary/10 text-primary">
-              {formatTokens(plan.dailyTokenCap || 0)} / day
+              {formatTokens(dailyLimit)} / day
             </span>
           </div>
 
