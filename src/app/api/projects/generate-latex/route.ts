@@ -194,14 +194,17 @@ Include a brief compilation guide (e.g., which LaTeX engine to use: pdfLaTeX/XeL
 
     if (modelToUse) {
       // ── AI MODULAR MAPPING (doc2latex-modular agent) ──────────────────
-      // Client-extracted DOC2LATEX projects with an AI structure verdict get
-      // three scoped AI passes (floats/sections/metadata) producing modular
-      // .tex files + a deterministically composed main.tex. Any failure (agent
-      // error, timeout, empty result) falls through to the deterministic
-      // ModularLatexAssembler below — never a blank document.
+      // Client-extracted DOC2LATEX projects get three scoped AI passes
+      // (floats/sections/metadata) producing modular .tex files + a
+      // deterministically composed main.tex. No aiVerdict required — the
+      // AI mapping builds its own verdict from the structured body.
+      // Any failure falls through to the deterministic assembler.
       let usedAiModular = false;
       const projectType = String(structured.projectType || (project as any).projectType || '');
-      if (projectType === 'DOC2LATEX' && structured.aiVerdict) {
+      const isDoc2Latex = projectType === 'DOC2LATEX' ||
+        (Array.isArray(modelToUse.body) && modelToUse.body.length > 0 &&
+         (modelToUse.body.some((n: any) => n.type === 'heading' || n.type === 'figure' || n.type === 'table' || n.type === 'algorithm')));
+      if (isDoc2Latex) {
         try {
           const { runModularAiMapping } = await import('@/lib/ai-modular-mapping');
           const mapped = await runModularAiMapping({

@@ -2,8 +2,7 @@
  * Phase 2 — AI MODULAR LATEX MAPPING for client-extracted DOC2LATEX projects.
  *
  * After template selection, this module asks the doc2latex-modular agent to
- * WRITE the entire modular LaTeX document for a manuscript that only ever
- * reached the server as a TEXT ENVELOPE (no binaries):
+ * WRITE the entire modular LaTeX document for a manuscript:
  *
  *   - 'floats'   pass  → one validated float file per verified figure/chart/
  *                        table/algorithm (captions verbatim, images mapped by
@@ -14,12 +13,12 @@
  *   - 'metadata' pass  → metadata title/authors/abstract/keywords + the
  *                        references/bibliography.tex (thebibliography)
  *
- * Every emitted file is machine-verified (normalizeModularFiles — floats via
- * strict fragment validation, sections/metadata via the structural guards) and
- * main.tex is composed DETERMINISTICALLY from the template preamble. AI output
- * can never break the pipeline: invalid files are dropped, and if nothing
- * survives, `runModularAiMapping` returns null so the caller falls back to the
- * deterministic ModularLatexAssembler.
+ * For large documents (>150K chars), the sections scope splits into chunked
+ * sub-passes so the AI can generate complete section files without hitting
+ * output token limits.
+ *
+ * Every emitted file is machine-verified and main.tex is composed
+ * DETERMINISTICALLY from the template preamble.
  */
 
 import { routeToAgent } from './agent-gateway';
@@ -45,6 +44,7 @@ const HAS_STRONG_PROVIDER = !!(process.env.OPENROUTER_API_KEY || process.env.GEM
 const WINDOW_HEAD = HAS_STRONG_PROVIDER ? 120000 : 60000;
 const WINDOW_TAIL = HAS_STRONG_PROVIDER ? 30000 : 15000;
 const PASS_TIMEOUT_MS = 300_000;
+const RETRY_TIMEOUT_MS = 120_000;
 
 const AI_MODEL_OVERRIDE = process.env.OPENROUTER_API_KEY
   ? 'google/gemini-2.5-flash-001'
@@ -71,21 +71,54 @@ function balancedWindow(text: string): string {
   return `${text.substring(0, WINDOW_HEAD)}\n\n[... middle of the document elided for context budget ...]\n\n${text.substring(text.length - WINDOW_TAIL)}`;
 }
 
-/** Compact, agent-facing snapshot of the verified AI structure. */
+/** Build a compact verdict from the structured body — works with or without aiVerdict. */
 function buildVerdictCompact(doc: Record<string, any>): Record<string, any> {
   const ai = doc.aiVerdict || {};
   const body = Array.isArray(doc.body) ? doc.body : [];
-  const sections: Array<{ title: string; level: number }> = Array.isArray(ai.sections)
+
+  // Extract sections from body nodes when aiVerdict.sections is missing
+  const sections: Array<{ title: string; level: number }> = Array.isArray(ai.sections) && ai.sections.length > 0
     ? ai.sections
       .filter((s: any) => s && typeof s.title === 'string' && !/^(?:references?|bibliography|works cited|literature cited)\b/i.test(s.title.trim()))
       .map((s: any) => ({ title: s.title, level: Number(s.level) || 1 }))
     : body
-      .filter((n: any) => n.type === 'heading' && n.text)
+      .filter((n: any) => n.type === 'heading' && n.text && !/^(?:references?|bibliography|works cited|literature cited)\b/i.test(String(n.text).trim()))
       .map((n: any) => ({ title: n.text, level: Number(n.level) || 1 }));
+
+  // Extract figures/tables/algorithms from body when aiVerdict arrays are missing
+  const figures = Array.isArray(ai.figures) && ai.figures.length > 0
+    ? ai.figures.map((f: any) => String(f?.caption || ''))
+    : body.filter((n: any) => (n.type === 'figure' || n.type === 'image' || n.type === 'chart') && n.caption)
+        .map((n: any) => String(n.caption));
+
+  const tables = Array.isArray(ai.tables) && ai.tables.length > 0
+    ? ai.tables.map((t: any) => String(t?.caption || ''))
+    : body.filter((n: any) => n.type === 'table' && n.caption)
+        .map((n: any) => String(n.caption));
+
+  const algorithms = Array.isArray(ai.algorithms) && ai.algorithms.length > 0
+    ? ai.algorithms.map((a: any) => String(a?.title || ''))
+    : body.filter((n: any) => n.type === 'algorithm' && (n.title || n.caption))
+        .map((n: any) => String(n.title || n.caption));
+
+  // Extract references from body
+  const references = Array.isArray(ai.references) && ai.references.length > 0
+    ? ai.references.map((r: any) => String(r || ''))
+    : body.filter((n: any) => n.type === 'reference' && n.text)
+        .map((n: any) => String(n.text));
+
+  // Count components
+  const componentCounts = {
+    figures: figures.length,
+    tables: tables.length,
+    algorithms: algorithms.length,
+    sections: sections.length,
+    references: references.length,
+  };
 
   return {
     title: ai.title?.text || doc.title || null,
-    authors: Array.isArray(ai.authors)
+    authors: Array.isArray(ai.authors) && ai.authors.length > 0
       ? ai.authors
       : Array.isArray(doc.authors)
         ? doc.authors.map((a: any) => ({ name: typeof a === 'string' ? a : a?.name, affiliations: [] }))
@@ -94,12 +127,54 @@ function buildVerdictCompact(doc: Record<string, any>): Record<string, any> {
     abstract: ai.abstract?.text || doc.abstract || null,
     keywords: ai.keywords || doc.keywords || [],
     sections,
-    figures: Array.isArray(ai.figures) ? ai.figures.map((f: any) => String(f?.caption || '')) : [],
-    tables: Array.isArray(ai.tables) ? ai.tables.map((t: any) => String(t?.caption || '')) : [],
-    algorithms: Array.isArray(ai.algorithms) ? ai.algorithms.map((a: any) => String(a?.title || '')) : [],
-    components: ai.components || null,
-    references: Array.isArray(ai.references) ? ai.references.map((r: any) => String(r || '')) : [],
+    figures,
+    tables,
+    algorithms,
+    components: ai.components || componentCounts,
+    references,
   };
+}
+
+/** Split body nodes into section groups, preserving document order. */
+function groupBodyBySections(body: any[]): Array<{ heading: any; nodes: any[] }> {
+  const groups: Array<{ heading: any; nodes: any[] }> = [];
+  let current: { heading: any; nodes: any[] } | null = null;
+
+  for (const node of body) {
+    if (node.type === 'heading' && node.text) {
+      if (current) groups.push(current);
+      current = { heading: node, nodes: [] };
+    } else if (current) {
+      current.nodes.push(node);
+    } else {
+      // Content before first heading — create implicit intro group
+      current = { heading: { type: 'heading', text: 'Introduction', level: 1 }, nodes: [node] };
+    }
+  }
+  if (current) groups.push(current);
+  return groups;
+}
+
+/** Build a text window for a specific chunk of sections. */
+function chunkTextWindow(
+  body: any[],
+  startIdx: number,
+  endIdx: number,
+  fullText: string,
+): string {
+  // Extract text for the specific section range
+  const chunkText = body
+    .slice(startIdx, endIdx)
+    .map((n: any) => {
+      if (n.type === 'heading') return `\n${'#'.repeat(Number(n.level) || 1)} ${n.text}\n`;
+      if (n.text) return n.text;
+      if (n.caption) return `[Caption: ${n.caption}]`;
+      return '';
+    })
+    .join('\n');
+
+  if (chunkText.length <= WINDOW_HEAD + WINDOW_TAIL) return chunkText;
+  return balancedWindow(chunkText);
 }
 
 async function runScope(
@@ -110,14 +185,22 @@ async function runScope(
     textWindow: string;
     verdict: Record<string, any>;
     figureFiles: string[];
+    sectionStartIdx?: number;
+    sectionEndIdx?: number;
+    isChunk?: boolean;
+    chunkIndex?: number;
+    totalChunks?: number;
   },
   auth: { userId?: string | null; userEmail?: string | null; projectId?: string },
 ): Promise<{ files: AiModularFile[]; model: string; rejected: number }> {
   const controller = new AbortController();
+  const chunkHint = ctx.isChunk
+    ? ` (chunk ${(ctx.chunkIndex || 0) + 1}/${ctx.totalChunks || 1}, sections ${ctx.sectionStartIdx || 0}-${ctx.sectionEndIdx || 0})`
+    : '';
   const res = await raceWithTimeout(
     routeToAgent({
       agent: 'doc2latex-modular',
-      messages: [{ role: 'user', content: `Generate the modular LaTeX files for scope "${scope}".` }],
+      messages: [{ role: 'user', content: `Generate the modular LaTeX files for scope "${scope}"${chunkHint}.` }],
       context: {
         ...ctx,
         scope,
@@ -133,12 +216,50 @@ async function runScope(
   );
 
   if (!res?.success || !res.data || (res.data as any)._failSafe || (res.data as any)._partial) {
-    console.warn(`[AI-MODULAR] scope "${scope}" unavailable`, res && !res.success ? `(${res.error})` : '');
+    console.warn(`[AI-MODULAR] scope "${scope}"${chunkHint} unavailable`, res && !res.success ? `(${res.error})` : '');
     return { files: [], model: '', rejected: 0 };
   }
   const normalized = normalizeModularFiles(res.data, ctx.figureFiles);
-  console.log(`[AI-MODULAR] scope "${scope}" → ${normalized.files.length} files kept, ${normalized.rejected} rejected (${res.model})`);
+  console.log(`[AI-MODULAR] scope "${scope}"${chunkHint} → ${normalized.files.length} files kept, ${normalized.rejected} rejected (${res.model})`);
   return { files: normalized.files, model: res.model, rejected: normalized.rejected };
+}
+
+/** Retry a failed scope once with a shorter timeout. */
+async function runScopeWithRetry(
+  scope: Scope,
+  ctx: Parameters<typeof runScope>[1],
+  auth: Parameters<typeof runScope>[2],
+): Promise<{ files: AiModularFile[]; model: string; rejected: number }> {
+  const result = await runScope(scope, ctx, auth);
+  if (result.files.length === 0 && !ctx.isChunk) {
+    console.log(`[AI-MODULAR] Retrying scope "${scope}" with shorter timeout...`);
+    const retryController = new AbortController();
+    const retryRes = await raceWithTimeout(
+      routeToAgent({
+        agent: 'doc2latex-modular',
+        messages: [{ role: 'user', content: `Generate the modular LaTeX files for scope "${scope}" (retry — be concise).` }],
+        context: {
+          ...ctx,
+          scope,
+          modelOverride: AI_MODEL_OVERRIDE ?? undefined,
+          userId: auth.userId ?? undefined,
+          userEmail: auth.userEmail ?? undefined,
+          projectId: auth.projectId,
+        },
+        signal: retryController.signal,
+      }),
+      RETRY_TIMEOUT_MS,
+      retryController,
+    );
+    if (retryRes?.success && retryRes.data && !(retryRes.data as any)._failSafe) {
+      const normalized = normalizeModularFiles(retryRes.data, ctx.figureFiles);
+      if (normalized.files.length > 0) {
+        console.log(`[AI-MODULAR] Retry scope "${scope}" produced ${normalized.files.length} files (${normalized.rejected} rejected)`);
+        return { files: normalized.files, model: retryRes.model, rejected: normalized.rejected };
+      }
+    }
+  }
+  return result;
 }
 
 // ── Deterministic main.tex composer ────────────────────────────────────────
@@ -189,7 +310,6 @@ function defaultPreamble(templateId: string): string[] {
     '\\usepackage{placeins}',
     '\\usepackage{microtype}',
     '\\usepackage[colorlinks=true,allcolors=blue]{hyperref}',
-    // Declare common Unicode characters for pdflatex compatibility
     '\\DeclareUnicodeCharacter{200B}{}',
     '\\DeclareUnicodeCharacter{202F}{ }',
     '\\DeclareUnicodeCharacter{00A0}{ }',
@@ -226,14 +346,10 @@ function composeMainTex(
   const bib = files.find((f) => f.path === 'references/bibliography.tex');
   const existingFloats = new Set(floats.map((f) => f.path));
 
-  // Sections may reference floats that never survived validation — drop those
-  // \input lines so a missing file can never break the compile.
   for (const f of sections) {
     f.content = stripFloatInputsToExisting(f.content, existingFloats);
   }
 
-  // Preamble: native template preamble (sliced at \begin{document}, metadata
-  // lines filtered — mirroring ModularLatexAssembler) or a standard fallback.
   let preamble: string[] = [];
   if (templateMainTex) {
     const beginIdx = templateMainTex.indexOf('\\begin{document}');
@@ -258,8 +374,6 @@ function composeMainTex(
   for (const f of metadatas) body.push(`\\input{${f.path}}`);
   body.push('\\maketitle');
   for (const f of sections) body.push(`\\input{${f.path}}`);
-  // Floats the sections did not wire in are appended at the end so nothing
-  // verified is silently dropped from the document.
   const bodyJoined = body.join('\n');
   for (const f of floats) {
     if (!bodyJoined.includes(`\\input{${f.path}}`)) body.push(`\\input{${f.path}}`);
@@ -272,20 +386,15 @@ function composeMainTex(
 
 // ── Public entry ───────────────────────────────────────────────────────────
 
-/**
- * Runs the modular AI mapping for a client-extracted DOC2LATEX project.
- * Returns null when no AI-produced file survived validation (+ no usable
- * fallback) — callers must then use the deterministic assembler.
- */
 export async function runModularAiMapping(input: ModularMappingInput): Promise<ModularMappingResult | null> {
   const { structured, templateId, templateMainTex, userId, userEmail, projectId } = input;
   const figureManifest = Array.isArray(structured.figureManifest) ? structured.figureManifest : [];
   const figureFiles = figureManifest.map((f: any) => String(f?.name ?? f)).filter(Boolean);
 
-  const bodyText = Array.isArray(structured.body)
-    ? (structured.body as any[]).map((n: any) => n.text || n.caption || '').join('\n')
-    : structured.fullText || '';
-  const docText = [structured.fullText, bodyText, structured.rawHtml ? '' : ''].filter(Boolean).join('\n').trim();
+  // Build text from body nodes or fullText
+  const body = Array.isArray(structured.body) ? structured.body : [];
+  const bodyText = body.map((n: any) => n.text || n.caption || '').join('\n');
+  const docText = [structured.fullText, bodyText].filter(Boolean).join('\n').trim();
   const textWindow = balancedWindow(docText.length > 0 ? docText : structured.abstract || '');
 
   const verdict = buildVerdictCompact(structured);
@@ -297,14 +406,67 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     figureFiles,
   };
 
-  const [floatsRes, sectionsRes, metadataRes] = await Promise.all([
-    runScope('floats', common, { userId, userEmail, projectId }),
-    runScope('sections', common, { userId, userEmail, projectId }),
-    runScope('metadata', common, { userId, userEmail, projectId }),
+  console.log(`[AI-MODULAR] Starting 3-scope AI mapping: ${verdict.sections.length} sections, ${verdict.figures.length} figures, ${verdict.tables.length} tables, ${verdict.algorithms.length} algorithms`);
+
+  // ── CHUNKED SECTIONS for large documents ─────────────────────────────
+  // If there are many sections, split into chunks so the AI can generate
+  // complete section files without hitting output token limits.
+  const CHUNK_SIZE = 15; // sections per chunk
+  const sectionGroups = groupBodyBySections(body);
+  let sectionFiles: AiModularFile[] = [];
+  let sectionModel = '';
+  let sectionRejected = 0;
+
+  if (sectionGroups.length > CHUNK_SIZE) {
+    const totalChunks = Math.ceil(sectionGroups.length / CHUNK_SIZE);
+    console.log(`[AI-MODULAR] Large document: splitting ${sectionGroups.length} sections into ${totalChunks} chunks`);
+
+    for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+      const start = chunkIdx * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, sectionGroups.length);
+      const chunkBody = sectionGroups.slice(start, end).flatMap(g => [g.heading, ...g.nodes]);
+      const chunkText = chunkTextWindow(chunkBody, 0, chunkBody.length, docText);
+
+      const chunkCtx = {
+        ...common,
+        textWindow: chunkText.length > 0 ? chunkText : common.textWindow,
+        sectionStartIdx: start,
+        sectionEndIdx: end,
+        isChunk: true,
+        chunkIndex: chunkIdx,
+        totalChunks,
+        verdict: {
+          ...verdict,
+          sections: verdict.sections.slice(start, end),
+        },
+      };
+
+      const chunkResult = await runScopeWithRetry('sections', chunkCtx, { userId, userEmail, projectId });
+      sectionFiles.push(...chunkResult.files);
+      if (chunkResult.model) sectionModel = chunkResult.model;
+      sectionRejected += chunkResult.rejected;
+
+      console.log(`[AI-MODULAR] Chunk ${chunkIdx + 1}/${totalChunks}: ${chunkResult.files.length} section files`);
+    }
+  } else {
+    // Small document — single pass
+    const sectionsRes = await runScopeWithRetry('sections', common, { userId, userEmail, projectId });
+    sectionFiles = sectionsRes.files;
+    sectionModel = sectionsRes.model;
+    sectionRejected = sectionsRes.rejected;
+  }
+
+  // ── FLOATS and METADATA passes (parallel) ────────────────────────────
+  const [floatsRes, metadataRes] = await Promise.all([
+    runScopeWithRetry('floats', common, { userId, userEmail, projectId }),
+    runScopeWithRetry('metadata', common, { userId, userEmail, projectId }),
   ]);
 
-  const files = [...floatsRes.files, ...sectionsRes.files, ...metadataRes.files];
-  const models = [floatsRes.model, sectionsRes.model, metadataRes.model].filter(Boolean);
+  const files = [...floatsRes.files, ...sectionFiles, ...metadataRes.files];
+  const models = [floatsRes.model, sectionModel, metadataRes.model].filter(Boolean);
+
+  console.log(`[AI-MODULAR] Total: ${files.length} validated files (${floatsRes.files.length} floats, ${sectionFiles.length} sections, ${metadataRes.files.length} metadata), ${floatsRes.rejected + sectionRejected + metadataRes.rejected} rejected`);
+
   if (files.length === 0) {
     console.warn('[AI-MODULAR] No validated AI files — falling back to deterministic assembly.');
     return null;
@@ -315,6 +477,6 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     mainTex,
     files,
     model: models[0] || 'unknown',
-    rejected: floatsRes.rejected + sectionsRes.rejected + metadataRes.rejected,
+    rejected: floatsRes.rejected + sectionRejected + metadataRes.rejected,
   };
 }

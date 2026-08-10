@@ -178,7 +178,7 @@ function sanitizeFragment(raw: unknown): string | null {
     .replace(/\u201C/g, '``')
     .replace(/\u201D/g, "''")
     .replace(/\u2212/g, '-');
-  if (s.length < 20 || s.length > 4000) return null;
+  if (s.length < 20 || s.length > 16000) return null;
   // Strip a single trailing newline/space
   s = s.replace(/\s+$/g, '');
   // Reject fragments wrapping whole documents or multiple top-level blocks
@@ -244,7 +244,7 @@ export interface AiModularFile {
 }
 
 const FLOAT_PATH_RE = /^(?:floats\/figures|floats\/tables|floats\/algorithms)\/\d+\.tex$/;
-const SECTION_PATH_RE = /^sections\/\d{2}_[a-z0-9_]{1,60}\.tex$/;
+const SECTION_PATH_RE = /^sections\/\d{2}_[a-z0-9_]{1,80}\.tex$/;
 const METADATA_PATHS = new Set([
   'metadata/title.tex',
   'metadata/authors.tex',
@@ -304,7 +304,7 @@ export function sanitizeAiSectionFile(raw: unknown): string | null {
     .replace(/\u201C/g, '``')
     .replace(/\u201D/g, "''")
     .replace(/\u2212/g, '-');
-  if (s.length < 30 || s.length > 60000) return null;
+  if (s.length < 30 || s.length > 120000) return null;
   // \input/\include are allowed ONLY in the exact {floats/...} form (checked
   // below); every other forbidden command rejects the file outright.
   const SECTION_EXEMPT_FROM_FORBIDDEN = new Set(['\\input\\b', '\\include\\b']);
@@ -348,7 +348,7 @@ export function sanitizeAiMetadataFile(raw: unknown, path: string): string | nul
     .replace(/\u201C/g, '``')
     .replace(/\u201D/g, "''")
     .replace(/\u2212/g, '-');
-  if (s.length < 3 || s.length > 50000) return null;
+  if (s.length < 3 || s.length > 100000) return null;
   for (const re of FORBIDDEN_PATTERNS) {
     // \input/\include never belong in metadata files; \maketitle comes from
     // the deterministic main.tex, never from a metadata input.
@@ -382,7 +382,8 @@ export function normalizeModularFiles(
     if (FLOAT_PATH_RE.test(path)) {
       const safe = content.trim();
       // Float files are single environments: strict fragment validation applies.
-      if (safe.length < 20 || safe.length > 4000) { rejected++; continue; }
+      // Max 16000 chars allows complex tables and algorithms.
+      if (safe.length < 20 || safe.length > 16000) { rejected++; continue; }
       if (!braceBalance(safe) || !bracketBalance(safe)) { rejected++; continue; }
       for (const re of FORBIDDEN_PATTERNS) {
         if (re.test(safe)) { rejected++; continue; }
