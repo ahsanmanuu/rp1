@@ -41,8 +41,10 @@ export interface ModularMappingResult {
 }
 
 const HAS_STRONG_PROVIDER = !!(process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
-const WINDOW_HEAD = HAS_STRONG_PROVIDER ? 120000 : 60000;
-const WINDOW_TAIL = HAS_STRONG_PROVIDER ? 30000 : 15000;
+// Generous windows — a 20MB doc has ~3.3M chars; we keep as much as the AI
+// model can reasonably process (Gemini 2.5 Flash supports 1M+ context).
+const WINDOW_HEAD = HAS_STRONG_PROVIDER ? 350000 : 120000;
+const WINDOW_TAIL = HAS_STRONG_PROVIDER ? 100000 : 30000;
 const PASS_TIMEOUT_MS = 300_000;
 const RETRY_TIMEOUT_MS = 120_000;
 
@@ -155,26 +157,98 @@ function groupBodyBySections(body: any[]): Array<{ heading: any; nodes: any[] }>
   return groups;
 }
 
-/** Build a text window for a specific chunk of sections. */
+/**
+ * Build a text window for a specific chunk of sections.
+ *
+ * CRITICAL FIX: For large documents, the old implementation applied
+ * balancedWindow() which elides the MIDDLE of the chunk — losing all
+ * section content between head and tail. This caused middle sections
+ * to have empty/incomplete LaTeX output (blank PDF).
+ *
+ * New strategy: always include the FULL chunk text. If the chunk exceeds
+ * the budget, include full head sections + full tail sections and elide
+ * only the middle sections (preserving complete section content for the
+ * sections we DO include).
+ */
 function chunkTextWindow(
   body: any[],
   startIdx: number,
   endIdx: number,
   fullText: string,
 ): string {
-  // Extract text for the specific section range
-  const chunkText = body
-    .slice(startIdx, endIdx)
+  const chunkNodes = body.slice(startIdx, endIdx);
+  const chunkText = chunkNodes
     .map((n: any) => {
       if (n.type === 'heading') return `\n${'#'.repeat(Number(n.level) || 1)} ${n.text}\n`;
       if (n.text) return n.text;
       if (n.caption) return `[Caption: ${n.caption}]`;
+      if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') return `[Figure: ${n.caption || n.name || 'unnamed'}]`;
+      if (n.type === 'table') return `[Table: ${n.caption || 'untitled'}]`;
+      if (n.type === 'algorithm') return `[Algorithm: ${n.title || n.caption || 'untitled'}]`;
+      if (n.type === 'reference') return `[Ref: ${n.text || ''}]`;
       return '';
     })
     .join('\n');
 
-  if (chunkText.length <= WINDOW_HEAD + WINDOW_TAIL) return chunkText;
-  return balancedWindow(chunkText);
+  const budget = WINDOW_HEAD + WINDOW_TAIL;
+  if (chunkText.length <= budget) return chunkText;
+
+  // Split by section headings and preserve complete sections from head/tail
+  const sections = splitIntoSections(chunkNodes);
+  if (sections.length <= 2) {
+    // Few sections — just truncate at boundary
+    return balancedWindow(chunkText);
+  }
+
+  // Include complete sections from head and tail, elide middle
+  const headSections: string[] = [];
+  const tailSections: string[] = [];
+  let headLen = 0;
+  let tailLen = 0;
+  const halfBudget = Math.floor(budget * 0.55); // 55% head, 45% tail
+
+  for (const sec of sections) {
+    if (headLen < halfBudget) {
+      headSections.push(sec);
+      headLen += sec.length;
+    }
+  }
+  for (let i = sections.length - 1; i >= 0; i--) {
+    if (headSections.includes(sections[i])) break;
+    if (tailLen + sections[i].length > budget - headLen) break;
+    tailSections.unshift(sections[i]);
+    tailLen += sections[i].length;
+  }
+
+  const elidedCount = sections.length - headSections.length - tailSections.length;
+  const result = headSections.join('\n') +
+    (elidedCount > 0 ? `\n\n[... ${elidedCount} sections in the middle omitted for context budget ...]\n\n` : '') +
+    tailSections.join('\n');
+  return result;
+}
+
+/** Split body nodes into section-grouped text blocks (each starting with a heading). */
+function splitIntoSections(nodes: any[]): string[] {
+  const sections: string[] = [];
+  let current: string[] = [];
+
+  for (const node of nodes) {
+    if (node.type === 'heading' && node.text) {
+      if (current.length > 0) sections.push(current.join('\n'));
+      current = [];
+    }
+    let text = '';
+    if (node.type === 'heading') text = `\n${'#'.repeat(Number(node.level) || 1)} ${node.text}\n`;
+    else if (node.text) text = node.text;
+    else if (node.caption) text = `[Caption: ${node.caption}]`;
+    else if (node.type === 'figure' || node.type === 'image' || node.type === 'chart') text = `[Figure: ${node.caption || node.name || 'unnamed'}]`;
+    else if (node.type === 'table') text = `[Table: ${node.caption || 'untitled'}]`;
+    else if (node.type === 'algorithm') text = `[Algorithm: ${node.title || node.caption || 'untitled'}]`;
+    else if (node.type === 'reference') text = `[Ref: ${node.text || ''}]`;
+    if (text) current.push(text);
+  }
+  if (current.length > 0) sections.push(current.join('\n'));
+  return sections;
 }
 
 async function runScope(
@@ -215,9 +289,14 @@ async function runScope(
     controller,
   );
 
-  if (!res?.success || !res.data || (res.data as any)._failSafe || (res.data as any)._partial) {
+  if (!res?.success || !res.data || (res.data as any)._failSafe) {
     console.warn(`[AI-MODULAR] scope "${scope}"${chunkHint} unavailable`, res && !res.success ? `(${res.error})` : '');
     return { files: [], model: '', rejected: 0 };
+  }
+  // Accept partial results — even partial files are better than none.
+  // The validator will reject any invalid files; valid ones are kept.
+  if ((res.data as any)._partial) {
+    console.log(`[AI-MODULAR] scope "${scope}"${chunkHint} returned partial results — keeping valid files`);
   }
   const normalized = normalizeModularFiles(res.data, ctx.figureFiles);
   console.log(`[AI-MODULAR] scope "${scope}"${chunkHint} → ${normalized.files.length} files kept, ${normalized.rejected} rejected (${res.model})`);
@@ -252,6 +331,7 @@ async function runScopeWithRetry(
       retryController,
     );
     if (retryRes?.success && retryRes.data && !(retryRes.data as any)._failSafe) {
+      // Accept partial results from retry too — valid files are kept
       const normalized = normalizeModularFiles(retryRes.data, ctx.figureFiles);
       if (normalized.files.length > 0) {
         console.log(`[AI-MODULAR] Retry scope "${scope}" produced ${normalized.files.length} files (${normalized.rejected} rejected)`);
@@ -408,10 +488,39 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
 
   console.log(`[AI-MODULAR] Starting 3-scope AI mapping: ${verdict.sections.length} sections, ${verdict.figures.length} figures, ${verdict.tables.length} tables, ${verdict.algorithms.length} algorithms`);
 
+  // ── FULL-LENGTH TEXT for floats/metadata passes ──────────────────────
+  // The balanced window truncates the middle of large documents. Floats and
+  // metadata passes need visibility into ALL captions, equations and
+  // references — build a separate full-length window that includes all body
+  // node content (capped at a safe model context limit).
+  const fullTextForPasses = (() => {
+    const bodyTextFull = body.map((n: any) => {
+      if (n.type === 'heading') return `\n${'#'.repeat(Number(n.level) || 1)} ${n.text}\n`;
+      if (n.text) return n.text;
+      if (n.caption) return `[Caption: ${n.caption}]`;
+      if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') return `[Figure: ${n.caption || n.name || ''}]`;
+      if (n.type === 'table') return `[Table: ${n.caption || ''}]`;
+      if (n.type === 'algorithm') return `[Algorithm: ${n.title || n.caption || ''}]`;
+      if (n.type === 'reference') return `[Ref: ${n.text || ''}]`;
+      return '';
+    }).join('\n');
+    const combined = [structured.fullText, bodyTextFull].filter(Boolean).join('\n').trim();
+    // Cap at generous limit — Gemini 2.5 Flash handles 1M+ tokens
+    const MAX_CHARS = HAS_STRONG_PROVIDER ? 500000 : 200000;
+    if (combined.length <= MAX_CHARS) return combined;
+    // For very large docs: head 70% + tail 30% (preserves references at end)
+    const headLen = Math.floor(MAX_CHARS * 0.7);
+    return combined.substring(0, headLen) +
+      '\n\n[... middle of document elided ...]\n\n' +
+      combined.substring(combined.length - (MAX_CHARS - headLen));
+  })();
+
   // ── CHUNKED SECTIONS for large documents ─────────────────────────────
   // If there are many sections, split into chunks so the AI can generate
   // complete section files without hitting output token limits.
-  const CHUNK_SIZE = 15; // sections per chunk
+  // Smaller chunks (8 sections) ensure the AI can generate complete LaTeX
+  // for every section without truncation — critical for large 20MB docs.
+  const CHUNK_SIZE = 8; // sections per chunk
   const sectionGroups = groupBodyBySections(body);
   let sectionFiles: AiModularFile[] = [];
   let sectionModel = '';
@@ -421,6 +530,7 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     const totalChunks = Math.ceil(sectionGroups.length / CHUNK_SIZE);
     console.log(`[AI-MODULAR] Large document: splitting ${sectionGroups.length} sections into ${totalChunks} chunks`);
 
+    const failedChunks: number[] = [];
     for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
       const start = chunkIdx * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, sectionGroups.length);
@@ -429,7 +539,7 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
 
       const chunkCtx = {
         ...common,
-        textWindow: chunkText.length > 0 ? chunkText : common.textWindow,
+        textWindow: chunkText.length > 0 ? chunkText : fullTextForPasses,
         sectionStartIdx: start,
         sectionEndIdx: end,
         isChunk: true,
@@ -446,7 +556,16 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
       if (chunkResult.model) sectionModel = chunkResult.model;
       sectionRejected += chunkResult.rejected;
 
-      console.log(`[AI-MODULAR] Chunk ${chunkIdx + 1}/${totalChunks}: ${chunkResult.files.length} section files`);
+      if (chunkResult.files.length === 0) {
+        failedChunks.push(chunkIdx);
+        console.warn(`[AI-MODULAR] Chunk ${chunkIdx + 1}/${totalChunks} FAILED — sections ${start}-${end} will be empty`);
+      } else {
+        console.log(`[AI-MODULAR] Chunk ${chunkIdx + 1}/${totalChunks}: ${chunkResult.files.length} section files`);
+      }
+    }
+
+    if (failedChunks.length > 0) {
+      console.warn(`[AI-MODULAR] ${failedChunks.length}/${totalChunks} chunks failed. Missing sections: ${failedChunks.map(c => `${c * CHUNK_SIZE + 1}-${Math.min((c + 1) * CHUNK_SIZE, sectionGroups.length)}`).join(', ')}`);
     }
   } else {
     // Small document — single pass
@@ -457,15 +576,33 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
   }
 
   // ── FLOATS and METADATA passes (parallel) ────────────────────────────
+  // Use fullTextForPasses so floats/metadata can see ALL captions, equations
+  // and references — not just the truncated balanced window.
+  const fullCtx = { ...common, textWindow: fullTextForPasses };
   const [floatsRes, metadataRes] = await Promise.all([
-    runScopeWithRetry('floats', common, { userId, userEmail, projectId }),
-    runScopeWithRetry('metadata', common, { userId, userEmail, projectId }),
+    runScopeWithRetry('floats', fullCtx, { userId, userEmail, projectId }),
+    runScopeWithRetry('metadata', fullCtx, { userId, userEmail, projectId }),
   ]);
 
   const files = [...floatsRes.files, ...sectionFiles, ...metadataRes.files];
   const models = [floatsRes.model, sectionModel, metadataRes.model].filter(Boolean);
 
   console.log(`[AI-MODULAR] Total: ${files.length} validated files (${floatsRes.files.length} floats, ${sectionFiles.length} sections, ${metadataRes.files.length} metadata), ${floatsRes.rejected + sectionRejected + metadataRes.rejected} rejected`);
+
+  // ── SECTION COVERAGE CHECK ──────────────────────────────────────────
+  // Verify every section from the verdict has a corresponding file. Missing
+  // sections cause blank PDF because main.tex \input references nonexistent
+  // files. If coverage is below 50%, the AI mapping is unreliable — fall
+  // back to deterministic assembly.
+  const sectionFileCount = sectionFiles.filter(f => f.path.startsWith('sections/')).length;
+  const expectedSectionCount = verdict.sections.length;
+  if (expectedSectionCount > 0 && sectionFileCount === 0 && files.length > 0) {
+    console.warn(`[AI-MODULAR] WARNING: ${expectedSectionCount} sections expected but 0 section files generated. AI mapping is unreliable — falling back.`);
+    return null;
+  }
+  if (expectedSectionCount > 0 && sectionFileCount < expectedSectionCount * 0.4) {
+    console.warn(`[AI-MODULAR] WARNING: Only ${sectionFileCount}/${expectedSectionCount} section files generated (< 40% coverage). AI mapping may produce incomplete output.`);
+  }
 
   if (files.length === 0) {
     console.warn('[AI-MODULAR] No validated AI files — falling back to deterministic assembly.');

@@ -87,64 +87,6 @@ export async function POST(req: Request) {
     const rawHtml = structured.rawHtml || project.content || "";
     const rawXml = structured.rawXml || "";
 
-    // --- BACKGROUND PARALLEL AI AGENT ENHANCEMENT ---
-    Promise.resolve().then(async () => {
-      try {
-        const { routeToAgent } = await import('@/lib/agent-gateway');
-        const docText = structured.fullText || (structured.body && Array.isArray(structured.body) ? structured.body.map((n: any) => n.text || '').join('\n') : '');
-        await routeToAgent({
-          agent: 'doc2latex',
-          messages: [
-            {
-              role: 'user',
-              content: `Please convert the attached document into LaTeX code, following these requirements:
-
-1. Structure & Modularity
-Split the document into logical modular files (e.g., main.tex, sections/introduction.tex, sections/methodology.tex, sections/results.tex, sections/conclusion.tex, etc.)
-Use \\input{} or \\include{} in main.tex to link all section files
-Preserve the original document's structure (headings, subheadings, section order)
-
-2. Content Fidelity
-Preserve all original text, formatting (bold, italics, underline), and structure exactly as in the source
-Maintain all tables, converting them to proper LaTeX table environments (table, tabular, or longtable as appropriate)
-Recreate all mathematical equations using proper LaTeX math syntax
-Preserve lists (numbered/bulleted) using enumerate/itemize
-
-3. Assets
-Extract and include all images/figures, saving them in an images/ or figures/ folder
-Use \\includegraphics with appropriate sizing and placement
-Add captions and labels for all figures and tables for cross-referencing
-
-4. Citations & Bibliography
-Create a separate references.bib file containing all citations in proper BibTeX format
-Use \\cite{} commands in-text at the exact locations where citations appear in the original document
-Ensure each bib entry includes complete metadata (author, title, year, journal/publisher, DOI/URL if available)
-Use a suitable bibliography style (e.g., plain, ieee, apalike) via \\bibliographystyle{}
-
-5. Accuracy Check
-Flag any content that is ambiguous, unclear, or cannot be converted with full confidence, rather than guessing
-If any assets (images, special symbols) cannot be extracted, explicitly note this instead of omitting silently
-Preserve page layout elements (headers/footers, margins) if specified in the original
-
-6. Deliverables
-Provide a folder structure summary showing all files created
-Include a brief compilation guide (e.g., which LaTeX engine to use: pdfLaTeX/XeLaTeX/LuaLaTeX, required packages)`
-            }
-          ],
-          context: {
-            userId: session.user.id,
-            userEmail: session.user.email || undefined,
-            projectId,
-            documentTitle: project.title,
-            templateId,
-            documentText: (docText || '').slice(0, 180000),
-          }
-        });
-      } catch (aiErr) {
-        console.warn('[GENERATE-LATEX] AI Agent background invocation notice:', aiErr);
-      }
-    });
-
     // --- RESOLVE TEMPLATE ---
     const template = getTemplateById(mapLegacyTemplateId(templateId));
     let templateMainTex: string | undefined = undefined;

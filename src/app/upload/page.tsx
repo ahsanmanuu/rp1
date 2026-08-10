@@ -384,7 +384,11 @@ function UploadContent() {
 
             xhr.onload = () => {
               if (simulatedInterval) clearInterval(simulatedInterval);
-              setAnalysisProgress(100);
+              // NOTE: Do NOT set 100% here — for large files the server
+              // returns { pending: true } and processing continues in the
+              // background. Progress will be updated by the polling loop
+              // (for pending uploads) or after project data fetch (for
+              // synchronous uploads).
 
               if (xhr.status >= 200 && xhr.status < 300) {
                 try {
@@ -444,6 +448,9 @@ function UploadContent() {
         // The simulated progress interval is no longer needed — the server
         // provides real progress via polling from this point onward.
         if (simulatedInterval) { clearInterval(simulatedInterval); simulatedInterval = null; }
+        // Reset maxProgress so server-side polling values (42%, 55%, 74%, etc.)
+        // can override the client-side upload simulation progress.
+        maxProgressRef.current = 0;
         const pollUploadId = uploadData.uploadId;
         // Total timeout: 60 min (large DOCX + AI analysis can be slow).
         const pollMaxWaitMs = 60 * 60 * 1000;
