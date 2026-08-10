@@ -112,7 +112,7 @@ export async function getServerSession(): Promise<PbServerSession | null> {
     const dbPromise = prisma.userSession.findUnique({
       where: { sessionToken: token },
       include: { user: true }
-    }).catch((dbErr) => {
+    }).catch((dbErr: any) => {
       console.error("[AUTH] Database session validation query failed:", dbErr?.message || dbErr);
       return null;
     });
