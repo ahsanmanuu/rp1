@@ -607,9 +607,6 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     console.warn(`[AI-MODULAR] WARNING: Only ${sectionFileCount}/${expectedSectionCount} section files generated (< 50% coverage). AI mapping is unreliable — falling back to deterministic assembler.`);
     return null;
   }
-  if (expectedSectionCount > 0 && sectionFileCount < expectedSectionCount * 0.5) {
-    console.warn(`[AI-MODULAR] WARNING: Only ${sectionFileCount}/${expectedSectionCount} section files generated (< 50% coverage). AI mapping may produce incomplete output.`);
-  }
 
   if (files.length === 0) {
     console.warn('[AI-MODULAR] No validated AI files — falling back to deterministic assembly.');
