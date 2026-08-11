@@ -569,7 +569,7 @@ function UploadContent() {
           syncAttempts++;
           try {
             const projectFetchController = new AbortController();
-            const projectFetchTimeout = setTimeout(() => projectFetchController.abort(), 10000);
+            const projectFetchTimeout = setTimeout(() => projectFetchController.abort(), 30000);
             const results = await Promise.all([
               fetch(`/api/projects/${uploadData.projectId}`, { cache: 'no-store', signal: projectFetchController.signal }),
               templatesPromise,
@@ -579,7 +579,7 @@ function UploadContent() {
             if (projRes && projRes.ok) break;
           } catch {
             if (syncAttempts < maxSyncAttempts) {
-              await new Promise(r => setTimeout(r, 400 * syncAttempts));
+              await new Promise(r => setTimeout(r, 1000 * syncAttempts));
               continue;
             }
           }
