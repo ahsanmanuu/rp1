@@ -76,9 +76,28 @@ export default function RootLayout({
               };
             }
             function isExtensionError(e){
-              var m = (e && (e.message || e.stack || e.name || (e.reason && (e.reason.message || e.reason.stack)))) || '';
-              var str = String(m).toLowerCase();
-              return str.indexOf('chrome-extension://') !== -1 || str.indexOf('moz-extension://') !== -1 || str.indexOf('safari-extension://') !== -1 || str.indexOf('couponcollection') !== -1 || str.indexOf('affiliatecashback') !== -1 || str.indexOf('invalid/') !== -1 || str.indexOf('script.js') !== -1 || str.indexOf('bhk') !== -1 || str.indexOf('unpaywall') !== -1 || str.indexOf('mutationobserver') !== -1 || str.indexOf('parameter 1 is not of type') !== -1;
+              if (!e) return false;
+              var msg = (typeof e === 'string' ? e : '') + ' ' +
+                        (e.message || '') + ' ' +
+                        (e.filename || '') + ' ' +
+                        (e.name || '') + ' ' +
+                        (e.stack || '') + ' ' +
+                        (e.error ? (e.error.message || '') + ' ' + (e.error.stack || '') : '') + ' ' +
+                        (e.reason ? (e.reason.message || '') + ' ' + (e.reason.stack || '') : '') + ' ' +
+                        (e.target ? (e.target.src || e.target.href || e.target.outerHTML || '') : '');
+              var str = String(msg).toLowerCase();
+              return str.indexOf('chrome-extension://') !== -1 ||
+                     str.indexOf('moz-extension://') !== -1 ||
+                     str.indexOf('safari-extension://') !== -1 ||
+                     str.indexOf('couponcollection') !== -1 ||
+                     str.indexOf('affiliatecashback') !== -1 ||
+                     str.indexOf('invalid/') !== -1 ||
+                     str.indexOf('script.js') !== -1 ||
+                     str.indexOf('bhk') !== -1 ||
+                     str.indexOf('unpaywall') !== -1 ||
+                     str.indexOf('mutationobserver') !== -1 ||
+                     str.indexOf('parameter 1 is not of type') !== -1 ||
+                     str.indexOf("not of type 'node'") !== -1;
             }
             function isChunkError(e){
               if (isExtensionError(e)) return false;
@@ -123,14 +142,15 @@ export default function RootLayout({
             }
 
             window.addEventListener('error', function(e) {
-              if (isExtensionError(e) || isExtensionError(e.target && e.target.src)) {
-                e.preventDefault && e.preventDefault();
-                return;
+              if (isExtensionError(e) || isExtensionError(e.target && (e.target.src || e.target.href))) {
+                if (e.preventDefault) e.preventDefault();
+                if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                return true;
               }
               var t = e.target || {};
               if ((t.tagName === 'SCRIPT' && t.src && t.src.indexOf('/_next/static/chunks/') !== -1) ||
                   (t.tagName === 'LINK' && t.rel === 'stylesheet' && t.href && t.href.indexOf('/_next/static/') !== -1)) {
-                e.preventDefault && e.preventDefault();
+                if (e.preventDefault) e.preventDefault();
                 retryResource(t.src || t.href, t.tagName, 0);
               }
             }, true);
