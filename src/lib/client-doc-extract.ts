@@ -18,9 +18,20 @@
  * user picks a template (Phase 2 generate-latex). The manifest names keep the
  * server-side report, AI analysis and LaTeX assembly consistent with the
  * local figure set.
+ *
+ * FALLBACK IMAGE EXTRACTION: mammoth's convertImage only handles <a:blip>
+ * (DrawingML) images. Real-world DOCX files frequently contain images via:
+ *   - VML <v:imagedata> (compatibility mode / Word 2003 era)
+ *   - OOXML chart objects (<c:chart>) with raster fallbacks
+ *   - mc:AlternateContent fallback blocks
+ *   - Images inside <w:object> / <w:pict> wrappers
+ * A secondary JSZip pass scans the DOCX ZIP to find these missed images and
+ * injects <img> tags into the HTML output so the server-side pipeline
+ * (DeepDocumentParser → AI analysis → LaTeX assembly) can use them.
  */
 
 import mammoth from 'mammoth';
+import JSZip from 'jszip';
 
 export interface ClientFigure {
   name: string;
@@ -60,6 +71,31 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+function extFromContentType(ct: string): string {
+  const lc = (ct || '').toLowerCase();
+  if (lc.includes('jpeg') || lc.includes('jpg')) return 'jpg';
+  if (lc.includes('gif')) return 'gif';
+  if (lc.includes('bmp')) return 'bmp';
+  if (lc.includes('tiff') || lc.includes('tif')) return 'tiff';
+  return 'png';
+}
+
+function extFromFilename(name: string): string {
+  const dot = name.lastIndexOf('.');
+  if (dot === -1) return 'png';
+  return name.substring(dot + 1).toLowerCase();
+}
+
+function contentTypeFromExt(ext: string): string {
+  switch (ext) {
+    case 'jpg': case 'jpeg': return 'image/jpeg';
+    case 'gif': return 'image/gif';
+    case 'bmp': return 'image/bmp';
+    case 'tiff': case 'tif': return 'image/tiff';
+    case 'png': default: return 'image/png';
+  }
+}
+
 /**
  * Splits the references/bibliography block off the tail of the document text
  * (the AI structure pass needs the full text for reference counting; the
@@ -82,6 +118,192 @@ export function splitReferencesText(
     mainText: lines.slice(0, refStart).join('\n'),
     referencesText: lines.slice(refStart).join('\n'),
   };
+}
+
+/**
+ * Fallback image extraction using JSZip.
+ *
+ * mammoth only handles <a:blip> (DrawingML) images. This pass scans the
+ * DOCX XML directly to find VML images (<v:imagedata>), OOXML chart raster
+ * fallbacks, and images inside mc:AlternateContent blocks that mammoth
+ * silently drops.
+ *
+ * Returns the additional figures found and an updated HTML string with <img>
+ * tags injected at the end of the document body.
+ */
+async function fallbackZipImageExtraction(
+  arrayBuffer: ArrayBuffer,
+  html: string,
+  figures: ClientFigure[],
+  figIdx: number,
+  warnings: string[],
+): Promise<{ html: string; figures: ClientFigure[]; figIdx: number; warnings: string[] }> {
+  let zip: JSZip;
+  try {
+    zip = await JSZip.loadAsync(arrayBuffer);
+  } catch {
+    return { html, figures, figIdx, warnings };
+  }
+
+  // 1. Build relationship map: rId -> target relative path (e.g. "media/image1.png")
+  const relsMap = new Map<string, string>();
+  const relsEntry = zip.file('word/_rels/document.xml.rels');
+  if (relsEntry) {
+    try {
+      const relsXml = await relsEntry.async('text');
+      const relRegex = /Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/g;
+      let m: RegExpExecArray | null;
+      while ((m = relRegex.exec(relsXml))) {
+        relsMap.set(m[1], m[2]);
+      }
+    } catch { /* non-critical */ }
+  }
+
+  if (relsMap.size === 0) return { html, figures, figIdx, warnings };
+
+  // 2. Parse document.xml to find ALL image reference rIds
+  const docEntry = zip.file('word/document.xml');
+  if (!docEntry) return { html, figures, figIdx, warnings };
+
+  let docXml: string;
+  try {
+    docXml = await docEntry.async('text');
+  } catch {
+    return { html, figures, figIdx, warnings };
+  }
+
+  // Collect every rId referenced by image-bearing elements.
+  // We look for: a:blip r:embed, v:imagedata r:id, v:shape filled image,
+  // c:chart r:id, o:OLEObject r:id, and any generic r:embed / r:id on
+  // drawing-related elements.
+  const referencedRIds = new Set<string>();
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(docXml, 'application/xml');
+
+    // DrawingML blip images (mammoth handles these, but we track for dedup)
+    doc.querySelectorAll('a\\:blip, blip').forEach(el => {
+      const rid = el.getAttribute('r:embed') || el.getAttribute('embed');
+      if (rid) referencedRIds.add(rid);
+    });
+
+    // VML imagedata
+    doc.querySelectorAll('v\\:imagedata, imagedata').forEach(el => {
+      const rid = el.getAttribute('r:id') || el.getAttribute('id');
+      if (rid) referencedRIds.add(rid);
+    });
+
+    // VML shape with fill type="frame" or "pattern" referencing an image
+    doc.querySelectorAll('v\\:fill, fill').forEach(el => {
+      const rid = el.getAttribute('r:id') || el.getAttribute('id');
+      if (rid) referencedRIds.add(rid);
+    });
+
+    // OLE objects
+    doc.querySelectorAll('o\\:OLEObject, OLEObject').forEach(el => {
+      const rid = el.getAttribute('r:id') || el.getAttribute('id');
+      if (rid) referencedRIds.add(rid);
+    });
+
+    // w:object / w:pict wrappers may have r:id directly
+    doc.querySelectorAll('object').forEach(el => {
+      const rid = el.getAttribute('r:id') || el.getAttribute('id');
+      if (rid && relsMap.has(rid)) referencedRIds.add(rid);
+    });
+
+    // Any element with r:embed that points to a media file
+    doc.querySelectorAll('[r\\:embed]').forEach(el => {
+      const rid = el.getAttribute('r:embed');
+      if (rid && relsMap.has(rid)) referencedRIds.add(rid);
+    });
+  } catch {
+    // DOMParser failed — fall through to regex-based extraction
+  }
+
+  // Regex fallback if DOMParser produced nothing (some browsers / malformed XML)
+  if (referencedRIds.size === 0) {
+    const ridRegex = /(?:r:embed|r:id|embed|id)=["']([^"']*rId\d+[^"']*)/gi;
+    let rm: RegExpExecArray | null;
+    while ((rm = ridRegex.exec(docXml))) {
+      const rid = rm[1].trim();
+      if (/^rId\d+$/i.test(rid) || relsMap.has(rid)) {
+        referencedRIds.add(rid);
+      }
+    }
+  }
+
+  // 3. Build a set of image paths already captured by mammoth
+  //    (mammoth replaces <img> src with the rId's target path)
+  const alreadyCaptured = new Set<string>();
+  for (const fig of figures) {
+    alreadyCaptured.add(fig.name);
+  }
+
+  // Also scan HTML for any src attributes that reference media files
+  const srcRegex = /src="([^"]*media\/[^"]+)"/gi;
+  let srcMatch: RegExpExecArray | null;
+  while ((srcMatch = srcRegex.exec(html))) {
+    const srcPath = srcMatch[1].replace(/^.*?word\//, 'word/');
+    alreadyCaptured.add(srcPath);
+  }
+
+  // 4. For each referenced rId, check if the target is an image we missed
+  const IMAGE_EXTS = /\.(png|jpe?g|gif|bmp|tiff?|emf|wmf|svg)$/i;
+  const newFigures: ClientFigure[] = [];
+  const newImgTags: string[] = [];
+
+  for (const rid of referencedRIds) {
+    const target = relsMap.get(rid);
+    if (!target) continue;
+    if (!IMAGE_EXTS.test(target)) continue;
+
+    // Skip if already captured by mammoth
+    const basename = target.replace(/^.*\//, '');
+    if (alreadyCaptured.has(basename)) continue;
+    // Also check full path
+    if (alreadyCaptured.has(target)) continue;
+
+    const zipPath = target.startsWith('word/') ? target : `word/${target}`;
+    const entry = zip.file(zipPath);
+    if (!entry) continue;
+
+    try {
+      const rawBytes = await entry.async('uint8array');
+      if (rawBytes.length < 100) continue; // Skip tiny placeholders
+
+      const ext = extFromFilename(target);
+      // Skip EMF/WMF — they cannot be displayed as raster images
+      if (ext === 'emf' || ext === 'wmf') {
+        warnings.push(`Skipped vector image ${basename} (EMF/WMF not displayable in browser)`);
+        continue;
+      }
+
+      const ct = contentTypeFromExt(ext);
+      const name = `rf_fig_${figIdx++}.${ext}`;
+      const dataUrl = `data:${ct};base64,${bytesToBase64(rawBytes)}`;
+      newFigures.push({ name, contentType: ct, dataUrl });
+
+      // Inject an <img> tag so DeepDocumentParser can pick it up
+      newImgTags.push(`<img src="${name}" alt="${basename}" />`);
+    } catch {
+      warnings.push(`Failed to extract fallback image ${basename}`);
+    }
+  }
+
+  // 5. Merge new figures and inject <img> tags into the HTML
+  figures.push(...newFigures);
+
+  if (newImgTags.length > 0) {
+    // Inject before closing </body> or at end of HTML
+    const bodyClose = html.lastIndexOf('</body>');
+    const injectPoint = bodyClose !== -1 ? bodyClose : html.length;
+    html = html.substring(0, injectPoint) +
+      `\n<!-- fallback-extracted figures -->\n${newImgTags.join('\n')}\n` +
+      html.substring(injectPoint);
+  }
+
+  return { html, figures, figIdx, warnings };
 }
 
 /**
@@ -114,7 +336,20 @@ export async function extractClientDocx(file: File): Promise<ClientDocxEnvelope>
     },
   );
 
-  const html = result.value || '';
+  let html = result.value || '';
+
+  // FALLBACK: JSZip-based extraction for VML/chart/AlternateContent images
+  // that mammoth silently drops. This mirrors the server-side heavy path
+  // (JSDOM + AdmZip chart/VML extraction) but runs entirely in the browser.
+  const zipResult = await fallbackZipImageExtraction(
+    arrayBuffer, html, figures, figIdx, warnings,
+  );
+  html = zipResult.html;
+  figures.length = 0;
+  figures.push(...zipResult.figures);
+  figIdx = zipResult.figIdx;
+  warnings.push(...zipResult.warnings);
+
   let text = stripTags(html);
   try {
     const raw = await mammoth.extractRawText({ arrayBuffer });
