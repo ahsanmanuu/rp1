@@ -90,6 +90,7 @@ export default function RootLayout({
                      str.indexOf('moz-extension://') !== -1 ||
                      str.indexOf('safari-extension://') !== -1 ||
                      str.indexOf('couponcollection') !== -1 ||
+                     str.indexOf('autocoupon') !== -1 ||
                      str.indexOf('affiliatecashback') !== -1 ||
                      str.indexOf('invalid/') !== -1 ||
                      str.indexOf('script.js') !== -1 ||
@@ -97,7 +98,10 @@ export default function RootLayout({
                      str.indexOf('unpaywall') !== -1 ||
                      str.indexOf('mutationobserver') !== -1 ||
                      str.indexOf('parameter 1 is not of type') !== -1 ||
-                     str.indexOf("not of type 'node'") !== -1;
+                     str.indexOf("not of type 'node'") !== -1 ||
+                     str.indexOf('disconnected port object') !== -1 ||
+                     str.indexOf('err_network_io_suspended') !== -1 ||
+                     str.indexOf('err_network_changed') !== -1;
             }
             function isChunkError(e){
               if (isExtensionError(e)) return false;
@@ -140,6 +144,11 @@ export default function RootLayout({
                 });
               }).catch(function(){ setTimeout(function(){ retryResource(url, tagName, attempt + 1); }, 1200); });
             }
+
+            window.onerror = function(msg, url, line, col, err) {
+              var combo = (msg || '') + ' ' + (url || '') + ' ' + (err ? (err.message || '') + ' ' + (err.stack || '') : '');
+              if (isExtensionError(combo)) return true;
+            };
 
             window.addEventListener('error', function(e) {
               if (isExtensionError(e) || isExtensionError(e.target && (e.target.src || e.target.href))) {
