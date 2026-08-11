@@ -698,9 +698,11 @@ export async function runHardenedPipeline(
               // and this block pulled the stale copy back into every compile.
               // The editor session payload is the source of truth — recovery is
               // limited to the delete-aware ProjectFile rows below.
-              // Attempt 1: Recover from ProjectFile records (SKIPPED when session
-              // is authoritative — deleted files must not be resurrected).
-              if (!recovered && projectId && !sessionCompleteForRecovery) {
+              // Attempt 1: Recover from ProjectFile records.
+              // ALWAYS attempt recovery for files referenced by \input/\include
+              // in main.tex — even when sessionCompleteForRecovery is true.
+              // The delete-fix only prevents resurrection of UNREFERENCED files.
+              if (!recovered && projectId) {
                 try {
                   const { prisma } = require('@/lib/prisma');
                   const dbFile = await prisma.projectFile.findFirst({
@@ -2226,10 +2228,21 @@ export async function hardenedDiscovery(projectId: string | null, files: FilePay
         if (!sessionPaths.has(normPath) && !normalized.some(f => normalizePath(f.path) === normPath)) {
           const fileExt = (dbFile.filename.split('.').pop() || '').toLowerCase();
           // DELETE FIX: never resurrect deleted .tex/.bib source files from
-          // stale DB rows when the session carries a real main.tex.
+          // stale DB rows when the session carries a real main.tex — UNLESS
+          // the file is actively referenced by \input/\include in main.tex.
+          // Files the user deleted won't appear in \input references, so they
+          // stay dead. Files that just weren't synced to the client FS yet
+          // (e.g. 487 section files from Phase 2) DO need recovery.
           if (sessionComplete && /^(tex|bib)$/i.test(fileExt)) {
-            console.log(`[PIPELINE] Skipping DB recovery of deleted file: ${dbFile.filename}`);
-            continue;
+            const mainContent = mainInSession?.content || '';
+            const isReferenced = mainContent.includes(`{${dbFile.filename}}`) ||
+              mainContent.includes(`{${dbFile.filename.replace(/\.tex$/, '')}}`) ||
+              mainContent.includes(`{${dbFile.filename.replace(/\.bib$/, '')}}`);
+            if (!isReferenced) {
+              console.log(`[PIPELINE] Skipping DB recovery of unreferenced file: ${dbFile.filename}`);
+              continue;
+            }
+            console.log(`[PIPELINE] Recovering referenced file from DB: ${dbFile.filename}`);
           }
           const ext = dbFile.fileType || fileExt;
           const isBinary = /^(png|jpg|jpeg|webp|gif|pdf|eps|otf|ttf|woff|woff2|tfm|pfb|afm|heic|heif|tiff|tif|bmp|avif|svg)$/i.test(ext);
@@ -2366,11 +2379,17 @@ export async function hardenedDiscovery(projectId: string | null, files: FilePay
 
     const existingIdx = normalized.findIndex(f => normalizePath(f.path) === normalizePath(relPath));
     // DELETE FIX: never resurrect deleted .tex/.bib source files from the disk
-    // cache when the session carries a real main.tex (the IDE delete already
-    // removed them from disk + DB; stale copies here must not win).
+    // cache when the session carries a real main.tex — UNLESS the file is
+    // actively referenced by \input/\include in main.tex.
     if (sessionComplete && existingIdx === -1 && /^(tex|bib)$/i.test(ext.slice(1))) {
-      console.log(`[PIPELINE] Skipping disk recovery of deleted file: ${relPath}`);
-      continue;
+      const mainContent = mainInSession?.content || '';
+      const isReferenced = mainContent.includes(`{${relPath.replace(/\\/g, '/')}}`) ||
+        mainContent.includes(`{${relPath.replace(/\\/g, '/').replace(/\.tex$/, '')}}`);
+      if (!isReferenced) {
+        console.log(`[PIPELINE] Skipping disk recovery of unreferenced file: ${relPath}`);
+        continue;
+      }
+      console.log(`[PIPELINE] Recovering referenced file from disk: ${relPath}`);
     }
     if (existingIdx !== -1) {
         if (isBinary) {
