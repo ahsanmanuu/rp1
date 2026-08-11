@@ -1293,13 +1293,20 @@ function UploadContent() {
                       chartCount:      aiCount('charts')     ?? (hasBody ? bodyChartCount      : (s.chartCount      || 0)),
                       tableCount:      aiCount('tables')     ?? (hasBody ? bodyTableCount      : (s.tableCount      || 0)),
                       equationCount:   aiCount('equations')  ?? (hasBody ? bodyEquationCount   : (s.equationCount   || 0)),
-                      // Citations: recompute live from the stored raw HTML — identical
-                      // logic to the server parser — never trust a stale snapshot.
-                      // (rawHtml covers the full document, so it wins over the AI's
-                      // front-matter-only view; AI fills in for PDFs without rawHtml.)
-                      citationCount:   typeof structured?.rawHtml === 'string' && structured.rawHtml.length > 0
-                                        ? countCitationsFromHtml(structured.rawHtml)
-                                        : (aiCount('citations') ?? (s.citationCount || projectData.citationCount || 0)),
+                      // Citations: use the server-computed count (from FULL rawHtml
+                      // before any PB truncation) as the primary source. Live
+                      // re-computation from stored rawHtml is only a secondary
+                      // signal — for large 20MB docs, rawHtml may be truncated
+                      // to fit PB limits, yielding a false 0. Take the MAX of
+                      // stored count and live count to ensure no undercounting.
+                      citationCount:   (() => {
+                        const storedCount = aiCount('citations') ?? (s.citationCount || projectData.citationCount || 0);
+                        if (typeof structured?.rawHtml === 'string' && structured.rawHtml.length > 0) {
+                          const liveCount = countCitationsFromHtml(structured.rawHtml);
+                          return Math.max(storedCount, liveCount);
+                        }
+                        return storedCount;
+                      })(),
                       // References: the refs array is authoritative when present
                       // (AI replaces it wholesale for corrected docs)
                       referenceCount:  hasRefsArray ? validRefs.length : (aiCount('references') ?? (s.referenceCount || projectData.referenceCount || 0)),

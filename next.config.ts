@@ -313,18 +313,25 @@ const nextConfig: NextConfig = {
       [path.resolve(process.cwd(), 'node_modules/@prisma/client/edge.js')]: path.resolve(process.cwd(), 'node_modules/@prisma/client/default.js'),
     };
 
+    config.watchOptions = {
+      ignored: [
+        '**/public/uploads/**',
+        '**/tmp/**',
+        '**/pb_data/**',
+        '**/pb_migrations/**',
+        '**/*.log',
+        '**/*.db*',
+        '**/scratch/**',
+        '**/scratch_project/**',
+        '**/node_modules/**',
+        '**/.next/**',
+      ],
+    };
+
     if (!isServer) {
       config.resolve.alias = {
         ...config.resolve.alias,
         canvas: false,
-      };
-      config.watchOptions = {
-        ignored: [
-          '**/public/uploads/**',
-          '**/tmp/**',
-          '**/node_modules/**',
-          '**/.next/**',
-        ],
       };
     }
     

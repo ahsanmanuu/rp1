@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 let cache: { data: any; expiry: number } | null = null;
 let inflightData: Promise<any> | null = null;
-const CACHE_TTL = 30_000;
+const CACHE_TTL = 600_000; // 10 minutes cache for instant homepage loading
 
 function getJsonFallbackData(): any {
   try {

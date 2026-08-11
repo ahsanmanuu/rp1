@@ -59,7 +59,7 @@ export default function SecurityBlockOverlay() {
         let geoData: any = null;
         for (const provider of providers) {
           try {
-            const geoRes = await fetch(provider.url, { signal: AbortSignal.timeout(5000) });
+            const geoRes = await fetch(provider.url, { signal: AbortSignal.timeout(2000) });
             if (!geoRes.ok) continue;
             const data = await geoRes.json();
             const mapped = provider.map(data);
@@ -98,10 +98,14 @@ export default function SecurityBlockOverlay() {
       }
     };
 
-    recordGeoLocation();
+    // Defer geolocation logging by 4 seconds so critical page UI renders instantly
+    const geoTimer = setTimeout(recordGeoLocation, 4000);
     checkBlock();
-    const interval = setInterval(checkBlock, 60000); // Poll block check every 60s (reduced from 10s)
-    return () => clearInterval(interval);
+    const interval = setInterval(checkBlock, 300000); // Poll block check every 5m
+    return () => {
+      clearTimeout(geoTimer);
+      clearInterval(interval);
+    };
   }, []);
 
   // Countdown timer for temporary blocks only

@@ -37,7 +37,7 @@ interface SessionProviderProps {
   refetchOnWindowFocus?: boolean;
 }
 
-export function SessionProvider({ children, refetchInterval = 30, refetchOnWindowFocus = false }: SessionProviderProps) {
+export function SessionProvider({ children, refetchInterval = 120, refetchOnWindowFocus = false }: SessionProviderProps) {
   const [data, setData] = useState<PbServerSession | null>(null);
   const [status, setStatus] = useState<SessionStatus>("loading");
   

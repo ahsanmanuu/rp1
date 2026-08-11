@@ -103,11 +103,14 @@ function buildVerdictCompact(doc: Record<string, any>): Record<string, any> {
     : body.filter((n: any) => n.type === 'algorithm' && (n.title || n.caption))
         .map((n: any) => String(n.title || n.caption));
 
-  // Extract references from body
+  // Extract references from aiVerdict, top-level doc.references array, or body fallback
+  const docRefs = Array.isArray(doc.references) ? doc.references : [];
   const references = Array.isArray(ai.references) && ai.references.length > 0
     ? ai.references.map((r: any) => String(r || ''))
-    : body.filter((n: any) => n.type === 'reference' && n.text)
-        .map((n: any) => String(n.text));
+    : docRefs.length > 0
+      ? docRefs.map((r: any) => String(typeof r === 'string' ? r : r?.text || '')).filter(Boolean)
+      : body.filter((n: any) => n.type === 'reference' && n.text)
+          .map((n: any) => String(n.text));
 
   // Count components
   const componentCounts = {

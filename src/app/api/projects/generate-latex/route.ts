@@ -340,18 +340,17 @@ export async function POST(req: Request) {
     }
 
     // Update project status
+    // Update project status: preserve essential document structure (body, references, aiStructure)
+    // while stripping heavy rawHtml/rawXml blobs to remain cleanly under PocketBase record size limits.
     let safeStructured = structured;
     try {
       const jsonStr = JSON.stringify(structured);
       if (jsonStr.length > 400000) {
+        // Strip heavy rawHtml and rawXml strings (saved durably in source_document.json on disk)
+        const { rawHtml: _h, rawXml: _x, ...essentialStructure } = structured;
         safeStructured = {
-          title: structured.title,
-          authors: structured.authors,
-          affiliations: structured.affiliations,
-          abstract: structured.abstract,
-          keywords: structured.keywords,
-          stats: structured.stats,
-          _truncated: true,
+          ...essentialStructure,
+          _truncatedHtml: true,
         };
       }
     } catch {}

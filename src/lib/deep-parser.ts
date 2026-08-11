@@ -237,6 +237,7 @@ export class DeepDocumentParser {
       const fullText = lines.join(' ');
       result.stats.wordCount = fullText.split(/\s+/).filter(w => w.length > 1).length;
       result.stats.charCount = fullText.length;
+      (result as any).fullText = fullText;
       
       const sectionRx = /^(?:(\d+\.?\s+|[IVXLCDM]+\.\s+|[A-Za-z]\.\s+)?)(Abstract|Introduction|Background|Related\s+Work|Related\s+Works|Literature\s+Review|Methodology|Methods|Materials\s+and\s+Methods|Proposed\s+Method|Proposed\s+Approach|Proposed\s+Framework|Experimental\s+Setup|Experiments|Results?|Results?\s+and\s+Discussion|Discussion|Conclusion|Conclusions|Summary|Acknowledgements?|Acknowledgments?|References?|Bibliography|Appendix|Appendices|Future\s+Work|Future\s+Directions|System\s+Model|System\s+Overview|Problem\s+Formulation|Problem\s+Statement|Performance\s+Evaluation|Evaluation|Simulation\s+Results?|Comparison|Anomaly\s+Detection|Declarations?|Ethics\s+(?:Approval|Statement)|Conflict\s+of\s+Interest|Conflicts\s+of\s+Interest|Competing\s+Interests|Funding(?:\s+Statement|\s+Information)?|Data\s+Availability(?:\s+Statement)?|Authors?\s+Contributions?|Supplementary\s+(?:Material|Information)|Limitations?|Abbreviations?|Consent\s+(?:to\s+Participate|for\s+Publication)|Informed\s+Consent)s?[.:,]?\s*$/i;
       
@@ -487,6 +488,7 @@ export class DeepDocumentParser {
     const allText = (doc.body.textContent || '');
     result.stats.charCount = allText.replace(/\s/g, '').length;
     result.stats.wordCount = allText.split(/\s+/).filter((w: string) => /[a-z]/i.test(w) && w.length > 1).length;
+    (result as any).fullText = allText;
 
     const allSignificantRaw = Array.from(doc.querySelectorAll('p, h1, h2, h3, h4, h5, h6, table, img, figure, ul, ol, pre, blockquote, div')) as Element[];
     // Fix Figure/Table Duplication: Filter out elements that are nested inside semantic block elements that are processed as single units
