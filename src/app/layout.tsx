@@ -15,19 +15,21 @@ const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
   display: "swap",
+  weight: ["400", "500", "600", "700"],
 });
 
 const outfit = Outfit({
   subsets: ["latin"],
   variable: "--font-outfit",
   display: "swap",
-  weight: ["300", "400", "500", "600", "700", "800"],
+  weight: ["400", "500", "600", "700", "800"],
 });
 
 const jetbrains = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
   display: "swap",
+  weight: ["400", "500"],
 });
 
 const newsreader = Newsreader({
@@ -35,7 +37,7 @@ const newsreader = Newsreader({
   variable: "--font-newsreader",
   display: "swap",
   style: ["normal", "italic"],
-  weight: ["300", "400", "700"],
+  weight: ["400", "700"],
 });
 
 export async function generateMetadata() {
@@ -112,7 +114,10 @@ export default function RootLayout({
                      str.indexOf("not of type 'node'") !== -1 ||
                      str.indexOf('disconnected port object') !== -1 ||
                      str.indexOf('err_network_io_suspended') !== -1 ||
-                     str.indexOf('err_network_changed') !== -1;
+                     str.indexOf('err_network_changed') !== -1 ||
+                     str.indexOf('editorworkerservice') !== -1 ||
+                     str.indexOf('editorworkermain') !== -1 ||
+                     str.indexOf('failed to load worker script') !== -1;
             }
             function isChunkError(e){
               if (isExtensionError(e)) return false;

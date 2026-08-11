@@ -141,7 +141,8 @@ async function fallbackZipImageExtraction(
   let zip: JSZip;
   try {
     zip = await JSZip.loadAsync(arrayBuffer);
-  } catch {
+  } catch (err) {
+    console.warn('[DOCX-EXTRACT] JSZip: failed to open DOCX as ZIP:', err);
     return { html, figures, figIdx, warnings };
   }
 
@@ -159,11 +160,17 @@ async function fallbackZipImageExtraction(
     } catch { /* non-critical */ }
   }
 
-  if (relsMap.size === 0) return { html, figures, figIdx, warnings };
+  if (relsMap.size === 0) {
+    console.warn('[DOCX-EXTRACT] JSZip: no document.xml.rels found or 0 relationships');
+    return { html, figures, figIdx, warnings };
+  }
 
   // 2. Parse document.xml to find ALL image reference rIds
   const docEntry = zip.file('word/document.xml');
-  if (!docEntry) return { html, figures, figIdx, warnings };
+  if (!docEntry) {
+    console.warn('[DOCX-EXTRACT] JSZip: no word/document.xml found');
+    return { html, figures, figIdx, warnings };
+  }
 
   let docXml: string;
   try {
@@ -233,6 +240,19 @@ async function fallbackZipImageExtraction(
     }
   }
 
+  console.log(`[DOCX-EXTRACT] JSZip: ${relsMap.size} relationships, ${referencedRIds.size} image-bearing rIds found in document.xml`);
+  if (referencedRIds.size > 0) {
+    const ridTargets = [...referencedRIds].map(r => `${r} -> ${relsMap.get(r) || '?'}`);
+    console.log(`[DOCX-EXTRACT] JSZip: rId targets:`, ridTargets.join(', '));
+  }
+
+  // Scan word/media/ to see what's actually in the ZIP
+  const mediaFiles: string[] = [];
+  zip.folder('word/media')?.forEach((relativePath) => {
+    mediaFiles.push(relativePath);
+  });
+  console.log(`[DOCX-EXTRACT] JSZip: ${mediaFiles.length} files in word/media/: ${mediaFiles.slice(0, 10).join(', ')}${mediaFiles.length > 10 ? '...' : ''}`);
+
   // 3. Build a set of image paths already captured by mammoth
   //    (mammoth replaces <img> src with the rId's target path)
   const alreadyCaptured = new Set<string>();
@@ -247,6 +267,15 @@ async function fallbackZipImageExtraction(
     const srcPath = srcMatch[1].replace(/^.*?word\//, 'word/');
     alreadyCaptured.add(srcPath);
   }
+
+  // Also check for <img src="rf_fig_"> tags in the HTML
+  const rfFigRegex = /src="(rf_fig_\d+\.[^"]+)"/gi;
+  let rfMatch: RegExpExecArray | null;
+  while ((rfMatch = rfFigRegex.exec(html))) {
+    alreadyCaptured.add(rfMatch[1]);
+  }
+
+  console.log(`[DOCX-EXTRACT] JSZip: mammoth already captured ${alreadyCaptured.size} image(s): ${[...alreadyCaptured].join(', ')}`);
 
   // 4. For each referenced rId, check if the target is an image we missed
   const IMAGE_EXTS = /\.(png|jpe?g|gif|bmp|tiff?|emf|wmf|svg)$/i;
@@ -293,6 +322,8 @@ async function fallbackZipImageExtraction(
 
   // 5. Merge new figures and inject <img> tags into the HTML
   figures.push(...newFigures);
+
+  console.log(`[DOCX-EXTRACT] JSZip fallback: extracted ${newFigures.length} additional figure(s) from ZIP (${warnings.filter(w => w.startsWith('Failed')).length} failed, ${warnings.filter(w => w.startsWith('Skipped')).length} skipped EMF/WMF)`);
 
   if (newImgTags.length > 0) {
     // Inject before closing </body> or at end of HTML

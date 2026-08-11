@@ -9,6 +9,11 @@ import { useEffect } from "react";
  * restrictions, ad-blockers, or CDN outages.
  *
  * Must be mounted once before any Monaco Editor component.
+ *
+ * NOTE: Monaco's web worker (editorWorkerService) fails to resolve in
+ * Next.js due to `new URL('...?esm', import.meta.url)` not being handled
+ * by webpack. This is non-critical — the editor falls back to main-thread
+ * services. The error is suppressed in layout.tsx's error handler.
  */
 export default function MonacoSetup() {
   useEffect(() => {
