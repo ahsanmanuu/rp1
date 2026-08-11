@@ -64,16 +64,27 @@ export default function RootLayout({
         <Script id="chunk-retry" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: `
           (function(){
             var lastReload = 0;
-            if (typeof window !== 'undefined' && window.fetch) {
-              var _origFetch = window.fetch;
-              window.fetch = function(input, init) {
-                var url = typeof input === 'string' ? input : (input && input.url) ? input.url : '';
-                var strUrl = String(url || '').toLowerCase();
-                if (strUrl.indexOf('chrome-extension://') === 0 || strUrl.indexOf('moz-extension://') === 0 || strUrl.indexOf('safari-extension://') === 0 || strUrl.indexOf('couponcollection') !== -1 || strUrl.indexOf('affiliatecashback') !== -1 || strUrl.indexOf('invalid/') !== -1) {
-                  return Promise.resolve(new Response(JSON.stringify({ blocked: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
-                }
-                return _origFetch.apply(this, arguments);
-              };
+            if (typeof window !== 'undefined') {
+              if (window.MutationObserver && window.MutationObserver.prototype) {
+                var _origObserve = window.MutationObserver.prototype.observe;
+                window.MutationObserver.prototype.observe = function(target, options) {
+                  if (!target || !(target instanceof Node)) {
+                    return; // Safely ignore invalid targets passed by third-party extension scripts
+                  }
+                  return _origObserve.apply(this, arguments);
+                };
+              }
+              if (window.fetch) {
+                var _origFetch = window.fetch;
+                window.fetch = function(input, init) {
+                  var url = typeof input === 'string' ? input : (input && input.url) ? input.url : '';
+                  var strUrl = String(url || '').toLowerCase();
+                  if (strUrl.indexOf('chrome-extension://') === 0 || strUrl.indexOf('moz-extension://') === 0 || strUrl.indexOf('safari-extension://') === 0 || strUrl.indexOf('couponcollection') !== -1 || strUrl.indexOf('affiliatecashback') !== -1 || strUrl.indexOf('invalid/') !== -1) {
+                    return Promise.resolve(new Response(JSON.stringify({ blocked: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+                  }
+                  return _origFetch.apply(this, arguments);
+                };
+              }
             }
             function isExtensionError(e){
               if (!e) return false;
