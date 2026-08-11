@@ -39,7 +39,14 @@ interface SessionProviderProps {
 
 export function SessionProvider({ children, refetchInterval = 120, refetchOnWindowFocus = false }: SessionProviderProps) {
   const [data, setData] = useState<PbServerSession | null>(null);
-  const [status, setStatus] = useState<SessionStatus>("loading");
+  const [status, setStatus] = useState<SessionStatus>(() => {
+    if (typeof window !== "undefined") {
+      const hasToken = !!localStorage.getItem("auth-token");
+      const hasCookie = document.cookie.includes("pb_auth");
+      if (!hasToken && !hasCookie) return "unauthenticated";
+    }
+    return "loading";
+  });
   
   const isFetching = useRef(false);
   const sessionTokenRef = useRef<string | null>(null);

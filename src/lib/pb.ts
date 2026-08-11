@@ -284,18 +284,24 @@ export async function isPocketBaseReachable(): Promise<boolean> {
 }
 
 export async function pbAdmin(): Promise<PocketBase> {
-  // Return cached valid client — but validate token with PB server first
-  if (_adminPb) {
-    if (_adminPb.authStore.isValid) {
-      try {
-        await _adminPb.collection('_superusers').authRefresh();
-        return _adminPb;
-      } catch {
-        _adminPb.authStore.clear();
-        _adminPb = null;
-        _adminAuthPromise = null;
+  // Return cached valid client instantly — bypass redundant authRefresh network calls
+  if (_adminPb && _adminPb.authStore.isValid && _adminPb.authStore.token) {
+    try {
+      const parts = _adminPb.authStore.token.split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(base64UrlDecode(parts[1]));
+        // If token is valid for more than 1 hour, return immediately (0ms latency)
+        if (payload.exp && payload.exp * 1000 - Date.now() > 3600_000) {
+          return _adminPb;
+        }
       }
-    } else {
+    } catch {}
+    // Token near expiration — attempt refresh in background, fallback to re-auth
+    try {
+      await _adminPb.collection('_superusers').authRefresh();
+      return _adminPb;
+    } catch {
+      _adminPb.authStore.clear();
       _adminPb = null;
       _adminAuthPromise = null;
     }
