@@ -319,7 +319,7 @@ async function runScopeWithRetry(
     const retryRes = await raceWithTimeout(
       routeToAgent({
         agent: 'doc2latex-modular',
-        messages: [{ role: 'user', content: `Generate the modular LaTeX files for scope "${scope}" (retry — be concise).` }],
+        messages: [{ role: 'user', content: `Generate the modular LaTeX files for scope "${scope}" (retry — emit ALL body text, do not truncate sections).` }],
         context: {
           ...ctx,
           scope,
@@ -603,8 +603,8 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     console.warn(`[AI-MODULAR] WARNING: ${expectedSectionCount} sections expected but 0 section files generated. AI mapping is unreliable — falling back.`);
     return null;
   }
-  if (expectedSectionCount > 0 && sectionFileCount < expectedSectionCount * 0.3) {
-    console.warn(`[AI-MODULAR] WARNING: Only ${sectionFileCount}/${expectedSectionCount} section files generated (< 30% coverage). AI mapping is unreliable — falling back to deterministic assembler.`);
+  if (expectedSectionCount > 0 && sectionFileCount < expectedSectionCount * 0.5) {
+    console.warn(`[AI-MODULAR] WARNING: Only ${sectionFileCount}/${expectedSectionCount} section files generated (< 50% coverage). AI mapping is unreliable — falling back to deterministic assembler.`);
     return null;
   }
   if (expectedSectionCount > 0 && sectionFileCount < expectedSectionCount * 0.5) {

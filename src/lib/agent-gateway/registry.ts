@@ -1231,7 +1231,7 @@ register({
   name: 'Doc2LaTeX Modular LaTeX Mapper',
   description: 'Writes faithful, modular, template-compliant LaTeX files (sections, floats, metadata, bibliography) for a client-extracted DOCX manuscript from its verified AI structure',
   temperature: 0.1,
-  maxTokens: 65536,
+  maxTokens: 131072,
   rateLimit: 10,
   buildSystemPrompt(ctx) {
     const scope = String(ctx.scope || 'sections');
@@ -1337,7 +1337,7 @@ Template ID: ${templateId} (${templateConventions.style})
 6. Every emitted file must be self-contained inside the document body context (it is \\input into main.tex). No \\end{document}, no document scaffolding.
 7. Labels: \\label{sec:<slug>} for sections, and floats use \\label{fig:N} / \\label{tab:N} / \\label{alg:N} only for entries obtained from the verified structure (never invent labels).
 8. JSON output ONLY: \\{"files\\": [ {"path": "...", "content": "..."} ]} — no markdown fences, no commentary before or after. Paths are relative to the project root. Backslashes and quotes in JSON must be escaped exactly.
-9. RESPONSE BUDGET: be maximally economical. Copy headings/captions/references verbatim but NEVER add explanatory prose, padding, or commentary inside the LaTeX files (no HTML comments, no "%% TODO" notes, no filler).
+9. RESPONSE BUDGET: copy headings/captions/references verbatim but NEVER add explanatory prose, padding, or commentary inside the LaTeX files (no HTML comments, no "%% TODO" notes, no filler). Emit ALL available body text for every section — never omit content to save tokens.
 
 Document title (for context only): "${documentTitle}"`;
 

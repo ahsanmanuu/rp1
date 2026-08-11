@@ -757,7 +757,9 @@ export class DeepDocumentParser {
 
       // Table cells often contain the words "Abstract"/"Keywords" (e.g. style-guide tables) —
       // abstract/keyword detection must never fire on table elements.
-      if (tagName !== 'table' && (lower === 'abstract' || /^abstract[\s:.\-_—–]/.test(lower))) {
+      const hasAbstractLabel = lower === 'abstract' || /^abstract[\s:.\-_—–]/.test(lower) ||
+        (el.querySelector('strong, b') !== null && /^(?:abstract|summary)[\s:.\-_—–]?/i.test((el.querySelector('strong, b')?.textContent || '').trim()));
+      if (tagName !== 'table' && hasAbstractLabel) {
           nextRole = 'abstract';
           foundAbstract = true;
       } else if (tagName !== 'table' && (lower.includes('keyword') || lower.includes('index term'))) {
@@ -840,7 +842,9 @@ export class DeepDocumentParser {
                  /^[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,3}$/.test(f.text)) &&
                 (f.capRatio > 0.15 || /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+/.test(f.text)) &&
                 !AFFIL_KEYWORDS.test(f.text) &&
-                !STOPWORDS.has(f.text.split(' ')[0].toLowerCase())) ||
+                !STOPWORDS.has(f.text.split(' ')[0].toLowerCase()) &&
+                !/(?:←|:=|<-|Require:|Input:|Output:|Ensure:)/i.test(f.text) &&
+                !/^(?:\d+:\s*\w)/.test(f.text)) ||
                 (f.wordCount === 1 && /^[A-Z][a-z]{2,}$/.test(f.text.trim()) && isAlreadyTitleStarted));
 
               const isLocationAffil = isAlreadyTitleStarted && !foundAbstract &&
@@ -859,7 +863,11 @@ export class DeepDocumentParser {
               } else if (looksLikeAuthor && isAlreadyTitleStarted) {
                   nextRole = 'author';
               } else if (!isAlreadyTitleStarted) {
-                  nextRole = 'title';
+                  if (isAffilOrDesignation || isLocationAffil) {
+                      nextRole = 'affiliation';
+                  } else {
+                      nextRole = 'title';
+                  }
               } else if (currentRole === 'title') {
                   if (startsWithDrOrProf || looksLikeAuthor) {
                       nextRole = 'author';
@@ -899,7 +907,9 @@ export class DeepDocumentParser {
              /^[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,3}$/.test(f.text)) &&
             (f.capRatio > 0.15 || /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+/.test(f.text)) &&
             !AFFIL_KEYWORDS.test(f.text) &&
-            !STOPWORDS.has(f.text.split(' ')[0].toLowerCase())) ||
+            !STOPWORDS.has(f.text.split(' ')[0].toLowerCase()) &&
+            !/(?:←|:=|<-|Require:|Input:|Output:|Ensure:)/i.test(f.text) &&
+            !/^(?:\d+:\s*\w)/.test(f.text)) ||
             (f.wordCount === 1 && /^[A-Z][a-z]{2,}$/.test(f.text.trim()) && isAlreadyTitleStarted));
 
           const isLocationAffil = isAlreadyTitleStarted && !foundAbstract &&
@@ -912,7 +922,11 @@ export class DeepDocumentParser {
           } else if ((startsWithDrOrProf || looksLikeAuthor) && isAlreadyTitleStarted) {
               nextRole = 'author';
           } else if (!isAlreadyTitleStarted) {
-              nextRole = 'title';
+              if (EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil) {
+                  nextRole = 'affiliation';
+              } else {
+                  nextRole = 'title';
+              }
           } else if (currentRole === 'title') {
               if (startsWithDrOrProf || looksLikeAuthor || EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil || /#/.test(f.text) || f.text.includes(',') || f.text.match(/\d/)) {
                   if (startsWithDrOrProf || looksLikeAuthor) {
@@ -2115,6 +2129,10 @@ export class DeepDocumentParser {
     // Parameter lists like "n = 100, LR = 0.001, batch = 32" are prose, never
     // equations — reject the whole "WORD = value[, ...]" pattern up front.
     if (/^[A-Za-z][A-Za-z0-9_\s]*\s*=\s*[\d.,+\-eE%]+\s*(?:[,;]\s*[A-Za-z][A-Za-z0-9_\s]*\s*=\s*[\d.,+\-eE%]+\s*)*$/.test(text)) return false;
+
+    // Metric-score patterns like "AUC-0.90, Accuracy-0.91" or "Precision: 0.85, Recall: 0.79"
+    // are prose reporting results, not equations.
+    if (/\b(?:AUC|Accuracy|Precision|Recall|F1|F-score|Sensitivity|Specificity|PPV|NPV|MCC|IoU|Dice|Loss|Error|Rate|Score)\s*[-:=]\s*[\d.]+/i.test(text)) return false;
     
     // 2. Explicit Math Markers
     const isStandaloneMath = /^\s*(?:MATHBLOCKX\d+XMARKER\s*|(?:\(\d+(?:\.\d+)*\)|\[\d+(?:\.\d+)*\])\s*|[,.:;]\s*)+$/i.test(text);
