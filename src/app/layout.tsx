@@ -78,7 +78,7 @@ export default function RootLayout({
             function isExtensionError(e){
               var m = (e && (e.message || e.stack || e.name || (e.reason && (e.reason.message || e.reason.stack)))) || '';
               var str = String(m).toLowerCase();
-              return str.indexOf('chrome-extension://') !== -1 || str.indexOf('moz-extension://') !== -1 || str.indexOf('safari-extension://') !== -1 || str.indexOf('couponcollection') !== -1 || str.indexOf('affiliatecashback') !== -1 || str.indexOf('invalid/') !== -1;
+              return str.indexOf('chrome-extension://') !== -1 || str.indexOf('moz-extension://') !== -1 || str.indexOf('safari-extension://') !== -1 || str.indexOf('couponcollection') !== -1 || str.indexOf('affiliatecashback') !== -1 || str.indexOf('invalid/') !== -1 || str.indexOf('script.js') !== -1 || str.indexOf('bhk') !== -1 || str.indexOf('unpaywall') !== -1 || str.indexOf('mutationobserver') !== -1 || str.indexOf('parameter 1 is not of type') !== -1;
             }
             function isChunkError(e){
               if (isExtensionError(e)) return false;
