@@ -67,6 +67,7 @@ export function usePbRealtime<T = any>(options: PbRealtimeOptions<T>) {
   });
 
   const fetchRecords = useCallback(async () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return [];
     try {
       const params = toParams({ sort, filter, expand, fields, batchSize, page: 1 });
       const res = await fetch(`/api/data/${collection}?${params}`);
