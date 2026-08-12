@@ -3306,7 +3306,7 @@ Reconstructing and assembling this verified architecture pattern on your canvas 
 
                     {node.imageUrl ? (
                     <div className="w-full h-full relative rounded-lg overflow-hidden flex items-center justify-center">
-                      <Image src={node.imageUrl} alt={node.title} fill className="object-cover pointer-events-none" unoptimized />
+                      <Image src={node.imageUrl} alt={node.title} fill sizes="100%" className="object-cover pointer-events-none" unoptimized />
                       {isSelected && (
                         <div className="absolute inset-0 bg-black/40 flex flex-col justify-end p-2 pointer-events-none">
                           <span className="text-[10px] font-bold text-white truncate">{node.title}</span>

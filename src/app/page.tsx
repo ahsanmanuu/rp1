@@ -365,6 +365,7 @@ export default function Home() {
                       <div key={`${item.id}-${i}`} className="flex-shrink-0 w-56 h-full rounded-2xl overflow-hidden relative group"
                         style={{ border: '1px solid var(--border)' }}>
                         <Image src={item.imageUrl || '/placeholder.png'} alt={item.title} loading="lazy" fill
+                          sizes="224px"
                           className="object-cover transition-transform duration-700 group-hover:scale-105" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
                         <div className="absolute bottom-0 left-0 right-0 p-4 flex items-center gap-3">

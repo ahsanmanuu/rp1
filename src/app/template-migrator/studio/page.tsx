@@ -760,7 +760,7 @@ export default function TemplateMigratorPage() {
                             />
                           ) : (
                             <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
-                                <Image src={fileContents[activeFile] instanceof Uint8Array ? URL.createObjectURL(new Blob([fileContents[activeFile] as any])) : ''} fill style={{ objectFit: 'contain', maxWidth: '80%', maxHeight: '80%' }} alt="" unoptimized />
+                                <Image src={fileContents[activeFile] instanceof Uint8Array ? URL.createObjectURL(new Blob([fileContents[activeFile] as any])) : ''} fill sizes="80vw" style={{ objectFit: 'contain', maxWidth: '80%', maxHeight: '80%' }} alt="" unoptimized />
                             </div>
                           )}
                        </div>
