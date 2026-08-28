@@ -388,18 +388,32 @@ export class LatexAssembler {
       .replace(/^\s*(?:\[|\()?(?:\d+(?:st|nd|rd|th)?(?:\.\d+)*|[ivxlcdm]+|[A-Za-z])[\).:.\s-]+\s*/i, '')
       .replace(/[\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070*†‡\d]+$/g, '')
       .trim();
-    // Exact author-name match with trailing affiliation digits stripped:
-    // "Mohammad Aadil Khan1" (superscript 1) must match author "Mohammad Aadil Khan".
     const matchesAnyAuthor = (normText: string): boolean => {
       const stripped = normText.replace(/\d+$/, '');
-      return normalizedAuthors.some(a => a.length > 8 && (normText === a || stripped === a || (normText.length > a.length && normText.startsWith(a) && /^\d+$/.test(normText.slice(a.length)))));
+      const withoutHonorific = normText.replace(/^(?:dr|prof|professor|mr|ms|mrs|md|phd)\s*/i, '');
+      return normalizedAuthors.some(a => {
+        if (a.length < 4) return false;
+        const aWithoutHonorific = a.replace(/^(?:dr|prof|professor|mr|ms|mrs|md|phd)\s*/i, '');
+        return normText === a || stripped === a || withoutHonorific === aWithoutHonorific ||
+          (normText.length > a.length && normText.startsWith(a) && /^\d+$/.test(normText.slice(a.length))) ||
+          (withoutHonorific.length > 5 && (normText.includes(aWithoutHonorific) || aWithoutHonorific.includes(withoutHonorific)));
+      });
     };
     const isDesignationLine = (probe: string): boolean =>
       /^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of|head of department|researcher|research scholar|phd scholar|scholar|librarian|bibliographer|fellow|senior research fellow|technical assistant|mr\.|ms\.|mrs\.|md)\b/i.test(probe) ||
+      /\b(?:librarian|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|phd scholar|research scholar)\b/i.test(probe) ||
       /^(?:email|e-mail|mail|phone|tel|orcid|corresponding author)\b/i.test(probe);
     const isAffiliationLine = (probe: string): boolean =>
       /\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy)\b/i.test(probe) ||
       (/\b(?:librarian|professor|scholar|fellow|lecturer|assistant|associate|researcher)\b/i.test(probe) && probe.length < 80);
+    const isAcademicPreambleOrAuthor = (probe: string, normText: string): boolean => {
+      if (matchesAnyAuthor(normText)) return true;
+      if (isDesignationLine(probe)) return true;
+      if (isAffiliationLine(probe)) return true;
+      if (/^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(probe)) return true;
+      if (/^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(probe)) return true;
+      return false;
+    };
 
     // Canonical section names — same set as FORCED_L1 in assembleNode
     const FORCED_L1_ASSEMBLER = new Set([
@@ -519,19 +533,20 @@ export class LatexAssembler {
         if (!frontMatterDone) {
             if (node.type === 'heading') {
                 const probe = frontMatterProbe(text);
-                const isDesignationHeading = isDesignationLine(probe);
-                const isEmailHeading = /^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(probe);
-                const isAuthorNameHeading = matchesAnyAuthor(norm) || /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(probe);
-                const isAffiliationHeading = probe.length < 160 && isAffiliationLine(probe);
-                const isCaptionHeading = /^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(probe) && probe.length < 120;
-                if (isDesignationHeading || isEmailHeading || isAuthorNameHeading || isAffiliationHeading || isCaptionHeading) {
+                const isPreamble = isAcademicPreambleOrAuthor(probe, norm);
+                const isCaption = /^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(probe) && probe.length < 120;
+                if (isPreamble || isCaption) {
                     return;
                 }
                 const normHeading = probe.toLowerCase()
                   .replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '')
                   .replace(/[:.\s]*$/, '')
                   .trim();
-                const isRealSectionHeading = FORCED_L1_ASSEMBLER.has(normHeading) || /^(?:introduction|related work|literature review|background|methodology|method|overview)\b/i.test(probe) || (node.level === 1 && probe.length >= 3);
+                const isRealSectionHeading = FORCED_L1_ASSEMBLER.has(normHeading) ||
+                  /^(?:introduction|related work|literature review|background|methodology|methods|overview|problem formulation|system model|materials and methods|experimental)\b/i.test(normHeading) ||
+                  (/^(?:1|i)\.?\s+[A-Za-z]/i.test(text) && !isAcademicPreambleOrAuthor(probe, norm)) ||
+                  (node.level === 1 && probe.length >= 3 && !isAcademicPreambleOrAuthor(probe, norm) && !/^\d+\.\s*(?:dr|prof|professor|mr|ms|mrs|md)/i.test(text));
+
                 if (isRealSectionHeading) {
                     frontMatterDone = true;
                     currentSectionTitle = text || "introduction";
@@ -548,20 +563,17 @@ export class LatexAssembler {
         // ONCE INSIDE BODY SECTIONS:
         if (node.type === 'heading') {
             const probe = frontMatterProbe(text);
-            const isDesignationHeading = isDesignationLine(probe);
-            const isEmailHeading = /^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(probe);
-            const isAuthorNameHeading = matchesAnyAuthor(norm) || /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(probe);
-            const isCaptionHeading = /^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(probe) && probe.length < 120;
-            if (isDesignationHeading || isEmailHeading || isAuthorNameHeading || isCaptionHeading) {
+            const isPreamble = isAcademicPreambleOrAuthor(probe, norm);
+            const isCaption = /^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(probe) && probe.length < 120;
+            if (isPreamble || isCaption) {
                 return;
             }
             const normHeading = probe.toLowerCase()
               .replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '')
               .replace(/[:.\s]*$/, '')
               .trim();
-            const isLevel1 = (node.level === 1);
-            const isCanonical = FORCED_L1_ASSEMBLER.has(normHeading);
-            if (isLevel1 || isCanonical) {
+            const isLevel1 = (node.level === 1) || FORCED_L1_ASSEMBLER.has(normHeading);
+            if (isLevel1) {
                 flushSection();
                 currentSectionTitle = text || "section";
             }
@@ -1993,24 +2005,36 @@ export class ModularLatexAssembler {
     const normalizedAuthors = (doc.authors || []).map(a => normalize(typeof a.name === 'string' ? a.name : (a as any).text || ""));
     const normalizedAbstract = normalize(doc.abstract || "").substring(0, 100);
 
-    // UNIVERSAL FRONT-MATTER HEADING PROBE (mirrors the standard path and
-    // deep-parser's isFrontMatterNoise): strips leading numbering + trailing
-    // superscript affiliation digits so author blocks styled as headings can
-    // never become \section/\subsection.
-    const frontMatterProbe = (t: string): string => t
-      .replace(/^\s*(?:\[|\()?(?:\d+(?:st|nd|rd|th)?(?:\.\d+)*|[ivxlcdm]+|[A-Za-z])[\).:.\s-]+\s*/i, '')
-      .replace(/[\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070*†‡\d]+$/g, '')
-      .trim();
     const matchesAnyAuthor = (normText: string): boolean => {
       const stripped = normText.replace(/\d+$/, '');
-      return normalizedAuthors.some(a => a.length > 8 && (normText === a || stripped === a || (normText.length > a.length && normText.startsWith(a) && /^\d+$/.test(normText.slice(a.length)))));
+      const withoutHonorific = normText.replace(/^(?:dr|prof|professor|mr|ms|mrs|md|phd)\s*/i, '');
+      return normalizedAuthors.some(a => {
+        if (a.length < 4) return false;
+        const aWithoutHonorific = a.replace(/^(?:dr|prof|professor|mr|ms|mrs|md|phd)\s*/i, '');
+        return normText === a || stripped === a || withoutHonorific === aWithoutHonorific ||
+          (normText.length > a.length && normText.startsWith(a) && /^\d+$/.test(normText.slice(a.length))) ||
+          (withoutHonorific.length > 5 && (normText.includes(aWithoutHonorific) || aWithoutHonorific.includes(withoutHonorific)));
+      });
     };
     const isDesignationLine = (probe: string): boolean =>
       /^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of|head of department|researcher|research scholar|phd scholar|scholar|librarian|bibliographer|fellow|senior research fellow|technical assistant|mr\.|ms\.|mrs\.|md)\b/i.test(probe) ||
+      /\b(?:librarian|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|phd scholar|research scholar)\b/i.test(probe) ||
       /^(?:email|e-mail|mail|phone|tel|orcid|corresponding author)\b/i.test(probe);
     const isAffiliationLine = (probe: string): boolean =>
       /\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy)\b/i.test(probe) ||
       (/\b(?:librarian|professor|scholar|fellow|lecturer|assistant|associate|researcher)\b/i.test(probe) && probe.length < 80);
+    const isAcademicPreambleOrAuthor = (probe: string, normText: string): boolean => {
+      if (matchesAnyAuthor(normText)) return true;
+      if (isDesignationLine(probe)) return true;
+      if (isAffiliationLine(probe)) return true;
+      if (/^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(probe)) return true;
+      if (/^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(probe)) return true;
+      return false;
+    };
+    const frontMatterProbe = (t: string): string => t
+      .replace(/^\s*(?:\[|\()?(?:\d+(?:st|nd|rd|th)?(?:\.\d+)*|[ivxlcdm]+|[A-Za-z])[\).:.\s-]+\s*/i, '')
+      .replace(/[\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070*†‡\d]+$/g, '')
+      .trim();
 
     let currentSectionNodes: any[] = [];
     let currentSectionTitle = "introduction";
@@ -2028,10 +2052,6 @@ export class ModularLatexAssembler {
                     continue; // skip duplicate equation in close proximity
                 }
             }
-            // FIX: Figures, tables, and algorithms are NOW placed INLINE at their correct
-            // section position instead of being deferred to end-of-document.
-            // The assets/figure.tex / table.tex reference files are still generated for the
-            // IDE panel, but they are NOT \input'd at the end of main.tex anymore.
             
             if (n.type === 'paragraph') {
                 const last = dedupedNodes[dedupedNodes.length - 1];
@@ -2061,9 +2081,6 @@ export class ModularLatexAssembler {
 
         const sectionContent = dedupedNodes.map(n => LatexAssembler.assembleNode({ ...n, sectionStyle: mapping.sectionStyle } as any, mathBlocks)).join("\n\n");
         const safeTitle = slugifySectionTitle(currentSectionTitle, 40);
-        // UNIQUE FILE NAME GUARD: two flushes with the same slug (e.g. repeated
-        // "Discussion" headings) must never overwrite each other or be \input'd
-        // twice — both would corrupt the PDF (repeating content / lost sections).
         let fileName = `sections/${sectionIdx.toString().padStart(2, '0')}_${safeTitle}.tex`;
         let fileSuffix = 2;
         while (files[fileName] !== undefined) {
@@ -2085,8 +2102,9 @@ export class ModularLatexAssembler {
     let aiChartIdx = 0;
     let aiTableIdx = 0;
     let aiAlgoIdx = 0;
-    let frontMatterDone = false; // true once the first real section heading is seen
-    const headerInputs = new Set<string>(); // dedupe \input{...} lines in main.tex
+    let frontMatterDone = false; 
+    const headerInputs = new Set<string>(); 
+    const FORCED_L1_ASSEMBLER = new Set(['introduction', 'related work', 'background', 'methodology', 'methods', 'results', 'discussion', 'conclusion', 'acknowledgements', 'references', 'abstract']);
 
     nodes.forEach((node: any, nodeIdx: number) => {
         const text = (node.text || "").trim();
@@ -2098,12 +2116,6 @@ export class ModularLatexAssembler {
           .replace(/^(?:\d+\.\s*|[IVX]+\.\s*|[A-G]\.\s*|Section\s+\d+[:\.\s]*)/i, "")
           .trim();
 
-        // --- DYNAMIC DEDUPLICATION GATE ---
-        // Substring matches (author names, title fragments, abstract fragments)
-        // previously erased real headings/paragraphs: a body paragraph such as
-        // "John Smith et al. observed that ..." contains an author name, and a
-        // section heading such as "Deep Learning" is a substring of the title.
-        // Only exact/whole-content matches are duplicates now.
         const isMetadataMatch = norm === normalizedTitle ||
                                 (normalizedTitle.length > 20 && norm.includes(normalizedTitle)) ||
                                 matchesAnyAuthor(norm) ||
@@ -2111,14 +2123,7 @@ export class ModularLatexAssembler {
                                 cleanLower === 'abstract' || cleanLower.startsWith('abstract ') ||
                                 cleanLower.match(/^(?:keywords|index terms|indexterms|highlights)$/);
 
-        // A paragraph that consists primarily of a detected display math block is a missed
-        // equation (math was injected into body text) — reclassify it so
-        // it renders as a real equation instead of vanishing or garbling.
-        // GUARD: Only reclassify if the math block is the DOMINANT content of the paragraph
-        // (>60% of length or short node <100 chars), avoiding converting long prose paragraphs
-        // that merely contain an inline math fragment ($x$).
         if (node.type === 'paragraph' && !isMetadataMatch) {
-            // GUARD: Never reclassify section headings or author metadata as equations
             const looksLikeHeading = /^\d+\.\s+[A-Z]/.test(text) ||
                 /^(?:\d+\.\d+\.\d+|\d+\.\d+|\d+)\s+[A-Z]/.test(text) ||
                 /^(?:introduction|related work|background|methodology|conclusion|abstract|acknowledgments|references|overview|implementation|results|discussion|literature review|future work|scope for future|transformation|ethical principles|role of|figure \d)/i.test(text.trim());
@@ -2126,7 +2131,6 @@ export class ModularLatexAssembler {
                 /\b(?:university|polytechnic|college|institute|department|faculty|school of)\b/i.test(text);
 
             if (looksLikeHeading || looksLikeAuthorMeta) {
-                // Do not reclassify — keep as paragraph/heading
             } else {
             const eqEntry = mathBlocks.find((b: any) => {
                 const raw = typeof b === 'string' ? b : (b?.latex || b?.tex || '');
@@ -2145,45 +2149,49 @@ export class ModularLatexAssembler {
 
         if (isMetadataMatch && !isStructural) return;
 
-        // For headings specifically, block metadata section titles even if they trigger a split
         if (node.type === 'heading' && isMetadataMatch) return;
 
-        // UNIVERSAL AUTHOR/ACADEMIC-METADATA HEADING GUARD: Word documents
-        // frequently style the author block (names, designations, emails,
-        // affiliations, universities) as Heading paragraphs. Those lines must
-        // NEVER become \section/\subsection — they belong to the front matter.
-        // Designation/email headings are dropped anywhere; university-ish lines
-        // only while still in the front-matter region (before the first real
-        // section heading), so a genuine section like "The Role of University
-        // Libraries" is never harmed.
-        let isRealSectionHeading = false;
-        if (node.type === 'heading') {
-            const probe = frontMatterProbe(text);
-            const isDesignationHeading = isDesignationLine(probe);
-            const isEmailHeading = /^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(probe);
-            const isAuthorNameHeading = matchesAnyAuthor(norm);
-            const isAffiliationHeading = !frontMatterDone && probe.length < 160 && isAffiliationLine(probe);
-            // FIGURE/TABLE CAPTION HEADING GUARD: "Figure 1: Architecture of ..."
-            // or "Table 2 ..." as a heading is always a caption artifact, never
-            // a section — the real caption is rendered by the figure/table node.
-            const isCaptionHeading = /^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(probe) && probe.length < 120;
-            if (isDesignationHeading || isEmailHeading || isAuthorNameHeading || isAffiliationHeading || isCaptionHeading) {
+        if (!frontMatterDone) {
+            if (node.type === 'heading') {
+                const probe = frontMatterProbe(text);
+                const isPreamble = isAcademicPreambleOrAuthor(probe, norm);
+                const isCaption = /^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(probe) && probe.length < 120;
+                if (isPreamble || isCaption) return;
+                const normHeading = probe.toLowerCase()
+                  .replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '')
+                  .replace(/[:.\s]*$/, '')
+                  .trim();
+                const isRealSectionHeading = FORCED_L1_ASSEMBLER.has(normHeading) ||
+                  /^(?:introduction|related work|literature review|background|methodology|methods|overview|problem formulation|system model|materials and methods|experimental)\b/i.test(normHeading) ||
+                  (/^(?:1|i)\.?\s+[A-Za-z]/i.test(text) && !isAcademicPreambleOrAuthor(probe, norm)) ||
+                  (node.level === 1 && probe.length >= 3 && !isAcademicPreambleOrAuthor(probe, norm) && !/^\d+\.\s*(?:dr|prof|professor|mr|ms|mrs|md)/i.test(text));
+
+                if (isRealSectionHeading) {
+                    frontMatterDone = true;
+                    currentSectionTitle = text || "introduction";
+                    currentSectionNodes = [node];
+                    return;
+                }
                 return;
-            }
-            isRealSectionHeading = /^(?:introduction|abstract|keywords|related work|literature review|background|methodology|method|conclusion|conclusions|discussion|references|bibliography|acknowledgements|acknowledgments|appendix|future work|overview|results|implementation|experimental|evaluation)\b/i.test(probe) || (node.level === 1 && !isAuthorNameHeading && probe.length >= 10 && probe.length <= 120 && !/^\d+\.\s/.test(text.trim()));
-            if (isRealSectionHeading) frontMatterDone = true;
+            } else return;
         }
 
-        // Only split on confirmed real section headings with explicit level 1.
-        // The !node.level catch-all is removed — unknown-level headings must NOT
-        // trigger file splits (they are typically sentence fragments misclassified
-        // as headings by the deep parser, and splitting on them produces 500+
-        // tiny .tex files from a single document).
-        if (node.type === 'heading' && node.level === 1 && isRealSectionHeading) {
-            flushSection();
-            currentSectionTitle = text || "section";
-        } else if (node.type === 'heading' && node.level === 2) {
-            // Do NOT split files on subsection, just let it be emitted as \subsection
+        if (node.type === 'heading') {
+            const probe = frontMatterProbe(text);
+            const isPreamble = isAcademicPreambleOrAuthor(probe, norm);
+            const isCaption = /^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(probe) && probe.length < 120;
+            if (isPreamble || isCaption) {
+                return;
+            }
+            const normHeading = probe.toLowerCase()
+              .replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '')
+              .replace(/[:.\s]*$/, '')
+              .trim();
+            const isLevel1 = (node.level === 1) || FORCED_L1_ASSEMBLER.has(normHeading);
+            if (isLevel1) {
+                flushSection();
+                currentSectionTitle = text || "section";
+            }
         }
         
         // Propagate two-column flag to table/figure nodes so assembler can choose table* vs table, figure* vs figure

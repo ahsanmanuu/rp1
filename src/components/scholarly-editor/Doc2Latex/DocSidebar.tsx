@@ -105,31 +105,46 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
         const imageFiles = files.filter(f => /\.(png|jpg|jpeg|gif|svg|webp|eps|tiff?|bmp|heic|heif|avif)$/i.test(f.path));
         imageFiles.forEach(f => categorizedPaths.add(f.path));
         
+        const hasRfFigures = imageFiles.some(f => /^rf_fig_\d+/i.test(f.path) || /\/rf_fig_\d+/i.test(f.path));
         const seenBases = new Set<string>();
+        const seenContents = new Set<string>();
         const displayed: any[] = [];
+
+        // 1. First pass: Add canonical rf_fig_* images
         for (const f of imageFiles) {
-          if (f.path.startsWith('assets/')) {
+          const isRf = /^rf_fig_\d+/i.test(f.path) || /\/rf_fig_\d+/i.test(f.path);
+          if (isRf) {
             const base = (f.path.split('/').pop() || f.path).toLowerCase();
             if (!seenBases.has(base)) {
               seenBases.add(base);
+              if (f.content && typeof f.content === 'string' && f.content.length > 200) {
+                seenContents.add(f.content.substring(0, 500));
+              }
               displayed.push(f);
             }
           }
         }
+
+        // 2. Second pass: Add non-rf images if not duplicating an rf_fig
         for (const f of imageFiles) {
-          if (f.path.startsWith('figures/')) {
+          const isRf = /^rf_fig_\d+/i.test(f.path) || /\/rf_fig_\d+/i.test(f.path);
+          if (!isRf) {
             const base = (f.path.split('/').pop() || f.path).toLowerCase();
+            const isInternalDocxAlias = /^image\d+\.(png|jpg|jpeg)$/i.test(base);
+            // If canonical rf_fig_* exist, suppress raw internal image1.png duplicates
+            if (hasRfFigures && isInternalDocxAlias) {
+              continue;
+            }
+            if (f.content && typeof f.content === 'string' && f.content.length > 200 && seenContents.has(f.content.substring(0, 500))) {
+              continue;
+            }
             if (!seenBases.has(base)) {
               seenBases.add(base);
+              if (f.content && typeof f.content === 'string' && f.content.length > 200) {
+                seenContents.add(f.content.substring(0, 500));
+              }
               displayed.push(f);
             }
-          }
-        }
-        for (const f of imageFiles) {
-          const base = (f.path.split('/').pop() || f.path).toLowerCase();
-          if (!seenBases.has(base)) {
-            seenBases.add(base);
-            displayed.push(f);
           }
         }
         return displayed;

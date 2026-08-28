@@ -620,14 +620,6 @@ async function runUploadProcessing(uploadId: string) {
               buffer: entryBuf,
               isStructural: false
             });
-            const origBase = path.basename(entry.entryName);
-            if (origBase && origBase !== name) {
-              extractedImages.push({
-                name: `assets/${origBase}`,
-                buffer: entryBuf,
-                isStructural: false
-              });
-            }
           }
           console.log(`[UPLOAD] Server-side extracted ${extractedImages.length} images from DOCX buffer.`);
         } catch (zipErr) {
