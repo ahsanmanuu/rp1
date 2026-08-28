@@ -262,4 +262,19 @@ export function disposePbRealtime() {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => disposePbRealtime(), { once: true });
+
+  const handleWakeReconnect = () => {
+    setTimeout(() => {
+      if (!disposed) {
+        // Re-evaluate client and reconnect any dropped subscriptions after sleep
+        void runCheck();
+      }
+    }, 1200);
+  };
+
+  window.addEventListener('online', handleWakeReconnect);
+  window.addEventListener('focus', handleWakeReconnect);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) handleWakeReconnect();
+  });
 }

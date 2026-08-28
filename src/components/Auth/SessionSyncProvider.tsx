@@ -33,12 +33,17 @@ export function SessionSyncProvider({ children }: { children: React.ReactNode })
     };
 
     const intervalId = setInterval(checkSync, 60000);
+    let wakeTimer: ReturnType<typeof setTimeout> | null = null;
     const handleVisibilityChange = () => {
-      if (!document.hidden) checkSync();
+      if (!document.hidden) {
+        if (wakeTimer) clearTimeout(wakeTimer);
+        wakeTimer = setTimeout(checkSync, 1200);
+      }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
+      if (wakeTimer) clearTimeout(wakeTimer);
       clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };

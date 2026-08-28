@@ -150,8 +150,12 @@ export function useGlobalQuotas(options: UseGlobalQuotasOptions = {}) {
       setShowAiLimitModal(true);
     };
     const handleOpenAiSubscription = () => setShowAiLimitModal(true);
+    let wakeTimer: ReturnType<typeof setTimeout> | null = null;
     const handleVisibilityChange = () => {
-      if (!document.hidden) fetchStatus();
+      if (!document.hidden) {
+        if (wakeTimer) clearTimeout(wakeTimer);
+        wakeTimer = setTimeout(() => fetchStatus(), 1200);
+      }
     };
 
     window.addEventListener('project-limit-triggered', handleProjectLimitTriggered);
@@ -161,6 +165,7 @@ export function useGlobalQuotas(options: UseGlobalQuotasOptions = {}) {
 
     return () => {
       clearTimeout(initialTimer);
+      if (wakeTimer) clearTimeout(wakeTimer);
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;

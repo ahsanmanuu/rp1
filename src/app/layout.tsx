@@ -102,6 +102,9 @@ export default function RootLayout({
                      str.indexOf('disconnected port object') !== -1 ||
                      str.indexOf('err_network_io_suspended') !== -1 ||
                      str.indexOf('err_network_changed') !== -1 ||
+                     str.indexOf('err_internet_disconnected') !== -1 ||
+                     str.indexOf('your computer went to sleep') !== -1 ||
+                     str.indexOf('your connection was interrupted') !== -1 ||
                      str.indexOf('editorworkerservice') !== -1 ||
                      str.indexOf('editorworkermain') !== -1 ||
                      str.indexOf('failed to load worker script') !== -1 ||

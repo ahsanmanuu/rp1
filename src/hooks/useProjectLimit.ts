@@ -71,14 +71,19 @@ export function useProjectLimit() {
     const handleProjectLimitTriggered = () => {
       setShowLimitModal(true);
     };
+    let wakeTimer: ReturnType<typeof setTimeout> | null = null;
     const handleVisibilityChange = () => {
-      if (!document.hidden) checkLimit();
+      if (!document.hidden) {
+        if (wakeTimer) clearTimeout(wakeTimer);
+        wakeTimer = setTimeout(checkLimit, 1200);
+      }
     };
 
     window.addEventListener("project-limit-triggered", handleProjectLimitTriggered);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
+      if (wakeTimer) clearTimeout(wakeTimer);
       if (pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;

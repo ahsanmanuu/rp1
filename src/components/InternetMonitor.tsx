@@ -137,25 +137,63 @@ export default function InternetMonitor() {
     };
   }, [status]);
 
-  // Debounce: wait 3s after navigator.onLine turns false before treating as offline
-  const offlineGracePeriodMs = 3000;
+  // Sleep / Wake detection & offline grace period
+  const offlineGracePeriodMs = 4000;
   const lastOnlineRef = useRef(Date.now());
+  const lastTickRef = useRef(Date.now());
+  const wakeGraceUntilRef = useRef(Date.now() + 3000);
 
-  // Update lastOnline whenever navigator.onLine is true
+  // Monitor sleep / wake and network transitions
   useEffect(() => {
-    const update = () => { lastOnlineRef.current = Date.now(); };
-    window.addEventListener("online", update);
+    const markOnline = () => {
+      const now = Date.now();
+      lastOnlineRef.current = now;
+      lastTickRef.current = now;
+    };
+
+    const handleWake = () => {
+      const now = Date.now();
+      wakeGraceUntilRef.current = now + 5000; // 5s grace period on wake
+      lastOnlineRef.current = now;
+      lastTickRef.current = now;
+      if (status === "offline" && navigator.onLine) {
+        setStatus("online");
+        setIsVisible(false);
+      }
+    };
+
+    window.addEventListener("online", markOnline);
+    window.addEventListener("focus", handleWake);
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        handleWake();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // Heartbeat tick to detect system sleep (clock jumps > 4s)
     const interval = setInterval(() => {
-      if (navigator.onLine) update();
+      const now = Date.now();
+      if (now - lastTickRef.current > 4000) {
+        // Clock jump detected — computer just woke from sleep
+        handleWake();
+      }
+      lastTickRef.current = now;
+      if (navigator.onLine) markOnline();
     }, 2000);
+
     return () => {
-      window.removeEventListener("online", update);
+      window.removeEventListener("online", markOnline);
+      window.removeEventListener("focus", handleWake);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       clearInterval(interval);
     };
-  }, []);
+  }, [status]);
 
   const isEffectivelyOffline = () => {
     if (navigator.onLine) return false;
+    if (Date.now() < wakeGraceUntilRef.current) return false; // Within wake recovery period
     return (Date.now() - lastOnlineRef.current) >= offlineGracePeriodMs;
   };
 
@@ -225,7 +263,7 @@ export default function InternetMonitor() {
         });
       }
 
-      // 3. Handle Online state (Normal Fetch with Caching)
+      // 3. Handle Online state (Normal Fetch with Caching & Auto-Retry for sleep/wake suspensions)
       try {
         const response = await originalFetch(input, init);
 
@@ -250,12 +288,46 @@ export default function InternetMonitor() {
           errStr.includes("Failed to fetch") ||
           errStr.includes("NetworkError") ||
           errStr.includes("ERR_NETWORK_IO_SUSPENDED") ||
+          errStr.includes("ERR_NETWORK_CHANGED") ||
           errStr.includes("ERR_INTERNET_DISCONNECTED") ||
           error?.name === "AbortError";
 
         if (isNetworkErr) {
+          // If the network error happened during sleep/wake recovery or for a GET request, retry once after a short delay
+          if (method === "GET" && (navigator.onLine || Date.now() < wakeGraceUntilRef.current)) {
+            try {
+              await new Promise(r => setTimeout(r, 600));
+              const retryResponse = await originalFetch(input, init);
+              if (retryResponse.ok && url.startsWith("/api/")) {
+                try {
+                  const contentType = retryResponse.headers.get("content-type");
+                  if (contentType && contentType.includes("application/json")) {
+                    const clone = retryResponse.clone();
+                    clone.json().then(data => {
+                      cacheGetResponse(url, data);
+                    }).catch(() => {});
+                  }
+                } catch {}
+              }
+              return retryResponse;
+            } catch (retryErr) {
+              // Retry also failed — fall through to cache or safe 503 response
+            }
+          }
+
+          // Check if cached GET data is available
+          if (method === "GET") {
+            const cachedData = getCachedGetResponse(url);
+            if (cachedData !== null) {
+              return new Response(JSON.stringify(cachedData), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+              });
+            }
+          }
+
           if (isEffectivelyOffline() && isMountedRef.current) {
-            console.warn("[OfflineSync] Confirmed offline/suspended:", errStr);
+            console.warn("[OfflineSync] Confirmed offline:", errStr);
             setStatus("offline");
             setIsVisible(true);
           }
