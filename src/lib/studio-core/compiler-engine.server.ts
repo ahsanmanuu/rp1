@@ -602,6 +602,32 @@ async function bibliographyHeadingPresent(pdfBase64: string): Promise<boolean> {
 
 // --- MASTER ORCHESTRATOR (ELEVATED FOR TURBOPACK VISIBILITY) ---
 
+/**
+ * Reverts a ghost-mode `\zimg{fileId}{opts}{guid}{originalPath}` back into a
+ * plain `\includegraphics[opts]{fileId}`.
+ *
+ * WHY THIS EXISTS: ghost-mode relies on `inkGhostPdf()` re-compositing images
+ * from `ghost.trc` markers that are only emitted by a LOCAL tectonic compile.
+ * Remote compilers (YtoTech / TexLive) never return those markers, so ghost-
+ * inking is a guaranteed no-op there and any image becomes a placeholder.
+ * When a compile is destined for a remote engine we therefore render figures
+ * directly via `\includegraphics` — the real bytes are uploaded alongside the
+ * source, so the figure appears in the PDF with no marker dependency.
+ */
+function revertZimgToIncludegraphics(content: string): string {
+  if (typeof content !== 'string') return content;
+  return content.replace(
+    /\\zimg\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}/g,
+    (_m, fileId, opts, _guid, _orig) => {
+      const id = fileId || _orig || '';
+      const o = (opts || '').trim();
+      return o
+        ? `\\includegraphics[${o}]{${id}}`
+        : `\\includegraphics{${id}}`;
+    }
+  );
+}
+
 export async function runHardenedPipeline(
   engine: string,
   files: FilePayload[],
@@ -1292,6 +1318,21 @@ export async function runHardenedPipeline(
         monoFiles.push({ path: cleanMain, content: monolithContent });
     }
 
+    // ── GHOSTLESS REMOTE FILE SET ───────────────────────────────────────────────
+    // Remote engines (YtoTech / TexLive) do NOT return the `ghost.trc` markers
+    // that `inkGhostPdf` needs, so ghost-mode image inking is impossible there
+    // and figures would collapse to placeholders. For the remote strategies we
+    // therefore revert `\zimg` back to plain `\includegraphics` so the real
+    // image bytes (uploaded alongside the source) render directly in the PDF.
+    // The LOCAL tectonic strategy below keeps the full ghost-mode path intact.
+    const remoteFiles: FilePayload[] = monoFiles.map(f => {
+        const ext = f.path.split('.').pop()?.toLowerCase() || '';
+        if (useGhostMode && ext === 'tex') {
+            return { ...f, content: revertZimgToIncludegraphics(f.content) };
+        }
+        return f;
+    });
+
     // ── BIBLIOGRAPHY DETECTION (shared across strategies) ─────────────────────
     const mainFileObj = activeFiles.find(f => normalizePath(f.path) === normalizePath(cleanMain));
     const mainContent = mainFileObj?.content || '';
@@ -1829,8 +1870,8 @@ export async function runHardenedPipeline(
         console.log(`[PIPELINE] Remote fallback with bibliography: .bib files=[${remoteBibFiles.map(f => f.path).join(', ')}], main includes \\bibliography=${hasBibliography}`);
     }
     const remoteStrategies = [
-        { name: 'YTOTECH', fn: () => compileWithYtoTech(selectedEngine, monoFiles, cleanMain) },
-        { name: 'TEXLIVE', fn: () => compileWithTexLive(monoFiles, cleanMain, selectedEngine) }
+        { name: 'YTOTECH', fn: () => compileWithYtoTech(selectedEngine, remoteFiles, cleanMain) },
+        { name: 'TEXLIVE', fn: () => compileWithTexLive(remoteFiles, cleanMain, selectedEngine) }
     ];
 
     for (const strat of remoteStrategies) {
@@ -1974,11 +2015,7 @@ export async function compileWithTexLive(files: FilePayload[], mainFile: string,
     
     sortedFiles.forEach(f => {
       const isBinary = isBinaryFile(f.path);
-      if (isBinary) return; // SKIP binary files to prevent TexLive form upload corruption
       const c = f.content;
-      
-      const text = c.startsWith('data:') ? Buffer.from(c.split(',')[1] || '', 'base64').toString('utf8') : c;
-      fd.append('filecontents[]', text);
       
       const originalPath = f.path;
       const isMain = normalizePath(originalPath) === normMain;
@@ -1988,6 +2025,20 @@ export async function compileWithTexLive(files: FilePayload[], mainFile: string,
       } else if (normalizePath(originalPath) === 'document.tex') {
           finalName = 'original_document.tex';
       }
+
+      if (isBinary) {
+        // Best-effort image upload: previously binary files were fully skipped
+        // (leaving only placeholders in the PDF). Send the raw bytes as a file
+        // part so texonline writes them to disk at `finalName`; the
+        // `\includegraphics` reference (with \graphicspath) then resolves them.
+        const raw = c.startsWith('data:') ? Buffer.from(c.split(',')[1] || '', 'base64') : Buffer.from(c, 'base64');
+        fd.append('filecontents[]', raw, finalName);
+        fd.append('filename[]', finalName);
+        return;
+      }
+      
+      const text = c.startsWith('data:') ? Buffer.from(c.split(',')[1] || '', 'base64').toString('utf8') : c;
+      fd.append('filecontents[]', text);
       fd.append('filename[]', finalName);
     });
     const controller = new AbortController();
