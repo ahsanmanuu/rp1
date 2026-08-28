@@ -348,7 +348,7 @@ async function runScopeWithRetry(
 // ── Deterministic main.tex composer ────────────────────────────────────────
 
 const GRAPHICS_PATH_LINES = [
-  "\\graphicspath{{./}{./assets/}{./images/}{./figures/}{../}{../assets/}{../images/}{./figures/}}",
+  "\\graphicspath{{./}{./figures/}{./assets/}{./images/}{../}{../figures/}{../assets/}{../images/}}",
   "\\DeclareGraphicsExtensions{.pdf,.eps,.png,.PNG,.jpg,.JPG,.jpeg,.JPEG,.tif,.tiff,.bmp,.gif,.webp,.avif,.svg,.ico,.heic,.HEIC,.heif,.HEIF}",
 ];
 
@@ -422,8 +422,14 @@ function composeMainTex(
   files: AiModularFile[],
 ): string {
   const metadatas = files.filter((f) => f.path.startsWith('metadata/'));
+  const isReferencesSection = (f: AiModularFile) => {
+    const slugMatch = /sections\/\d+_(?:references|bibliography|works_cited|references_cited)\.tex$/i.test(f.path);
+    if (slugMatch) return true;
+    const trimmed = (f.content || '').trim();
+    return /^\\(?:section|chapter|subsection)\*?\s*\{\s*(?:References|Bibliography|REFERENCES|BIBLIOGRAPHY|Reference|Works\s+Cited)\s*\}(?:\s*\\label\{[^}]*\})?\s*$/i.test(trimmed);
+  };
   const sections = files
-    .filter((f) => f.path.startsWith('sections/'))
+    .filter((f) => f.path.startsWith('sections/') && !isReferencesSection(f))
     .sort((a, b) => a.path.localeCompare(b.path));
   const floats = files.filter((f) => f.path.startsWith('floats/'));
   const bib = files.find((f) => f.path === 'references/bibliography.tex');

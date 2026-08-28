@@ -810,30 +810,32 @@ export async function runHardenedPipeline(
     }
 
     // ── DUPLICATE REFERENCES HEADING STRIP ───────────────────────────────────
-    // When an inline (thebibliography) bibliography is present, its generated
-    // source already carries its own \section*{References} heading. Empty body
-    // sections whose heading is exactly "References" (AI-forced section
-    // insertion, legacy per-section files, template leftovers) render a SECOND
-    // "References" heading in the PDF. Strip those headings when the next
-    // structural element is another section/input (i.e. the heading is empty),
-    // but NEVER touch the bibliography file's own heading (it is followed by
-    // \begin{thebibliography} which the lookahead excludes).
-    const hasInlineBibliography = finalNormalized.some(f =>
-      typeof f.content === 'string' && f.content.includes('\\begin{thebibliography}')
+    // Standard LaTeX \begin{thebibliography} and \bibliography automatically render
+    // the "References" or "Bibliography" section heading. Preceding manual headings
+    // (\section*{References}, \section{References}, \chapter*{References}, etc.)
+    // or empty section files titled "References" render a DUPLICATE heading in the PDF.
+    const hasBibliographyContent = finalNormalized.some(f =>
+      typeof f.content === 'string' && (f.content.includes('\\begin{thebibliography}') || f.content.includes('\\bibliography{') || f.content.includes('\\input{references/bibliography'))
     );
-    if (hasInlineBibliography) {
-      const refHeadingStrip = /\\section\*?\{References\}[^\S\r\n]*(?=(?:\s*(?:\\section|\\subsection|\\subsubsection|\\chapter|\\input|\\include|\\end\{document\})|\s*$))/gi;
+    if (hasBibliographyContent) {
+      // 1. Strip manual headings directly preceding \begin{thebibliography}, \bibliography, or \input{references/bibliography...}
+      const directPrecedingRef = /\\(?:section|chapter|subsection)\*?\s*\{\s*(?:References|Bibliography|REFERENCES|BIBLIOGRAPHY|Reference|Works\s+Cited)\s*\}(?:\s*\\label\{[^}]*\})?\s*(?=(?:\s*\\begin\s*\{thebibliography\}|\s*\\(?:input|include)\s*\{[^}]*(?:bib|ref)[^}]*\}|\s*\\bibliography\s*\{))/gi;
+
+      // 2. Strip empty section headings titled "References" that are immediately followed by another structural command or EOF
+      const emptyRefHeading = /\\(?:section|chapter|subsection)\*?\s*\{\s*(?:References|Bibliography|REFERENCES|BIBLIOGRAPHY|Reference|Works\s+Cited)\s*\}(?:\s*\\label\{[^}]*\})?[^\S\r\n]*(?=(?:\s*(?:\\section|\\subsection|\\subsubsection|\\chapter|\\input|\\include|\\end\{document\})|\s*$))/gi;
+
       let stripped = 0;
       for (const f of finalNormalized) {
-        if (typeof f.content !== 'string' || !/\\section\*?\{References\}/i.test(f.content)) continue;
-        const cleaned = f.content.replace(refHeadingStrip, '');
+        if (typeof f.content !== 'string' || !/\\(?:section|chapter|subsection)\*?\{\s*(?:References|Bibliography|REFERENCES|BIBLIOGRAPHY|Reference|Works\s+Cited)\s*\}/i.test(f.content)) continue;
+        let cleaned = f.content.replace(directPrecedingRef, '');
+        cleaned = cleaned.replace(emptyRefHeading, '');
         if (cleaned !== f.content) {
           f.content = cleaned;
           stripped++;
         }
       }
       if (stripped > 0) {
-        console.log(`[PIPELINE] Stripped ${stripped} duplicate empty "References" section heading(s) (inline bibliography owns the heading).`);
+        console.log(`[PIPELINE] Stripped ${stripped} duplicate "References" section heading(s) (bibliography block owns the heading).`);
       }
     }
 
@@ -916,17 +918,25 @@ export async function runHardenedPipeline(
 
                     const isNonStandard = ['webp', 'avif', 'gif', 'tiff', 'tif', 'bmp', 'svg', 'heic', 'heif'].includes(ext);
                     
-                    if (ext === 'png' || meta.hasAlpha || ext === 'svg') {
-                        pipeline = pipeline.flatten({ background: '#ffffff' }).jpeg({ quality: targetQuality, mozjpeg: true });
-                        finalExt = 'jpg';
-                        mime = 'image/jpeg';
-                    } else if (isNonStandard || ext === 'jpg' || ext === 'jpeg') {
-                        pipeline = pipeline.jpeg({ quality: targetQuality, mozjpeg: true });
-                        finalExt = 'jpg';
+                    if (ext === 'png' || meta.hasAlpha) {
+                        pipeline = pipeline.png({ compressionLevel: 7 });
+                        finalExt = 'png';
+                        mime = 'image/png';
+                    } else if (ext === 'svg') {
+                        pipeline = sharp(buffer, { density: 300 }).png({ compressionLevel: 7 });
+                        finalExt = 'png';
+                        mime = 'image/png';
+                    } else if (isNonStandard) {
+                        pipeline = pipeline.png({ compressionLevel: 7 });
+                        finalExt = 'png';
+                        mime = 'image/png';
+                    } else if (ext === 'jpg' || ext === 'jpeg') {
+                        pipeline = pipeline.jpeg({ quality: 80, mozjpeg: true });
+                        finalExt = ext;
                         mime = 'image/jpeg';
                     }
 
-                    pipeline = pipeline.resize(targetDim, targetDim, { fit: 'inside', withoutEnlargement: true });
+                    pipeline = pipeline.resize(1600, 1600, { fit: 'inside', withoutEnlargement: true });
 
                     const processedBuffer = await pipeline.toBuffer();
                     const newPath = f.path.replace(/\.[^.]+$/, `.${finalExt}`);
@@ -1153,23 +1163,6 @@ export async function runHardenedPipeline(
         };
     });
 
-    if (useGhostMode) {
-        const normMain = normalizePath(finalMain);
-
-        activeFiles = activeFiles.map(f => {
-            const ext = f.path.split('.').pop()?.toLowerCase() || '';
-            const isBinary = isBinaryFile(f.path);
-            if (normalizePath(f.path) === normMain) return f;
-            if (/^(cls|sty|bib|bst|cfg|clo|def|fd|ldf|tex)$/i.test(ext)) return f;
-            if (isBinary) {
-                if (ext === 'pdf') return { ...f, content: `data:application/pdf;base64,${PROXY_PDF_B64}` };
-                if (ext === 'jpg' || ext === 'jpeg') return { ...f, content: `data:image/jpeg;base64,${PROXY_JPG_B64}` };
-                return { ...f, content: `data:image/png;base64,${PROXY_IMAGE_B64}` };
-            }
-            return f;
-        });
-    }
-
     // ── PROPRIETARY PACKAGE STUB INJECTOR ───────────────────────────────────
     // Many journal cls files (Wiley USG, Springer, etc.) ship companion .sty
     // files that are NOT in the public TeX Live distribution. We auto-inject
@@ -1388,12 +1381,30 @@ export async function runHardenedPipeline(
                         newBuffer = Buffer.from(b64Data, 'base64');
                     }
 
-                    // Write to temporary directory
+                    // Write to primary relative path in compile temp dir
                     const tempP = path.join(compileTempDir, f.path);
                     if (!fs.existsSync(path.dirname(tempP))) {
                         fs.mkdirSync(path.dirname(tempP), { recursive: true });
                     }
                     fs.writeFileSync(tempP, newBuffer);
+
+                    // For binary image files: multi-location deployment so \includegraphics
+                    // succeeds whether looking in root, figures/, assets/, or images/
+                    if (isBinary) {
+                        const baseName = path.basename(f.path);
+                        const altLocations = [
+                            path.join(compileTempDir, baseName),
+                            path.join(compileTempDir, 'figures', baseName),
+                            path.join(compileTempDir, 'assets', baseName),
+                            path.join(compileTempDir, 'images', baseName)
+                        ];
+                        for (const altP of altLocations) {
+                            try {
+                                if (!fs.existsSync(path.dirname(altP))) fs.mkdirSync(path.dirname(altP), { recursive: true });
+                                if (!fs.existsSync(altP)) fs.writeFileSync(altP, newBuffer);
+                            } catch {}
+                        }
+                    }
 
                     // Write to physical project uploads dir (catching locks gracefully)
                     try {
@@ -1406,6 +1417,22 @@ export async function runHardenedPipeline(
                             if (existingBuffer.equals(newBuffer)) return;
                         }
                         fs.writeFileSync(fullP, newBuffer);
+
+                        if (isBinary) {
+                            const baseName = path.basename(f.path);
+                            const projAlts = [
+                                path.join(projectDir, baseName),
+                                path.join(projectDir, 'figures', baseName),
+                                path.join(projectDir, 'assets', baseName),
+                                path.join(projectDir, 'images', baseName)
+                            ];
+                            for (const altP of projAlts) {
+                                try {
+                                    if (!fs.existsSync(path.dirname(altP))) fs.mkdirSync(path.dirname(altP), { recursive: true });
+                                    if (!fs.existsSync(altP)) fs.writeFileSync(altP, newBuffer);
+                                } catch {}
+                            }
+                        }
                     } catch (pWriteErr) {
                         console.warn(`[TECTONIC] Non-fatal project dir write warning:`, pWriteErr);
                     }

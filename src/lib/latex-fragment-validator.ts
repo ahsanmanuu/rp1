@@ -355,6 +355,11 @@ export function sanitizeAiMetadataFile(raw: unknown, path: string): string | nul
     if (re.test(s)) return null;
   }
   if (/\\begin\s*\{document\}|\\end\s*\{document\}|\\documentclass\b/.test(s)) return null;
+
+  if (path === 'references/bibliography.tex') {
+    s = s.replace(/^\\(?:section|chapter|subsection)\*?\s*\{\s*(?:References|Bibliography|REFERENCES|BIBLIOGRAPHY|Reference|Works\s+Cited)\s*\}\s*/i, '');
+  }
+
   return s;
 }
 

@@ -190,6 +190,17 @@ export function preprocessLatex(
   // 6. Strip empty \DeclareGraphicsExtensions that reference nothing
   content = content.replace(/\\DeclareGraphicsExtensions\s*\{\s*\}/g, '% Removed empty \\DeclareGraphicsExtensions');
 
+  // 7. Universal Deduplication of References / Bibliography Headings
+  // Standard LaTeX \begin{thebibliography} and \bibliography automatically render the
+  // "References" or "Bibliography" section heading. Preceding manual \section*{References},
+  // \section{References}, \chapter*{References}, or \section*{Bibliography} headings
+  // cause duplicate headings in the rendered PDF across all templates.
+  const manualRefHeadingBeforeBib = /\\(?:section|chapter|subsection)\*?\s*\{\s*(?:References|Bibliography|REFERENCES|BIBLIOGRAPHY|Reference|Works\s+Cited)\s*\}(?:\s*\\label\{[^}]*\})?\s*(?=(?:\s*\\begin\s*\{thebibliography\}|\s*\\(?:input|include)\s*\{[^}]*(?:bib|ref)[^}]*\}|\s*\\bibliography\s*\{))/gi;
+  if (manualRefHeadingBeforeBib.test(content)) {
+    content = content.replace(manualRefHeadingBeforeBib, '');
+    allFixes.push('Removed duplicate manual References/Bibliography heading preceding bibliography environment/input');
+  }
+
   return { content, fixes: allFixes };
 }
 

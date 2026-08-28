@@ -80,7 +80,7 @@ ${_B}ifdefined${_B}NuclearTrackerV30${_B}else
   ${_B}ifdefined${_B}pdflastypos${_B}else${_B}let${_B}pdflastypos${_B}lastypos${_B}fi
   ${_B}maxdeadcycles=2000
   ${_B}usepackage{graphicx}
-  ${_B}graphicspath{{./}{./assets/}{./images/}{./figures/}{../}{../assets/}{../images/}{./figures/}}
+  ${_B}graphicspath{{./}{./figures/}{./assets/}{./images/}{../}{../figures/}{../assets/}{../images/}}
   ${_B}newwrite${_B}ghostwriter
   ${_B}immediate${_B}openout${_B}ghostwriter=ghost.trc
   ${_B}ifdefined${_B}zimgRender${_B}else
@@ -95,29 +95,52 @@ ${_B}ifdefined${_B}NuclearTrackerV30${_B}else
   ${_B}ifdefined${_B}zimg${_B}else
     ${_B}newcommand{${_B}zimg}[4]{%
       ${_B}leavevmode
-      ${_B}IfFileExists{${_B}detokenize{#1}}{%
-        ${_B}zimgRender{${_B}detokenize{#1}}{#2}{#3}%
+      ${_B}IfFileExists{#1}{%
+        ${_B}zimgRender{#1}{#2}{#3}%
       }{%
-        ${_B}IfFileExists{${_B}detokenize{#1.png}}{%
-          ${_B}zimgRender{${_B}detokenize{#1.png}}{#2}{#3}%
+        ${_B}IfFileExists{#1.png}{%
+          ${_B}zimgRender{#1.png}{#2}{#3}%
         }{%
-          ${_B}IfFileExists{${_B}detokenize{#1.jpg}}{%
-            ${_B}zimgRender{${_B}detokenize{#1.jpg}}{#2}{#3}%
+          ${_B}IfFileExists{#1.jpg}{%
+            ${_B}zimgRender{#1.jpg}{#2}{#3}%
           }{%
-            ${_B}IfFileExists{../${_B}detokenize{#1}}{%
-              ${_B}zimgRender{../${_B}detokenize{#1}}{#2}{#3}%
+            ${_B}IfFileExists{#1.jpeg}{%
+              ${_B}zimgRender{#1.jpeg}{#2}{#3}%
             }{%
-              ${_B}IfFileExists{../${_B}detokenize{#1.png}}{%
-                ${_B}zimgRender{../${_B}detokenize{#1.png}}{#2}{#3}%
+              ${_B}IfFileExists{figures/#1}{%
+                ${_B}zimgRender{figures/#1}{#2}{#3}%
               }{%
-                ${_B}IfFileExists{../${_B}detokenize{#1.jpg}}{%
-                  ${_B}zimgRender{../${_B}detokenize{#1.jpg}}{#2}{#3}%
+                ${_B}IfFileExists{figures/#1.png}{%
+                  ${_B}zimgRender{figures/#1.png}{#2}{#3}%
                 }{%
-                  ${_B}IfFileExists{assets/${_B}detokenize{#1}}{%
-                    ${_B}zimgRender{assets/${_B}detokenize{#1}}{#2}{#3}%
+                  ${_B}IfFileExists{figures/#1.jpg}{%
+                    ${_B}zimgRender{figures/#1.jpg}{#2}{#3}%
                   }{%
-                    ${_B}write16{NUCLEAR WARNING: Image ${_B}detokenize{#1} not found, skipping safely.}%
-                    ${_B}framebox(100,100){Image Missing: ${_B}detokenize{#1}}%
+                    ${_B}IfFileExists{assets/#1}{%
+                      ${_B}zimgRender{assets/#1}{#2}{#3}%
+                    }{%
+                      ${_B}IfFileExists{assets/#1.png}{%
+                        ${_B}zimgRender{assets/#1.png}{#2}{#3}%
+                      }{%
+                        ${_B}IfFileExists{assets/#1.jpg}{%
+                          ${_B}zimgRender{assets/#1.jpg}{#2}{#3}%
+                        }{%
+                          ${_B}IfFileExists{images/#1}{%
+                            ${_B}zimgRender{images/#1}{#2}{#3}%
+                          }{%
+                            ${_B}IfFileExists{../#1}{%
+                              ${_B}zimgRender{../#1}{#2}{#3}%
+                            }{%
+                              ${_B}IfFileExists{../figures/#1}{%
+                                ${_B}zimgRender{../figures/#1}{#2}{#3}%
+                              }{%
+                                ${_B}csname includegraphics${_B}endcsname[#2]{#1}%
+                              }%
+                            }%
+                          }%
+                        }%
+                      }%
+                    }%
                   }%
                 }%
               }%

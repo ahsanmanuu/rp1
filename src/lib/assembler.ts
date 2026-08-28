@@ -228,16 +228,36 @@ export class LatexAssembler {
       "    \\IfFileExists{#1}{%",
       "      \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{#1}%",
       "    }{%",
-      "      \\IfFileExists{assets/#1}{%",
-      "        \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{assets/#1}%",
+      "      \\IfFileExists{#1.png}{%",
+      "        \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{#1.png}%",
       "      }{%",
-      "        \\IfFileExists{figures/#1}{%",
-      "          \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{figures/#1}%",
+      "        \\IfFileExists{#1.jpg}{%",
+      "          \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{#1.jpg}%",
       "        }{%",
-      "          \\IfFileExists{images/#1}{%",
-      "            \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{images/#1}%",
+      "          \\IfFileExists{figures/#1}{%",
+      "            \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{figures/#1}%",
       "          }{%",
-      "            \\fbox{Missing Image: #1}%",
+      "            \\IfFileExists{figures/#1.png}{%",
+      "              \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{figures/#1.png}%",
+      "            }{%",
+      "              \\IfFileExists{figures/#1.jpg}{%",
+      "                \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{figures/#1.jpg}%",
+      "              }{%",
+      "                \\IfFileExists{assets/#1}{%",
+      "                  \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{assets/#1}%",
+      "                }{%",
+      "                  \\IfFileExists{images/#1}{%",
+      "                    \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{images/#1}%",
+      "                  }{%",
+      "                    \\IfFileExists{../#1}{%",
+      "                      \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{../#1}%",
+      "                    }{%",
+      "                      \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{#1}%",
+      "                    }%",
+      "                  }%",
+      "                }%",
+      "              }%",
+      "            }%",
       "          }%",
       "        }%",
       "      }%",
@@ -690,8 +710,9 @@ export class LatexAssembler {
       // each alias rendered a SEPARATE bibliography line in the compiled PDF
       // (triple duplicate entries per reference). In-text author-year citations
       // are resolved to \cite{refN} keys by resolveParentheticalCitations().
-      const refHeaderCmd = '\\section*{References}\n';
-      const bibContent = `\n${refHeaderCmd}\\begin{thebibliography}{99}\n${bibItems.join('\n')}\n\\end{thebibliography}`;
+      // thebibliography environment natively formats its own References/Bibliography heading.
+      const refHeaderCmd = '';
+      const bibContent = `\n\\begin{thebibliography}{99}\n${bibItems.join('\n')}\n\\end{thebibliography}`;
       files['references/bibliography.tex'] = bibContent;
       header.push("\\input{references/bibliography.tex}");
     }
@@ -1759,16 +1780,28 @@ export class ModularLatexAssembler {
       "        \\IfFileExists{#1.jpg}{%",
       "          \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{#1.jpg}%",
       "        }{%",
-      "          \\IfFileExists{assets/#1}{%",
-      "            \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{assets/#1}%",
+      "          \\IfFileExists{figures/#1}{%",
+      "            \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{figures/#1}%",
       "          }{%",
-      "            \\IfFileExists{assets/#1.png}{%",
-      "              \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{assets/#1.png}%",
+      "            \\IfFileExists{figures/#1.png}{%",
+      "              \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{figures/#1.png}%",
       "            }{%",
-      "              \\IfFileExists{assets/#1.jpg}{%",
-      "                \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{assets/#1.jpg}%",
+      "              \\IfFileExists{figures/#1.jpg}{%",
+      "                \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{figures/#1.jpg}%",
       "              }{%",
-      "                \\framebox(\\linewidth,100pt){Missing Image: \\detokenize{#1}}%",
+      "                \\IfFileExists{assets/#1}{%",
+      "                  \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{assets/#1}%",
+      "                }{%",
+      "                  \\IfFileExists{images/#1}{%",
+      "                    \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{images/#1}%",
+      "                  }{%",
+      "                    \\IfFileExists{../#1}{%",
+      "                      \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{../#1}%",
+      "                    }{%",
+      "                      \\csname includegraphics\\endcsname[#2,max height=0.7\\textheight]{#1}%",
+      "                    }%",
+      "                  }%",
+      "                }%",
       "              }%",
       "            }%",
       "          }%",
@@ -2362,7 +2395,7 @@ export class ModularLatexAssembler {
           // primary key only.
         });
         const bibContent = bibEntries.join('\n\n');
-        const refHeaderCmd = '\\section*{References}\n';
+        const refHeaderCmd = '';
         files[`references/${bibFileName}.bib`] = bibContent;
         files[`${bibFileName}.bib`] = bibContent;
         files['references/bibliography.tex'] = `\n${refHeaderCmd}\\bibliographystyle{${bibKey}}\n\\bibliography{${bibFileName}}\n`;
@@ -2379,7 +2412,7 @@ export class ModularLatexAssembler {
           const cleanRef = ref.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '');
           bibItems.push(`\\bibitem{${key}} ${LatexAssembler.escape(cleanRef, mathBlocks, { skipCitations: true, isBibItem: true })}`);
         });
-        const refHeaderCmd = '\\section*{References}\n';
+        const refHeaderCmd = '';
         const bibContent = `\n${refHeaderCmd}\\begin{thebibliography}{99}\n${bibItems.join('\n')}\n\\end{thebibliography}`;
         files['references/bibliography.tex'] = bibContent;
         header.push("\\input{references/bibliography.tex}");
