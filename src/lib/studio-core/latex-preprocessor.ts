@@ -186,7 +186,7 @@ export function preprocessLatex(
     (m: string) => {
       const pkgMatch = m.match(/ams(math|fonts|symb)/i);
       const pkg = pkgMatch ? pkgMatch[0].toLowerCase() : 'amsmath';
-      return `\\@ifpackageloaded{${pkg}}{}{${m}}`;
+      return `\\makeatletter\\@ifpackageloaded{${pkg}}{}{${m}}\\makeatother`;
     }
   );
 
