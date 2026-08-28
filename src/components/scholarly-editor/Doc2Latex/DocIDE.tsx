@@ -1067,6 +1067,90 @@ export default function DocIDE({ projectId }: { projectId: string }) {
         })
       )).filter((f): f is StudioFile => f !== null);
 
+      // ROBUST FIGURE RECOVERY (doc2latex):
+      // The structured-content parser (DeepDocumentParser) stamps figure ids as
+      // `pdf_fig_<lineNumber>.png` (the SOURCE LINE index, not a sequential
+      // figure index) and charts as `chart_pending_<N>.png`, while the real
+      // binaries uploaded from the client are named `rf_fig_<seq>.png` /
+      // `rf_chart_<seq>.png`. The two naming schemes never align, so LaTeX
+      // renders empty placeholder boxes. Here we re-attach the pristine figure
+      // bytes (from the client's IndexedDB envelope.figures, the only place they
+      // are guaranteed to exist) by injecting each one under the EXACT reference
+      // name used by \includegraphics — matched by sequential document order
+      // within its family (figure vs chart). The reference name is irrelevant;
+      // what matters is that a real image file exists at that path at compile
+      // time.
+      try {
+        const { getLocalDocument } = await import('@/lib/local-project-store');
+        const localDoc = await getLocalDocument(projectId);
+        const figs = localDoc?.envelope?.figures;
+        if (Array.isArray(figs) && figs.length > 0) {
+          const byLower = new Map<string, any>();
+          payloadFiles.forEach((f: any) => byLower.set((f.path || '').toLowerCase(), f));
+          // Envelope figures split into families by the SAME convention the
+          // server uses for the uploaded binaries (rf_fig_* / rf_chart_*).
+          const envFigs = (figs as any[]).filter(f => /^rf_fig_/i.test(f.name || ''));
+          const envCharts = (figs as any[]).filter(f => /^(rf_chart_|chart_pending_)/i.test(f.name || ''));
+          // Also index by exact name so a correctly-named reference (rf_fig_9)
+          // resolves to ITS OWN bytes rather than the sequential slot.
+          const byName = new Map<string, any>();
+          for (const f of figs) byName.set((f.name || '').toLowerCase(), f);
+          const numIn = (s: string) => parseInt((s.match(/(\d+)/) || ['', '0'])[1]) || 0;
+          const isChartRef = (r: string) => /chart_pending|rf_chart/i.test(r) || /chart/i.test(r);
+          const hasRealBytes = (c: any) => typeof c === 'string' && c.length > 200;
+          // Float files in numeric order follow document order of figures.
+          const floatKeys = payloadFiles
+            .filter(f => /^(figures\/figure_\d+\.tex|figures\/figure_group_\d+\.tex)$/i.test(f.path || ''))
+            .map(f => f.path)
+            .sort((a: string, b: string) => numIn(a) - numIn(b));
+          const refFiles = [
+            ...floatKeys,
+            ...payloadFiles.filter(f => !floatKeys.includes(f.path) && /\.tex$/i.test(f.path || '')).map(f => f.path)
+          ];
+          let fi = 0, ci = 0;
+          const incRe = /\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/g;
+          for (const p of refFiles) {
+            const f = payloadFiles.find((x: any) => x.path === p);
+            if (!f) continue;
+            const content = typeof f.content === 'string' ? f.content : '';
+            let m: RegExpExecArray | null;
+            while ((m = incRe.exec(content))) {
+              const ref = (m[1] || '').trim().replace(/^.*\//, '');
+              if (!ref) continue;
+              const lower = ref.toLowerCase();
+              const existing = byLower.get(lower);
+              if (existing && hasRealBytes(existing.content)) continue; // already has real bytes
+              // 1) Direct name match (e.g. reference already says rf_fig_9.png).
+              let fig = byName.get(lower);
+              let useSeq = false;
+              // 2) Otherwise map sequentially within the family (pdf_fig_42 ->
+              //    the Nth rf_fig binary in document order).
+              if (!fig) {
+                const isChart = isChartRef(ref);
+                const useChartPool = isChart && envCharts.length > 0;
+                const pool = useChartPool ? envCharts : envFigs;
+                const idx = useChartPool ? ci : fi;
+                fig = pool[idx];
+                useSeq = true;
+                if (fig) { if (useChartPool) ci++; else fi++; }
+              }
+              if (!fig || !fig.dataUrl || fig.dataUrl.length <= 200) continue;
+              if (existing) {
+                existing.content = fig.dataUrl;
+                console.log(`[DocIDE] Upgraded placeholder ${ref} with real figure bytes.`);
+              } else {
+                const injected: any = { path: ref, content: fig.dataUrl };
+                payloadFiles.push(injected);
+                byLower.set(lower, injected);
+                console.log(`[DocIDE] Injected missing figure binary ${ref} (${useSeq ? 'seq ' : 'named '}${isChartRef(ref) ? 'chart' : 'figure'}) from IndexedDB envelope.`);
+              }
+            }
+          }
+        }
+      } catch (figErr) {
+        console.warn('[DocIDE] Figure recovery skipped:', figErr);
+      }
+
       for (let i = 0; i < payloadFiles.length; i++) {
         const f = payloadFiles[i];
         formData.append(`files[${i}][path]`, f.path);

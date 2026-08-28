@@ -188,6 +188,47 @@ export async function POST(req: Request) {
       usedOriginalTemplate = true;
     }
 
+    // --- REMAP FIGURE REFERENCES TO ACTUAL BINARY FILENAMES ---
+    // DeepDocumentParser stamps figure ids as `pdf_fig_<lineNumber>.png` (the
+    // source line index, NOT a sequential figure index) and charts as
+    // `chart_pending_<N>.png`, while the real binaries uploaded from the client
+    // are named `rf_fig_<seq>.png` / `rf_chart_<seq>.png`. The two naming schemes
+    // never align, so without remapping LaTeX renders empty placeholder boxes.
+    // Remap each reference (in document/float order) to the matching binary by
+    // sequential index within its family (figure vs chart).
+    if (extractedComponents && Object.keys(extractedComponents).length > 0 && figureFiles.length > 0) {
+      const numIn = (s: string) => parseInt((s.match(/(\d+)/) || ['', '0'])[1]) || 0;
+      const binaryNames = figureFiles.map(f => f.name);
+      const figBins = binaryNames.filter(n => /^rf_fig_\d+\./i.test(n)).sort((a, b) => numIn(a) - numIn(b));
+      const chartBins = binaryNames.filter(n => /^(rf_chart_|chart_pending_)/i.test(n)).sort((a, b) => numIn(a) - numIn(b));
+      let fi = 0, ci = 0;
+      const incRe = /\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/g;
+      const isChartRef = (r: string) => /chart_pending|rf_chart/i.test(r) || /chart/i.test(r);
+      const floatKeys = Object.keys(extractedComponents)
+        .filter(k => /^(figures\/figure_\d+\.tex|figures\/figure_group_\d+\.tex)$/i.test(k))
+        .sort((a, b) => numIn(a) - numIn(b));
+      const apply = (content: string) => content.replace(incRe, (m, ref) => {
+        const r = String(ref).trim();
+        if (/^rf_/i.test(r) && (figBins.includes(r) || chartBins.includes(r))) return m; // already correct
+        const isChart = isChartRef(r);
+        // When no chart binaries exist, fold chart references into the figure pool
+        // so they still resolve to a real image instead of a placeholder.
+        const pool = (isChart && chartBins.length > 0) ? chartBins : figBins;
+        const idx = isChart && chartBins.length > 0 ? ci : fi;
+        const target = pool[idx];
+        if (!target) return m;
+        if (isChart && chartBins.length > 0) ci++; else fi++;
+        return m.replace(ref, target);
+      });
+      for (const k of floatKeys) extractedComponents[k] = apply(extractedComponents[k]);
+      for (const k of Object.keys(extractedComponents)) {
+        if (floatKeys.includes(k)) continue;
+        if (!/\.tex$/i.test(k)) continue;
+        extractedComponents[k] = apply(extractedComponents[k]);
+      }
+      console.log(`[GENERATE-LATEX] Remapped figure references: ${fi} figure(s), ${ci} chart(s) -> binaries (figBins=${figBins.length}, chartBins=${chartBins.length}).`);
+    }
+
     // Safety: if main.tex is still empty but we have a template, use it
     if (!fullLatex && template && template.assetFolder) {
       const mainPath = path.join(process.cwd(), 'src', 'assets', 'templates', template.assetFolder, 'main.tex');
