@@ -352,10 +352,19 @@ export default function DocIDE({ projectId }: { projectId: string }) {
             console.warn('AI snapshot localStorage restore failed (non-critical):', verdictErr);
           }
           
-          // Clear old local files in StudioFS to avoid stale/conflicting files in local IndexedDB
+          // Preserve valid local image assets before clearing old text files
+          const preservedLocalImages = new Map<string, string>();
           try {
             const oldFiles = await studioFs.listFiles(projectId);
-            await Promise.all(oldFiles.map(oldFile => studioFs.deleteFile(projectId, oldFile.path)));
+            for (const oldFile of oldFiles) {
+              const ext = oldFile.path.split('.').pop()?.toLowerCase() || '';
+              const isImg = ['png', 'jpg', 'jpeg', 'pdf', 'webp', 'gif', 'svg', 'eps', 'tiff', 'tif', 'bmp', 'heic', 'heif', 'avif'].includes(ext);
+              if (isImg && oldFile.content && oldFile.content.length > 200 && !oldFile.content.includes('AAAAASUVORK5CYII=')) {
+                preservedLocalImages.set(oldFile.path, oldFile.content);
+                preservedLocalImages.set(oldFile.path.split('/').pop() || oldFile.path, oldFile.content);
+              }
+              await studioFs.deleteFile(projectId, oldFile.path);
+            }
           } catch (clearErr) {
             console.warn("Failed to clear old local files:", clearErr);
           }
@@ -388,30 +397,57 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                   await studioFs.writeFile(projectId, file.filename, file.content || "");
                 }
               } else if (isBinary) {
-                let dataUrl = (typeof file.content === 'string' && file.content.startsWith('data:') && file.content.length > 200) ? file.content : '';
-                if (!dataUrl && file.filePath) {
+                let dataUrl = '';
+                if (typeof file.content === 'string' && file.content.length > 100) {
+                  if (file.content.startsWith('data:')) {
+                    dataUrl = file.content;
+                  } else if (!file.content.includes('\n')) {
+                    const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext || 'png'}`;
+                    dataUrl = `data:${mime};base64,${file.content}`;
+                  }
+                }
+
+                // Check preserved local images
+                if (!dataUrl || dataUrl.length < 200 || dataUrl.includes('AAAAASUVORK5CYII=')) {
+                  const baseName = file.filename.split('/').pop() || file.filename;
+                  if (preservedLocalImages.has(file.filename)) {
+                    dataUrl = preservedLocalImages.get(file.filename)!;
+                  } else if (preservedLocalImages.has(baseName)) {
+                    dataUrl = preservedLocalImages.get(baseName)!;
+                  }
+                }
+
+                // Fallback: fetch from server endpoint /uploads/projects/...
+                if ((!dataUrl || dataUrl.length < 200) && file.filePath) {
                   try {
                     const assetRes = await fetch(file.filePath);
                     if (assetRes.ok) {
                       const blob = await assetRes.blob();
-                      dataUrl = await new Promise<string>((resolve) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => resolve(reader.result as string);
-                        reader.readAsDataURL(blob);
-                      });
+                      if (blob.size > 50) {
+                        dataUrl = await new Promise<string>((resolve) => {
+                          const reader = new FileReader();
+                          reader.onloadend = () => resolve(reader.result as string);
+                          reader.readAsDataURL(blob);
+                        });
+                      }
                     }
                   } catch (assetErr) {
                     console.warn(`Failed to fetch binary asset ${file.filename}:`, assetErr);
                   }
                 }
+
                 // Fallback: Recover pristine figure bytes from client-side IndexedDB store
                 if (!dataUrl || dataUrl.length < 200) {
                   try {
                     const { getLocalDocument } = await import('@/lib/local-project-store');
                     const localDoc = await getLocalDocument(projectId);
-                    if (localDoc?.envelope?.figures && Array.isArray(localDoc.envelope.figures)) {
+                    const figPool = [
+                      ...(Array.isArray(localDoc?.envelope?.figures) ? localDoc.envelope.figures : []),
+                      ...(Array.isArray((localDoc as any)?.figures) ? (localDoc as any).figures : [])
+                    ];
+                    if (figPool.length > 0) {
                       const baseName = file.filename.split('/').pop() || file.filename;
-                      const matchedFig = localDoc.envelope.figures.find((fig: any) => 
+                      const matchedFig = figPool.find((fig: any) => 
                         fig.name === file.filename || 
                         fig.name === baseName ||
                         (fig.name && file.filename.endsWith(fig.name))
@@ -422,6 +458,22 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                     }
                   } catch {}
                 }
+
+                // Proactively heal server DB & disk with recovered binary image
+                if (dataUrl && dataUrl.length > 200 && (!file.content || file.content.length < 200)) {
+                  fetch(`/api/projects/${projectId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      file: {
+                        filename: file.filename,
+                        content: dataUrl,
+                        fileType: 'image'
+                      }
+                    })
+                  }).catch(() => {});
+                }
+
                 if (!dataUrl) {
                   dataUrl = `data:image/${ext === 'jpg' ? 'jpeg' : (ext || 'png')};base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=`;
                 }
@@ -1593,8 +1645,10 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                               const ext = activeFile.split('.').pop()?.toLowerCase() || '';
                               const isRenderable = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'avif', 'bmp'].includes(ext);
                               if (isRenderable) {
-                                const fallbackUrl = `/uploads/projects/${projectId}/${activeFile.replace(/^assets\//, '')}`;
-                                const imageSrc = (code && code.startsWith('data:image/')) ? code : fallbackUrl;
+                                const cleanBase = activeFile.replace(/^(assets|figures)\//, '');
+                                const fallbackUrl = `/uploads/projects/${projectId}/${cleanBase}`;
+                                const hasDataUrl = code && typeof code === 'string' && code.startsWith('data:image/') && code.length > 200 && !code.includes('AAAAASUVORK5CYII=');
+                                const imageSrc = hasDataUrl ? code : fallbackUrl;
                                 return (
                                   <img 
                                     src={imageSrc} 
@@ -1603,6 +1657,8 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                                       const target = e.currentTarget;
                                       if (target.src !== fallbackUrl) {
                                         target.src = fallbackUrl;
+                                      } else if (!target.src.includes(`assets/${cleanBase}`)) {
+                                        target.src = `/uploads/projects/${projectId}/assets/${cleanBase}`;
                                       }
                                     }}
                                     style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', display: 'block', borderRadius: '4px' }} 

@@ -488,51 +488,71 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         }
       }
 
-      // Synchronize additional project files into SQLite persistent store
-      if (body.files && Array.isArray(body.files)) {
-        for (const file of body.files) {
+      // Synchronize additional project files into persistent store and disk
+      const incomingFiles = Array.isArray(body.files) ? body.files : (body.file ? [body.file] : []);
+      if (incomingFiles.length > 0) {
+        for (const file of incomingFiles) {
           if (!file.filename) continue;
           
+          const baseName = path.basename(file.filename);
+          const ext = file.filename.split('.').pop()?.toLowerCase();
+          const isImageExt = ['image', 'png', 'jpg', 'jpeg', 'pdf', 'webp', 'gif', 'svg', 'eps', 'tiff', 'tif', 'bmp', 'heic', 'heif', 'avif'].includes(file.fileType) ||
+            ['png', 'jpg', 'jpeg', 'pdf', 'webp', 'gif', 'svg', 'eps', 'tiff', 'tif', 'bmp', 'heic', 'heif', 'avif'].includes(ext || '');
+
           try {
-            const destPath = path.join(projectDir, file.filename);
-            const destDir = path.dirname(destPath);
-            if (!fs.existsSync(destDir)) {
-              fs.mkdirSync(destDir, { recursive: true });
-            }
             let contentToWrite: Buffer | string = file.content || "";
             if (typeof contentToWrite === 'string' && contentToWrite.startsWith('data:')) {
               const base64Data = contentToWrite.split(',')[1] || '';
               contentToWrite = Buffer.from(base64Data, 'base64');
+            } else if (typeof contentToWrite === 'string' && !contentToWrite.includes('\n') && contentToWrite.length > 200 && isImageExt) {
+              contentToWrite = Buffer.from(contentToWrite, 'base64');
             }
-            fs.writeFileSync(destPath, contentToWrite);
+
+            const targetPaths = [
+              path.join(projectDir, file.filename),
+              path.join(projectDir, baseName),
+              path.join(projectDir, 'assets', baseName),
+              path.join(projectDir, 'figures', baseName),
+            ];
+            for (const destPath of targetPaths) {
+              const destDir = path.dirname(destPath);
+              if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+              fs.writeFileSync(destPath, contentToWrite);
+            }
           } catch (diskErr) {
             console.error(`[DISK_SYNC_ERROR] Could not write ${file.filename} to disk:`, diskErr);
           }
 
-          const ext = file.filename.split('.').pop()?.toLowerCase();
-          const fileType = file.fileType || ext || 'tex';
-          const filePath = file.filePath || `/uploads/projects/${id}/${file.filename}`;
+          const fileType = file.fileType || (isImageExt ? 'image' : (ext || 'tex'));
           
-          await prisma.projectFile.upsert({
-            where: {
-              projectId_filename: {
-                projectId: id,
-                filename: file.filename
-              }
-            },
-            update: {
-              content: file.content || "",
-              fileType,
-              filePath
-            },
-            create: {
-              projectId: id,
-              filename: file.filename,
-              content: file.content || "",
-              fileType,
-              filePath
-            }
-          });
+          const dbFilenames = isImageExt
+            ? [file.filename, baseName, `assets/${baseName}`, `figures/${baseName}`]
+            : [file.filename];
+
+          for (const fn of Array.from(new Set(dbFilenames))) {
+            try {
+              await prisma.projectFile.upsert({
+                where: {
+                  projectId_filename: {
+                    projectId: id,
+                    filename: fn
+                  }
+                },
+                update: {
+                  content: file.content || "",
+                  fileType,
+                  filePath: `/uploads/projects/${id}/${fn}`
+                },
+                create: {
+                  projectId: id,
+                  filename: fn,
+                  content: file.content || "",
+                  fileType,
+                  filePath: `/uploads/projects/${id}/${fn}`
+                }
+              });
+            } catch {}
+          }
         }
       }
 

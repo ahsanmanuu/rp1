@@ -635,6 +635,27 @@ async function runUploadProcessing(uploadId: string) {
         }
       }
 
+      if (Array.isArray(clientEnvelope.figures)) {
+        for (const fig of clientEnvelope.figures) {
+          if (fig && fig.name && typeof fig.dataUrl === 'string' && fig.dataUrl.startsWith('data:')) {
+            try {
+              const b64 = fig.dataUrl.split(',')[1] || '';
+              const buf = Buffer.from(b64, 'base64');
+              if (buf.length > 50) {
+                const existing = extractedImages.find(img => img.name === fig.name);
+                if (!existing) {
+                  extractedImages.push({
+                    name: fig.name,
+                    buffer: buf,
+                    isStructural: false
+                  });
+                }
+              }
+            } catch {}
+          }
+        }
+      }
+
       const html = String(clientEnvelope.html || '');
       const text = String(clientEnvelope.text || '');
       const referencesText = String(clientEnvelope.referencesText || '');
@@ -2010,24 +2031,36 @@ export async function POST(req: Request) {
     const templateId = (formData.get('templateId') || formData.get('template') || 'article_lncs') as string;
     const fileName = file.name || 'document.docx';
 
+    let figuresList = figureManifest;
+    const rawFiguresData = formData.get('figuresData');
+    if (rawFiguresData && typeof rawFiguresData === 'string') {
+      try {
+        const parsedFigs = JSON.parse(rawFiguresData);
+        if (Array.isArray(parsedFigs) && parsedFigs.length > 0) {
+          figuresList = parsedFigs;
+        }
+      } catch {}
+    }
+
     let buffer: Buffer | null = null;
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      if (arrayBuffer && arrayBuffer.byteLength > 0) {
+        buffer = Buffer.from(arrayBuffer);
+      }
+    } catch (bufErr) {
+      console.warn('[UPLOAD] Failed to read uploaded file buffer:', bufErr);
+    }
+
     let envelopePayload: string | null = null;
     if (isClientExtracted) {
-      // Envelope payload (no binaries). Stored as a plain JSON STRING in the
-      // rawBytes field (the PocketBase-backed prisma adapter round-trips
-      // strings verbatim — Buffers would be mangled into {"type":"Buffer",...}),
-      // so crash-recovery re-kicks can re-run the lightweight worker without
-      // any client involvement.
       envelopePayload = JSON.stringify({
         __clientEnvelope: true,
         html: analysisHtml,
         text: analysisText,
         referencesText,
-        figures: figureManifest,
+        figures: figuresList,
       });
-    } else {
-      const arrayBuffer = await file.arrayBuffer();
-      buffer = Buffer.from(arrayBuffer);
     }
 
     // Lazy GC: purge finished/failed upload jobs older than 24h so the table

@@ -357,6 +357,15 @@ function UploadContent() {
           "figureManifest",
           JSON.stringify((clientExtract.figures || []).map((f: any) => ({ name: f.name, contentType: f.contentType })))
         );
+        if (clientExtract.figures && clientExtract.figures.length > 0) {
+          formData.append("figuresData", JSON.stringify(clientExtract.figures));
+          for (const fig of clientExtract.figures) {
+            if (fig.dataUrl) {
+              const blob = dataUrlToFile(String(fig.dataUrl), String(fig.name), String(fig.contentType || 'image/png'));
+              if (blob) formData.append("figureBlobs", blob, String(fig.name));
+            }
+          }
+        }
       }
 
       // Step 1: Upload the file — with automatic retry loop for transient network errors

@@ -2036,7 +2036,7 @@ export async function runDoc2LatexCompiler(
         console.warn('[DOC2LATEX] Figure recovery skipped:', recoverErr?.message || recoverErr);
       }
     }
-    return runHardenedPipeline(engine, files, mainFile, projectId, { profile: 'doc2latex', ghostMode: true });
+    return runHardenedPipeline(engine, files, mainFile, projectId, { profile: 'doc2latex', ghostMode: false });
 }
 
 // --- 1. CORE BRIDGES ---
