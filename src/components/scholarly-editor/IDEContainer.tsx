@@ -685,11 +685,16 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
         const f = filePayload[i];
         if (!f) continue;
         
+        const isBin = /\.(png|jpe?g|webp|gif|pdf|eps|svg|tiff?|bmp|heic|heif|avif)$/i.test(f.path);
         formData.append(`files[${i}][path]`, f.path);
         if (f.content.startsWith('data:')) {
-           const res = await fetch(f.content);
-           const blob = await res.blob();
-           formData.append(`files[${i}][content]`, blob, f.path);
+           if (isBin && projectId) {
+             formData.append(`files[${i}][content]`, '');
+           } else {
+             const res = await fetch(f.content);
+             const blob = await res.blob();
+             formData.append(`files[${i}][content]`, blob, f.path);
+           }
         } else {
            formData.append(`files[${i}][content]`, f.content);
         }

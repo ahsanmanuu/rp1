@@ -525,7 +525,11 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
         const fMeta = payloadMeta[i];
         const f = await fs.readFile(projectId, fMeta.path);
         if (!f) continue;
-        payloadFiles.push({ path: f.path, content: f.content });
+        const isBin = /\.(png|jpe?g|webp|gif|pdf|eps|svg|tiff?|bmp|heic|heif|avif)$/i.test(f.path);
+        const sendContent = isBin && typeof f.content === 'string' && f.content.length > 500 && projectId
+          ? ''
+          : f.content;
+        payloadFiles.push({ path: f.path, content: sendContent });
       }
 
       if (typeof navigator !== 'undefined' && !navigator.onLine) {

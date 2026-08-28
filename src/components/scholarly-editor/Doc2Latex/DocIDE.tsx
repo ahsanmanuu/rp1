@@ -1356,7 +1356,14 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       for (let i = 0; i < payloadFiles.length; i++) {
         const f = payloadFiles[i];
         formData.append(`files[${i}][path]`, f.path);
-        formData.append(`files[${i}][content]`, f.content);
+        // Only send full content for text/code/structural files.
+        // For binary image data URLs, the server reads the real image from disk via projectId;
+        // sending 100MB of base64 data URLs trips Cloudflare bot challenges (403/Turnstile).
+        const isBin = /\.(png|jpe?g|webp|gif|pdf|eps|svg|tiff?|bmp|heic|heif|avif)$/i.test(f.path);
+        const sendContent = isBin && typeof f.content === 'string' && f.content.length > 500
+          ? ''
+          : f.content;
+        formData.append(`files[${i}][content]`, sendContent);
       }
 
       if (typeof navigator !== 'undefined' && !navigator.onLine) {

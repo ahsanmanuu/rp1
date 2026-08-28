@@ -96,12 +96,21 @@ export async function POST(req: Request) {
       console.warn('Failed to parse structuredContent, using defaults');
     }
 
-    // --- RECOVERY ENGINE: Resolve the 'Source of Truth' ---
+    // --- RECOVERY ENGINE: Resolve the 'Source of Truth' (Disk -> DB) ---
+    const projectDir = path.join(process.cwd(), 'public', 'uploads', 'projects', projectId);
+    const sourceDocPath = path.join(projectDir, 'source_document.json');
     let structured: any = {};
-    try {
-      structured = JSON.parse((project as any).structuredContent || '{}');
-    } catch {
-      console.warn('Failed to parse structuredContent');
+    if (fs.existsSync(sourceDocPath)) {
+      try {
+        structured = JSON.parse(fs.readFileSync(sourceDocPath, 'utf-8'));
+      } catch {}
+    }
+    if (!structured || !structured.body || structured.body.length === 0) {
+      try {
+        structured = JSON.parse((project as any).structuredContent || '{}');
+      } catch {
+        console.warn('Failed to parse structuredContent');
+      }
     }
 
     const rawHtml = structured.rawHtml || project.content || "";
@@ -254,14 +263,27 @@ export async function POST(req: Request) {
     console.timeEnd(`[LATEX_SYNC] ${projectId}`);
 
     // Clean up stale physical files/folders from process disk before injecting new template assets
-    const projectDir = path.join(process.cwd(), 'public', 'uploads', 'projects', projectId);
     if (fs.existsSync(projectDir)) {
       console.log(`[LATEX_SYNC] Clearing stale physical files for project ${projectId} to prevent template collisions...`);
-      const foldersToClear = ['sections', 'metadata', 'floats', 'references', 'figures', 'tables', 'algorithms', 'equations', 'assets'];
+      const foldersToClear = ['sections', 'metadata', 'floats', 'references', 'tables', 'algorithms', 'equations'];
       for (const folder of foldersToClear) {
         const folderPath = path.join(projectDir, folder);
         if (fs.existsSync(folderPath)) {
-          fs.rmSync(folderPath, { recursive: true, force: true });
+          try { fs.rmSync(folderPath, { recursive: true, force: true }); } catch {}
+        }
+      }
+      // For figures and assets folders, only delete old .tex files, never delete image files!
+      for (const imgFolder of ['figures', 'assets']) {
+        const folderPath = path.join(projectDir, imgFolder);
+        if (fs.existsSync(folderPath)) {
+          try {
+            const files = fs.readdirSync(folderPath);
+            for (const f of files) {
+              if (f.endsWith('.tex') || f.endsWith('.aux') || f.endsWith('.log')) {
+                try { fs.unlinkSync(path.join(folderPath, f)); } catch {}
+              }
+            }
+          } catch {}
         }
       }
       
@@ -448,11 +470,15 @@ export async function POST(req: Request) {
         }));
 
         // 2. Database Sync (IDB/StudioFS)
-        // To avoid duplicates or stale files, we first delete existing components that are being overwritten
-        const foldersToClear = ['sections', 'metadata', 'floats', 'references', 'figures', 'tables', 'algorithms', 'equations', 'assets'];
+        // To avoid duplicates or stale files, we delete existing code components that are being overwritten
+        const foldersToClear = ['sections', 'metadata', 'floats', 'references', 'tables', 'algorithms', 'equations'];
         await safeDeleteMany({
             projectId,
-            OR: foldersToClear.map(folder => ({ filename: { startsWith: `${folder}/` } }))
+            OR: [
+              ...foldersToClear.map(folder => ({ filename: { startsWith: `${folder}/` } })),
+              { filename: { startsWith: 'figures/', endsWith: '.tex' } },
+              { filename: { startsWith: 'assets/', endsWith: '.tex' } }
+            ]
         });
 
         // 3. Upsert individually

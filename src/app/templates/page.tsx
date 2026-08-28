@@ -10,6 +10,7 @@ import { getTemplateLogo } from "@/lib/templates/logos";
 import Sidebar from "@/components/Sidebar";
 import SiteFooter from "@/components/SiteFooter";
 import { useSession } from "@/lib/pb-auth-react";
+import { authFetch } from "@/lib/authFetch";
 import { toast } from "react-hot-toast";
 import ProjectLimitModal from "@/components/ProjectLimitModal";
 import { useProjectLimit } from "@/hooks/useProjectLimit";
@@ -208,13 +209,13 @@ function TemplatesContent() {
     if (projectId) {
       setLoading(true);
       try {
-        const projRes = await fetch(`/api/projects/${projectId}`);
+        const projRes = await authFetch(`/api/projects/${projectId}`);
         if (!projRes.ok) throw new Error("Failed to load project details");
         const projData = await projRes.json();
         const pType = projData.project?.projectType;
         const studioType = pType === 'LATEX_STUDIO' ? 'latexify' : 'doc2latex';
 
-        const res = await fetch('/api/projects/apply-template', {
+        const res = await authFetch('/api/projects/apply-template', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ projectId, templateId })
@@ -305,7 +306,7 @@ function TemplatesContent() {
       }
 
       // 2. Apply template to the target project
-      const res = await fetch('/api/projects/apply-template', {
+      const res = await authFetch('/api/projects/apply-template', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId: targetProjectId, templateId: pendingTemplateId })
