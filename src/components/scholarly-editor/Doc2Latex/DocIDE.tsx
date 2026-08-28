@@ -937,11 +937,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
   const switchTab = async (path: string) => {
     if (!project) return;
     if (path === activeFile) return;
-    // CRITICAL (delete fix): never write the outgoing file back to the FS if it
-    // no longer exists there. deleteFile() deletes the file and THEN calls
-    // switchTab() — the unconditional writeFile below re-created the deleted
-    // file in IndexedDB with its old content, so the very next compile sent it
-    // to the server and the "deleted" file kept rendering in the PDF.
+    // Save outgoing file if it still exists
     if (fs && !isImage(activeFile) && !isOutOfCredits) {
       const stillExists = await fs.readFile(projectId, activeFile);
       if (stillExists) await fs.writeFile(projectId, activeFile, code);
@@ -949,12 +945,25 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     setLoadingCode(true);
     setActiveFile(path);
     if (!openTabs.includes(path)) setOpenTabs(t => [...t, path]);
-    const file = files.find(f => f.path === path);
-    if (file) {
-      let newContent = isImage(path) ? file.content : formatLatexCode(file.content);
-      
+
+    // Read directly from IndexedDB VFS for fresh, true content
+    let freshContent = '';
+    if (fs) {
+      const fsFile = await fs.readFile(projectId, path);
+      if (fsFile && typeof fsFile.content === 'string') {
+        freshContent = fsFile.content;
+      }
+    }
+    if (!freshContent) {
+      const file = files.find(f => f.path === path);
+      if (file && typeof file.content === 'string') {
+        freshContent = file.content;
+      }
+    }
+
+    if (isImage(path)) {
       // If it's an image and content is empty or short placeholder, resolve from upload URL
-      if (isImage(path) && (!newContent || newContent.length < 200)) {
+      if (!freshContent || freshContent.length < 200) {
         try {
           const cleanName = path.replace(/^assets\//, '');
           const candidateUrl = `/uploads/projects/${projectId}/${cleanName}`;
@@ -968,8 +977,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
             reader.readAsDataURL(blob);
             const resolvedDataUrl = await dataUrlPromise;
             if (resolvedDataUrl && resolvedDataUrl.startsWith('data:')) {
-              newContent = resolvedDataUrl;
-              file.content = resolvedDataUrl;
+              freshContent = resolvedDataUrl;
               if (fs) await fs.writeFile(projectId, path, resolvedDataUrl);
             }
           }
@@ -978,14 +986,24 @@ export default function DocIDE({ projectId }: { projectId: string }) {
         }
       }
 
-      setCode(newContent);
-      if (editorRef.current && !isImage(path)) {
-        try {
-          editorRef.current.setValue(newContent);
-        } catch (e) {}
-      }
+      setCode(freshContent);
       setLoadingCode(false);
     } else {
+      // For main.tex, guard against ever setting an empty string if valid content exists
+      if (path === 'main.tex' && (!freshContent || freshContent.trim().length === 0)) {
+        const fallbackLatex = (project as any)?.latexContent || (project as any)?.content || '';
+        if (fallbackLatex && fallbackLatex.trim().length > 30) {
+          freshContent = fallbackLatex;
+          if (fs) await fs.writeFile(projectId, 'main.tex', freshContent);
+        }
+      }
+      const formatted = formatLatexCode(freshContent);
+      setCode(formatted);
+      if (editorRef.current) {
+        try {
+          editorRef.current.setValue(formatted);
+        } catch (e) {}
+      }
       setLoadingCode(false);
     }
   };
@@ -1008,52 +1026,91 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       toast.error("Read-Only Mode: Daily credit limit reached. Please upgrade to Premium to delete files.");
       return;
     }
-    if (!fs || !projectId || !confirm(`Delete ${path}?`)) return;
+    if (!fs || !projectId) return;
 
-    // Strip \input{}/\include{} references from main.tex BEFORE deleting the file,
-    // so the compiler doesn't try to recover the deleted file during the next build.
+    // 1. Root main.tex protection: main.tex must never be deleted
+    if (path === 'main.tex' || path === './main.tex') {
+      toast.error("The root main.tex file is required and cannot be deleted.");
+      return;
+    }
+
+    if (!confirm(`Delete ${path}?`)) return;
+
+    // Clear any pending autosave timer before deleting
+    if (saveTimer) clearTimeout(saveTimer);
+
+    let updatedMainContent: string | null = null;
+
+    // 2. Clean references to the deleted file from main.tex
     try {
-      const mainFileObj = await fs.readFile(projectId, 'main.tex');
-      if (mainFileObj?.content) {
-        const basename = path.replace(/\.tex$/i, '').replace(/^.*\//, '');
-        const patterns = [
-          new RegExp(`\\\\input\\s*\\{\\s*(?:\\.?\\/)?${basename}(?:\\.tex)?\\s*\\}\\s*\\n?`, 'gi'),
-          new RegExp(`\\\\include\\s*\\{\\s*(?:\\.?\\/)?${basename}(?:\\.tex)?\\s*\\}\\s*\\n?`, 'gi'),
-        ];
-        let cleaned: string = mainFileObj.content;
-        for (const pat of patterns) cleaned = cleaned.replace(pat, '');
-        if (cleaned !== mainFileObj.content) {
+      let currentMain = '';
+      if (activeFile === 'main.tex' && code && code.trim().length > 0) {
+        currentMain = code;
+      } else {
+        const mainFileObj = await fs.readFile(projectId, 'main.tex');
+        currentMain = mainFileObj?.content || (project as any)?.latexContent || (project as any)?.content || '';
+      }
+
+      if (currentMain) {
+        const cleanPath = path.replace(/^\.\//, '').replace(/\\/g, '/');
+        const cleanNoExt = cleanPath.replace(/\.tex$/i, '');
+        const basename = cleanPath.split('/').pop()?.replace(/\.tex$/i, '') || cleanNoExt;
+        
+        const targets = Array.from(new Set([cleanPath, cleanNoExt, basename, `./${cleanPath}`, `./${cleanNoExt}`, `./${basename}`]));
+        let cleaned = currentMain;
+        for (const target of targets) {
+          const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const pat1 = new RegExp(`\\\\input\\s*\\{\\s*${escaped}(?:\\.tex)?\\s*\\}\\s*\\n?`, 'gi');
+          const pat2 = new RegExp(`\\\\include\\s*\\{\\s*${escaped}(?:\\.tex)?\\s*\\}\\s*\\n?`, 'gi');
+          cleaned = cleaned.replace(pat1, '').replace(pat2, '');
+        }
+
+        if (cleaned !== currentMain && cleaned.trim().length > 30) {
+          updatedMainContent = cleaned;
           await fs.writeFile(projectId, 'main.tex', cleaned);
           setFiles(prev => prev.map(f => f.path === 'main.tex' ? { ...f, content: cleaned } : f));
+          if (activeFile === 'main.tex') {
+            setCode(cleaned);
+            if (editorRef.current) {
+              try { editorRef.current.setValue(cleaned); } catch {}
+            }
+          }
         }
       }
     } catch (cleanupErr) {
       console.warn('[DELETE] Failed to clean \\input{} references from main.tex:', cleanupErr);
     }
 
+    // 3. Delete file from local IndexedDB VFS
     await fs.deleteFile(projectId, path);
     setFiles(prev => prev.filter(f => f.path !== path));
     const remainingTabs = openTabs.filter(x => x !== path);
     setOpenTabs(remainingTabs);
+
     if (activeFile === path) {
       const remainingFiles = files.filter(f => f.path !== path);
-      const fallbackTab = remainingTabs[0] || remainingFiles[0]?.path || '';
+      const fallbackTab = remainingTabs[0] || remainingFiles.find(f => f.path === 'main.tex')?.path || remainingFiles[0]?.path || '';
       if (fallbackTab) switchTab(fallbackTab);
       else setCode('');
     }
-    // PROPAGATE THE DELETE TO THE CLOUD: without this, the stale ProjectFile
-    // row + disk copy are resurrected by hardenedDiscovery on the next compile
-    // and the deleted file keeps appearing in the PDF.
+
+    // 4. PROPAGATE THE DELETE AND UPDATED MAIN.TEX TO THE CLOUD
     try {
+      const putBody: Record<string, any> = { deleteFiles: [path] };
+      if (updatedMainContent) {
+        putBody.latexContent = updatedMainContent;
+      }
       const delRes = await fetch(`/api/projects/${projectId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deleteFiles: [path] })
+        body: JSON.stringify(putBody)
       });
       if (!delRes.ok) console.error("Delete propagation failed:", delRes.status);
     } catch (delErr) {
       console.error("Delete propagation error:", delErr);
     }
+
+    toast.success(`Deleted ${path}`);
   };
 
   const renameFile = async (oldPath: string) => {
