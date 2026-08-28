@@ -279,7 +279,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                   await studioFs.writeFile(projectId, file.filename, file.content || "");
                 }
               } else if (isBinary) {
-                let dataUrl = (typeof file.content === 'string' && file.content.startsWith('data:')) ? file.content : '';
+                let dataUrl = (typeof file.content === 'string' && file.content.startsWith('data:') && file.content.length > 200) ? file.content : '';
                 if (!dataUrl && file.filePath) {
                   try {
                     const assetRes = await fetch(file.filePath);
@@ -294,6 +294,24 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                   } catch (assetErr) {
                     console.warn(`Failed to fetch binary asset ${file.filename}:`, assetErr);
                   }
+                }
+                // Fallback: Recover pristine figure bytes from client-side IndexedDB store
+                if (!dataUrl || dataUrl.length < 200) {
+                  try {
+                    const { getLocalDocument } = await import('@/lib/local-project-store');
+                    const localDoc = await getLocalDocument(projectId);
+                    if (localDoc?.envelope?.figures && Array.isArray(localDoc.envelope.figures)) {
+                      const baseName = file.filename.split('/').pop() || file.filename;
+                      const matchedFig = localDoc.envelope.figures.find((fig: any) => 
+                        fig.name === file.filename || 
+                        fig.name === baseName ||
+                        (fig.name && file.filename.endsWith(fig.name))
+                      );
+                      if (matchedFig?.dataUrl && matchedFig.dataUrl.length > 200) {
+                        dataUrl = matchedFig.dataUrl;
+                      }
+                    }
+                  } catch {}
                 }
                 if (!dataUrl) {
                   dataUrl = `data:image/${ext === 'jpg' ? 'jpeg' : (ext || 'png')};base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=`;

@@ -185,6 +185,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
             try {
               fileContent = fs.readFileSync(fullPath, 'utf-8');
             } catch {}
+          } else if (isImageExt) {
+            try {
+              const buf = fs.readFileSync(fullPath);
+              const cleanExt = ext.replace(/^\./, '');
+              const mime = cleanExt === 'jpg' ? 'image/jpeg' : `image/${cleanExt}`;
+              fileContent = `data:${mime};base64,${buf.toString('base64')}`;
+            } catch {}
           }
 
           const newFileObj = {
@@ -295,8 +302,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       }
     }
 
-    // Universal Metadata Healing for Visual Assets
-    // Ensures that no matter which workflow created the file, images are always properly typed and addressable
+    // Universal Metadata & Content Healing for Visual Assets
+    // Ensures that no matter which workflow created the file, images are always properly typed, addressable, and carry their binary payload
     if (project.files) {
       project.files = project.files.map((f: any) => {
         const isImageExt = /\.(png|jpe?g|gif|svg|webp|eps|tiff?|bmp|heic|heif|avif)$/i.test(f.filename);
@@ -304,6 +311,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           f.fileType = 'image';
           if (!f.filePath) {
             f.filePath = `/uploads/projects/${project.id}/${f.filename.replace(/\\/g, '/')}`;
+          }
+          if (!f.content || !f.content.startsWith('data:')) {
+            try {
+              const diskPath = path.join(projectDir, f.filename);
+              if (fs.existsSync(diskPath)) {
+                const buf = fs.readFileSync(diskPath);
+                const ext = path.extname(f.filename).toLowerCase().replace(/^\./, '');
+                const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+                f.content = `data:${mime};base64,${buf.toString('base64')}`;
+              }
+            } catch {}
           }
         }
         return f;

@@ -1787,7 +1787,7 @@ export async function runHardenedPipeline(
                 // Ghost Inking: composite real images onto the ghost PDF
                 if (useGhostMode && finalPdf && fullAssets.length > 0) {
                     try {
-                        finalPdf = await inkGhostPdf(finalPdf, res.log, fullAssets);
+                        finalPdf = await inkGhostPdf(finalPdf, res.log, fullAssets, projectId);
                         console.log(`[PIPELINE] Ghost inking completed: ${fullAssets.length} assets`);
                     } catch (inkErr: any) {
                         console.warn(`[PIPELINE] Ghost inking failed (PDF still returned): ${inkErr.message}`);
@@ -1842,7 +1842,7 @@ export async function runHardenedPipeline(
                 // Ghost Inking: composite real images onto the ghost PDF
                 if (useGhostMode && finalPdf && fullAssets.length > 0) {
                     try {
-                        finalPdf = await inkGhostPdf(finalPdf, res.log, fullAssets);
+                        finalPdf = await inkGhostPdf(finalPdf, res.log, fullAssets, projectId);
                         console.log(`[PIPELINE] Ghost inking completed (${strat.name}): ${fullAssets.length} assets`);
                     } catch (inkErr: any) {
                         console.warn(`[PIPELINE] Ghost inking failed (${strat.name}, PDF still returned): ${inkErr.message}`);
@@ -2089,7 +2089,7 @@ export async function compileInSafeMode(ghostFiles: FilePayload[], mainFile: str
 
 // --- 2. GHOST INKING (100% RELIABILITY) ---
 
-export async function inkGhostPdf(ghostPdfBase64: string, log: string, fullAssets: FilePayload[]): Promise<string> {
+export async function inkGhostPdf(ghostPdfBase64: string, log: string, fullAssets: FilePayload[], projectId?: string | null): Promise<string> {
     // NUCLEAR 24.0: Robust De-wrapping
     // LaTeX logs wrap at 79 chars. We must re-assemble split @PI@STABLE markers.
     const dewrappedLog = (log || '')
@@ -2169,14 +2169,48 @@ export async function inkGhostPdf(ghostPdfBase64: string, log: string, fullAsset
           const normI = normalizePath(inc.filename).replace(/\.[^.]+$/, '');
           return normP === normI || normP.endsWith('/' + normI) || normI.endsWith('/' + normP);
       });
-      if (!asset) {
+
+      let buf: Buffer | null = null;
+      let ext = (asset?.path || inc.filename).toLowerCase().split('.').pop() || 'png';
+
+      if (asset?.content && typeof asset.content === 'string') {
+        const b64 = asset.content.split(',')[1] || asset.content;
+        const testBuf = Buffer.from(b64, 'base64');
+        if (testBuf.length > 200) {
+          buf = testBuf;
+        }
+      }
+
+      // If asset is missing or was a 1x1 transparent dummy pixel, recover from server disk
+      if (!buf && projectId) {
+        try {
+          const projDir = path.join(process.cwd(), 'public', 'uploads', 'projects', projectId);
+          const baseName = path.basename(inc.filename);
+          const candDiskPaths = [
+            path.join(projDir, inc.filename),
+            path.join(projDir, baseName),
+            path.join(projDir, 'figures', baseName),
+            path.join(projDir, 'assets', baseName),
+            path.join(projDir, 'images', baseName)
+          ];
+          for (const dp of candDiskPaths) {
+            if (fs.existsSync(dp) && fs.statSync(dp).isFile()) {
+              buf = fs.readFileSync(dp);
+              ext = path.extname(dp).toLowerCase().replace(/^\./, '') || ext;
+              console.log(`[INKER] Recovered image from disk: ${dp} (${buf.length} bytes)`);
+              break;
+            }
+          }
+        } catch (diskErr) {
+          console.warn(`[INKER] Disk lookup error for ${inc.filename}:`, diskErr);
+        }
+      }
+
+      if (!buf) {
           console.warn(`[INKER] Asset not found for ${inc.filename}. Available asset paths:`, fullAssets.map(a => a.path));
           continue;
       }
       try {
-        const b64 = asset.content.split(',')[1] || asset.content;
-        const buf = Buffer.from(b64, 'base64');
-        const ext = asset.path.toLowerCase().split('.').pop() || '';
         let img;
         
         // RECURSIVE MIME FALLBACK: pdf-lib is strict, but sharp is forgiving
@@ -2202,7 +2236,9 @@ export async function inkGhostPdf(ghostPdfBase64: string, log: string, fullAsset
         const opt = { x: xPt, y: yPt, width: wPt, height: hPt };
         if (ext === 'pdf') pdfPages[pageIdx].drawPage(img as any, opt);
         else pdfPages[pageIdx].drawImage(img as any, opt);
-      } catch { }
+      } catch (embErr) {
+        console.warn(`[INKER] Failed to draw image ${inc.filename} onto PDF:`, embErr);
+      }
     }
     return await pdfDoc.saveAsBase64();
 }
@@ -2323,16 +2359,41 @@ export async function hardenedDiscovery(projectId: string | null, files: FilePay
       let addedCount = 0;
       const sessionPaths = new Set(normalized.map(f => normalizePath(f.path)));
       for (const dbFile of allDbFiles) {
-        if (!dbFile.filename || !dbFile.content) continue;
+        if (!dbFile.filename) continue;
         const normPath = normalizePath(dbFile.filename);
-        if (!sessionPaths.has(normPath) && !normalized.some(f => normalizePath(f.path) === normPath)) {
-          const fileExt = (dbFile.filename.split('.').pop() || '').toLowerCase();
+        const fileExt = (dbFile.filename.split('.').pop() || '').toLowerCase();
+        const ext = dbFile.fileType || fileExt;
+        const isBinary = /^(png|jpg|jpeg|webp|gif|pdf|eps|otf|ttf|woff|woff2|tfm|pfb|afm|heic|heif|tiff|tif|bmp|avif|svg)$/i.test(ext);
+
+        let fileContent = dbFile.content || '';
+        if (isBinary && (!fileContent || fileContent.length < 200)) {
+          try {
+            const diskCandidate = path.join(projectDir, dbFile.filename);
+            if (fs.existsSync(diskCandidate) && fs.statSync(diskCandidate).isFile()) {
+              const buf = fs.readFileSync(diskCandidate);
+              const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+              fileContent = `data:${mime};base64,${buf.toString('base64')}`;
+            }
+          } catch {}
+        }
+        if (!fileContent && !isBinary) continue;
+
+        const existingIdx = normalized.findIndex(f => normalizePath(f.path) === normPath);
+        if (existingIdx !== -1) {
+          // If session has a dummy/empty binary payload, upgrade it to real DB/disk binary content
+          if (isBinary && fileContent && fileContent.length > 200) {
+            const currentContent = normalized[existingIdx].content;
+            if (!currentContent || currentContent.length < 200 || currentContent.includes('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=')) {
+              normalized[existingIdx].content = fileContent;
+            }
+          }
+          continue;
+        }
+
+        if (!sessionPaths.has(normPath)) {
           // DELETE FIX: never resurrect deleted .tex/.bib source files from
           // stale DB rows when the session carries a real main.tex — UNLESS
           // the file is actively referenced by \input/\include in main.tex.
-          // Files the user deleted won't appear in \input references, so they
-          // stay dead. Files that just weren't synced to the client FS yet
-          // (e.g. 487 section files from Phase 2) DO need recovery.
           if (sessionComplete && /^(tex|bib)$/i.test(fileExt)) {
             const mainContent = mainInSession?.content || '';
             const isReferenced = mainContent.includes(`{${dbFile.filename}}`) ||
@@ -2344,13 +2405,11 @@ export async function hardenedDiscovery(projectId: string | null, files: FilePay
             }
             console.log(`[PIPELINE] Recovering referenced file from DB: ${dbFile.filename}`);
           }
-          const ext = dbFile.fileType || fileExt;
-          const isBinary = /^(png|jpg|jpeg|webp|gif|pdf|eps|otf|ttf|woff|woff2|tfm|pfb|afm|heic|heif|tiff|tif|bmp|avif|svg)$/i.test(ext);
           normalized.push({
             path: dbFile.filename,
-            content: isBinary
-              ? `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${Buffer.from(dbFile.content).toString('base64')}`
-              : dbFile.content
+            content: isBinary && !fileContent.startsWith('data:')
+              ? `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${Buffer.from(fileContent).toString('base64')}`
+              : fileContent
           });
           addedCount++;
         }

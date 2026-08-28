@@ -103,32 +103,27 @@ export async function POST(req: Request) {
     // in the Phase-1 figureManifest are accepted; they land in the project
     // ROOT (the assembler/mapping conventions reference ./rf_fig_N.ext).
     if (figureFiles.length > 0) {
-      const manifestNames = new Set(
-        (Array.isArray(structured.figureManifest) ? structured.figureManifest : [])
-          .map((f: any) => f && f.name ? String(f.name) : '')
-          .filter(Boolean)
-      );
       let savedFigures = 0;
-      let rejectedFigures = 0;
       if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
       for (const fig of figureFiles) {
         const safeName = String(fig.name).replace(/[^a-zA-Z0-9._-]/g, '_');
-        if (manifestNames.size > 0 && !manifestNames.has(fig.name) && !manifestNames.has(safeName)) {
-          rejectedFigures++;
-          console.warn(`[GENERATE-LATEX] Rejected off-manifest figure: ${fig.name}`);
-          continue;
-        }
+        const ext = path.extname(safeName).toLowerCase();
+        const isImage = /\.(png|jpg|jpeg|gif|webp|pdf|svg|eps|tiff?|bmp|heic|heif|avif)$/i.test(ext);
+        if (!isImage) continue;
+
         try {
           fs.writeFileSync(path.join(projectDir, safeName), fig.data);
           savedFigures++;
+          const mime = ext === '.jpg' ? 'image/jpeg' : `image/${ext.replace(/^\./, '')}`;
+          const b64 = `data:${mime};base64,${fig.data.toString('base64')}`;
           // Ensure figure is registered in ProjectFile table
           prisma.projectFile.upsert({
             where: { id: `fig_${projectId}_${safeName.replace(/[^a-zA-Z0-9_-]/g, '_')}` },
-            update: { filePath: `/uploads/projects/${projectId}/${safeName}`, fileType: 'image' },
+            update: { filePath: `/uploads/projects/${projectId}/${safeName}`, fileType: 'image', content: b64 },
             create: {
               projectId,
               filename: safeName,
-              content: '',
+              content: b64,
               fileType: 'image',
               filePath: `/uploads/projects/${projectId}/${safeName}`
             }
@@ -137,7 +132,7 @@ export async function POST(req: Request) {
               data: {
                 projectId,
                 filename: safeName,
-                content: '',
+                content: b64,
                 fileType: 'image',
                 filePath: `/uploads/projects/${projectId}/${safeName}`
               }
@@ -147,7 +142,7 @@ export async function POST(req: Request) {
           console.warn('[GENERATE-LATEX] Failed to persist figure', safeName, figErr?.message || figErr);
         }
       }
-      console.log(`[GENERATE-LATEX] Persisted ${savedFigures} figure(s) to project root (${rejectedFigures} rejected off-manifest)`);
+      console.log(`[GENERATE-LATEX] Persisted ${savedFigures} figure(s) to project root`);
     }
 
     // --- ASSEMBLE MODULAR LATEX ---
