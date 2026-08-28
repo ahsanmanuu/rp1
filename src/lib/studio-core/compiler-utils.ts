@@ -64,8 +64,7 @@ export function robustPreambleInjector(content: string): string {
   const _dcMatch = modified.match(/\\documentclass\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/);
   const _isCustomClass = _dcMatch ? !STANDARD_CLASSES.has(_dcMatch[1].toLowerCase()) : false;
 
-  if (!_isCustomClass) {
-  // 1. NUCLEAR 30.0 GLOBAL HARMONIZATION (\zimg Support)
+  // 1. NUCLEAR 30.0 GLOBAL HARMONIZATION (\zimg Support) - Injected for ALL document classes
   if (!modified.includes('NuclearTrackerV30')) {
      const _B = "\u005c"; // Literal backslash
      const posCode = `
@@ -190,6 +189,7 @@ ${_B}fi
      }
   }
 
+  if (!_isCustomClass) {
   // 2. PREAMBLE PACKAGE INJECTION — inject essential packages if not already present
   // These run BEFORE the sieve so the sieve can deduplicate them safely.
   const docClassMatch = modified.match(/\\documentclass\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/);
