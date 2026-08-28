@@ -1950,6 +1950,51 @@ export async function runDoc2LatexCompiler(
   mainFile: string,
   projectId: string | null = null
 ): Promise<CompileResult> {
+    // ROBUST FIGURE BINARY RECOVERY (doc2latex):
+    // The client extraction names figure binaries `rf_fig_<seq>.<ext>` /
+    // `rf_chart_<seq>.<ext>` and generate-latex persists them to the project
+    // disk at `public/uploads/projects/<id>/`. The structured-content parser
+    // historically stamped figure ids as `pdf_fig_<lineNumber>.png`, so the
+    // assembler's \includegraphics references never aligned with the real
+    // binary names (and on the client the bytes only live in IndexedDB, which
+    // is not always available to the compile pipeline). To guarantee the
+    // remote compiler always receives the real image bytes, we recover any
+    // missing figure/chart binaries directly from the authoritative project
+    // disk and inject them under their exact file name before compiling.
+    if (projectId) {
+      try {
+        const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'projects', projectId);
+        if (fs.existsSync(uploadsDir)) {
+          const present = new Set<string>(
+            (files as any[]).map((f) => String(f?.path || '').toLowerCase())
+          );
+          const entries = await fs.promises.readdir(uploadsDir);
+          for (const name of entries) {
+            const lower = name.toLowerCase();
+            if (!/^rf_(fig|chart)_\d+\.(png|jpe?g|gif|webp|svg|eps|bmp|tiff?|pdf|heic|heif|avif)$/i.test(name)) {
+              continue;
+            }
+            const ext = (path.extname(name).toLowerCase().replace(/^\./, '') || 'png');
+            const mime = ext === 'jpg' ? 'jpeg' : ext;
+            const buffer = await fs.promises.readFile(path.join(uploadsDir, name));
+            if (!buffer || buffer.length === 0) continue;
+            const content = `data:image/${mime};base64,${buffer.toString('base64')}`;
+            const existing = (files as any[]).find((f) => String(f?.path || '').toLowerCase() === lower);
+            if (existing) {
+              // Prefer authoritative disk bytes over a tiny placeholder stub
+              // (e.g. a 1x1 fallback from client-side sync).
+              if (existing.content && String(existing.content).length >= 1500) continue;
+              existing.content = content;
+            } else {
+              (files as any[]).push({ path: name, content });
+              present.add(lower);
+            }
+          }
+        }
+      } catch (recoverErr: any) {
+        console.warn('[DOC2LATEX] Figure recovery skipped:', recoverErr?.message || recoverErr);
+      }
+    }
     return runHardenedPipeline(engine, files, mainFile, projectId, { profile: 'doc2latex', ghostMode: true });
 }
 
