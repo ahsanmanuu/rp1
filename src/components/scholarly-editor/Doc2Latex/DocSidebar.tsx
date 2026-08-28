@@ -135,14 +135,6 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
         return displayed;
       })(),
     },
-    {
-      name: 'FLOAT REFERENCES',
-      files: files.filter(f => {
-        const m = /^assets\/(figure|table|algorithm|equation)\.tex$/i.test(f.path);
-        if (m) categorizedPaths.add(f.path);
-        return m;
-      }),
-    },
   ];
   // Catch-all: show any file not matched by the above categories
   const uncategorized = files.filter(f => !categorizedPaths.has(f.path) && f.path !== 'main.tex');

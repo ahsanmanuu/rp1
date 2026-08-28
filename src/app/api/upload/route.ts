@@ -548,14 +548,10 @@ async function runUploadProcessing(uploadId: string) {
     // ZERO-COPY: Try in-memory Map first (same-process, zero overhead),
     // then disk fallback, then DB rawBytes as last resort (recovery re-kick).
     let buffer: Buffer | null = null;
-    if (!clientEnvelope) {
-      buffer = pendingBuffers.get(uploadId) || null;
-      pendingBuffers.delete(uploadId); // release Map entry for GC
-    } else {
-      pendingBuffers.delete(uploadId);
-    }
+    buffer = pendingBuffers.get(uploadId) || null;
+    pendingBuffers.delete(uploadId);
 
-    if (!buffer && !clientEnvelope) {
+    if (!buffer) {
       // Disk fallback: saved by POST handler at tmp/uploads-pending/{uploadId}.bin
       const diskPath = path.join(PENDING_DIR, `${uploadId}.bin`);
       if (fs.existsSync(diskPath)) {
@@ -599,15 +595,45 @@ async function runUploadProcessing(uploadId: string) {
     if (file.name.endsWith('.docx') && clientEnvelope) {
       // ════════════════════════════════════════════════════════════════════
       // CLIENT-EXTRACTED LIGHTWEIGHT PATH: the browser already converted the
-      // DOCX (mammoth in-browser) — the server only receives the text envelope
-      // (HTML with renamed figure <img> tags + plain text + figure manifest).
-      // No AdmZip, no JSDOM/OMML math extraction, no chart engine, no sharp,
-      // no EMF conversion, no binary persistence. The AI structural analysis
-      // (input prompt: structure-frontmatter + structure-analyze) verifies the
-      // structure from the envelope text exactly like the heavy path.
+      // DOCX (mammoth in-browser) — the server receives the text envelope.
+      // We also extract images from the buffer server-side to guarantee persistence!
       // ════════════════════════════════════════════════════════════════════
-      console.log("[TELEMETRY] Step 1: Client-extracted DOCX envelope — lightweight path (no binary transfer)");
+      console.log("[TELEMETRY] Step 1: Client-extracted DOCX envelope — lightweight path");
       progress(uploadId, 'Parsing extracted document', 30);
+
+      // Server-side image extraction from buffer to guarantee DB & disk persistence on Render
+      if (buffer) {
+        try {
+          const AdmZipModule = (await import('adm-zip')).default;
+          const zip = new AdmZipModule(buffer);
+          const zipEntries = zip.getEntries();
+          const mediaEntries = zipEntries.filter((e: any) => e.entryName.startsWith('word/media/') && !e.isDirectory);
+          let serverFigIdx = 1;
+          for (const entry of mediaEntries) {
+            const entryBuf = entry.getData();
+            if (entryBuf.length < 100) continue;
+            const ext = path.extname(entry.entryName).replace(/^\./, '').toLowerCase() || 'png';
+            if (ext === 'emf' || ext === 'wmf') continue;
+            const name = `rf_fig_${serverFigIdx++}.${ext === 'jpeg' ? 'jpg' : ext}`;
+            extractedImages.push({
+              name,
+              buffer: entryBuf,
+              isStructural: false
+            });
+            const origBase = path.basename(entry.entryName);
+            if (origBase && origBase !== name) {
+              extractedImages.push({
+                name: `assets/${origBase}`,
+                buffer: entryBuf,
+                isStructural: false
+              });
+            }
+          }
+          console.log(`[UPLOAD] Server-side extracted ${extractedImages.length} images from DOCX buffer.`);
+        } catch (zipErr) {
+          console.warn('[UPLOAD] Server-side DOCX image extraction fallback failed:', zipErr);
+        }
+      }
 
       const html = String(clientEnvelope.html || '');
       const text = String(clientEnvelope.text || '');

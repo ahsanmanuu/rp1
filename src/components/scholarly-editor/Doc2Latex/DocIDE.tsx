@@ -247,6 +247,23 @@ export default function DocIDE({ projectId }: { projectId: string }) {
 
             let dataUrl = matchedFig?.dataUrl || (matchedFig as any)?.content;
             if (!dataUrl || dataUrl.length < 200) {
+              try {
+                const res = await fetch(`/uploads/projects/${projId}/${refName}`);
+                if (res.ok) {
+                  const blob = await res.blob();
+                  const reader = new FileReader();
+                  const p = new Promise<string>((resP) => {
+                    reader.onloadend = () => resP(reader.result as string);
+                  });
+                  reader.readAsDataURL(blob);
+                  const fetchedUrl = await p;
+                  if (fetchedUrl && fetchedUrl.startsWith('data:')) {
+                    dataUrl = fetchedUrl;
+                  }
+                }
+              } catch {}
+            }
+            if (!dataUrl || dataUrl.length < 200) {
               const ext = refName.split('.').pop() || 'png';
               dataUrl = `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=`;
             }
@@ -256,6 +273,13 @@ export default function DocIDE({ projectId }: { projectId: string }) {
             existingPaths.add(lower);
             existingPaths.add(`assets/${lower}`);
             existingPaths.add(`figures/${lower}`);
+          }
+        }
+
+        // Clean up legacy aggregator float files from StudioFS so they don't clutter the IDE
+        for (const legacyPath of ['assets/figure.tex', 'assets/table.tex', 'assets/algorithm.tex', 'assets/equation.tex']) {
+          if (existingPaths.has(legacyPath.toLowerCase())) {
+            await studioFs.deleteFile(projId, legacyPath);
           }
         }
 
@@ -875,7 +899,33 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     if (!openTabs.includes(path)) setOpenTabs(t => [...t, path]);
     const file = files.find(f => f.path === path);
     if (file) {
-      const newContent = isImage(path) ? file.content : formatLatexCode(file.content);
+      let newContent = isImage(path) ? file.content : formatLatexCode(file.content);
+      
+      // If it's an image and content is empty or short placeholder, resolve from upload URL
+      if (isImage(path) && (!newContent || newContent.length < 200)) {
+        try {
+          const cleanName = path.replace(/^assets\//, '');
+          const candidateUrl = `/uploads/projects/${projectId}/${cleanName}`;
+          const res = await fetch(candidateUrl);
+          if (res.ok) {
+            const blob = await res.blob();
+            const reader = new FileReader();
+            const dataUrlPromise = new Promise<string>((resolve) => {
+              reader.onloadend = () => resolve(reader.result as string);
+            });
+            reader.readAsDataURL(blob);
+            const resolvedDataUrl = await dataUrlPromise;
+            if (resolvedDataUrl && resolvedDataUrl.startsWith('data:')) {
+              newContent = resolvedDataUrl;
+              file.content = resolvedDataUrl;
+              if (fs) await fs.writeFile(projectId, path, resolvedDataUrl);
+            }
+          }
+        } catch (fetchErr) {
+          console.warn("[DocIDE] Could not resolve image fallback URL:", fetchErr);
+        }
+      }
+
       setCode(newContent);
       if (editorRef.current && !isImage(path)) {
         try {
@@ -1543,14 +1593,19 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                               const ext = activeFile.split('.').pop()?.toLowerCase() || '';
                               const isRenderable = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'avif', 'bmp'].includes(ext);
                               if (isRenderable) {
+                                const fallbackUrl = `/uploads/projects/${projectId}/${activeFile.replace(/^assets\//, '')}`;
+                                const imageSrc = (code && code.startsWith('data:image/')) ? code : fallbackUrl;
                                 return (
-                                   <Image 
-                                    src={code} 
+                                  <img 
+                                    src={imageSrc} 
                                     alt={activeFile} 
-                                    width={800}
-                                    height={600}
-                                    unoptimized
-                                    style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', display: 'block' }} 
+                                    onError={(e) => {
+                                      const target = e.currentTarget;
+                                      if (target.src !== fallbackUrl) {
+                                        target.src = fallbackUrl;
+                                      }
+                                    }}
+                                    style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', display: 'block', borderRadius: '4px' }} 
                                   />
                                 );
                               } else if (ext === 'pdf') {

@@ -1039,6 +1039,7 @@ export function applyStructureCorrections(
       // instruction text) that no AI section confirms, apply insertions.
       const isGarbageHeading = (n: any): boolean => {
         if (n.type !== 'heading' || !n.text) return false;
+        if (isAuthorOrAffilNoise(n.text)) return true;
         return (
           /<[^>]*>/.test(n.text) ||
           /[\d.]+\s*point\s*,?\s*bold/i.test(n.text) ||

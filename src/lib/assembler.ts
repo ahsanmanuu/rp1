@@ -2204,33 +2204,18 @@ export class ModularLatexAssembler {
         // Save individual components to dedicated folders (grouped for UI)
         if (node.type === 'table') {
             const content = LatexAssembler.assembleTable(node, mathBlocks);
-            if (!files['assets/table.tex']) files['assets/table.tex'] = "% Required Packages: \\usepackage{booktabs}, \\usepackage{multirow}, \\usepackage{tabularx}\n\n";
-            files['assets/table.tex'] += content + "\n\n";
             files[`tables/table_${nodeIdx}.tex`] = "% Required Packages: \\usepackage{booktabs}, \\usepackage{multirow}, \\usepackage{tabularx}\n\n" + content;
-        } else if (node.type === 'figure' || node.type === 'image') {
+        } else if (node.type === 'figure' || node.type === 'image' || node.type === 'chart') {
             const content = LatexAssembler.assembleNode({ ...node, labelIdx: nodeIdx } as any, mathBlocks);
-            if (!files['assets/figure.tex']) files['assets/figure.tex'] = "% Required Packages: \\usepackage{graphicx}, \\usepackage{float}\n\n";
-            files['assets/figure.tex'] += content + "\n\n";
-            files[`figures/figure_${nodeIdx}.tex`] = "% Required Packages: \\usepackage{graphicx}, \\usepackage{float}\n\n" + content;
-        } else if (node.type === 'chart') {
-            const content = LatexAssembler.assembleNode({ ...node, labelIdx: nodeIdx } as any, mathBlocks);
-            if (!files['assets/figure.tex']) files['assets/figure.tex'] = "% Required Packages: \\usepackage{graphicx}, \\usepackage{float}\n\n";
-            files['assets/figure.tex'] += content + "\n\n";
             files[`figures/figure_${nodeIdx}.tex`] = "% Required Packages: \\usepackage{graphicx}, \\usepackage{float}\n\n" + content;
         } else if (node.type === 'figure-group') {
             const content = LatexAssembler.assembleFigureGroup(node as any, mathBlocks);
-            if (!files['assets/figure.tex']) files['assets/figure.tex'] = "% Required Packages: \\usepackage{graphicx}, \\usepackage{float}\n\n";
-            files['assets/figure.tex'] += content + "\n\n";
             files[`figures/figure_${nodeIdx}.tex`] = "% Required Packages: \\usepackage{graphicx}, \\usepackage{float}\n\n" + content;
         } else if (node.type === 'algorithm') {
             const content = LatexAssembler.assembleAlgorithm(node, mathBlocks);
-            if (!files['assets/algorithm.tex']) files['assets/algorithm.tex'] = "% Required Packages: \\usepackage{algorithm}, \\usepackage{algpseudocode}\n\n";
-            files['assets/algorithm.tex'] += content + "\n\n";
             files[`algorithms/algo_${nodeIdx}.tex`] = "% Required Packages: \\usepackage{algorithm}, \\usepackage{algpseudocode}\n\n" + content;
         } else if (node.type === 'equation') {
             const content = LatexAssembler.assembleNode(node as any, mathBlocks);
-            if (!files['assets/equation.tex']) files['assets/equation.tex'] = "% Required Packages: \\usepackage{amsmath}, \\usepackage{amssymb}, \\usepackage{amsfonts}\n\n";
-            files['assets/equation.tex'] += content + "\n\n";
             files[`equations/eq_${nodeIdx}.tex`] = "% Required Packages: \\usepackage{amsmath}, \\usepackage{amssymb}, \\usepackage{amsfonts}\n\n" + content;
         }
     });

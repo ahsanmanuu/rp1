@@ -867,8 +867,16 @@ export class DeepDocumentParser {
           const detectedLvl = this.detectHeading(el, f.text, manifest);
           const isNumberedHeading = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(f.text);
           const isStandardSectionName = /^(?:[\d\.]+\s*)?(?:introduction|related work|background|methodology|conclusion|abstract|acknowledgments|references|overview|implementation|proposed|experimental|results|discussion|system)/i.test(f.text);
-          const isAuthorAffilText = isFrontMatterNoise(f.text);
-          const isSectionHeading = !isAuthorAffilText && (detectedLvl !== null || isNumberedHeading || isStandardSectionName || tagName.startsWith('h') || (tagName === 'p' && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8));
+          const isAuthorAffilText = isFrontMatterNoise(f.text) ||
+            /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(f.text.trim()) ||
+            /\b(?:librarian|deputy librarian|assistant professor|associate professor|lecturer|department|dept|university|institute)\b/i.test(f.text);
+          const isSectionHeading = !isAuthorAffilText && (
+            detectedLvl !== null ||
+            isNumberedHeading ||
+            isStandardSectionName ||
+            (tagName.startsWith('h') && !isAuthorAffilText) ||
+            (tagName === 'p' && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 && (foundAbstract || isNumberedHeading || isStandardSectionName))
+          );
 
           if (isSectionHeading) {
               nextRole = 'section';
@@ -1299,30 +1307,30 @@ export class DeepDocumentParser {
                     }
                     }
                   } else {
-                    let level = this.detectHeading(entry.elements[0], text, manifest) || 2;
-                    // First heading in the document is always a main section —
-                    // a leading "X.Y" numbered prefix does not make it a subsection.
-                    if (lastHeadingLevel === 0 && level > 1) level = 1;
                     let cleanText = text.trim();
-                    const numericPrefix = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\d+)(?:\.\d+)*\.?[.:\s)]+\s*/i;
-                    const alphaRomanPrefix = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:[a-zA-Z](?:\.\d+)+|[ivxlcdm]{2,}|[a-zA-Z]|[ivxlcdm])\.?[.:)]+\s+/i;
-                    const prefixMatchText = cleanText.match(numericPrefix) ||
-                        (alphaRomanPrefix.test(cleanText) ? cleanText.match(alphaRomanPrefix) : null);
-                    if (prefixMatchText) {
-                        // "X.Y Title" numbered prefixes encode the heading depth.
-                        // If the number is the only thing that makes this line a
-                        // heading, keep it in the text and derive the level from it
-                        // — stripping it would erase the depth signal entirely.
-                        const withoutNumber = cleanText.slice(prefixMatchText[0].length).trim();
-                        if (withoutNumber && this.detectHeading(entry.elements[0], withoutNumber, manifest)) {
-                            cleanText = withoutNumber;
-                        } else {
-                            const numPart = prefixMatchText[0].match(/\d+(?:\.\d+)*/)?.[0];
-                            level = Math.min(3, numPart ? numPart.split('.').length : 1);
-                        }
+                    if (isFrontMatterNoise(cleanText) || /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(cleanText)) {
+                      result.body.push({ type: 'paragraph', text: withCitations });
+                    } else {
+                      let level = this.detectHeading(entry.elements[0], text, manifest) || 2;
+                      // First heading in the document is always a main section —
+                      // a leading "X.Y" numbered prefix does not make it a subsection.
+                      if (lastHeadingLevel === 0 && level > 1) level = 1;
+                      const numericPrefix = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\d+)(?:\.\d+)*\.?[.:\s)]+\s*/i;
+                      const alphaRomanPrefix = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:[a-zA-Z](?:\.\d+)+|[ivxlcdm]{2,}|[a-zA-Z]|[ivxlcdm])\.?[.:)]+\s+/i;
+                      const prefixMatchText = cleanText.match(numericPrefix) ||
+                          (alphaRomanPrefix.test(cleanText) ? cleanText.match(alphaRomanPrefix) : null);
+                      if (prefixMatchText) {
+                          const withoutNumber = cleanText.slice(prefixMatchText[0].length).trim();
+                          if (withoutNumber && this.detectHeading(entry.elements[0], withoutNumber, manifest)) {
+                              cleanText = withoutNumber;
+                          } else {
+                              const numPart = prefixMatchText[0].match(/\d+(?:\.\d+)*/)?.[0];
+                              level = Math.min(3, numPart ? numPart.split('.').length : 1);
+                          }
+                      }
+                      result.body.push({ type: 'heading', level, text: cleanText || text });
+                      lastHeadingLevel = level;
                     }
-                    result.body.push({ type: 'heading', level, text: cleanText || text });
-                    lastHeadingLevel = level;
                   }
               } else {
                   result.body.push({ type: 'paragraph', text: withCitations });
