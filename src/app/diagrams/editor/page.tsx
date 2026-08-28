@@ -475,7 +475,9 @@ function DiagramStudio() {
       checkTheme();
       
       const observer = new MutationObserver(checkTheme);
-      observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+      if (typeof document !== 'undefined' && document.documentElement) {
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+      }
       
       // Apply preferred color palette class (theme-purple, theme-emerald, etc.)
       const preferredTheme = localStorage.getItem('scholarly-preferred-theme') || 'purple';

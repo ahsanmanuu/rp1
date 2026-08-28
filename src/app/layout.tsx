@@ -115,7 +115,7 @@ export default function RootLayout({
               if (window.MutationObserver && window.MutationObserver.prototype) {
                 var _origObserve = window.MutationObserver.prototype.observe;
                 window.MutationObserver.prototype.observe = function(target, options) {
-                  if (!target || typeof target !== 'object' || typeof target.nodeType !== 'number') {
+                  if (!target || (typeof Node !== 'undefined' && !(target instanceof Node)) || typeof target.nodeType !== 'number') {
                     return;
                   }
                   try {
