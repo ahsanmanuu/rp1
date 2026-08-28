@@ -358,7 +358,8 @@ function UploadContent() {
           JSON.stringify((clientExtract.figures || []).map((f: any) => ({ name: f.name, contentType: f.contentType })))
         );
         if (clientExtract.figures && clientExtract.figures.length > 0) {
-          formData.append("figuresData", JSON.stringify(clientExtract.figures));
+          const sanitizedFigures = (clientExtract.figures || []).map((f: any) => ({ name: f.name, contentType: f.contentType, isChart: f.isChart }));
+          formData.append("figuresData", JSON.stringify(sanitizedFigures));
           for (const fig of clientExtract.figures) {
             if (fig.dataUrl) {
               const blob = dataUrlToFile(String(fig.dataUrl), String(fig.name), String(fig.contentType || 'image/png'));
@@ -2023,50 +2024,22 @@ const TemplateCard = ({ id, name, desc, projectId, router, onError, isCustom, on
     }
 
     // 2. Phase 2: Generate modular LaTeX with selected template
-    let localDoc: any = null;
-    try {
-      const { getLocalDocument } = await import('@/lib/local-project-store');
-      localDoc = await getLocalDocument(projectId);
-    } catch (localErr) {
-      console.warn("Failed to read local document extraction:", localErr);
-    }
-    const localFigures = (localDoc?.envelope?.figures || []).filter((f: any) => f && f.name && f.dataUrl);
-
     let attempts = 0;
-    const maxAttempts = 2;
+    const maxAttempts = 3;
     let lastError: any = null;
 
     while (attempts < maxAttempts) {
       attempts++;
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 25000);
+        const timeoutId = setTimeout(() => controller.abort(), 90000);
 
-        let res: Response;
-        if (localFigures.length > 0) {
-          const fd = new FormData();
-          fd.append('projectId', projectId);
-          fd.append('templateId', id);
-          let attached = 0;
-          for (const fig of localFigures) {
-            const blob = dataUrlToFile(String(fig.dataUrl), String(fig.name), String(fig.contentType || 'image/png'));
-            if (!blob) continue;
-            fd.append('figures', blob, String(fig.name));
-            attached++;
-          }
-          res = await authFetch("/api/projects/generate-latex", {
-            method: "POST",
-            body: fd,
-            signal: controller.signal,
-          }).finally(() => clearTimeout(timeoutId));
-        } else {
-          res = await authFetch("/api/projects/generate-latex", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ projectId, templateId: id }),
-            signal: controller.signal,
-          }).finally(() => clearTimeout(timeoutId));
-        }
+        const res = await authFetch("/api/projects/generate-latex", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId, templateId: id }),
+          signal: controller.signal,
+        }).finally(() => clearTimeout(timeoutId));
 
         const data = await res.json().catch(() => ({}));
         
@@ -2079,14 +2052,14 @@ const TemplateCard = ({ id, name, desc, projectId, router, onError, isCustom, on
           const errMsg = data?.error || `Server responded with status ${res.status}`;
           lastError = new Error(errMsg);
           if (attempts < maxAttempts) {
-            await new Promise(r => setTimeout(r, 800));
+            await new Promise(r => setTimeout(r, 1000));
             continue;
           }
         }
       } catch (err: any) {
         lastError = err;
         if (attempts < maxAttempts) {
-          await new Promise(r => setTimeout(r, 800));
+          await new Promise(r => setTimeout(r, 1000));
           continue;
         }
       }

@@ -237,9 +237,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     // ── ON-DEMAND MODULAR COMPONENT SYNTHESIS ────────────────────────────────
-    // If main.tex references \input{metadata/...} or \input{sections/...} but those
-    // files are missing from project.files, synthesize them from structuredContent/source_document.json.
+    // If main.tex is missing/empty, or references \input{...} files that are missing from project.files,
+    // synthesize them from structuredContent/source_document.json to guarantee 100% complete workspace.
     const activeMainTex = project.latexContent || (project.files.find((f: any) => f.filename === 'main.tex')?.content) || '';
+    const hasMainTex = existingFileNames.has('main.tex') && activeMainTex.trim().length > 30;
+    const hasSections = project.files.some((f: any) => f.filename.startsWith('sections/'));
     const inputMatches = activeMainTex.match(/\\(?:input|include|import|subfile|subimport)(?:\*|\[.*?\])?\s*\{([^}]+)\}/gi) || [];
 
     const missingInputs: string[] = [];
@@ -255,7 +257,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       }
     }
 
-    if (missingInputs.length > 0) {
+    const needsSynthesis = !hasMainTex || !hasSections || missingInputs.length > 0;
+
+    if (needsSynthesis) {
       try {
         // Read structured model from disk or DB
         const sourceDocPath = path.join(projectDir, 'source_document.json');
@@ -275,11 +279,39 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
         if (structuredModel && structuredModel.body && Array.isArray(structuredModel.body) && structuredModel.body.length > 0) {
           const { ModularLatexAssembler } = await import('@/lib/assembler');
-          const { mapLegacyTemplateId } = await import('@/lib/templates/registry');
+          const { mapLegacyTemplateId, getTemplateById } = await import('@/lib/templates/registry');
           const tplId = mapLegacyTemplateId(project.templateName || 'generic_academic');
-          const assembled = ModularLatexAssembler.assemble(structuredModel, tplId);
+          const tpl = getTemplateById(tplId);
+          let templateMainTex: string | undefined;
+          if (tpl && tpl.assetFolder) {
+            const tmPath = path.join(process.cwd(), 'src', 'assets', 'templates', tpl.assetFolder, 'main.tex');
+            if (fs.existsSync(tmPath)) templateMainTex = fs.readFileSync(tmPath, 'utf-8');
+          }
+          const assembled = ModularLatexAssembler.assemble(structuredModel, tplId, templateMainTex);
 
           if (assembled && assembled.files) {
+            if (!hasMainTex || !project.latexContent) {
+              project.latexContent = assembled.mainTex;
+              const mainFileObj = {
+                id: `syn_${id}_main_tex`,
+                projectId: id,
+                filename: 'main.tex',
+                filePath: `/uploads/projects/${id}/main.tex`,
+                fileType: 'tex',
+                content: assembled.mainTex,
+              };
+              const existingMainIdx = project.files.findIndex((f: any) => f.filename === 'main.tex');
+              if (existingMainIdx >= 0) {
+                project.files[existingMainIdx].content = assembled.mainTex;
+              } else {
+                project.files.push(mainFileObj);
+              }
+              existingFileNames.add('main.tex');
+              try {
+                fs.writeFileSync(path.join(projectDir, 'main.tex'), assembled.mainTex, 'utf-8');
+              } catch {}
+            }
+
             for (const [fName, fContent] of Object.entries(assembled.files)) {
               const normName = fName.replace(/\\/g, '/');
               if (!existingFileNames.has(normName)) {

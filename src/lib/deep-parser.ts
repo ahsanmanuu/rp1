@@ -754,7 +754,7 @@ export class DeepDocumentParser {
           if (isPostRefHeader) {
               foundRefs = false;
           } else {
-              if (f.text.length > 20) {
+              if (f.text.length > 5) {
                  if (currentRole !== 'reference') flush(i);
                  currentRole = 'reference';
                  if (currentStart === -1) currentStart = i;
@@ -772,7 +772,7 @@ export class DeepDocumentParser {
                             (tagName.startsWith('h') && (refHeaderText.includes('reference') || refHeaderText.includes('bibliography'))) ||
                             (refHeaderText.length < 60 && /^(?:[\dIVX\.\s]+)?(?:references?|bibliography|works cited|literature cited)(?:\s*(?:and|&|source|notes|material|cited|list|section|chapter)\b.*|[.:\s]*(?:[\d.]{1,4})?)$/i.test(refHeaderText))
                           );
-      if (isRefHeader && i > elements.length * 0.3) {
+      if (isRefHeader && i > elements.length * 0.15) {
           flush(i);
           foundRefs = true;
           continue;
@@ -1655,13 +1655,13 @@ export class DeepDocumentParser {
               });
 
               allItems.forEach((refText) => {
-                  if (DeepDocumentParser.isNewReferenceStart(refText, result.references.length === 0)) {
-                      result.references.push(refText);
-                  } else if (result.references.length > 0) {
-                      result.references[result.references.length - 1] += " " + refText;
+                  const cleanText = refText.trim();
+                  if (cleanText.length < 5) return;
+                  const isNew = DeepDocumentParser.isNewReferenceStart(cleanText, result.references.length === 0);
+                  if (isNew || result.references.length === 0) {
+                      result.references.push(cleanText);
                   } else {
-                      // NOT a reference! Add it back as body paragraph so it doesn't get lost or contaminate bib!
-                      result.body.push({ type: 'paragraph', text: refText });
+                      result.references[result.references.length - 1] += " " + cleanText;
                   }
               });
           }
