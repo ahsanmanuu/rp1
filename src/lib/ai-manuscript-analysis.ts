@@ -144,8 +144,8 @@ function cleanAuthorName(name: string): string {
   return name
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
     .replace(/\s+/g, ' ')
-    .replace(/[*†‡§¶]+$/g, '')
-    .replace(/[\d]+$/g, '')
+    .replace(/[*†‡§¶#\d\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070]+$/g, '')
+    .replace(/^[*†‡§¶#\d\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070\s.]+/g, '')
     .trim();
 }
 

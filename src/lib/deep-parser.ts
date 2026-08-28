@@ -1181,7 +1181,10 @@ export class DeepDocumentParser {
               names.forEach((n: string) => {
                   const fnMatch = n.match(/([\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070\d]+)/);
                   const affilId = fnMatch ? fnMatch[1].replace(/\u00b9/g, '1').replace(/\u00b2/g, '2').replace(/\u00b3/g, '3') : '';
-                  const cleanName = n.replace(/[*\u2020\u2021\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070\d]/g, '').trim();
+                  const cleanName = n
+                    .replace(/^[*\u2020\u2021\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070\d\s.:)\-]+/g, '')
+                    .replace(/[*\u2020\u2021\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070\d]/g, '')
+                    .trim();
                   if (cleanName.length < 2) return;
                   if (AFFIL_KEYWORDS.test(cleanName) || cleanName.split(' ').length > 7) return;
                   let aut = result.authors.find(a => a.name === cleanName);
