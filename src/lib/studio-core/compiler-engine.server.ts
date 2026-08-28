@@ -1981,8 +1981,6 @@ export async function runDoc2LatexCompiler(
             const content = `data:image/${mime};base64,${buffer.toString('base64')}`;
             const existing = (files as any[]).find((f) => String(f?.path || '').toLowerCase() === lower);
             if (existing) {
-              // Prefer authoritative disk bytes over a tiny placeholder stub
-              // (e.g. a 1x1 fallback from client-side sync).
               if (existing.content && String(existing.content).length >= 1500) continue;
               existing.content = content;
             } else {
@@ -1990,6 +1988,49 @@ export async function runDoc2LatexCompiler(
               present.add(lower);
             }
           }
+        }
+
+        // DB Fallback: Recover from prisma.projectFile (critical for Render ephemeral instances)
+        try {
+          const { prisma } = await import('@/lib/prisma');
+          const dbFiles = await prisma.projectFile.findMany({
+            where: {
+              projectId,
+              OR: [
+                { fileType: 'image' },
+                { filename: { endsWith: '.png' } },
+                { filename: { endsWith: '.jpg' } },
+                { filename: { endsWith: '.jpeg' } },
+                { filename: { endsWith: '.webp' } },
+                { filename: { endsWith: '.pdf' } },
+                { filename: { endsWith: '.eps' } },
+                { filename: { endsWith: '.svg' } },
+              ]
+            }
+          });
+          for (const row of dbFiles) {
+            if (!row.content || row.content.length < 200) continue;
+            const cleanName = path.basename(row.filename);
+            const ext = (path.extname(cleanName).toLowerCase().replace(/^\./, '') || 'png');
+            const mime = ext === 'jpg' ? 'jpeg' : ext;
+            const dataUrl = row.content.startsWith('data:')
+              ? row.content
+              : `data:image/${mime};base64,${row.content}`;
+            
+            for (const targetPath of [cleanName, `assets/${cleanName}`, `figures/${cleanName}`]) {
+              const lower = targetPath.toLowerCase();
+              const existing = (files as any[]).find((f) => String(f?.path || '').toLowerCase() === lower);
+              if (existing) {
+                if (!existing.content || String(existing.content).length < 200) {
+                  existing.content = dataUrl;
+                }
+              } else {
+                (files as any[]).push({ path: targetPath, content: dataUrl });
+              }
+            }
+          }
+        } catch (dbErr) {
+          console.warn('[DOC2LATEX] DB figure recovery fallback:', dbErr);
         }
       } catch (recoverErr: any) {
         console.warn('[DOC2LATEX] Figure recovery skipped:', recoverErr?.message || recoverErr);

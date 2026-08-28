@@ -512,30 +512,50 @@ export class LatexAssembler {
             if (/^(?:keywords?|index terms?|key words?|highlights?)(?:\s*[:\-].*)?$/i.test(headingText)) return;
         }
 
-        // UNIVERSAL AUTHOR/ACADEMIC-METADATA HEADING GUARD (see modular path):
-        // names, designations, emails, affiliations styled as headings must never
-        // become \section/\subsection. Designation/email headings are dropped
-        // anywhere; university-ish lines only before the first real section.
-        // All checks run on the PROBED text (leading numbering + trailing
-        // superscript digits stripped) so "1. Dr. Mohammad Aadil Khan" and
-        // "Mohammad Aadil Khan1" are caught too.
+        // UNIVERSAL FRONT-MATTER & SECTION SPLITTING ENGINE:
+        // Before the first real section heading (e.g. Introduction), any author lines,
+        // affiliations, designations, and preamble paragraphs belong to front matter metadata
+        // and must NEVER create a section file (e.g. sections/01_dr_mohammad_aadil_khan.tex).
+        if (!frontMatterDone) {
+            if (node.type === 'heading') {
+                const probe = frontMatterProbe(text);
+                const isDesignationHeading = isDesignationLine(probe);
+                const isEmailHeading = /^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(probe);
+                const isAuthorNameHeading = matchesAnyAuthor(norm) || /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(probe);
+                const isAffiliationHeading = probe.length < 160 && isAffiliationLine(probe);
+                const isCaptionHeading = /^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(probe) && probe.length < 120;
+                if (isDesignationHeading || isEmailHeading || isAuthorNameHeading || isAffiliationHeading || isCaptionHeading) {
+                    return;
+                }
+                const normHeading = probe.toLowerCase()
+                  .replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '')
+                  .replace(/[:.\s]*$/, '')
+                  .trim();
+                const isRealSectionHeading = FORCED_L1_ASSEMBLER.has(normHeading) || /^(?:introduction|related work|literature review|background|methodology|method|overview)\b/i.test(probe) || (node.level === 1 && probe.length >= 3);
+                if (isRealSectionHeading) {
+                    frontMatterDone = true;
+                    currentSectionTitle = text || "introduction";
+                    currentSectionNodes = [node];
+                    return;
+                }
+                return;
+            } else {
+                // Ignore preamble/author paragraphs before the first section heading
+                return;
+            }
+        }
+
+        // ONCE INSIDE BODY SECTIONS:
         if (node.type === 'heading') {
             const probe = frontMatterProbe(text);
             const isDesignationHeading = isDesignationLine(probe);
             const isEmailHeading = /^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(probe);
-            const isAuthorNameHeading = matchesAnyAuthor(norm);
-            const isAffiliationHeading = !frontMatterDone && probe.length < 160 && isAffiliationLine(probe);
+            const isAuthorNameHeading = matchesAnyAuthor(norm) || /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(probe);
             const isCaptionHeading = /^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(probe) && probe.length < 120;
-            if (isDesignationHeading || isEmailHeading || isAuthorNameHeading || isAffiliationHeading || isCaptionHeading) {
+            if (isDesignationHeading || isEmailHeading || isAuthorNameHeading || isCaptionHeading) {
                 return;
             }
-            const isRealSectionHeading = /^(?:introduction|abstract|keywords|related work|literature review|background|methodology|method|conclusion|conclusions|discussion|references|bibliography|acknowledgements|acknowledgments|appendix|future work|overview|results|implementation|experimental|evaluation)\b/i.test(probe) || (node.level === 1 && !isAuthorNameHeading && probe.length >= 3);
-            if (isRealSectionHeading) frontMatterDone = true;
-        }
-
-        // Section splitting: flush on explicit level-1 headings OR canonical section names
-        if (node.type === 'heading') {
-            const normHeading = text.toLowerCase()
+            const normHeading = probe.toLowerCase()
               .replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '')
               .replace(/[:.\s]*$/, '')
               .trim();
@@ -545,8 +565,9 @@ export class LatexAssembler {
                 flushSection();
                 currentSectionTitle = text || "section";
             }
-            // Subsection/subsubsection: do NOT split files, just accumulate
         }
+            // Subsection/subsubsection: do NOT split files, just accumulate
+        
 
         // Auto-caption unnamed figures/charts with sequential numbering
         if ((node.type === 'figure' || node.type === 'image') && !node.caption) {

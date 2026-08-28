@@ -72,25 +72,34 @@ export async function GET(
       const filename = pathSegments.slice(2).join('/');
 
       try {
+        const baseName = path.basename(filename);
         const fileRecord = await prisma.projectFile.findFirst({
           where: {
             projectId,
-            filename: { in: [filename, path.basename(filename)] }
+            OR: [
+              { filename: filename },
+              { filename: baseName },
+              { filename: `assets/${baseName}` },
+              { filename: `figures/${baseName}` },
+            ]
           },
           select: { content: true, fileType: true }
         });
 
-        if (fileRecord?.content && fileRecord.content.startsWith('data:')) {
-          const base64Data = fileRecord.content.split(',')[1] || '';
+        if (fileRecord?.content && fileRecord.content.length > 20) {
+          const raw = fileRecord.content;
+          const base64Data = raw.startsWith('data:') ? (raw.split(',')[1] || '') : raw;
           const buffer = Buffer.from(base64Data, 'base64');
-          return new NextResponse(buffer, {
-            status: 200,
-            headers: {
-              'Content-Type': contentType,
-              'Content-Length': buffer.length.toString(),
-              'Cache-Control': 'public, max-age=31536000, immutable',
-            },
-          });
+          if (buffer.length > 0) {
+            return new NextResponse(buffer, {
+              status: 200,
+              headers: {
+                'Content-Type': contentType,
+                'Content-Length': buffer.length.toString(),
+                'Cache-Control': 'public, max-age=31536000, immutable',
+              },
+            });
+          }
         }
       } catch (dbErr) {
         console.warn('[UPLOADS-SERVE] Database lookup error:', dbErr);
