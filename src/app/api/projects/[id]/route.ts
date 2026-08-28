@@ -29,13 +29,23 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     (project as any).files = files;
     (project as any).collaborators = collaborators;
 
-    const isOwner = project.userId === session.user.id;
-    const isCollab = collaborators.some((c: any) => c.userEmail === session.user.email);
+    let isOwner = project.userId === session.user.id;
+    if (!isOwner && session.user.email) {
+      const ownerUser = await prisma.user.findUnique({
+        where: { id: project.userId },
+        select: { email: true }
+      }).catch(() => null);
+      if (ownerUser && ownerUser.email?.toLowerCase() === session.user.email?.toLowerCase()) {
+        isOwner = true;
+      }
+    }
+    const isCollab = collaborators.some((c: any) => c.userEmail?.toLowerCase() === session.user.email?.toLowerCase());
+    const isAdmin = (session.user as any).role === 'admin';
     
-    if (!isOwner && !isCollab) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (!isOwner && !isCollab && !isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     // Dynamic Self-Healing Sieve: if main.tex in ProjectFile is empty but Project.latexContent is valid, heal it on demand
-    const mainFile = project.files.find((f: any) => f.filename === 'main.tex');
+    let mainFile = project.files.find((f: any) => f.filename === 'main.tex');
     if (mainFile && (!mainFile.content || mainFile.content.trim().length < 50) && project.latexContent && project.latexContent.trim().length >= 50) {
       console.log(`[API_PROJECT_HEAL] main.tex in ProjectFile was empty/corrupt for project ${id}. Healing with project.latexContent!`);
       mainFile.content = project.latexContent;
@@ -125,15 +135,175 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       }
     }
 
+    // ── COMPLETE DISK FILE DISCOVERY & SYNC ─────────────────────────────────
+    // Scans public/uploads/projects/{id} recursively for all sections, metadata,
+    // references, floats, and image assets. Ensures they are returned to the IDE
+    // and synced to DB so the user can see, edit, and debug all files.
+    const projectDir = path.join(process.cwd(), 'public', 'uploads', 'projects', id);
+    const existingFileNames = new Set(project.files.map((f: any) => f.filename.replace(/\\/g, '/')));
+
+    if (fs.existsSync(projectDir)) {
+      const walkSync = (dir: string, base: string = ''): string[] => {
+        let results: string[] = [];
+        try {
+          const list = fs.readdirSync(dir);
+          for (const file of list) {
+            const fullP = path.join(dir, file);
+            const relP = base ? `${base}/${file}` : file;
+            const stat = fs.statSync(fullP);
+            if (stat.isDirectory()) {
+              results = results.concat(walkSync(fullP, relP));
+            } else {
+              results.push(relP);
+            }
+          }
+        } catch {}
+        return results;
+      };
+
+      const diskFiles = walkSync(projectDir);
+      const IGNORE_EXTS = new Set(['.json', '.trc', '.log', '.aux', '.out', '.toc', '.fls', '.fdb_latexmk', '.synctex.gz']);
+
+      for (const relPath of diskFiles) {
+        const normRel = relPath.replace(/\\/g, '/');
+        if (normRel === 'source_document.json' || normRel === 'ai-verdict.json') continue;
+        const ext = path.extname(normRel).toLowerCase();
+        if (IGNORE_EXTS.has(ext)) continue;
+        if (ext === '.pdf' && normRel !== 'main.pdf') continue; // keep non-build PDFs if any
+
+        const isImageExt = /\.(png|jpe?g|gif|svg|webp|eps|tiff?|bmp|heic|heif|avif)$/i.test(normRel);
+        const isTextExt = /\.(tex|bib|cls|sty|bst|cfg|clo|def|ldf|txt|tikz|lua)$/i.test(normRel);
+
+        if (!isImageExt && !isTextExt) continue;
+
+        if (!existingFileNames.has(normRel)) {
+          existingFileNames.add(normRel);
+          let fileContent = '';
+          const fullPath = path.join(projectDir, relPath);
+
+          if (isTextExt) {
+            try {
+              fileContent = fs.readFileSync(fullPath, 'utf-8');
+            } catch {}
+          }
+
+          const newFileObj = {
+            id: `disk_${id}_${normRel.replace(/[^a-zA-Z0-9_-]/g, '_')}`,
+            projectId: id,
+            filename: normRel,
+            filePath: `/uploads/projects/${id}/${normRel}`,
+            fileType: isImageExt ? 'image' : (ext.slice(1) || 'tex'),
+            content: fileContent,
+          };
+
+          project.files.push(newFileObj);
+
+          // Asynchronously upsert to DB so future lookups are fast
+          prisma.projectFile.create({
+            data: {
+              projectId: id,
+              filename: normRel,
+              filePath: `/uploads/projects/${id}/${normRel}`,
+              fileType: isImageExt ? 'image' : (ext.slice(1) || 'tex'),
+              content: fileContent,
+            }
+          }).catch(() => {});
+        }
+      }
+    }
+
+    // ── ON-DEMAND MODULAR COMPONENT SYNTHESIS ────────────────────────────────
+    // If main.tex references \input{metadata/...} or \input{sections/...} but those
+    // files are missing from project.files, synthesize them from structuredContent/source_document.json.
+    const activeMainTex = project.latexContent || (project.files.find((f: any) => f.filename === 'main.tex')?.content) || '';
+    const inputMatches = activeMainTex.match(/\\(?:input|include|import|subfile|subimport)(?:\*|\[.*?\])?\s*\{([^}]+)\}/gi) || [];
+
+    const missingInputs: string[] = [];
+    for (const match of inputMatches) {
+      const m = match.match(/\\(?:input|include|import|subfile|subimport)(?:\*|\[.*?\])?\s*\{([^}]+)\}/);
+      if (!m) continue;
+      let target = m[1].trim().replace(/^\.\//, '').replace(/\\/g, '/');
+      if (!target.endsWith('.tex') && !target.endsWith('.bib') && !target.endsWith('.cls') && !target.endsWith('.sty')) {
+        target += '.tex';
+      }
+      if (!existingFileNames.has(target)) {
+        missingInputs.push(target);
+      }
+    }
+
+    if (missingInputs.length > 0) {
+      try {
+        // Read structured model from disk or DB
+        const sourceDocPath = path.join(projectDir, 'source_document.json');
+        let structuredModel: any = null;
+        if (fs.existsSync(sourceDocPath)) {
+          try {
+            structuredModel = JSON.parse(fs.readFileSync(sourceDocPath, 'utf-8'));
+          } catch {}
+        }
+        if (!structuredModel && project.structuredContent) {
+          try {
+            structuredModel = typeof project.structuredContent === 'string'
+              ? JSON.parse(project.structuredContent)
+              : project.structuredContent;
+          } catch {}
+        }
+
+        if (structuredModel && structuredModel.body && Array.isArray(structuredModel.body) && structuredModel.body.length > 0) {
+          const { ModularLatexAssembler } = await import('@/lib/assembler');
+          const { mapLegacyTemplateId } = await import('@/lib/templates/registry');
+          const tplId = mapLegacyTemplateId(project.templateName || 'generic_academic');
+          const assembled = ModularLatexAssembler.assemble(structuredModel, tplId);
+
+          if (assembled && assembled.files) {
+            for (const [fName, fContent] of Object.entries(assembled.files)) {
+              const normName = fName.replace(/\\/g, '/');
+              if (!existingFileNames.has(normName)) {
+                existingFileNames.add(normName);
+                const fullP = path.join(projectDir, normName);
+                try {
+                  fs.mkdirSync(path.dirname(fullP), { recursive: true });
+                  fs.writeFileSync(fullP, String(fContent), 'utf-8');
+                } catch {}
+
+                const assembledFileObj = {
+                  id: `syn_${id}_${normName.replace(/[^a-zA-Z0-9_-]/g, '_')}`,
+                  projectId: id,
+                  filename: normName,
+                  filePath: `/uploads/projects/${id}/${normName}`,
+                  fileType: normName.split('.').pop() || 'tex',
+                  content: String(fContent),
+                };
+
+                project.files.push(assembledFileObj);
+
+                prisma.projectFile.create({
+                  data: {
+                    projectId: id,
+                    filename: normName,
+                    filePath: `/uploads/projects/${id}/${normName}`,
+                    fileType: normName.split('.').pop() || 'tex',
+                    content: String(fContent),
+                  }
+                }).catch(() => {});
+              }
+            }
+          }
+        }
+      } catch (synthErr) {
+        console.warn('[API_PROJECT_HEAL] Modular synthesis self-heal failed (non-critical):', synthErr);
+      }
+    }
+
     // Universal Metadata Healing for Visual Assets
     // Ensures that no matter which workflow created the file, images are always properly typed and addressable
     if (project.files) {
       project.files = project.files.map((f: any) => {
-        const isImageExt = /\.(png|jpe?g|gif|svg|webp|eps|tiff?|bmp|heic|heif)$/i.test(f.filename);
+        const isImageExt = /\.(png|jpe?g|gif|svg|webp|eps|tiff?|bmp|heic|heif|avif)$/i.test(f.filename);
         if (isImageExt) {
           f.fileType = 'image';
           if (!f.filePath) {
-            f.filePath = `/uploads/projects/${project.id}/${f.filename}`;
+            f.filePath = `/uploads/projects/${project.id}/${f.filename.replace(/\\/g, '/')}`;
           }
         }
         return f;

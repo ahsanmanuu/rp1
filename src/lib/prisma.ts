@@ -630,9 +630,17 @@ export async function getClient(): Promise<PocketBase> {
     _cachedClient = client;
     return client;
   } catch (err: any) {
-    console.warn('[pb-adapter] PocketBase admin client offline, using fallback client');
-    // Don't cache unauthenticated fallback — retry pbAdmin on next call
-    return createPb();
+    console.warn('[pb-adapter] PocketBase admin auth failed, retrying once in 600ms...', err?.message || err);
+    await new Promise(r => setTimeout(r, 600));
+    try {
+      const retryClient = await pbAdmin();
+      _cachedClient = retryClient;
+      return retryClient;
+    } catch (retryErr: any) {
+      console.error('[pb-adapter] PocketBase admin client offline after retry, using fallback client:', retryErr?.message || retryErr);
+      // Don't cache unauthenticated fallback — retry pbAdmin on next call
+      return createPb();
+    }
   }
 }
 

@@ -99,8 +99,8 @@ export async function getServerSession(): Promise<PbServerSession | null> {
 
     // ── Parallel auth: PB token validation + DB session lookup ────────────
     // The DB row is the source of truth for active sessions (makes logout
-    // stick), but PB authRefresh can validate the token directly when the DB
-    // adapter is temporarily unreachable. Try both and merge results.
+    // stick), but PB authRefresh / token validation can validate the user directly when the DB
+    // adapter is temporarily unreachable or undergoing HMR. Try both and merge results.
     let pb: Awaited<ReturnType<typeof authFromToken>> | null = null;
     let sessionRecord: any = null;
 
@@ -109,41 +109,61 @@ export async function getServerSession(): Promise<PbServerSession | null> {
       return null;
     });
 
-    const dbPromise = prisma.userSession.findUnique({
-      where: { sessionToken: token },
-      include: { user: true }
-    }).catch((dbErr: any) => {
-      console.error("[AUTH] Database session validation query failed:", dbErr?.message || dbErr);
-      return null;
-    });
+    const fetchDbSession = async () => {
+      try {
+        return await prisma.userSession.findUnique({
+          where: { sessionToken: token },
+          include: { user: true }
+        });
+      } catch (dbErr: any) {
+        console.error("[AUTH] Database session validation query failed:", dbErr?.message || dbErr);
+        return null;
+      }
+    };
 
-    [pb, sessionRecord] = await Promise.all([pbPromise, dbPromise]);
+    [pb, sessionRecord] = await Promise.all([pbPromise, fetchDbSession()]);
 
-    // The DB row is the source of truth for active sessions (makes logout stick).
-    // If the session row is missing or deleted, the user is logged out.
-    if (!sessionRecord || !sessionRecord.user) {
-      return null;
+    // If DB session lookup returned null, retry once after a short delay (e.g. during HMR or PB reconnect)
+    if (!sessionRecord && token) {
+      await new Promise(r => setTimeout(r, 400));
+      sessionRecord = await fetchDbSession();
     }
 
-    // Verify session hasn't expired
-    if (sessionRecord.expiresAt && new Date(sessionRecord.expiresAt).getTime() < Date.now()) {
+    // Verify session hasn't expired if DB record exists
+    if (sessionRecord?.expiresAt && new Date(sessionRecord.expiresAt).getTime() < Date.now()) {
       return null;
     }
 
     const pbRecord: any = pb?.authStore?.record;
 
+    // If neither DB session nor valid PocketBase record exists, user is unauthenticated
+    if ((!sessionRecord || !sessionRecord.user) && (!pbRecord || !pb?.authStore?.isValid)) {
+      return null;
+    }
+
     let record: any = pbRecord;
-    if (!record && sessionRecord?.user) {
+    if (sessionRecord?.user) {
       const dbUser = sessionRecord.user;
       record = {
         id: dbUser.id,
         email: dbUser.email,
-        name: dbUser.name || dbUser.email.split("@")[0] || "",
+        name: dbUser.name || dbUser.email?.split("@")[0] || "",
         avatar: dbUser.avatar,
         theme: dbUser.theme || "dark",
         points: dbUser.points ?? 50,
         membership: dbUser.membership || "free",
         role: dbUser.role || "user",
+      };
+    } else if (pbRecord) {
+      record = {
+        id: pbRecord.id,
+        email: pbRecord.email,
+        name: pbRecord.name || pbRecord.email?.split("@")[0] || "",
+        avatar: pbRecord.avatar,
+        theme: pbRecord.theme || "dark",
+        points: pbRecord.points ?? 50,
+        membership: pbRecord.membership || "free",
+        role: pbRecord.role || "user",
       };
     }
 

@@ -12,9 +12,19 @@ const ANALYSIS_STEPS = [
   { id: 'ai_agent',  text: "Doc2LaTeX AI Agent Running...",   icon: <Wand2 size={28} />,     color: '#8b5cf6' },
 ];
 
-export default function ScholarlyAnalysisModal({ isOpen, progress = 0, activeModel }: { isOpen: boolean; progress?: number; activeModel?: string }) {
+export default function ScholarlyAnalysisModal({ 
+  isOpen, 
+  progress = 0, 
+  stageText,
+  activeModel 
+}: { 
+  isOpen: boolean; 
+  progress?: number; 
+  stageText?: string;
+  activeModel?: string;
+}) {
   // Ensure progress is safely bounded between 0 and 100
-  const safeProgress = Math.max(0, Math.min(100, progress));
+  const safeProgress = Math.max(0, Math.min(100, progress || 0));
   
   // Calculate step dynamically based on true progress
   const stepIndex = Math.min(
@@ -23,6 +33,7 @@ export default function ScholarlyAnalysisModal({ isOpen, progress = 0, activeMod
   );
 
   const currentStep = ANALYSIS_STEPS[stepIndex];
+  const displayStepText = stageText?.trim() || currentStep.text;
 
   return (
     <AnimatePresence>
@@ -92,8 +103,8 @@ export default function ScholarlyAnalysisModal({ isOpen, progress = 0, activeMod
                           strokeWidth="3" 
                           strokeDasharray="301.6"
                           initial={{ strokeDashoffset: 301.6 }}
-                          animate={{ strokeDashoffset: 301.6 - (301.6 * safeProgress / 100) }}
-                          transition={{ duration: 0.1, ease: "linear" }}
+                          animate={{ strokeDashoffset: Math.max(0, 301.6 - (301.6 * safeProgress / 100)) }}
+                          transition={{ duration: 0.25, ease: "linear" }}
                           strokeLinecap="round"
                       />
                   </svg>
@@ -142,20 +153,21 @@ export default function ScholarlyAnalysisModal({ isOpen, progress = 0, activeMod
                 Latexify AI Analysis
               </h2>
 
-              <div style={{ height: '2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ minHeight: '2.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 0.5rem' }}>
                 <AnimatePresence mode="wait">
                   <motion.p
-                    key={stepIndex}
+                    key={displayStepText}
                     initial={{ opacity: 0, filter: 'blur(4px)', y: 5 }}
                     animate={{ opacity: 1, filter: 'blur(0px)', y: 0 }}
                     exit={{ opacity: 0, filter: 'blur(4px)', y: -5 }}
                     transition={{ duration: 0.3 }}
                     style={{ 
                       fontSize: '0.9rem', color: 'var(--joy-secondary)', fontWeight: 700, margin: 0,
-                      fontFamily: 'var(--font-inter)', textTransform: 'uppercase', letterSpacing: '0.05em'
+                      fontFamily: 'var(--font-inter)', textTransform: 'uppercase', letterSpacing: '0.05em',
+                      textAlign: 'center', lineHeight: 1.3
                     }}
                   >
-                    {currentStep.text}
+                    {displayStepText}
                   </motion.p>
                 </AnimatePresence>
               </div>

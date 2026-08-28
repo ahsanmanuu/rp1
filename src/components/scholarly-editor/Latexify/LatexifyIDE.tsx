@@ -203,20 +203,26 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                     await studioFs.writeFile(projectId, file.filename, file.content || "");
                   }
                 } else if (isBinary) {
-                  if (file.filePath) {
+                  let dataUrl = (typeof file.content === 'string' && file.content.startsWith('data:')) ? file.content : '';
+                  if (!dataUrl && file.filePath) {
                     try {
                       const assetRes = await fetch(file.filePath);
-                      const blob = await assetRes.blob();
-                      const dataUrl = await new Promise<string>((resolve) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => resolve(reader.result as string);
-                        reader.readAsDataURL(blob);
-                      });
-                      await studioFs.writeFile(projectId, file.filename, dataUrl);
+                      if (assetRes.ok) {
+                        const blob = await assetRes.blob();
+                        dataUrl = await new Promise<string>((resolve) => {
+                          const reader = new FileReader();
+                          reader.onloadend = () => resolve(reader.result as string);
+                          reader.readAsDataURL(blob);
+                        });
+                      }
                     } catch (assetErr) {
-                      console.error(`Failed to sync binary asset ${file.filename}:`, assetErr);
+                      console.warn(`Failed to fetch binary asset ${file.filename}:`, assetErr);
                     }
                   }
+                  if (!dataUrl) {
+                    dataUrl = `data:image/${ext === 'jpg' ? 'jpeg' : (ext || 'png')};base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=`;
+                  }
+                  await studioFs.writeFile(projectId, file.filename, dataUrl);
                 }
               }));
             }

@@ -20,6 +20,8 @@ import ProjectLimitModal from "@/components/ProjectLimitModal";
 import { useProjectLimit } from "@/hooks/useProjectLimit";
 import { countCitationsFromHtml } from "@/lib/citationCounting";
 import { StudioFS } from "@/lib/studio-fs";
+import { authFetch } from "@/lib/authFetch";
+import { isAuthBlocked, markAuthFailed, clearAuthFailed } from "@/lib/authBackoff";
 import "./print.css";
 
 
@@ -57,22 +59,21 @@ function UploadContent() {
 
   // Fetch reports and projects — only after session is confirmed
   useEffect(() => {
-    if (!mounted || status !== "authenticated" || !session?.user?.id) return;
+    if (!mounted || status !== "authenticated" || !session?.user?.id || isAuthBlocked("upload-data-fetch")) return;
     const fetchData = async () => {
       try {
-        const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
-        const authHeaders: Record<string, string> = {};
-        if (storedToken) authHeaders["Authorization"] = `Bearer ${storedToken}`;
-
         const [repRes, docRes, studioRes] = await Promise.all([
-          fetch('/api/reports', { headers: authHeaders }),
-          fetch('/api/projects?type=DOC2LATEX', { headers: authHeaders }),
-          fetch('/api/projects?type=LATEX_STUDIO', { headers: authHeaders })
+          authFetch('/api/reports'),
+          authFetch('/api/projects?type=DOC2LATEX'),
+          authFetch('/api/projects?type=LATEX_STUDIO')
         ]);
 
         if (repRes.status === 401 || docRes.status === 401 || studioRes.status === 401) {
+          markAuthFailed("upload-data-fetch");
           return;
         }
+
+        clearAuthFailed("upload-data-fetch");
         
         let fetchedReports = [];
         if (repRes.ok) {
@@ -167,7 +168,7 @@ function UploadContent() {
       }
     };
     fetchData();
-  }, [status, session]);
+  }, [status, session, mounted]);
 
   // Fetch reports and projects
 
@@ -181,7 +182,7 @@ function UploadContent() {
       if (urlIdParam) {
         setIsHistoryLoading(true);
         try {
-          const res = await fetch(`/api/projects/${urlIdParam}`);
+          const res = await authFetch(`/api/projects/${urlIdParam}`);
           const data = await res.json();
 
           if (data.project) {
@@ -256,13 +257,15 @@ function UploadContent() {
   };
 
   const [analysisProgress, setAnalysisProgressState] = useState(0);
+  const [analysisStage, setAnalysisStage] = useState("");
   const maxProgressRef = useRef(0);
   const delayedLoadingRef = useRef(false);
 
   const setAnalysisProgress = (val: number) => {
-    if (val > maxProgressRef.current) {
-      maxProgressRef.current = val;
-      setAnalysisProgressState(val);
+    const num = Math.min(100, Math.max(0, val));
+    if (num > maxProgressRef.current) {
+      maxProgressRef.current = num;
+      setAnalysisProgressState(num);
     }
   };
 
@@ -273,6 +276,7 @@ function UploadContent() {
     delayedLoadingRef.current = false;
     maxProgressRef.current = 0;
     setAnalysisProgressState(0);
+    setAnalysisStage("Uploading manuscript...");
     setError("");
     let simulatedInterval: any = null;
 
@@ -310,12 +314,8 @@ function UploadContent() {
     // Pre-fetch templates in parallel with the upload. Race with a 10s
     // timeout so a slow /api/templates endpoint can never hang the entire
     // upload flow (the templatesPromise feeds a Promise.all later).
-    const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
-    const templateHeaders: Record<string, string> = {};
-    if (storedToken) templateHeaders["Authorization"] = `Bearer ${storedToken}`;
-
     const templatesPromise = Promise.race([
-      fetch('/api/templates', { cache: 'no-store', headers: templateHeaders })
+      authFetch('/api/templates', { cache: 'no-store' })
         .then(res => res.json())
         .catch(err => {
           console.error("Template pre-fetch failed:", err);
@@ -354,22 +354,24 @@ function UploadContent() {
           uploadData = await new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             xhr.open("POST", "/api/upload");
+            xhr.withCredentials = true;
             xhr.timeout = xhrTimeoutMs;
-            if (storedToken) xhr.setRequestHeader("Authorization", `Bearer ${storedToken}`);
+            const freshToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+            if (freshToken) xhr.setRequestHeader("Authorization", `Bearer ${freshToken}`);
             
             let simulatedProgress = 0;
 
-            // Start smooth progress from 0 to 35% during initial file bytes preparation
+            // Start smooth progress from 0 to 30% during initial file bytes preparation
             simulatedInterval = setInterval(() => {
-              if (simulatedProgress < 35) {
+              if (simulatedProgress < 30) {
                 simulatedProgress += 1;
                 setAnalysisProgress(simulatedProgress);
               }
-            }, 150);
+            }, 120);
 
             xhr.upload.onprogress = (event) => {
               if (event.lengthComputable) {
-                 const percent = Math.round((event.loaded / event.total) * 45);
+                 const percent = Math.round((event.loaded / event.total) * 35);
                  simulatedProgress = Math.max(simulatedProgress, percent);
                  setAnalysisProgress(simulatedProgress);
               }
@@ -377,26 +379,21 @@ function UploadContent() {
 
             xhr.upload.onload = () => {
               if (simulatedInterval) clearInterval(simulatedInterval);
-              simulatedProgress = Math.max(45, simulatedProgress);
+              simulatedProgress = Math.max(35, simulatedProgress);
               setAnalysisProgress(simulatedProgress);
+              setAnalysisStage("Initializing analysis pipeline...");
 
-              // Smoothly creep upward from 45% to 70% while the server runs AI analysis & document synthesis.
-              // Cap at 70% so the server's real progress values (82%, 88%, 97%) can take over via polling.
+              // Smoothly creep upward from 35% to 45% while the server prepares background job
               simulatedInterval = setInterval(() => {
-                if (simulatedProgress < 70) {
-                  simulatedProgress += (70 - simulatedProgress) * 0.015 + 0.05;
-                  setAnalysisProgress(Math.min(70, Math.round(simulatedProgress)));
+                if (simulatedProgress < 45) {
+                  simulatedProgress += (45 - simulatedProgress) * 0.04 + 0.08;
+                  setAnalysisProgress(Math.min(45, Math.round(simulatedProgress)));
                 }
-              }, 250);
+              }, 200);
             };
 
             xhr.onload = () => {
               if (simulatedInterval) clearInterval(simulatedInterval);
-              // NOTE: Do NOT set 100% here — for large files the server
-              // returns { pending: true } and processing continues in the
-              // background. Progress will be updated by the polling loop
-              // (for pending uploads) or after project data fetch (for
-              // synchronous uploads).
 
               if (xhr.status >= 200 && xhr.status < 300) {
                 try {
@@ -447,53 +444,45 @@ function UploadContent() {
         }
       }
 
-      // PHASE 2 (huge-file fix): the server now returns { uploadId, pending }
-      // IMMEDIATELY after saving the raw bytes — processing runs in the
-      // background (Render kills requests at ~300s, and a huge DOCX pipeline
-      // takes longer). Poll the processing status until it completes, then
-      // continue with the existing project-sync flow below.
+      // PHASE 2: the server returns { uploadId, pending } IMMEDIATELY after saving the raw bytes.
+      // Processing runs in the background. Poll the processing status until it completes.
       if (uploadData?.pending && uploadData?.uploadId) {
-        // The simulated progress interval is no longer needed — the server
-        // provides real progress via polling from this point onward.
         if (simulatedInterval) { clearInterval(simulatedInterval); simulatedInterval = null; }
-        // Reset maxProgress so server-side polling values (42%, 55%, 74%, etc.)
-        // can override the client-side upload simulation progress.
-        maxProgressRef.current = 0;
+        
         const pollUploadId = uploadData.uploadId;
-        // Total timeout: 60 min (large DOCX + AI analysis can be slow).
         const pollMaxWaitMs = 60 * 60 * 1000;
         const pollStartedAt = Date.now();
-        // Inactivity timeout: if the server's `updatedAt` hasn't changed for
-        // 15 min, the background worker is dead and the server-side stale
-        // worker recovery failed.  This prevents the client from polling a
-        // stale OfflineSync cache for the full 60 min.
         const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
-        // A 404 right after the POST succeeded means the status row couldn't
-        // be read (server restarting / storage temporarily unavailable) — the
-        // POST already persisted the bytes, so the row must exist. Wait out
-        // the restart window (~2min at the 2s poll interval) before declaring
-        // the upload lost, so a deploy/OOM restart never kills a recoverable
-        // upload.
         const NOT_FOUND_RETRY_LIMIT = 60;
         let lastUpdatedAt: number | null = null;
         let lastActivityAt = Date.now();
         let notFoundStreak = 0;
         let pollStatus: any = null;
         let pollSettled = false;
+
+        let clientVisualProgress = Math.max(35, maxProgressRef.current);
+        let targetServerProgress = 45;
+
+        // Background progress ticker: smoothly interpolates visual progress toward targetServerProgress,
+        // and gently creeps forward (up to 96%) during long AI analysis passes so the UI never appears hung.
+        simulatedInterval = setInterval(() => {
+          if (clientVisualProgress < targetServerProgress) {
+            clientVisualProgress += Math.max(0.3, (targetServerProgress - clientVisualProgress) * 0.15);
+            setAnalysisProgress(Math.min(targetServerProgress, Math.round(clientVisualProgress)));
+          } else if (clientVisualProgress < 96) {
+            clientVisualProgress += 0.06;
+            setAnalysisProgress(Math.min(96, Math.round(clientVisualProgress)));
+          }
+        }, 250);
+
         while (!pollSettled && Date.now() - pollStartedAt < pollMaxWaitMs) {
-          // Inactivity guard: if server hasn't updated status in 15 min,
-          // the worker is dead — bail early with a actionable message.
           if (Date.now() - lastActivityAt > INACTIVITY_TIMEOUT_MS) {
             throw new Error("Document processing appears stuck. The server may have restarted during processing. Please try uploading again.");
           }
-          await new Promise(r => setTimeout(r, 2000));
+          await new Promise(r => setTimeout(r, 1500));
           try {
-            const pollRes = await fetch(`/api/upload/status?uploadId=${pollUploadId}`, { cache: 'no-store' });
+            const pollRes = await authFetch(`/api/upload/status?uploadId=${pollUploadId}`, { cache: 'no-store' });
             if (pollRes.status === 404) {
-              // Row unreadable right now — likely the server/PB is restarting
-              // (deploy or OOM). The row itself persists in the DB, so keep
-              // polling through the restart window; only give up if the 404
-              // persists (row truly gone / prolonged outage).
               notFoundStreak++;
               if (notFoundStreak >= NOT_FOUND_RETRY_LIMIT) {
                 throw new Error("Upload processing was lost (server restarted). Please upload the file again.");
@@ -503,38 +492,31 @@ function UploadContent() {
             notFoundStreak = 0;
             if (pollRes.ok) {
               pollStatus = await pollRes.json();
+              if (pollStatus?.stage) {
+                setAnalysisStage(pollStatus.stage);
+              }
+              if (typeof pollStatus?.progress === 'number' && pollStatus.progress > targetServerProgress) {
+                targetServerProgress = pollStatus.progress;
+              }
               if (pollStatus?.projectId && (pollStatus?.phase === 'done' || (pollStatus?.progress && pollStatus.progress >= 90))) {
                 uploadData = { projectId: pollStatus.projectId };
                 if (simulatedInterval) { clearInterval(simulatedInterval); simulatedInterval = null; }
+                setAnalysisStage("Finalizing Intelligence Report...");
                 setAnalysisProgress(100);
                 pollSettled = true;
                 break;
               }
               if (pollStatus?.phase === 'error') {
-                // Recoverable errors mean the server is automatically re-kicking
-                // the background worker (stale/dead) — the client keeps polling
-                // instead of failing the upload. Only hard failures surface.
                 if (pollStatus.recoverable === true) continue;
                 throw new Error(pollStatus.message || 'Document processing failed. Please try again.');
               }
-              if (typeof pollStatus?.progress === 'number') {
-                setAnalysisProgress(pollStatus.progress);
-              }
-              // Track server-side `updatedAt` to detect stale OfflineSync
-              // cache hits vs real server responses.  When the network is
-              // suspended, OfflineSync replays the last cached response with
-              // the same `updatedAt` — we must NOT reset the inactivity
-              // timer for those, or the client would poll forever.
               const serverUpdatedAt = pollStatus.updatedAt || 0;
               if (lastUpdatedAt !== null && serverUpdatedAt !== lastUpdatedAt) {
-                // Server actually processed something — reset inactivity timer
                 lastActivityAt = Date.now();
               }
               lastUpdatedAt = serverUpdatedAt;
             }
           } catch (pollErr: any) {
-            // Re-throw real processing failures; swallow transient poll
-            // network errors and keep polling (phase 1 already succeeded).
             if (pollErr?.message && /processing|restarted|stuck|upload again/i.test(pollErr.message)) throw pollErr;
           }
         }
@@ -579,7 +561,7 @@ function UploadContent() {
             const projectFetchController = new AbortController();
             const projectFetchTimeout = setTimeout(() => projectFetchController.abort(), 30000);
             const results = await Promise.all([
-              fetch(`/api/projects/${uploadData.projectId}`, { cache: 'no-store', signal: projectFetchController.signal }),
+              authFetch(`/api/projects/${uploadData.projectId}`, { cache: 'no-store', signal: projectFetchController.signal }),
               templatesPromise,
             ]).finally(() => clearTimeout(projectFetchTimeout));
             projRes = results[0];
@@ -702,7 +684,7 @@ function UploadContent() {
           }
 
           // Fire-and-forget POST to save the report
-          fetch('/api/reports', {
+          authFetch('/api/reports', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1090,7 +1072,7 @@ function UploadContent() {
         position: 'relative',
         overflow: 'visible'
       }} className="print-container">
-        <ScholarlyAnalysisModal isOpen={loading} progress={analysisProgress} />
+        <ScholarlyAnalysisModal isOpen={loading} progress={analysisProgress} stageText={analysisStage} />
         <Toaster position="top-right" reverseOrder={false} />
         
         <div className="container" style={{ maxWidth: '1400px', width: '100%' }}>
@@ -1474,7 +1456,7 @@ function UploadContent() {
                       isCustom={tpl.isCustom}
                       projectData={projectData}
                       onDelete={() => {
-                         fetch('/api/templates', { cache: 'no-store' })
+                         authFetch('/api/templates', { cache: 'no-store' })
                            .then(res => res.json())
                            .then(data => setCustomTemplates(data.templates || []));
                       }}
@@ -1513,7 +1495,7 @@ function UploadContent() {
         position: 'relative'
       }}
     >
-      <ScholarlyAnalysisModal isOpen={loading} progress={analysisProgress} />
+      <ScholarlyAnalysisModal isOpen={loading} progress={analysisProgress} stageText={analysisStage} />
 
       {/* Silent History Loader */}
       <AnimatePresence>
@@ -1984,7 +1966,7 @@ const TemplateCard = ({ id, name, desc, projectId, router, onError, isCustom, on
         console.warn("Failed to parse structured content for report saving", e);
       }
 
-      fetch("/api/reports", {
+      authFetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2036,7 +2018,7 @@ const TemplateCard = ({ id, name, desc, projectId, router, onError, isCustom, on
             attached++;
           }
           console.log(`[UPLOAD] Attaching ${attached}/${localFigures.length} figure(s) to template request`);
-          res = await fetch("/api/projects/generate-latex", {
+          res = await authFetch("/api/projects/generate-latex", {
             method: "POST",
             body: fd
           });
@@ -2044,7 +2026,7 @@ const TemplateCard = ({ id, name, desc, projectId, router, onError, isCustom, on
             console.warn("[UPLOAD] All figures failed to deserialize — server will proceed without figure files.");
           }
         } else {
-          res = await fetch("/api/projects/generate-latex", {
+          res = await authFetch("/api/projects/generate-latex", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ projectId, templateId: id })
@@ -2113,7 +2095,7 @@ const TemplateCard = ({ id, name, desc, projectId, router, onError, isCustom, on
     e.stopPropagation();
     if (!confirm('Are you sure you want to delete this custom template?')) return;
     try {
-      const res = await fetch(`/api/templates?id=${id}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/templates?id=${id}`, { method: 'DELETE' });
       if (res.ok && onDelete) {
         onDelete();
       } else {
@@ -2136,7 +2118,7 @@ const TemplateCard = ({ id, name, desc, projectId, router, onError, isCustom, on
         background: 'var(--card-bg)', 
         borderRadius: '20px', 
         border: '1px solid var(--card-border)',
-        display: 'flex',
+        display: 'flex', 
         flexDirection: 'column',
         gap: '0.6rem',
         cursor: 'pointer',
@@ -2231,7 +2213,7 @@ const PremiumHistoryCard = ({ title, date, stats, type, onClick, projectId, onDe
           ? `/api/reports/${projectId}/delete` 
           : `/api/projects/${projectId}/delete`;
           
-        const res = await fetch(url, { method: 'DELETE' });
+        const res = await authFetch(url, { method: 'DELETE' });
         if (!res.ok) throw new Error('Delete failed');
       }
       toast.success(isReportType ? 'Report deleted' : 'Project deleted');

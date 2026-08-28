@@ -123,7 +123,17 @@ export function SessionProvider({ children, refetchInterval = 120, refetchOnWind
           if (typeof window !== "undefined") localStorage.removeItem("auth-token");
         }
       } else if (res.status === 401) {
-        // Explicit 401 means token/cookie is invalid or expired
+        // If we have a stored token or were authenticated, retry once before declaring unauthenticated
+        // This prevents transient server restarts / HMR cycles from abruptly wiping the user session
+        const hasStoredToken = typeof window !== "undefined" && !!localStorage.getItem("auth-token");
+        if (hasStoredToken && retryCount.current < 1) {
+          retryCount.current++;
+          isFetching.current = false;
+          setTimeout(update, 1200);
+          return;
+        }
+
+        // Confirmed 401 after retry: token is genuinely invalid or expired
         setData(null);
         setStatus("unauthenticated");
         statusRef.current = "unauthenticated";

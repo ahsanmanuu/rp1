@@ -269,8 +269,9 @@ export default function DocIDE({ projectId }: { projectId: string }) {
             // time on every sync (each binary asset costs a fetch + dataURL read).
             await Promise.all(data.project.files.map(async (file: any) => {
               const ext = file.filename.split('.').pop()?.toLowerCase();
-              const isText = ['tex', 'bib', 'cls', 'sty', 'bst', 'txt'].includes(ext || '');
-              const isBinary = ['image', 'png', 'jpg', 'jpeg', 'pdf'].includes(file.fileType) || ['png', 'jpg', 'jpeg', 'pdf'].includes(ext || '');
+              const isText = ['tex', 'bib', 'cls', 'sty', 'bst', 'txt', 'cfg', 'clo', 'def', 'ldf', 'tikz', 'lua'].includes(ext || '');
+              const isBinary = ['image', 'png', 'jpg', 'jpeg', 'pdf', 'webp', 'gif', 'svg', 'eps', 'tiff', 'tif', 'bmp', 'heic', 'heif', 'avif'].includes(file.fileType) ||
+                ['png', 'jpg', 'jpeg', 'pdf', 'webp', 'gif', 'svg', 'eps', 'tiff', 'tif', 'bmp', 'heic', 'heif', 'avif'].includes(ext || '');
 
               if (isText) {
                 // Always use text content for LaTeX source/meta files
@@ -278,20 +279,26 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                   await studioFs.writeFile(projectId, file.filename, file.content || "");
                 }
               } else if (isBinary) {
-                if (file.filePath) {
+                let dataUrl = (typeof file.content === 'string' && file.content.startsWith('data:')) ? file.content : '';
+                if (!dataUrl && file.filePath) {
                   try {
                     const assetRes = await fetch(file.filePath);
-                    const blob = await assetRes.blob();
-                    const dataUrl = await new Promise<string>((resolve) => {
-                      const reader = new FileReader();
-                      reader.onloadend = () => resolve(reader.result as string);
-                      reader.readAsDataURL(blob);
-                    });
-                    await studioFs.writeFile(projectId, file.filename, dataUrl);
+                    if (assetRes.ok) {
+                      const blob = await assetRes.blob();
+                      dataUrl = await new Promise<string>((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result as string);
+                        reader.readAsDataURL(blob);
+                      });
+                    }
                   } catch (assetErr) {
-                    console.error(`Failed to sync binary asset ${file.filename}:`, assetErr);
+                    console.warn(`Failed to fetch binary asset ${file.filename}:`, assetErr);
                   }
                 }
+                if (!dataUrl) {
+                  dataUrl = `data:image/${ext === 'jpg' ? 'jpeg' : (ext || 'png')};base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=`;
+                }
+                await studioFs.writeFile(projectId, file.filename, dataUrl);
               }
             }));
           }

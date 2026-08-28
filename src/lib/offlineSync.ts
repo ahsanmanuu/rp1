@@ -154,11 +154,16 @@ const MAX_CACHE_AGE_MS = 5 * 60 * 1000; // 5 minutes max cache age
 // Cache a successful GET response
 export function cacheGetResponse(url: string, data: any) {
   if (typeof window === "undefined" || !url) return;
-  // Don't cache health checks, logos, session/auth checks, or live chat endpoints
+  // Don't cache health checks, logos, session/auth checks, upload status polling, or live chat endpoints
   if (
     url.includes("/api/health") ||
     url.includes("/api/logo") ||
     url.includes("/api/auth/") ||
+    url.includes("/api/upload") ||
+    url.includes("/upload") ||
+    url.includes("/api/projects/limit-status") ||
+    url.includes("/api/user/ai-cap/status") ||
+    url.includes("/api/user/check-membership") ||
     url.includes("/api/chat/messages") ||
     url.includes("/api/admin/chat/heartbeat")
   ) {
@@ -198,11 +203,16 @@ export function cacheGetResponse(url: string, data: any) {
 // Retrieve a cached GET response
 export function getCachedGetResponse(url: string): any | null {
   if (typeof window === "undefined" || !url) return null;
-  // Never serve cached data for health, logo, or auth endpoints
+  // Never serve cached data for health, logo, upload status, or auth endpoints
   if (
     url.includes("/api/health") ||
     url.includes("/api/logo") ||
-    url.includes("/api/auth/")
+    url.includes("/api/auth/") ||
+    url.includes("/api/upload") ||
+    url.includes("/upload") ||
+    url.includes("/api/projects/limit-status") ||
+    url.includes("/api/user/ai-cap/status") ||
+    url.includes("/api/user/check-membership")
   ) {
     return null;
   }

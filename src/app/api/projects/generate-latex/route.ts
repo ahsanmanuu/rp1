@@ -121,6 +121,28 @@ export async function POST(req: Request) {
         try {
           fs.writeFileSync(path.join(projectDir, safeName), fig.data);
           savedFigures++;
+          // Ensure figure is registered in ProjectFile table
+          prisma.projectFile.upsert({
+            where: { id: `fig_${projectId}_${safeName.replace(/[^a-zA-Z0-9_-]/g, '_')}` },
+            update: { filePath: `/uploads/projects/${projectId}/${safeName}`, fileType: 'image' },
+            create: {
+              projectId,
+              filename: safeName,
+              content: '',
+              fileType: 'image',
+              filePath: `/uploads/projects/${projectId}/${safeName}`
+            }
+          }).catch(() => {
+            prisma.projectFile.create({
+              data: {
+                projectId,
+                filename: safeName,
+                content: '',
+                fileType: 'image',
+                filePath: `/uploads/projects/${projectId}/${safeName}`
+              }
+            }).catch(() => {});
+          });
         } catch (figErr: any) {
           console.warn('[GENERATE-LATEX] Failed to persist figure', safeName, figErr?.message || figErr);
         }

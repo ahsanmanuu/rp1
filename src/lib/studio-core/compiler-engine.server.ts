@@ -718,6 +718,79 @@ export async function runHardenedPipeline(
                   console.warn('[PIPELINE] ProjectFile recovery error:', pfErr);
                 }
               }
+
+              // Attempt 2: Recover directly from physical disk
+              if (!recovered && projectId) {
+                try {
+                  const projDir = path.join(process.cwd(), 'public', 'uploads', 'projects', projectId);
+                  const diskPath = path.join(projDir, cand);
+                  if (fs.existsSync(diskPath)) {
+                    const diskContent = fs.readFileSync(diskPath, 'utf-8');
+                    if (diskContent && diskContent.trim().length > 0) {
+                      finalNormalized.push({ path: cand, content: diskContent });
+                      fileSet.add(norm);
+                      recovered = true;
+                      console.log(`[PIPELINE] Recovered missing file from disk: ${cand} (${diskContent.length}b)`);
+                    }
+                  }
+                } catch (diskErr) {
+                  console.warn('[PIPELINE] Disk file recovery error:', diskErr);
+                }
+              }
+
+              // Attempt 3: Recover by synthesizing on-demand from source_document.json or structuredContent
+              if (!recovered && projectId) {
+                try {
+                  const projDir = path.join(process.cwd(), 'public', 'uploads', 'projects', projectId);
+                  const sourceDocPath = path.join(projDir, 'source_document.json');
+                  let structuredModel: any = null;
+                  if (fs.existsSync(sourceDocPath)) {
+                    try {
+                      structuredModel = JSON.parse(fs.readFileSync(sourceDocPath, 'utf-8'));
+                    } catch {}
+                  }
+                  if (!structuredModel) {
+                    const { prisma } = require('@/lib/prisma');
+                    const projRow = await prisma.project.findUnique({
+                      where: { id: projectId },
+                      select: { structuredContent: true, templateName: true }
+                    }).catch(() => null);
+                    if (projRow?.structuredContent) {
+                      try {
+                        structuredModel = typeof projRow.structuredContent === 'string'
+                          ? JSON.parse(projRow.structuredContent)
+                          : projRow.structuredContent;
+                      } catch {}
+                    }
+                  }
+                  if (structuredModel && structuredModel.body && Array.isArray(structuredModel.body) && structuredModel.body.length > 0) {
+                    const { ModularLatexAssembler } = await import('@/lib/assembler');
+                    const { mapLegacyTemplateId } = await import('@/lib/templates/registry');
+                    const assembled = ModularLatexAssembler.assemble(structuredModel, mapLegacyTemplateId('generic_academic'));
+                    if (assembled && assembled.files) {
+                      const matchingKey = Object.keys(assembled.files).find(k => 
+                        normalizePath(k) === norm || k.toLowerCase().endsWith(cand.toLowerCase())
+                      );
+                      if (matchingKey && assembled.files[matchingKey]) {
+                        const synthContent = String(assembled.files[matchingKey]);
+                        finalNormalized.push({ path: cand, content: synthContent });
+                        fileSet.add(norm);
+                        recovered = true;
+                        console.log(`[PIPELINE] Synthesized missing file on-demand: ${cand} (${synthContent.length}b)`);
+                        // Persist to disk for next compiles
+                        try {
+                          const diskP = path.join(projDir, cand);
+                          fs.mkdirSync(path.dirname(diskP), { recursive: true });
+                          fs.writeFileSync(diskP, synthContent, 'utf-8');
+                        } catch {}
+                      }
+                    }
+                  }
+                } catch (synthErr) {
+                  console.warn('[PIPELINE] On-demand synthesis error:', synthErr);
+                }
+              }
+
               // Use \iffalse / \fi so surrounding inline text is preserved.
               // NOTE: this is NOT silent — the warning is surfaced to the
               // client so the user knows content referenced by main.tex is
@@ -2383,8 +2456,20 @@ export async function hardenedDiscovery(projectId: string | null, files: FilePay
     // actively referenced by \input/\include in main.tex.
     if (sessionComplete && existingIdx === -1 && /^(tex|bib)$/i.test(ext.slice(1))) {
       const mainContent = mainInSession?.content || '';
-      const isReferenced = mainContent.includes(`{${relPath.replace(/\\/g, '/')}}`) ||
-        mainContent.includes(`{${relPath.replace(/\\/g, '/').replace(/\.tex$/, '')}}`);
+      const cleanRel = relPath.replace(/\\/g, '/');
+      const cleanNoExt = cleanRel.replace(/\.(tex|bib)$/, '');
+      const baseName = path.basename(cleanNoExt);
+      const isReferenced = 
+        mainContent.includes(`{${cleanRel}}`) ||
+        mainContent.includes(`{./${cleanRel}}`) ||
+        mainContent.includes(`{${cleanNoExt}}`) ||
+        mainContent.includes(`{./${cleanNoExt}}`) ||
+        mainContent.includes(`{${baseName}}`) ||
+        mainContent.includes(`{./${baseName}}`) ||
+        mainContent.toLowerCase().includes(`{${cleanNoExt.toLowerCase()}}`) ||
+        mainContent.toLowerCase().includes(`{${cleanRel.toLowerCase()}}`) ||
+        mainContent.toLowerCase().includes(`{./${cleanNoExt.toLowerCase()}}`) ||
+        mainContent.toLowerCase().includes(`{./${cleanRel.toLowerCase()}}`);
       if (!isReferenced) {
         console.log(`[PIPELINE] Skipping disk recovery of unreferenced file: ${relPath}`);
         continue;

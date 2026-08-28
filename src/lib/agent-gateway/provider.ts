@@ -22,6 +22,7 @@ export interface LLMResponse {
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const providerCooldowns = new Map<string, number>();
 
 function sortProviders(providers: ProviderConfig[], requestedModel?: string): ProviderConfig[] {
   let preferred: string | null = null;
@@ -35,11 +36,18 @@ function sortProviders(providers: ProviderConfig[], requestedModel?: string): Pr
     }
   }
 
+  const now = Date.now();
   const preferredList: ProviderConfig[] = [];
   const middleList: ProviderConfig[] = [];
   const lastList: ProviderConfig[] = [];
+  const cooledDownList: ProviderConfig[] = [];
 
   for (const p of providers) {
+    const cooldownUntil = providerCooldowns.get(p.name) || 0;
+    if (cooldownUntil > now) {
+      cooledDownList.push(p);
+      continue;
+    }
     if (p.name === preferred) {
       preferredList.push(p);
     } else if (p.name === 'gemini') {
@@ -49,7 +57,7 @@ function sortProviders(providers: ProviderConfig[], requestedModel?: string): Pr
     }
   }
 
-  return [...preferredList, ...middleList, ...lastList];
+  return [...preferredList, ...middleList, ...lastList, ...cooledDownList];
 }
 
 export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
@@ -123,6 +131,7 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
 
         if (result && result.text) {
           console.log(`[LLM Call] Success with ${provider.name}/${modelName}`);
+          providerCooldowns.delete(provider.name);
           return {
             content: result.text,
             model: `${provider.name}/${modelName}`,
@@ -153,7 +162,8 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
         if (isAuthClassFailure) {
           authFailures += 1;
           if (authFailures >= 2) {
-            console.warn(`[LLM Call] Provider ${provider.name} rejected auth repeatedly (${authFailures}x) — skipping remaining ${provider.name} models.`);
+            console.warn(`[LLM Call] Provider ${provider.name} rejected auth repeatedly (${authFailures}x) — cooling down for 10 minutes and skipping remaining ${provider.name} models.`);
+            providerCooldowns.set(provider.name, Date.now() + 10 * 60 * 1000);
             break;
           }
         }

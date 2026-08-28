@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSession } from "@/lib/pb-auth-react";
 import { isAuthBlocked, markAuthFailed, clearAuthFailed } from "@/lib/authBackoff";
+import { authFetch } from "@/lib/authFetch";
 
 const POLL_INTERVAL = 60000;
 const ENDPOINT_KEY = "projects-limit";
@@ -33,10 +34,7 @@ export function useProjectLimit() {
     }
 
     try {
-      const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
-      const authHeaders: Record<string, string> = {};
-      if (storedToken) authHeaders["Authorization"] = `Bearer ${storedToken}`;
-      const res = await fetch("/api/projects/limit-status", { headers: authHeaders });
+      const res = await authFetch("/api/projects/limit-status");
       if (res.status === 401) {
         markAuthFailed(ENDPOINT_KEY);
         if (pollRef.current) {

@@ -35,8 +35,35 @@ export async function GET(req: NextRequest) {
     dbError = true;
   }
 
-  // DB temporarily unavailable: do not confirm or kill the session, ask the client to retry
-  if (dbError) {
+  // If DB returned null and didn't explicitly error, retry once (e.g. during HMR or PB reconnect)
+  if (!sessionRecord && !dbError && token) {
+    await new Promise(r => setTimeout(r, 400));
+    try {
+      sessionRecord = await prisma.userSession.findUnique({
+        where: { sessionToken: token },
+        include: { user: true }
+      });
+    } catch {
+      dbError = true;
+    }
+  }
+
+  // Check direct PocketBase token validation as fallback before deciding 401
+  let pbDirectUser: any = null;
+  if (!sessionRecord || dbError) {
+    try {
+      const { authFromToken } = await import("@/lib/pb");
+      const pb = await authFromToken(token);
+      if (pb?.authStore?.isValid && pb?.authStore?.record) {
+        pbDirectUser = pb.authStore.record;
+      }
+    } catch (pbErr) {
+      // Non-fatal
+    }
+  }
+
+  // DB temporarily unavailable and direct PB validation didn't work: ask client to retry (503)
+  if (dbError && !pbDirectUser) {
     const response = NextResponse.json({ error: "Authentication service temporarily unavailable" }, { status: 503 });
     Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
     return response;
@@ -49,12 +76,25 @@ export async function GET(req: NextRequest) {
     }).catch(() => null);
   }
 
-  const sessionActive =
-    !!sessionRecord &&
-    !!dbUser &&
-    new Date(sessionRecord.expiresAt).getTime() > Date.now();
+  // Fallback to pbDirectUser if DB user is missing
+  if (!dbUser && pbDirectUser) {
+    dbUser = {
+      id: pbDirectUser.id,
+      email: pbDirectUser.email,
+      name: pbDirectUser.name || pbDirectUser.email?.split("@")[0] || "User",
+      avatar: pbDirectUser.avatar,
+      theme: pbDirectUser.theme || "dark",
+      points: pbDirectUser.points ?? 50,
+      membership: pbDirectUser.membership || "free",
+      role: pbDirectUser.role || "user",
+    };
+  }
 
-  // Logged out, expired, or unknown token → unauthenticated
+  const sessionActive =
+    (!!sessionRecord && !!dbUser && new Date(sessionRecord.expiresAt).getTime() > Date.now()) ||
+    (!!pbDirectUser && !!dbUser);
+
+  // Logged out, expired, or truly invalid token → unauthenticated
   if (!sessionActive || !dbUser) {
     const response = NextResponse.json({ user: null, authenticated: false }, { status: 401 });
     const AUTH_COOKIE_NAMES = ['pb_token', 'admin_session', 'next-auth.session-token', '__Secure-next-auth.session-token'];
