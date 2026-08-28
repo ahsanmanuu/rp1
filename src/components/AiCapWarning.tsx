@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Clock, Bot, RefreshCw, Zap, ArrowLeft } from 'lucide-react';
+import { AlertTriangle, Clock, Bot, RefreshCw, Zap, ArrowLeft, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface CapStatus {
@@ -82,6 +82,7 @@ function agentLabel(key: string): string {
 }
 
 export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
+  const router = useRouter();
   const pathname = usePathname();
   const isAiPage = !!pathname && (pathname.startsWith('/doc2latex') || pathname.startsWith('/reviewer') || pathname.startsWith('/latex-studio') || pathname.startsWith('/citations'));
 
@@ -226,15 +227,51 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
     <AnimatePresence>
       {showBlockModal && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              hasBeenDismissed.current = true;
+              dismissedSession.current = true;
+              setShowBlockModal(false);
+            }
+          }}
           style={{ position: 'fixed', inset: 0, zIndex: 2147483647, display: 'flex', alignItems: 'center',
             justifyContent: 'center', padding: '16px', backgroundColor: 'rgba(0,0,0,0.82)',
             backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}>
           <motion.div initial={{ opacity: 0, scale: 0.92, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 20 }} transition={{ duration: 0.3, ease: 'easeOut' }}
             style={{ background: 'var(--bg-primary, #1e1e1e)', border: '1px solid var(--border, rgba(255,255,255,0.1))',
-              borderRadius: '20px', maxWidth: '500px', width: '100%',
+              borderRadius: '20px', maxWidth: '500px', width: '100%', position: 'relative',
               maxHeight: '90vh', display: 'flex', flexDirection: 'column',
               boxShadow: '0 25px 60px rgba(0,0,0,0.5)', textAlign: 'center' }}>
+
+            {/* Close Button */}
+            <button
+              onClick={() => {
+                hasBeenDismissed.current = true;
+                dismissedSession.current = true;
+                setShowBlockModal(false);
+              }}
+              style={{
+                position: 'absolute', top: '16px', right: '16px',
+                width: '32px', height: '32px', borderRadius: '10px',
+                background: 'var(--bg-secondary, rgba(255,255,255,0.05))',
+                border: '1px solid var(--border, rgba(255,255,255,0.1))',
+                color: 'var(--text-secondary, #9ca3af)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.2s', zIndex: 10
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+                e.currentTarget.style.color = '#fff';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'var(--bg-secondary, rgba(255,255,255,0.05))';
+                e.currentTarget.style.color = 'var(--text-secondary, #9ca3af)';
+              }}
+              aria-label="Close"
+            >
+              <X size={16} />
+            </button>
 
             <div style={{ flex: '1', overflowY: 'auto', padding: '36px 36px 0' }}>
               <div style={{ width: '72px', height: '72px', background: 'var(--bg-secondary, rgba(255,255,255,0.03))',
@@ -404,7 +441,9 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
                     hasBeenDismissed.current = true;
                     dismissedSession.current = true;
                     setShowBlockModal(false);
-                    window.location.href = '/dashboard';
+                    if (pathname !== '/dashboard') {
+                      router.push('/dashboard');
+                    }
                   }}
                   style={{
                     width: '100%', padding: '10px',

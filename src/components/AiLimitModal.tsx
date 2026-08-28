@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, X, Zap, ArrowLeft, LayoutDashboard } from 'lucide-react';
 
@@ -18,6 +19,8 @@ interface AiLimitModalProps {
 }
 
 export default function AiLimitModal({ open, onClose, data }: AiLimitModalProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -258,7 +261,9 @@ export default function AiLimitModal({ open, onClose, data }: AiLimitModalProps)
             <button
               onClick={() => {
                 onClose();
-                window.location.href = '/dashboard';
+                if (pathname !== '/dashboard') {
+                  router.push('/dashboard');
+                }
               }}
               style={{
                 marginTop: '1rem',

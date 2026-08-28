@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
+import { useRouter, usePathname } from "next/navigation";
 import { useSession } from "@/lib/pb-auth-react";
 
 interface Message {
@@ -14,6 +15,8 @@ interface Message {
 }
 
 export default function ChatWidget() {
+  const router = useRouter();
+  const pathname = usePathname();
   const { data: session } = useSession();
   const [isOpen, setIsOpen] = useState(false);
   const [isLive, setIsLive] = useState(false);
@@ -208,7 +211,12 @@ export default function ChatWidget() {
               <button
                 onClick={() => {
                   setShowPremiumModal(false);
-                  window.location.href = "/dashboard?tab=billing";
+                  if (pathname !== '/dashboard') {
+                    router.push('/dashboard?tab=billing');
+                  }
+                  setTimeout(() => {
+                    window.dispatchEvent(new CustomEvent('open-ai-subscription'));
+                  }, 100);
                 }}
                 className="w-full py-3 rounded-xl font-bold bg-amber-400 hover:bg-amber-500 text-zinc-950 transition-colors uppercase tracking-wider text-xs"
               >
