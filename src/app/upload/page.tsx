@@ -87,7 +87,7 @@ function UploadContent() {
           doc2latexProjects = data.projects || [];
         }
 
-        // Merge report_history and DOC2LATEX projects
+        // 1. Intelligence Reports: structural audit reports from /api/reports
         const fromReports = fetchedReports.map((r: any) => ({
           id: r.id,
           projectId: r.projectId || r.id,
@@ -96,70 +96,77 @@ function UploadContent() {
           statsJson: r.statsJson || JSON.stringify(r.stats || {}),
         }));
 
-        const fromProjects = doc2latexProjects.map((p: any) => ({
+        setReports(fromReports.sort(
+          (a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        ));
+
+        // 2. LaTeX Manuscripts: compiled projects from DOC2LATEX, LATEX_STUDIO, and local StudioFS
+        let studioProjects = [];
+        if (studioRes.ok) {
+          const data = await studioRes.json();
+          studioProjects = data.projects || [];
+        }
+
+        const doc2latexManuscripts = doc2latexProjects.map((p: any) => ({
           id: p.id,
-          projectId: p.id,
           title: p.title || 'Untitled Document',
-          createdAt: p.createdAt || p.updatedAt || p.created,
-          statsJson: JSON.stringify(p.stats || {
+          date: p.date || p.updatedAt || p.createdAt || p.created,
+          type: 'DOC2LATEX',
+          isLocal: false,
+          stats: p.stats || {
             words: p.wordCount || 0,
             tables: p.tableCount || 0,
             images: p.imageCount || 0,
             equations: p.equationCount || 0,
-          }),
+          },
         }));
 
-        const byProjectId = new Map<string, any>();
-        for (const item of fromProjects) {
-          byProjectId.set(item.projectId, item);
-        }
-        for (const item of fromReports) {
-          byProjectId.set(item.projectId, item);
-        }
+        const studioManuscripts = studioProjects.map((p: any) => ({
+          id: p.id,
+          title: p.title || 'Untitled Project',
+          date: p.date || p.updatedAt || p.createdAt || p.created,
+          type: 'LATEX_STUDIO',
+          isLocal: false,
+          stats: p.stats || {
+            words: p.wordCount || 0,
+            tables: p.tableCount || 0,
+            images: p.imageCount || 0,
+            equations: p.equationCount || 0,
+          },
+        }));
 
-        const merged = Array.from(byProjectId.values()).sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-        setReports(merged);
-
-        if (studioRes.ok) {
-          const data = await studioRes.json();
-          const rawProjects = data.projects || [];
-          const uniqueProjects = Array.from(new Map(rawProjects.map((p: any) => [p.id, p])).values());
-
-          // LaTeX Studio projects live in local IndexedDB (StudioFS) — merge them in
-          // so the "LaTeX Manuscripts" column shows recently created/compiled projects,
-          // mirroring how the History page surfaces local projects.
-          let localProjects: any[] = [];
-          if (session?.user?.email) {
-            try {
-              const fs = new StudioFS(session.user.email);
-              const local = await fs.listProjects();
-              localProjects = await Promise.all(local.map(async (p: any) => {
-                let words = 0;
-                try {
-                  const main = await fs.readFile(p.id, p.mainFile || 'main.tex');
-                  words = main?.content ? main.content.trim().split(/\s+/).filter(Boolean).length : 0;
-                } catch { /* non-fatal — keep card with 0 words */ }
-                return {
-                  id: p.id,
-                  title: p.title,
-                  date: p.updatedAt,
-                  stats: { words, images: p.fileCount },
-                  isLocal: true,
-                };
-              }));
-            } catch (fsErr) {
-              console.warn('Upload: StudioFS load failed:', fsErr);
-            }
+        // LaTeX Studio projects in local IndexedDB (StudioFS)
+        let localProjects: any[] = [];
+        if (session?.user?.email) {
+          try {
+            const fs = new StudioFS(session.user.email);
+            const local = await fs.listProjects();
+            localProjects = await Promise.all(local.map(async (p: any) => {
+              let words = 0;
+              try {
+                const main = await fs.readFile(p.id, p.mainFile || 'main.tex');
+                words = main?.content ? main.content.trim().split(/\s+/).filter(Boolean).length : 0;
+              } catch { /* non-fatal — keep card with 0 words */ }
+              return {
+                id: p.id,
+                title: p.title,
+                date: p.updatedAt,
+                type: 'LATEX_STUDIO',
+                stats: { words, images: p.fileCount },
+                isLocal: true,
+              };
+            }));
+          } catch (fsErr) {
+            console.warn('Upload: StudioFS load failed:', fsErr);
           }
-
-          const merged = [...localProjects, ...uniqueProjects].sort(
-            (a: any, b: any) =>
-              new Date(b.date || b.createdAt || 0).getTime() - new Date(a.date || a.createdAt || 0).getTime()
-          );
-          setProjects(Array.from(new Map(merged.map((p: any) => [p.id, p])).values()));
         }
+
+        const allManuscripts = [...doc2latexManuscripts, ...studioManuscripts, ...localProjects].sort(
+          (a: any, b: any) =>
+            new Date(b.date || b.createdAt || 0).getTime() - new Date(a.date || a.createdAt || 0).getTime()
+        );
+        const uniqueManuscripts = Array.from(new Map(allManuscripts.map((p: any) => [p.id, p])).values());
+        setProjects(uniqueManuscripts);
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
       } finally {
@@ -1663,7 +1670,13 @@ function UploadContent() {
                       date={p.date} 
                       stats={p.stats} 
                       type="project"
-                      onClick={() => router.push(`/latex-studio/${p.id}`)}
+                      onClick={() => {
+                        if (p.type === 'DOC2LATEX') {
+                          router.push(`/doc2latex/${p.id}`);
+                        } else {
+                          router.push(`/latex-studio/${p.id}`);
+                        }
+                      }}
                       projectId={p.id}
                       isLocal={p.isLocal}
                       userEmail={session?.user?.email}
@@ -2279,7 +2292,7 @@ const PremiumHistoryCard = ({ title, date, stats, type, onClick, projectId, onDe
           </span>
           <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: 'currentColor', opacity: 0.3 }} />
           <span style={{ color: isReport ? 'var(--accent-primary)' : '#3b82f6', fontWeight: 800 }}>
-            {isReport ? `${stats.wordCount || 0} words` : `${stats.words || 0} words`}
+            {isReport ? `${stats?.wordCount || stats?.words || 0} words` : `${stats?.words || stats?.wordCount || 0} words`}
           </span>
         </div>
       </div>
