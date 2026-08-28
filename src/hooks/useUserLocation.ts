@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPb } from '@/lib/pb';
 import { pbSubscribe } from '@/lib/pbRealtime';
+import { isAuthBlocked, markAuthFailed, clearAuthFailed } from '@/lib/authBackoff';
 
 export interface UserLocation {
   id: string;
@@ -26,6 +27,8 @@ interface UseUserLocationOptions {
   onLocationChange?: (loc: UserLocation) => void;
   onError?: (err: string) => void;
 }
+
+const ENDPOINT_KEY = 'location';
 
 export function useUserLocation(options: UseUserLocationOptions = {}) {
   const {
@@ -54,10 +57,9 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
   const onErrorRef = useRef(onError);
   onLocationChangeRef.current = onLocationChange;
   onErrorRef.current = onError;
-  const authFailedRef = useRef(false);
 
   const fetchLocation = useCallback(async (isBackground = false) => {
-    if (!mountedRef.current || !enabledRef.current || authFailedRef.current) return;
+    if (!mountedRef.current || !enabledRef.current || isAuthBlocked(ENDPOINT_KEY)) return;
 
     // Don't attempt API call if no auth token is available yet
     const hasToken = typeof window !== "undefined" && !!localStorage.getItem("auth-token");
@@ -71,7 +73,7 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
       if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
       const res = await fetch('/api/user/location', { headers });
       if (res.status === 401) {
-        authFailedRef.current = true;
+        markAuthFailed(ENDPOINT_KEY);
         if (pollRef.current) {
           clearInterval(pollRef.current);
           pollRef.current = null;
@@ -84,7 +86,7 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
       if (!mountedRef.current) return;
 
       if (data.success) {
-        authFailedRef.current = false;
+        clearAuthFailed(ENDPOINT_KEY);
         setState(prev => {
           const newLoc = data.location;
           if (newLoc && JSON.stringify(prev.location) !== JSON.stringify(newLoc)) {
@@ -106,7 +108,7 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
   }, []);
 
   const updateBrowserLocation = useCallback(async () => {
-    if (!mountedRef.current || !enabledRef.current || authFailedRef.current) return;
+    if (!mountedRef.current || !enabledRef.current || isAuthBlocked(ENDPOINT_KEY)) return;
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setState(prev => ({ ...prev, permissionDenied: true, error: 'Geolocation not supported' }));
       return;
@@ -133,7 +135,7 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
       });
 
       if (res.status === 401) {
-        authFailedRef.current = true;
+        markAuthFailed(ENDPOINT_KEY);
         enabledRef.current = false;
         if (pollRef.current) {
           clearInterval(pollRef.current);
@@ -150,7 +152,7 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
       const data = await res.json();
 
       if (data.success && mountedRef.current) {
-        authFailedRef.current = false;
+        clearAuthFailed(ENDPOINT_KEY);
         setState(prev => {
           const newLoc = data.location;
           if (newLoc && JSON.stringify(prev.location) !== JSON.stringify(newLoc)) {
@@ -188,7 +190,6 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
       }
       return;
     }
-    authFailedRef.current = false;
 
     mountedRef.current = true;
 

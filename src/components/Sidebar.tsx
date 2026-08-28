@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession, signOut } from "@/lib/pb-auth-react";
 import { useState, useEffect, useRef } from 'react';
+import { isAuthBlocked, markAuthFailed, clearAuthFailed } from '@/lib/authBackoff';
 import { 
   LayoutDashboard, 
   FileEdit, 
@@ -37,6 +38,8 @@ const NAV_ITEMS = [
   { href: '/archive',           icon: Archive,     label: 'Archive', color: 'text-amber-600' },
 ];
 
+const NOTIFICATIONS_ENDPOINT = 'notifications';
+
 export default function Sidebar() {
   const pathname = usePathname();
   const { data: session, status } = useSession();
@@ -49,16 +52,13 @@ export default function Sidebar() {
     setMounted(true);
   }, []);
 
-  const authFailedRef = useRef(false);
-
   useEffect(() => {
     if (!mounted || !isAuthenticated) return;
-    authFailedRef.current = false;
     let intervalId: ReturnType<typeof setInterval> | null = null;
     let isCancelled = false;
 
     const fetchUnread = async () => {
-      if (authFailedRef.current || isCancelled) return;
+      if (isAuthBlocked(NOTIFICATIONS_ENDPOINT) || isCancelled) return;
       try {
         const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
         if (!storedToken) return; // Skip if no token yet
@@ -66,7 +66,7 @@ export default function Sidebar() {
         headers["Authorization"] = `Bearer ${storedToken}`;
         const res = await fetch("/api/user/notifications?unreadOnly=true", { headers });
         if (res.status === 401) {
-          authFailedRef.current = true;
+          markAuthFailed(NOTIFICATIONS_ENDPOINT);
           if (intervalId) {
             clearInterval(intervalId);
             intervalId = null;
@@ -74,6 +74,7 @@ export default function Sidebar() {
           return;
         }
         if (res.ok && !isCancelled) {
+          clearAuthFailed(NOTIFICATIONS_ENDPOINT);
           const data = await res.json();
           setUnreadCount(data.unreadCount || 0);
         }

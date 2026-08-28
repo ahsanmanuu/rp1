@@ -149,11 +149,19 @@ export async function replaySyncQueue() {
   }
 }
 
+const MAX_CACHE_AGE_MS = 5 * 60 * 1000; // 5 minutes max cache age
+
 // Cache a successful GET response
 export function cacheGetResponse(url: string, data: any) {
   if (typeof window === "undefined" || !url) return;
-  // Don't cache specific non-cacheable API endpoints
-  if (url.includes("/api/auth/session") || url.includes("/api/chat/messages") || url.includes("/api/admin/chat/heartbeat")) {
+  // Don't cache health checks, logos, session/auth checks, or live chat endpoints
+  if (
+    url.includes("/api/health") ||
+    url.includes("/api/logo") ||
+    url.includes("/api/auth/") ||
+    url.includes("/api/chat/messages") ||
+    url.includes("/api/admin/chat/heartbeat")
+  ) {
     return;
   }
   try {
@@ -164,8 +172,8 @@ export function cacheGetResponse(url: string, data: any) {
     }));
   } catch (e) {
     try {
-      // Evict stale cache entries (older than 30 minutes) to free space
-      const cutoff = Date.now() - 30 * 60 * 1000;
+      // Evict stale cache entries (older than 10 minutes) to free space
+      const cutoff = Date.now() - 10 * 60 * 1000;
       const keysToEvict: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
@@ -190,12 +198,24 @@ export function cacheGetResponse(url: string, data: any) {
 // Retrieve a cached GET response
 export function getCachedGetResponse(url: string): any | null {
   if (typeof window === "undefined" || !url) return null;
+  // Never serve cached data for health, logo, or auth endpoints
+  if (
+    url.includes("/api/health") ||
+    url.includes("/api/logo") ||
+    url.includes("/api/auth/")
+  ) {
+    return null;
+  }
   try {
     const key = CACHE_PREFIX + url;
     const cached = localStorage.getItem(key);
     if (!cached) return null;
     const parsed = JSON.parse(cached);
-    console.log(`[OfflineSync] Serving cached data for ${url} (Cached at: ${new Date(parsed.timestamp).toLocaleTimeString()})`);
+    // Discard cache if older than MAX_CACHE_AGE_MS
+    if (!parsed.timestamp || Date.now() - parsed.timestamp > MAX_CACHE_AGE_MS) {
+      localStorage.removeItem(key);
+      return null;
+    }
     return parsed.data;
   } catch {
     return null;

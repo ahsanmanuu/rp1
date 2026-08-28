@@ -1,8 +1,10 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSession } from "@/lib/pb-auth-react";
+import { isAuthBlocked, markAuthFailed, clearAuthFailed } from "@/lib/authBackoff";
 
 const POLL_INTERVAL = 60000;
+const ENDPOINT_KEY = "projects-limit";
 
 /**
  * useProjectLimit
@@ -21,7 +23,7 @@ export function useProjectLimit() {
   const isAuthenticated = status === "authenticated" && !!session?.user?.id;
 
   const checkLimit = useCallback(async () => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || isAuthBlocked(ENDPOINT_KEY)) return;
     if (typeof document !== "undefined" && document.hidden) return;
 
     const membership = (session?.user as any)?.membership || "free";
@@ -36,12 +38,16 @@ export function useProjectLimit() {
       if (storedToken) authHeaders["Authorization"] = `Bearer ${storedToken}`;
       const res = await fetch("/api/projects/limit-status", { headers: authHeaders });
       if (res.status === 401) {
+        markAuthFailed(ENDPOINT_KEY);
         if (pollRef.current) {
           clearInterval(pollRef.current);
           pollRef.current = null;
         }
         setLimitChecked(true);
         return;
+      }
+      if (res.ok) {
+        clearAuthFailed(ENDPOINT_KEY);
       }
       const data = await res.json();
       if (data.limitReached) {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { isAuthBlocked, markAuthFailed, clearAuthFailed } from '@/lib/authBackoff';
 
 export interface MembershipStatus {
   planType: string;
@@ -42,6 +43,7 @@ export interface UseGlobalQuotasOptions {
 
 const CACHE_TTL = 30000;
 const DEFAULT_POLL_INTERVAL = 60000;
+const ENDPOINT_KEY = 'quota-status';
 
 export function useGlobalQuotas(options: UseGlobalQuotasOptions = {}) {
   const { enabled = true, pollIntervalMs = DEFAULT_POLL_INTERVAL } = options;
@@ -58,10 +60,9 @@ export function useGlobalQuotas(options: UseGlobalQuotasOptions = {}) {
   const hasShownAiDismissedRef = useRef(false);
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
-  const authFailedRef = useRef(false);
 
   const fetchStatus = useCallback(async (fresh = false) => {
-    if (!enabledRef.current || (authFailedRef.current && !fresh)) {
+    if (!enabledRef.current || (isAuthBlocked(ENDPOINT_KEY) && !fresh)) {
       setLoading(false);
       return;
     }
@@ -90,7 +91,7 @@ export function useGlobalQuotas(options: UseGlobalQuotasOptions = {}) {
       if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
       const res = await fetch(url, { cache: 'no-store', headers });
       if (res.status === 401) {
-        authFailedRef.current = true;
+        markAuthFailed(ENDPOINT_KEY);
         setLoading(false);
         setError(null);
         if (pollIntervalRef.current) {
@@ -104,7 +105,7 @@ export function useGlobalQuotas(options: UseGlobalQuotasOptions = {}) {
 
       if ('error' in data) throw new Error(String(data.error));
 
-      authFailedRef.current = false;
+      clearAuthFailed(ENDPOINT_KEY);
       cacheRef.current = { data, expiry: Date.now() + CACHE_TTL };
       setStatus(data);
       setError(null);
@@ -137,7 +138,6 @@ export function useGlobalQuotas(options: UseGlobalQuotasOptions = {}) {
       setLoading(false);
       return;
     }
-    authFailedRef.current = false;
 
     // Settle delay to let session state settle after login navigation
     const initialTimer = setTimeout(() => fetchStatus(), 500);

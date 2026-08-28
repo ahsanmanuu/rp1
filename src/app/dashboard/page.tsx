@@ -17,6 +17,7 @@ import { useSubscriptionsRealtime } from "@/hooks/useSubscriptionsRealtime";
 import { useGlobalQuotas } from "@/hooks/useGlobalQuotas";
 import { useCountdown } from "@/hooks/useCountdown";
 import { useUserLocation } from "@/hooks/useUserLocation";
+import { isAuthBlocked, markAuthFailed, clearAuthFailed } from "@/lib/authBackoff";
 import AiSubscriptionCard from "@/components/dashboard/AiSubscriptionCard";
 import AiPlanSubscribeModal from "@/components/dashboard/AiPlanSubscribeModal";
 import ProjectLimitModal from "@/components/ProjectLimitModal";
@@ -154,9 +155,8 @@ export default function DashboardPage() {
     }
   }, []);
 
-  const offersAuthFailedRef = useRef(false);
   const fetchUserOffers = useCallback(async () => {
-    if (!isAuthenticated || offersAuthFailedRef.current) return;
+    if (!isAuthenticated || isAuthBlocked('offers')) return;
     const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
     if (!storedToken) return; // Skip if no token yet
     const headers: Record<string, string> = {};
@@ -165,7 +165,7 @@ export default function DashboardPage() {
     try {
       const res = await fetch("/api/user/offers", { headers });
       if (res.status === 401) {
-        offersAuthFailedRef.current = true;
+        markAuthFailed('offers');
         return;
       }
       if (!res.ok) {
@@ -173,7 +173,7 @@ export default function DashboardPage() {
       }
       const data = await res.json();
       if (data.success) {
-        offersAuthFailedRef.current = false;
+        clearAuthFailed('offers');
         setOffers(data.offers || []);
       }
     } catch (err) {
@@ -587,7 +587,6 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    offersAuthFailedRef.current = false;
     
     loadCurrencyAndGeoRef.current?.();
     fetchUserOffersRef.current?.();
@@ -621,7 +620,7 @@ export default function DashboardPage() {
 
     // Background refresh for offers and announcements (30s, guarded)
     const bgPoll = setInterval(() => {
-      if (isAuthenticated && !offersAuthFailedRef.current) {
+      if (isAuthenticated && !isAuthBlocked('offers')) {
         fetchUserOffersRef.current?.();
         fetchAnnouncementsRef.current?.();
       }

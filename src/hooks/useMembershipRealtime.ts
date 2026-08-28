@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { pbSubscribe } from '@/lib/pbRealtime';
+import { isAuthBlocked, markAuthFailed, clearAuthFailed } from '@/lib/authBackoff';
 
 export interface MembershipData {
   membership: string;
@@ -47,6 +48,8 @@ const FALLBACK_MEMBERSHIP: MembershipData = {
   success: true,
 };
 
+const ENDPOINT_KEY = 'membership';
+
 export function useMembershipRealtime(options: UseMembershipOptions = {}) {
   const {
     pollIntervalMs = 60000,
@@ -76,13 +79,12 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
   onErrorRef.current = onError;
   const userIdRef = useRef(userId);
   userIdRef.current = userId;
-  const authFailedRef = useRef(false);
 
   const refetchRef = useRef<(() => void) | null>(null);
 
   if (fetchRef.current === null) {
     fetchRef.current = async (isBackground = false, fresh = false) => {
-      if (!mountedRef.current || !userIdRef.current || (authFailedRef.current && !fresh)) return;
+      if (!mountedRef.current || !userIdRef.current || (isAuthBlocked(ENDPOINT_KEY) && !fresh)) return;
       if (typeof document !== "undefined" && document.hidden && !fresh) return;
 
       const hasToken = typeof window !== "undefined" && !!localStorage.getItem("auth-token");
@@ -99,7 +101,7 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
         if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
         const res = await fetch(url, { headers });
         if (res.status === 401) {
-          authFailedRef.current = true;
+          markAuthFailed(ENDPOINT_KEY);
           if (pollIntervalRef.current) {
             clearInterval(pollIntervalRef.current);
             pollIntervalRef.current = null;
@@ -123,7 +125,7 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
         if (!mountedRef.current) return;
 
         if (data.success) {
-          authFailedRef.current = false;
+          clearAuthFailed(ENDPOINT_KEY);
           setState({
             data: data as MembershipData,
             loading: false,
@@ -174,7 +176,6 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
       });
       return;
     }
-    authFailedRef.current = false;
 
     // Settle delay to let session state settle after login navigation
     const initialTimer = setTimeout(() => fetchRef.current?.(false), 500);

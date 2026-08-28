@@ -2,6 +2,7 @@
 
 import React, { useEffect } from "react";
 import { useSession } from "@/lib/pb-auth-react";
+import { isAuthBlocked, markAuthFailed, clearAuthFailed } from "@/lib/authBackoff";
 
 export function SessionSyncProvider({ children }: { children: React.ReactNode }) {
   const { data: session, update } = useSession();
@@ -15,14 +16,20 @@ export function SessionSyncProvider({ children }: { children: React.ReactNode })
 
     const checkSync = async () => {
       if (typeof document !== "undefined" && document.hidden) return;
+      if (isAuthBlocked("membership")) return;
       try {
         const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
         const headers: Record<string, string> = {};
         if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
         const res = await fetch("/api/user/check-membership", { headers });
+        if (res.status === 401) {
+          markAuthFailed("membership");
+          return;
+        }
         if (!res.ok) return;
         const data = await res.json();
         if (data.success) {
+          clearAuthFailed("membership");
           if (data.points !== currentPoints || data.membership !== currentMembership) {
             await update();
           }

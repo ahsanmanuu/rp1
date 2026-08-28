@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { pbSubscribe } from '@/lib/pbRealtime';
+import { isAuthBlocked, markAuthFailed, clearAuthFailed } from '@/lib/authBackoff';
 
 export interface SubscriptionSnapshot {
   membership: any;
@@ -27,6 +28,8 @@ const FALLBACK: SubscriptionSnapshot = {
   aiPlan: null,
   availableAiPlans: [],
 };
+
+const ENDPOINT_KEY = 'subscriptions';
 
 /**
  * Silent realtime subscription data source for dashboard subscription cards.
@@ -58,11 +61,10 @@ export function useSubscriptionsRealtime(options: UseSubscriptionsOptions = {}) 
   onErrorRef.current = onError;
   const userIdRef = useRef(userId);
   userIdRef.current = userId;
-  const authFailedRef = useRef(false);
 
   if (fetchRef.current === null) {
     fetchRef.current = async (isBackground = false, fresh = false) => {
-      if (!mountedRef.current || !userIdRef.current || (authFailedRef.current && !fresh)) return;
+      if (!mountedRef.current || !userIdRef.current || (isAuthBlocked(ENDPOINT_KEY) && !fresh)) return;
       if (typeof document !== "undefined" && document.hidden && !fresh) return;
 
       // Don't attempt API call if no auth token is available yet
@@ -82,7 +84,7 @@ export function useSubscriptionsRealtime(options: UseSubscriptionsOptions = {}) 
         if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
         const res = await fetch(url, { cache: 'no-store', headers });
         if (res.status === 401) {
-          authFailedRef.current = true;
+          markAuthFailed(ENDPOINT_KEY);
           if (pollIntervalRef.current) {
             clearInterval(pollIntervalRef.current);
             pollIntervalRef.current = null;
@@ -101,7 +103,7 @@ export function useSubscriptionsRealtime(options: UseSubscriptionsOptions = {}) 
         if (!mountedRef.current) return;
 
         if (data.success) {
-          authFailedRef.current = false;
+          clearAuthFailed(ENDPOINT_KEY);
           setState(prev => ({
             data: {
               membership: data.membership ?? prev.data?.membership ?? null,
@@ -144,7 +146,6 @@ export function useSubscriptionsRealtime(options: UseSubscriptionsOptions = {}) 
       setState({ data: FALLBACK, loading: false, error: null });
       return;
     }
-    authFailedRef.current = false;
 
     // Settle delay to let session state settle after login navigation
     const initialTimer = setTimeout(() => fetchRef.current?.(false), 500);

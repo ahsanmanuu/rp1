@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode, useCa
 import { useRouter } from "next/navigation";
 import { createPb } from "@/lib/pb";
 import { pbSubscribe } from "@/lib/pbRealtime";
+import { clearAllAuthFailed } from "@/lib/authBackoff";
 
 export interface PbSessionUser {
   id: string;
@@ -65,6 +66,7 @@ export function SessionProvider({ children, refetchInterval = 120, refetchOnWind
         if (newData.token && typeof window !== "undefined") {
           localStorage.setItem("auth-token", newData.token);
         }
+        clearAllAuthFailed();
       } else {
         setData(null);
         setStatus("unauthenticated");
@@ -112,6 +114,7 @@ export function SessionProvider({ children, refetchInterval = 120, refetchOnWind
           if (json.token && typeof window !== "undefined") {
             localStorage.setItem("auth-token", json.token);
           }
+          clearAllAuthFailed();
         } else {
           setData(null);
           setStatus("unauthenticated");
