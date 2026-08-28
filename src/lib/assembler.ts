@@ -161,6 +161,7 @@ export class LatexAssembler {
       "\\providecommand{\\teaser}[1]{}",
       "\\providecommand{\\authorfooter}[1]{}",
       "\\providecommand{\\shortauthortitle}[1]{}",
+      "\\providecommand{\\textsubscript}[1]{\\ensuremath{_{\\mathrm{#1}}}}",
       "\\providecommand{\\IEEEauthorblockA}[1]{#1}",
       "\\providecommand{\\IEEEauthorblockN}[1]{#1}",
       "\\providecommand{\\keywords}[1]{\\textbf{Keywords:} #1}",
@@ -181,6 +182,11 @@ export class LatexAssembler {
       "\\expandafter\\let\\csname endequation*\\endcsname\\relax",
       "\\makeatother",
       "\\@ifpackageloaded{amsmath}{}{\\usepackage{amsmath}}",
+      // Modern LaTeX kernels renamed \@listi -> \@listI, which breaks older
+      // natbib.sty (\@listi undefined). Restore the alias for bibliography.
+      "\\makeatletter",
+      "\\ifdefined\\@listI\\let\\@listi\\@listI\\else\\def\\@listi{\\leftmargin\\leftmargini}\\fi",
+      "\\makeatother",
       "\\@ifpackageloaded{amsfonts}{}{\\usepackage{amsfonts}}",
       "\\@ifpackageloaded{amssymb}{}{\\usepackage{amssymb}}",
       "\\@ifpackageloaded{booktabs}{}{\\usepackage{booktabs}}",
@@ -1384,56 +1390,70 @@ export class LatexAssembler {
     const symbolMap = new Map<string, string>();
     
     // 🛡️ UNICODE ENHANCEMENT: Handle common scholarly symbols
-    const EXTENDED_GREEK = { 
-      ...GREEK_MAP, 
-      '\u207B': '^{-}', 
-      '\u025B': 'epsilon', 
-      '\u2126': 'Omega', 
+    const EXTENDED_GREEK = {
+      ...GREEK_MAP,
+      '\u207B': '\\textsuperscript{-}',
+      '\u025B': 'epsilon',
+      '\u2126': 'Omega',
       '\u2212': '-',
       '\u03BC': 'mu',
       '\u03A9': 'Omega',
-      '\u00B0': 'circ',
+      '\u00B0': '\\ensuremath{^{\\circ}}',
       '\u00B1': 'pm',
       '\u2264': 'le',
       '\u2265': 'ge',
       '\u2248': 'approx',
       '\u221E': 'infty',
       '\u2192': 'to',
-      '\u00B9': '^{1}',
-      '\u00B2': '^{2}',
-      '\u00B3': '^{3}',
-      '\u2070': '^{0}',
-      '\u2074': '^{4}',
-      '\u2075': '^{5}',
-      '\u2076': '^{6}',
-      '\u2077': '^{7}',
-      '\u2078': '^{8}',
-      '\u2079': '^{9}',
-      '\u2071': '^{i}',
-      '\u207A': '^{+}',
-      '\u207C': '^{=}',
-      '\u207D': '^{(',
-      '\u207E': '^{)}',
-      '\u2080': '_{0}',
-      '\u2081': '_{1}',
-      '\u2082': '_{2}',
-      '\u2083': '_{3}',
-      '\u2084': '_{4}',
-      '\u2085': '_{5}',
-      '\u2086': '_{6}',
-      '\u2087': '_{7}',
-      '\u2088': '_{8}',
-      '\u2089': '_{9}',
-      '\u208A': '_{+}',
-      '\u208B': '_{-}',
+      '\u00B9': '\\textsuperscript{1}',
+      '\u00B2': '\\textsuperscript{2}',
+      '\u00B3': '\\textsuperscript{3}',
+      '\u2070': '\\textsuperscript{0}',
+      '\u2074': '\\textsuperscript{4}',
+      '\u2075': '\\textsuperscript{5}',
+      '\u2076': '\\textsuperscript{6}',
+      '\u2077': '\\textsuperscript{7}',
+      '\u2078': '\\textsuperscript{8}',
+      '\u2079': '\\textsuperscript{9}',
+      '\u2071': '\\textsuperscript{i}',
+      '\u207A': '\\textsuperscript{+}',
+      '\u207C': '\\textsuperscript{=}',
+      '\u207D': '\\textsuperscript{(}',
+      '\u207E': '\\textsuperscript{)}',
+      '\u2080': '\\textsubscript{0}',
+      '\u2081': '\\textsubscript{1}',
+      '\u2082': '\\textsubscript{2}',
+      '\u2083': '\\textsubscript{3}',
+      '\u2084': '\\textsubscript{4}',
+      '\u2085': '\\textsubscript{5}',
+      '\u2086': '\\textsubscript{6}',
+      '\u2087': '\\textsubscript{7}',
+      '\u2088': '\\textsubscript{8}',
+      '\u2089': '\\textsubscript{9}',
+      '\u208A': '\\textsubscript{+}',
+      '\u208B': '\\textsubscript{-}',
       '\u2215': '/',
       '\u2010': '-'
     };
-    
+
     for (const [char, cmd] of Object.entries(EXTENDED_GREEK)) {
       if (text.includes(char)) {
         const id = `G_SYM_${Math.random().toString(36).substring(7).toUpperCase()}`;
-        symbolMap.set(id, cmd.startsWith('^') || cmd.startsWith('_') ? `$${cmd}$` : `$\\${cmd.startsWith('\\') ? cmd.substring(1) : cmd}$`);
+        // Superscripts/subscripts use \textsuperscript/\textsubscript (no math delimiters)
+        // so adjacent symbols never collapse into a "$$" display-math delimiter
+        // (which LaTeX reads as a missing-$ error). Self-contained commands
+        // (\text..., \ensuremath) are emitted as-is.
+        let replacement: string;
+        if (cmd.startsWith('\\textsuperscript') || cmd.startsWith('\\textsubscript') || cmd.startsWith('\\ensuremath')) {
+          replacement = cmd;
+        } else if (cmd.startsWith('^') || cmd.startsWith('_')) {
+          replacement = `$${cmd}$`;
+        } else if (cmd.startsWith('\\')) {
+          replacement = `$\\${cmd.substring(1)}$`;
+        } else {
+          replacement = `$${cmd}$`;
+        }
+        symbolMap.set(id, replacement);
         text = text.replace(new RegExp(char, 'g'), id);
       }
     }

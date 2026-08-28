@@ -12,7 +12,7 @@ const GREEK_MAP: Record<string, string> = {
   '±': '\\pm ', '×': '\\times ', '÷': '\\div ', '≈': '\\approx ', '≠': '\\neq ',
   '≤': '\\leq ', '≥': '\\geq ', '∞': '\\infty ', '∫': '\\int ', '∂': '\\partial ',
   '√': '\\sqrt ', '∈': '\\in ', '∉': '\\notin ', '∑': '\\sum ', '∏': '\\prod ',
-  '∇': '\\nabla ', '∠': '\\angle ', '°': '^{\\circ}', '…': '\\dots ',
+  '∇': '\\nabla ', '∠': '\\angle ',   '°': '\\ensuremath{^{\\circ}}', '…': '\\dots ',
   '→': '\\ensuremath{\\rightarrow} ', '←': '\\ensuremath{\\leftarrow} ', '↔': '\\ensuremath{\\leftrightarrow} ', '⇒': '\\ensuremath{\\Rightarrow} ',
   '∘': '\\ensuremath{^{\\circ}}', 'ǁ': '\\ensuremath{\\parallel} ', '◦': '\\ensuremath{^{\\circ}}',
   '⋅': '\\ensuremath{\\cdot}', '·': '\\ensuremath{\\cdot}',

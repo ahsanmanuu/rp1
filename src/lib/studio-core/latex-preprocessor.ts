@@ -178,6 +178,18 @@ export function preprocessLatex(
     allFixes.push(...result.fixes);
   }
 
+  // 4b. Make amsmath/amsfonts/amssymb loading idempotent. A bare
+  //     \usepackage{amsmath} in an inlined body/section file would re-load the
+  //     package and redefine equation* -> "Command \equation* already defined".
+  content = content.replace(
+    /\\(usepackage|RequirePackage)\s*(?:\[[^\]]*\])?\s*\{[^}]*\bams(math|fonts|symb)\b[^}]*\}/gi,
+    (m: string) => {
+      const pkgMatch = m.match(/ams(math|fonts|symb)/i);
+      const pkg = pkgMatch ? pkgMatch[0].toLowerCase() : 'amsmath';
+      return `\\@ifpackageloaded{${pkg}}{}{${m}}`;
+    }
+  );
+
   // 5. Ensure adjustbox[export] is loaded if \includegraphics uses max width/max height keys
   if (INCLUDE_MAX_KEYS.test(content) && !ADJUSTBOX_LIKE.test(content)) {
     content = content.replace(
