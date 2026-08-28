@@ -143,6 +143,23 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const existingFileNames = new Set(project.files.map((f: any) => f.filename.replace(/\\/g, '/')));
 
     if (fs.existsSync(projectDir)) {
+      // Ensure any existing image files in project.files have valid base64 content
+      for (const f of project.files) {
+        const normRel = (f.filename || '').replace(/\\/g, '/');
+        const isImage = /\.(png|jpe?g|gif|svg|webp|eps|tiff?|bmp|heic|heif|avif)$/i.test(normRel) || f.fileType === 'image';
+        if (isImage && (!f.content || !String(f.content).startsWith('data:') || String(f.content).length < 200)) {
+          const fullPath = path.join(projectDir, normRel);
+          if (fs.existsSync(fullPath)) {
+            try {
+              const buf = fs.readFileSync(fullPath);
+              const ext = path.extname(normRel).toLowerCase().replace(/^\./, '');
+              const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+              f.content = `data:${mime};base64,${buf.toString('base64')}`;
+            } catch {}
+          }
+        }
+      }
+
       const walkSync = (dir: string, base: string = ''): string[] => {
         let results: string[] = [];
         try {

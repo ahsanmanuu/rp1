@@ -321,6 +321,34 @@ export default function DocIDE({ projectId }: { projectId: string }) {
             }));
           }
           
+          // ── INJECT LOCAL FIGURES (from client IndexedDB) ──────────────────────
+          // The client's IndexedDB `local-project-store` holds the authoritative
+          // pristine figure bytes extracted from the user's DOCX on this machine.
+          // Hydrate them into StudioFS under root, assets/, and figures/ so they
+          // appear in the sidebar directory under "IMAGE ASSETS" and are passed to compiler.
+          try {
+            const { getLocalDocument } = await import('@/lib/local-project-store');
+            const localDoc = await getLocalDocument(projectId);
+            if (localDoc?.envelope?.figures && Array.isArray(localDoc.envelope.figures)) {
+              for (const fig of localDoc.envelope.figures) {
+                if (!fig || !fig.name) continue;
+                const rawName = String(fig.name).replace(/^\.\//, '');
+                const dataUrl = fig.dataUrl || (typeof (fig as any).content === 'string' && (fig as any).content.startsWith('data:') ? (fig as any).content : '');
+                if (dataUrl && dataUrl.length > 200) {
+                  const baseName = rawName.split('/').pop() || rawName;
+                  await studioFs.writeFile(projectId, baseName, dataUrl);
+                  await studioFs.writeFile(projectId, `assets/${baseName}`, dataUrl);
+                  await studioFs.writeFile(projectId, `figures/${baseName}`, dataUrl);
+                  if (rawName !== baseName && !rawName.startsWith('assets/') && !rawName.startsWith('figures/')) {
+                    await studioFs.writeFile(projectId, rawName, dataUrl);
+                  }
+                }
+              }
+            }
+          } catch (localFigErr) {
+            console.warn('[DocIDE] Local figure hydration failed:', localFigErr);
+          }
+          
           const freshFiles = await studioFs.listFiles(projectId);
           setFiles(freshFiles);
           
@@ -395,7 +423,44 @@ export default function DocIDE({ projectId }: { projectId: string }) {
 
       if (localProj && !forceSync) {
         setProject(localProj);
-        setFiles(freshFiles);
+        
+        // Self-heal: ensure all local client figures exist in StudioFS
+        let currentFreshFiles = freshFiles;
+        try {
+          const { getLocalDocument } = await import('@/lib/local-project-store');
+          const localDoc = await getLocalDocument(projectId);
+          if (localDoc?.envelope?.figures && Array.isArray(localDoc.envelope.figures) && localDoc.envelope.figures.length > 0) {
+            let addedFig = false;
+            const existingPaths = new Set(freshFiles.map(f => f.path));
+            for (const fig of localDoc.envelope.figures) {
+              if (!fig || !fig.name) continue;
+              const rawName = String(fig.name).replace(/^\.\//, '');
+              const dataUrl = fig.dataUrl || (typeof (fig as any).content === 'string' && (fig as any).content.startsWith('data:') ? (fig as any).content : '');
+              if (dataUrl && dataUrl.length > 200) {
+                const baseName = rawName.split('/').pop() || rawName;
+                if (!existingPaths.has(baseName)) {
+                  await studioFs.writeFile(projectId, baseName, dataUrl);
+                  addedFig = true;
+                }
+                if (!existingPaths.has(`assets/${baseName}`)) {
+                  await studioFs.writeFile(projectId, `assets/${baseName}`, dataUrl);
+                  addedFig = true;
+                }
+                if (!existingPaths.has(`figures/${baseName}`)) {
+                  await studioFs.writeFile(projectId, `figures/${baseName}`, dataUrl);
+                  addedFig = true;
+                }
+              }
+            }
+            if (addedFig) {
+              currentFreshFiles = await studioFs.listFiles(projectId);
+            }
+          }
+        } catch (figHydrateErr) {
+          console.warn("[DocIDE] Figure check on init failed:", figHydrateErr);
+        }
+
+        setFiles(currentFreshFiles);
         // Non-blocking: the editor must not wait on the PDF fetch.
         void loadPdfBlob(projectId);
         

@@ -101,11 +101,39 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
     },
     {
       name: 'IMAGE ASSETS',
-      files: files.filter(f => {
-        const m = /\.(png|jpg|jpeg|gif|svg|webp|eps|tiff?|bmp|heic|heif|avif)$/i.test(f.path);
-        if (m) categorizedPaths.add(f.path);
-        return m;
-      }),
+      files: (() => {
+        const imageFiles = files.filter(f => /\.(png|jpg|jpeg|gif|svg|webp|eps|tiff?|bmp|heic|heif|avif)$/i.test(f.path));
+        imageFiles.forEach(f => categorizedPaths.add(f.path));
+        
+        const seenBases = new Set<string>();
+        const displayed: any[] = [];
+        for (const f of imageFiles) {
+          if (f.path.startsWith('assets/')) {
+            const base = (f.path.split('/').pop() || f.path).toLowerCase();
+            if (!seenBases.has(base)) {
+              seenBases.add(base);
+              displayed.push(f);
+            }
+          }
+        }
+        for (const f of imageFiles) {
+          if (f.path.startsWith('figures/')) {
+            const base = (f.path.split('/').pop() || f.path).toLowerCase();
+            if (!seenBases.has(base)) {
+              seenBases.add(base);
+              displayed.push(f);
+            }
+          }
+        }
+        for (const f of imageFiles) {
+          const base = (f.path.split('/').pop() || f.path).toLowerCase();
+          if (!seenBases.has(base)) {
+            seenBases.add(base);
+            displayed.push(f);
+          }
+        }
+        return displayed;
+      })(),
     },
     {
       name: 'FLOAT REFERENCES',

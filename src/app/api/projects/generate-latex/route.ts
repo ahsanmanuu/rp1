@@ -97,14 +97,38 @@ export async function POST(req: Request) {
       }
     }
 
+    // Safe upsert helper for DB projectFile
+    const safeFileUpsert = async (data: { projectId: string; filename: string; content: string; fileType: string; filePath: string }) => {
+      try {
+        const existing = await prisma.projectFile.findFirst({ where: { projectId: data.projectId, filename: data.filename } });
+        if (existing) {
+          await prisma.projectFile.update({ where: { id: existing.id }, data });
+        } else {
+          await prisma.projectFile.create({ data });
+        }
+      } catch (e: any) {
+        const msg = String(e?.message || '');
+        if (msg.includes('not found') || msg.includes('404')) {
+          console.warn(`[GENERATE-LATEX] project_files collection unavailable, skipping ${data.filename}`);
+        } else {
+          console.warn(`[GENERATE-LATEX] Failed to sync ${data.filename}:`, msg.slice(0, 200));
+        }
+      }
+    };
+
     // --- PERSIST CLIENT-CARRIED FIGURES (multipart) ---
     // For client-extracted DOC2LATEX projects the figure bytes never touched
     // the server at upload time — they are attached here. Only names declared
     // in the Phase-1 figureManifest are accepted; they land in the project
-    // ROOT (the assembler/mapping conventions reference ./rf_fig_N.ext).
+    // ROOT (the assembler/mapping conventions reference ./rf_fig_N.ext), assets/, and figures/.
     if (figureFiles.length > 0) {
       let savedFigures = 0;
       if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
+      const assetsSubDir = path.join(projectDir, 'assets');
+      const figuresSubDir = path.join(projectDir, 'figures');
+      if (!fs.existsSync(assetsSubDir)) fs.mkdirSync(assetsSubDir, { recursive: true });
+      if (!fs.existsSync(figuresSubDir)) fs.mkdirSync(figuresSubDir, { recursive: true });
+
       for (const fig of figureFiles) {
         const safeName = String(fig.name).replace(/[^a-zA-Z0-9._-]/g, '_');
         const ext = path.extname(safeName).toLowerCase();
@@ -113,36 +137,38 @@ export async function POST(req: Request) {
 
         try {
           fs.writeFileSync(path.join(projectDir, safeName), fig.data);
+          fs.writeFileSync(path.join(assetsSubDir, safeName), fig.data);
+          fs.writeFileSync(path.join(figuresSubDir, safeName), fig.data);
           savedFigures++;
           const mime = ext === '.jpg' ? 'image/jpeg' : `image/${ext.replace(/^\./, '')}`;
           const b64 = `data:${mime};base64,${fig.data.toString('base64')}`;
-          // Ensure figure is registered in ProjectFile table
-          prisma.projectFile.upsert({
-            where: { id: `fig_${projectId}_${safeName.replace(/[^a-zA-Z0-9_-]/g, '_')}` },
-            update: { filePath: `/uploads/projects/${projectId}/${safeName}`, fileType: 'image', content: b64 },
-            create: {
-              projectId,
-              filename: safeName,
-              content: b64,
-              fileType: 'image',
-              filePath: `/uploads/projects/${projectId}/${safeName}`
-            }
-          }).catch(() => {
-            prisma.projectFile.create({
-              data: {
-                projectId,
-                filename: safeName,
-                content: b64,
-                fileType: 'image',
-                filePath: `/uploads/projects/${projectId}/${safeName}`
-              }
-            }).catch(() => {});
+
+          await safeFileUpsert({
+            projectId,
+            filename: safeName,
+            content: b64,
+            fileType: 'image',
+            filePath: `/uploads/projects/${projectId}/${safeName}`
+          });
+          await safeFileUpsert({
+            projectId,
+            filename: `assets/${safeName}`,
+            content: b64,
+            fileType: 'image',
+            filePath: `/uploads/projects/${projectId}/assets/${safeName}`
+          });
+          await safeFileUpsert({
+            projectId,
+            filename: `figures/${safeName}`,
+            content: b64,
+            fileType: 'image',
+            filePath: `/uploads/projects/${projectId}/figures/${safeName}`
           });
         } catch (figErr: any) {
           console.warn('[GENERATE-LATEX] Failed to persist figure', safeName, figErr?.message || figErr);
         }
       }
-      console.log(`[GENERATE-LATEX] Persisted ${savedFigures} figure(s) to project root`);
+      console.log(`[GENERATE-LATEX] Persisted ${savedFigures} figure(s) to project root, assets, figures, and DB`);
     }
 
     // --- ASSEMBLE MODULAR LATEX ---
@@ -244,13 +270,27 @@ export async function POST(req: Request) {
     // --- PERSIST TO DISK ---
     // projectDir is already defined above
 
-    // Clean stale folders
+    // Clean stale folders (preserve image files in assets and figures)
     if (fs.existsSync(projectDir)) {
-      const foldersToClear = ['sections', 'metadata', 'floats', 'references', 'figures', 'tables', 'algorithms', 'equations', 'assets'];
+      const foldersToClear = ['sections', 'metadata', 'floats', 'references', 'tables', 'algorithms', 'equations'];
       for (const folder of foldersToClear) {
         const folderPath = path.join(projectDir, folder);
         if (fs.existsSync(folderPath)) {
           try { fs.rmSync(folderPath, { recursive: true, force: true }); } catch {}
+        }
+      }
+      // For figures and assets folders, only delete old .tex files, never delete image files!
+      for (const imgFolder of ['figures', 'assets']) {
+        const folderPath = path.join(projectDir, imgFolder);
+        if (fs.existsSync(folderPath)) {
+          try {
+            const files = fs.readdirSync(folderPath);
+            for (const f of files) {
+              if (f.endsWith('.tex') || f.endsWith('.aux') || f.endsWith('.log')) {
+                try { fs.unlinkSync(path.join(folderPath, f)); } catch {}
+              }
+            }
+          } catch {}
         }
       }
       // Clean structural files
@@ -299,25 +339,6 @@ export async function POST(req: Request) {
     }
 
     // --- PERSIST TO DB ---
-    // Safe upsert helper
-    const safeFileUpsert = async (data: { projectId: string; filename: string; content: string; fileType: string; filePath: string }) => {
-      try {
-        const existing = await prisma.projectFile.findFirst({ where: { projectId: data.projectId, filename: data.filename } });
-        if (existing) {
-          await prisma.projectFile.update({ where: { id: existing.id }, data });
-        } else {
-          await prisma.projectFile.create({ data });
-        }
-      } catch (e: any) {
-        const msg = String(e?.message || '');
-        if (msg.includes('not found') || msg.includes('404')) {
-          console.warn(`[GENERATE-LATEX] project_files collection unavailable, skipping ${data.filename}`);
-        } else {
-          console.warn(`[GENERATE-LATEX] Failed to sync ${data.filename}:`, msg.slice(0, 200));
-        }
-      }
-    };
-
     // Safe deleteMany
     const safeDeleteMany = async (where: any) => {
       try {
@@ -343,10 +364,14 @@ export async function POST(req: Request) {
 
     // Sync modular components to DB
     if (extractedComponents && Object.keys(extractedComponents).length > 0) {
-      const foldersToClear = ['sections', 'metadata', 'floats', 'references', 'figures', 'tables', 'algorithms', 'equations', 'assets'];
+      const textFoldersToClear = ['sections', 'metadata', 'floats', 'references', 'tables', 'algorithms', 'equations'];
       await safeDeleteMany({
         projectId,
-        OR: foldersToClear.map(folder => ({ filename: { startsWith: `${folder}/` } }))
+        OR: [
+          ...textFoldersToClear.map(folder => ({ filename: { startsWith: `${folder}/` } })),
+          { filename: { startsWith: 'figures/', endsWith: '.tex' } },
+          { filename: { startsWith: 'assets/', endsWith: '.tex' } },
+        ]
       });
 
       for (const [filename, content] of Object.entries(extractedComponents)) {
