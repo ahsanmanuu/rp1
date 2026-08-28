@@ -593,6 +593,46 @@ export class DeepDocumentParser {
     flushPendingGroup();
     result.body = groupedBody;
 
+    // ── UNIVERSAL FIGURE RECONCILIATION PASS ────────────────────────────────
+    // Guarantee that every image present in the document HTML is represented
+    // as a figure/chart node in result.body so it is emitted into the LaTeX code.
+    try {
+      const allImgElements = Array.from(doc.querySelectorAll('img')) as Element[];
+      const allImageSrcs = new Set<string>();
+      for (const img of allImgElements) {
+        const src = (img.getAttribute('src') || img.getAttribute('data-src') || '').trim();
+        if (src && !src.startsWith('data:') && !/logo|icon|banner|watermark|divider|spacer|signature|qrcode/i.test(src)) {
+          allImageSrcs.add(src);
+        }
+      }
+
+      const presentFigureIds = new Set<string>();
+      for (const n of result.body) {
+        if (n.type === 'figure' || n.type === 'chart' || n.type === 'image') {
+          if (n.id) presentFigureIds.add(String(n.id).toLowerCase());
+        } else if (n.type === 'figure-group' && Array.isArray((n as any).images)) {
+          for (const img of (n as any).images) {
+            if (img.src) presentFigureIds.add(String(img.src).toLowerCase());
+          }
+        }
+      }
+
+      let autoFigIdx = 1;
+      for (const src of allImageSrcs) {
+        if (!presentFigureIds.has(src.toLowerCase())) {
+          const isChart = /rf_chart_|chart_pending_/i.test(src);
+          result.body.push({
+            type: isChart ? 'chart' : 'figure',
+            id: src,
+            caption: isChart ? `Chart ${autoFigIdx++}` : `Figure ${autoFigIdx++}`
+          } as any);
+          presentFigureIds.add(src.toLowerCase());
+        }
+      }
+    } catch (reconcileErr) {
+      console.warn('[PARSER] Figure reconciliation pass skipped:', reconcileErr);
+    }
+
     // Phase 5: Stats Finalization from Store
     result.stats.tableCount = result.body.filter(n => n.type === 'table').length;
     // imageCount = figure/figure-group images only; chart nodes are counted
@@ -1286,6 +1326,26 @@ export class DeepDocumentParser {
                   }
               } else {
                   result.body.push({ type: 'paragraph', text: withCitations });
+                  
+                  // UNIVERSAL IMAGE RESCUE: If this paragraph contains any <img> elements
+                  // (e.g. inline Mammoth output or prose followed by an image), emit each image
+                  // as a figure node so it is preserved and referenced in the LaTeX code!
+                  for (const pEl of entry.elements) {
+                    const childImgs = Array.from(pEl.querySelectorAll('img')) as Element[];
+                    for (const img of childImgs) {
+                      const src = (img.getAttribute('src') || img.getAttribute('data-src') || '').trim();
+                      if (!src) continue;
+                      const isDeco = /logo|icon|banner|watermark|divider|spacer|signature|qrcode/i.test(src);
+                      if (isDeco) continue;
+                      const isChart = /rf_chart_|chart_pending_/i.test(src);
+                      const altText = img.getAttribute('alt') || img.getAttribute('title') || '';
+                      result.body.push({
+                        type: isChart ? 'chart' : 'figure',
+                        id: src,
+                        caption: altText || (isChart ? 'Chart' : 'Figure'),
+                      } as any);
+                    }
+                  }
               }
           }
           else if (entry.role === 'table') {
@@ -1445,7 +1505,8 @@ export class DeepDocumentParser {
                   // project directory, so nothing else is lost.
                   if (!figCaption) {
                       const decoHint = /logo|icon|header|banner|bullet|background|watermark|divider|spacer|signature|qr|qrcode/i.test(src);
-                      if (decoHint || imgs.length > 1) continue;
+                      if (decoHint) continue;
+                      figCaption = /rf_chart_/i.test(src) ? 'Chart' : 'Figure';
                   }
                   
                   let subCaption = '';

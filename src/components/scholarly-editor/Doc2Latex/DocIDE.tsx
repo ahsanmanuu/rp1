@@ -199,6 +199,91 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       setPdfUrl(null);
     };
 
+    const hydrateAndHealFigures = async (studioFs: StudioFS, projId: string, initialFiles: StudioFile[]): Promise<StudioFile[]> => {
+      try {
+        const { getLocalDocument } = await import('@/lib/local-project-store');
+        const localDoc = await getLocalDocument(projId);
+        const localFigures = (localDoc?.envelope?.figures || []).filter((f: any) => f && f.name && (f.dataUrl || f.content));
+
+        // 1. Write all local figures from client IndexedDB into StudioFS
+        for (const fig of localFigures) {
+          const rawName = String(fig.name).replace(/^\.\//, '');
+          const dataUrl = fig.dataUrl || (typeof (fig as any).content === 'string' && (fig as any).content.startsWith('data:') ? (fig as any).content : '');
+          if (dataUrl && dataUrl.length > 200) {
+            const baseName = rawName.split('/').pop() || rawName;
+            await studioFs.writeFile(projId, baseName, dataUrl);
+            await studioFs.writeFile(projId, `assets/${baseName}`, dataUrl);
+            await studioFs.writeFile(projId, `figures/${baseName}`, dataUrl);
+            if (rawName !== baseName && !rawName.startsWith('assets/') && !rawName.startsWith('figures/')) {
+              await studioFs.writeFile(projId, rawName, dataUrl);
+            }
+          }
+        }
+
+        let currentFiles = await studioFs.listFiles(projId);
+        const existingPaths = new Set(currentFiles.map(f => f.path.toLowerCase()));
+
+        // 2. Scan all .tex files for \includegraphics references and ensure each referenced image exists in StudioFS
+        const incRe = /\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/g;
+        const texFiles = currentFiles.filter(f => f.path.endsWith('.tex') && typeof f.content === 'string');
+        const referencedImages = new Set<string>();
+        for (const f of texFiles) {
+          let m: RegExpExecArray | null;
+          while ((m = incRe.exec(f.content))) {
+            const ref = (m[1] || '').trim().replace(/^.*\//, '');
+            if (ref && !ref.includes('\\')) referencedImages.add(ref);
+          }
+        }
+
+        let seqIdx = 0;
+        for (const refName of referencedImages) {
+          const lower = refName.toLowerCase();
+          const hasAsset = existingPaths.has(lower) || existingPaths.has(`assets/${lower}`) || existingPaths.has(`figures/${lower}`);
+          if (!hasAsset) {
+            const matchedFig = localFigures.find((f: any) => 
+              String(f.name).toLowerCase() === lower || 
+              String(f.name).toLowerCase().endsWith(lower)
+            ) || localFigures[seqIdx++] || localFigures[0];
+
+            let dataUrl = matchedFig?.dataUrl || (matchedFig as any)?.content;
+            if (!dataUrl || dataUrl.length < 200) {
+              const ext = refName.split('.').pop() || 'png';
+              dataUrl = `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=`;
+            }
+            await studioFs.writeFile(projId, refName, dataUrl);
+            await studioFs.writeFile(projId, `assets/${refName}`, dataUrl);
+            await studioFs.writeFile(projId, `figures/${refName}`, dataUrl);
+            existingPaths.add(lower);
+            existingPaths.add(`assets/${lower}`);
+            existingPaths.add(`figures/${lower}`);
+          }
+        }
+
+        currentFiles = await studioFs.listFiles(projId);
+
+        // 3. Self-heal: If image assets exist in StudioFS but no figures/figure_*.tex files exist,
+        // create component float files so they are referenced and editable in the studio.
+        const imageAssets = currentFiles.filter(f => /\.(png|jpg|jpeg|gif|webp|svg|eps)$/i.test(f.path) && f.path.startsWith('assets/'));
+        const hasFigureTex = currentFiles.some(f => /^figures\/figure_\d+\.tex$/i.test(f.path));
+        if (imageAssets.length > 0 && !hasFigureTex) {
+          let figIdx = 1;
+          for (const imgF of imageAssets) {
+            const baseName = imgF.path.split('/').pop() || imgF.path;
+            const figTexPath = `figures/figure_${figIdx}.tex`;
+            const figCode = `\\begin{figure}[!htbp]\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${baseName}}\n\\caption{Figure ${figIdx}}\n\\label{fig:${figIdx}}\n\\end{figure}\n`;
+            await studioFs.writeFile(projId, figTexPath, figCode);
+            figIdx++;
+          }
+          currentFiles = await studioFs.listFiles(projId);
+        }
+
+        return currentFiles;
+      } catch (err) {
+        console.warn('[DocIDE] hydrateAndHealFigures error:', err);
+        return initialFiles;
+      }
+    };
+
     const syncFromCloud = async (studioFs: StudioFS) => {
       setIsSyncing(true);
       try {
@@ -321,35 +406,9 @@ export default function DocIDE({ projectId }: { projectId: string }) {
             }));
           }
           
-          // ── INJECT LOCAL FIGURES (from client IndexedDB) ──────────────────────
-          // The client's IndexedDB `local-project-store` holds the authoritative
-          // pristine figure bytes extracted from the user's DOCX on this machine.
-          // Hydrate them into StudioFS under root, assets/, and figures/ so they
-          // appear in the sidebar directory under "IMAGE ASSETS" and are passed to compiler.
-          try {
-            const { getLocalDocument } = await import('@/lib/local-project-store');
-            const localDoc = await getLocalDocument(projectId);
-            if (localDoc?.envelope?.figures && Array.isArray(localDoc.envelope.figures)) {
-              for (const fig of localDoc.envelope.figures) {
-                if (!fig || !fig.name) continue;
-                const rawName = String(fig.name).replace(/^\.\//, '');
-                const dataUrl = fig.dataUrl || (typeof (fig as any).content === 'string' && (fig as any).content.startsWith('data:') ? (fig as any).content : '');
-                if (dataUrl && dataUrl.length > 200) {
-                  const baseName = rawName.split('/').pop() || rawName;
-                  await studioFs.writeFile(projectId, baseName, dataUrl);
-                  await studioFs.writeFile(projectId, `assets/${baseName}`, dataUrl);
-                  await studioFs.writeFile(projectId, `figures/${baseName}`, dataUrl);
-                  if (rawName !== baseName && !rawName.startsWith('assets/') && !rawName.startsWith('figures/')) {
-                    await studioFs.writeFile(projectId, rawName, dataUrl);
-                  }
-                }
-              }
-            }
-          } catch (localFigErr) {
-            console.warn('[DocIDE] Local figure hydration failed:', localFigErr);
-          }
-          
-          const freshFiles = await studioFs.listFiles(projectId);
+          let freshFiles = await studioFs.listFiles(projectId);
+          freshFiles = await hydrateAndHealFigures(studioFs, projectId, freshFiles);
+
           setFiles(freshFiles);
           
           const active = freshFiles.find(f => f.path === 'main.tex') || freshFiles[0];
@@ -425,40 +484,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
         setProject(localProj);
         
         // Self-heal: ensure all local client figures exist in StudioFS
-        let currentFreshFiles = freshFiles;
-        try {
-          const { getLocalDocument } = await import('@/lib/local-project-store');
-          const localDoc = await getLocalDocument(projectId);
-          if (localDoc?.envelope?.figures && Array.isArray(localDoc.envelope.figures) && localDoc.envelope.figures.length > 0) {
-            let addedFig = false;
-            const existingPaths = new Set(freshFiles.map(f => f.path));
-            for (const fig of localDoc.envelope.figures) {
-              if (!fig || !fig.name) continue;
-              const rawName = String(fig.name).replace(/^\.\//, '');
-              const dataUrl = fig.dataUrl || (typeof (fig as any).content === 'string' && (fig as any).content.startsWith('data:') ? (fig as any).content : '');
-              if (dataUrl && dataUrl.length > 200) {
-                const baseName = rawName.split('/').pop() || rawName;
-                if (!existingPaths.has(baseName)) {
-                  await studioFs.writeFile(projectId, baseName, dataUrl);
-                  addedFig = true;
-                }
-                if (!existingPaths.has(`assets/${baseName}`)) {
-                  await studioFs.writeFile(projectId, `assets/${baseName}`, dataUrl);
-                  addedFig = true;
-                }
-                if (!existingPaths.has(`figures/${baseName}`)) {
-                  await studioFs.writeFile(projectId, `figures/${baseName}`, dataUrl);
-                  addedFig = true;
-                }
-              }
-            }
-            if (addedFig) {
-              currentFreshFiles = await studioFs.listFiles(projectId);
-            }
-          }
-        } catch (figHydrateErr) {
-          console.warn("[DocIDE] Figure check on init failed:", figHydrateErr);
-        }
+        let currentFreshFiles = await hydrateAndHealFigures(studioFs, projectId, freshFiles);
 
         setFiles(currentFreshFiles);
         // Non-blocking: the editor must not wait on the PDF fetch.
@@ -1199,7 +1225,16 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                 useSeq = true;
                 if (fig) { if (useChartPool) ci++; else fi++; }
               }
-              if (!fig || !fig.dataUrl || fig.dataUrl.length <= 200) continue;
+              if (!fig || !fig.dataUrl || fig.dataUrl.length <= 200) {
+                if (!existing) {
+                  const ext = ref.split('.').pop() || 'png';
+                  const fallbackB64 = `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=`;
+                  const injected: any = { path: ref, content: fallbackB64 };
+                  payloadFiles.push(injected);
+                  byLower.set(lower, injected);
+                }
+                continue;
+              }
               if (existing) {
                 existing.content = fig.dataUrl;
                 console.log(`[DocIDE] Upgraded placeholder ${ref} with real figure bytes.`);

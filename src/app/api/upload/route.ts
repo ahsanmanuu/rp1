@@ -652,9 +652,34 @@ async function runUploadProcessing(uploadId: string) {
       // The figure manifest is authoritative for what the AI may reason about
       // (figures live on the client device until Phase 2 attaches them).
       (deepData as any).figureManifest = figureManifest;
-      if (figureNames.length > 0 && (!deepData.stats?.imageCount || deepData.stats.imageCount === 0)) {
+
+      // Figure Reconciliation from clientEnvelope:
+      // Guarantee every figure declared in client figureManifest exists as a body node
+      if (figureNames.length > 0 && Array.isArray(deepData.body)) {
+        const presentFigIds = new Set<string>();
+        for (const n of deepData.body) {
+          if (n.id) presentFigIds.add(String(n.id).toLowerCase());
+          if (n.images && Array.isArray(n.images)) {
+            for (const img of n.images) if (img.src) presentFigIds.add(String(img.src).toLowerCase());
+          }
+        }
+        let figAutoIdx = 1;
+        for (const fName of figureNames) {
+          if (!presentFigIds.has(fName.toLowerCase())) {
+            const isChart = /rf_chart_|chart_pending_/i.test(fName);
+            deepData.body.push({
+              type: isChart ? 'chart' : 'figure',
+              id: fName,
+              caption: isChart ? `Chart ${figAutoIdx++}` : `Figure ${figAutoIdx++}`
+            });
+            presentFigIds.add(fName.toLowerCase());
+          }
+        }
+      }
+
+      if (figureNames.length > 0) {
         if (!deepData.stats) deepData.stats = {} as any;
-        deepData.stats.imageCount = figureNames.length;
+        deepData.stats.imageCount = Math.max(deepData.stats.imageCount || 0, figureNames.length);
       }
       if (referencesText && (!deepData.references || deepData.references.length === 0)) {
         deepData.references = referencesText
@@ -1802,10 +1827,24 @@ async function runUploadProcessing(uploadId: string) {
       }));
       heartbeat(uploadId, 'Saving project data', 88);
 
-      extractedImages.forEach(img => {
+      for (const img of extractedImages) {
         const filePath = `/uploads/projects/${project.id}/${img.name.replace(/\\/g, '/')}`;
-        const fileType = (img as any).isStructural ? 'tex' : 'image';
-        const content = (img as any).isStructural ? img.buffer.toString('utf8') : '';
+        const isTex = (img as any).isStructural;
+        const fileType = isTex ? 'tex' : 'image';
+        let content = '';
+        if (isTex && img.buffer) {
+          content = img.buffer.toString('utf8');
+        } else if (!isTex) {
+          const ext = path.extname(img.name).replace(/^\./, '').toLowerCase();
+          const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext || 'png'}`;
+          let imgBuf = img.buffer;
+          if (!imgBuf && (img as any).stagedPath && fs.existsSync((img as any).stagedPath)) {
+            try { imgBuf = fs.readFileSync((img as any).stagedPath); } catch {}
+          }
+          if (imgBuf && imgBuf.length > 0) {
+            content = `data:${mime};base64,${imgBuf.toString('base64')}`;
+          }
+        }
         filesToCreate.push({
           projectId: project.id,
           filename: img.name,
@@ -1813,7 +1852,7 @@ async function runUploadProcessing(uploadId: string) {
           fileType,
           content
         });
-      });
+      }
     }
 
     // Phase 1: Skip modular components, template assets, local-first harvest, image audit

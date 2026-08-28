@@ -303,6 +303,20 @@ function UploadContent() {
         if (!clientExtract || (!clientExtract.html && !clientExtract.text)) clientExtract = null;
         if (clientExtract) {
           console.log(`[UPLOAD] Client-side extraction succeeded: ${(clientExtract.html || '').length} chars HTML, ${(clientExtract.figures || []).length} figure(s)`);
+          try {
+            const { saveLocalDocument } = await import('@/lib/local-project-store');
+            await saveLocalDocument({
+              projectId: 'latest_upload',
+              fileName: targetFile.name,
+              savedAt: Date.now(),
+              envelope: {
+                html: clientExtract.html || "",
+                text: clientExtract.text || "",
+                referencesText: clientExtract.referencesText || "",
+                figures: clientExtract.figures || [],
+              },
+            });
+          } catch {}
         }
       } catch (extractErr: any) {
         console.warn("[UPLOAD] Client-side DOCX extraction failed — falling back to server-side binary path:", extractErr?.message || extractErr);

@@ -36,12 +36,14 @@ export async function POST(req: Request) {
       const formData = await req.formData();
       projectId = String(formData.get('projectId') || '');
       templateId = String(formData.get('templateId') || '');
-      for (const [key, value] of formData.entries()) {
-        if (key === 'figures' && value instanceof File) {
+      const rawFigures = formData.getAll('figures');
+      for (const value of rawFigures) {
+        if (value && typeof (value as any).arrayBuffer === 'function') {
+          const fileObj = value as any;
           figureFiles.push({
-            name: value.name,
-            data: Buffer.from(await value.arrayBuffer()),
-            contentType: value.type || 'application/octet-stream',
+            name: fileObj.name || 'figure.png',
+            data: Buffer.from(await fileObj.arrayBuffer()),
+            contentType: fileObj.type || 'image/png',
           });
         }
       }
@@ -179,6 +181,30 @@ export async function POST(req: Request) {
 
     if (modelToUse) {
       console.log(`[GENERATE-LATEX] Fast assembling from Structured Model for template: ${templateId}...`);
+
+      // Reconcile figureFiles / figureManifest into modelToUse before assembly
+      if (figureFiles.length > 0 && modelToUse.body && Array.isArray(modelToUse.body)) {
+        const existingFigIds = new Set<string>();
+        for (const n of modelToUse.body) {
+          if (n.id) existingFigIds.add(String(n.id).toLowerCase());
+          if (n.images && Array.isArray(n.images)) {
+            for (const img of n.images) if (img.src) existingFigIds.add(String(img.src).toLowerCase());
+          }
+        }
+        let figAutoSeq = (modelToUse.stats?.imageCount || 0) + 1;
+        for (const fig of figureFiles) {
+          const safeName = String(fig.name).replace(/[^a-zA-Z0-9._-]/g, '_');
+          if (!existingFigIds.has(safeName.toLowerCase()) && !existingFigIds.has(String(fig.name).toLowerCase())) {
+            const isChart = /rf_chart_|chart_pending_/i.test(safeName);
+            modelToUse.body.push({
+              type: isChart ? 'chart' : 'figure',
+              id: safeName,
+              caption: isChart ? `Chart ${figAutoSeq++}` : `Figure ${figAutoSeq++}`
+            });
+            existingFigIds.add(safeName.toLowerCase());
+          }
+        }
+      }
 
       // Refresh stats from live body before assembling
       if (modelToUse.body && Array.isArray(modelToUse.body)) {

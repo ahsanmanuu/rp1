@@ -48,6 +48,10 @@ export async function saveLocalDocument(record: LocalDocumentRecord): Promise<vo
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
     tx.objectStore(STORE).put(record);
+    // Also store under fixed 'latest_upload' key so extraction is never lost across re-routes
+    if (record.projectId !== 'latest_upload') {
+      tx.objectStore(STORE).put({ ...record, projectId: 'latest_upload' });
+    }
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error || new Error('Failed to save local document'));
   });
@@ -57,12 +61,50 @@ export async function getLocalDocument(projectId: string): Promise<LocalDocument
   if (typeof indexedDB === 'undefined') return null;
   try {
     const db = await openDb();
-    return await new Promise((resolve, reject) => {
+    const directDoc = await new Promise<LocalDocumentRecord | null>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly');
       const req = tx.objectStore(STORE).get(projectId);
       req.onsuccess = () => resolve((req.result as LocalDocumentRecord) || null);
       req.onerror = () => reject(req.error || new Error('Failed to read local document'));
     });
+
+    if (directDoc?.envelope?.figures && directDoc.envelope.figures.length > 0) {
+      return directDoc;
+    }
+
+    // Fallback 1: Try 'latest_upload' key
+    const latestDoc = await new Promise<LocalDocumentRecord | null>((resolve) => {
+      try {
+        const tx = db.transaction(STORE, 'readonly');
+        const req = tx.objectStore(STORE).get('latest_upload');
+        req.onsuccess = () => resolve((req.result as LocalDocumentRecord) || null);
+        req.onerror = () => resolve(null);
+      } catch {
+        resolve(null);
+      }
+    });
+
+    if (latestDoc?.envelope?.figures && latestDoc.envelope.figures.length > 0) {
+      return latestDoc;
+    }
+
+    // Fallback 2: Scan all records and return the most recent one with figures
+    const allDocs = await new Promise<LocalDocumentRecord[]>((resolve) => {
+      try {
+        const tx = db.transaction(STORE, 'readonly');
+        const req = tx.objectStore(STORE).getAll();
+        req.onsuccess = () => resolve((req.result as LocalDocumentRecord[]) || []);
+        req.onerror = () => resolve([]);
+      } catch {
+        resolve([]);
+      }
+    });
+
+    const withFigs = allDocs
+      .filter(d => d && d.envelope && Array.isArray(d.envelope.figures) && d.envelope.figures.length > 0)
+      .sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+
+    return withFigs[0] || directDoc || null;
   } catch {
     return null;
   }
