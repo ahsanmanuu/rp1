@@ -510,12 +510,39 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const storedName = localStorage.getItem('user_profile_name');
-      const storedImage = localStorage.getItem('user_profile_image');
-      if (storedName) setProfileName(storedName);
-      else if (session?.user?.name) setProfileName(session?.user?.name);
-      if (storedImage && storedImage.startsWith('data:image/')) setProfileImage(storedImage);
-      else if (storedImage) localStorage.removeItem('user_profile_image');
+      const userId = session?.user?.id || session?.user?.email;
+      if (userId) {
+        // Clean up legacy global keys to prevent avatar bleed across accounts
+        try {
+          localStorage.removeItem('user_profile_image');
+          localStorage.removeItem('user_profile_name');
+        } catch {}
+
+        const userScopedNameKey = `user_profile_name_${userId}`;
+        const userScopedImageKey = `user_profile_image_${userId}`;
+
+        const storedName = localStorage.getItem(userScopedNameKey);
+        const storedImage = localStorage.getItem(userScopedImageKey);
+
+        if (storedName) {
+          setProfileName(storedName);
+        } else if (session?.user?.name) {
+          setProfileName(session.user.name);
+        } else {
+          setProfileName('');
+        }
+
+        if (storedImage && storedImage.startsWith('data:image/')) {
+          setProfileImage(storedImage);
+        } else if (session?.user?.image && typeof session.user.image === 'string' && session.user.image.trim()) {
+          setProfileImage(session.user.image);
+        } else {
+          setProfileImage('');
+        }
+      } else {
+        setProfileName('');
+        setProfileImage('');
+      }
     }
   }, [session]);
 
@@ -1653,20 +1680,24 @@ export default function DashboardPage() {
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
+                      const userId = session?.user?.id || session?.user?.email;
+                      const userScopedImageKey = userId ? `user_profile_image_${userId}` : null;
                       const reader = new FileReader();
                       reader.onerror = () => {
                         console.warn('[Profile] FileReader failed to read file');
-                        localStorage.removeItem('user_profile_image');
+                        if (userScopedImageKey) localStorage.removeItem(userScopedImageKey);
                       };
                       reader.onloadend = () => {
                         const result = reader.result;
                         if (typeof result !== 'string' || !result.startsWith('data:image/')) {
                           console.warn('[Profile] FileReader produced invalid result');
-                          localStorage.removeItem('user_profile_image');
+                          if (userScopedImageKey) localStorage.removeItem(userScopedImageKey);
                           return;
                         }
                         setProfileImage(result);
-                        localStorage.setItem('user_profile_image', result);
+                        if (userScopedImageKey) {
+                          localStorage.setItem(userScopedImageKey, result);
+                        }
                       };
                       reader.readAsDataURL(file);
                     }}
@@ -1727,6 +1758,10 @@ export default function DashboardPage() {
                         alert("Profile settings updated successfully!");
                         setProfilePassword("");
                         if (payload.name) {
+                          const userId = session?.user?.id || session?.user?.email;
+                          if (userId) {
+                            localStorage.setItem(`user_profile_name_${userId}`, payload.name);
+                          }
                           await update({ name: payload.name });
                         }
                       } else {
@@ -1736,18 +1771,18 @@ export default function DashboardPage() {
                     } catch (err: any) {
                       alert("Error: " + err.message);
                     }
-                }
-                setIsProfileOpen(false);
-              }}
-              className="w-full mt-8 py-3 bg-primary text-white font-bold text-sm rounded-xl shadow-md hover:bg-primary/90 transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <PlusCircle size={18} />
-              Save Profile Settings
-            </button>
-            <a
-              href="/dashboard/change-password"
-              className="w-full mt-3 py-2.5 border border-slate-200 dark:border-slate-700 text-sm font-semibold rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
-            >
+                  }
+                  setIsProfileOpen(false);
+                }}
+                className="w-full mt-8 py-3 bg-primary text-white font-bold text-sm rounded-xl shadow-md hover:bg-primary/90 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <PlusCircle size={18} />
+                Save Profile Settings
+              </button>
+              <a
+                href="/dashboard/change-password"
+                className="w-full mt-3 py-2.5 border border-slate-200 dark:border-slate-700 text-sm font-semibold rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
+              >
               <KeyRound size={16} />
               Change Password
             </a>
