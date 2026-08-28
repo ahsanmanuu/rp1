@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession, signOut } from "@/lib/pb-auth-react";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, 
   FileEdit, 
@@ -39,29 +39,56 @@ const NAV_ITEMS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [mounted, setMounted] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  const isAuthenticated = status === "authenticated" && !!session?.user?.id;
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  const authFailedRef = useRef(false);
+
   useEffect(() => {
-    if (!mounted || !session) return;
+    if (!mounted || !isAuthenticated) return;
+    authFailedRef.current = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    let isCancelled = false;
+
     const fetchUnread = async () => {
+      if (authFailedRef.current || isCancelled) return;
       try {
-        const res = await fetch("/api/user/notifications?unreadOnly=true");
-        if (res.ok) {
+        const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+        if (!storedToken) return; // Skip if no token yet
+        const headers: Record<string, string> = {};
+        headers["Authorization"] = `Bearer ${storedToken}`;
+        const res = await fetch("/api/user/notifications?unreadOnly=true", { headers });
+        if (res.status === 401) {
+          authFailedRef.current = true;
+          if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = null;
+          }
+          return;
+        }
+        if (res.ok && !isCancelled) {
           const data = await res.json();
           setUnreadCount(data.unreadCount || 0);
         }
       } catch {}
     };
-    fetchUnread();
-    const interval = setInterval(fetchUnread, 30000);
-    return () => clearInterval(interval);
-  }, [mounted, session]);
+
+    // Delay to let session state settle after login navigation
+    const initialTimer = setTimeout(fetchUnread, 500);
+    intervalId = setInterval(fetchUnread, 30000);
+    return () => {
+      isCancelled = true;
+      clearTimeout(initialTimer);
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [mounted, isAuthenticated, session?.user?.id]);
 
   if (!session || !mounted) return null;
 

@@ -22,6 +22,7 @@ export interface UserLocationState {
 interface UseUserLocationOptions {
   pollIntervalMs?: number;
   enabled?: boolean;
+  userId?: string;
   onLocationChange?: (loc: UserLocation) => void;
   onError?: (err: string) => void;
 }
@@ -30,27 +31,38 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
   const {
     pollIntervalMs = 30000,
     enabled = true,
+    userId,
     onLocationChange,
     onError,
   } = options;
 
+  const isEffectivelyEnabled = enabled && (!('userId' in options) || !!userId);
+
   const [state, setState] = useState<UserLocationState>({
     location: null,
-    loading: true,
+    loading: isEffectivelyEnabled,
     error: null,
     permissionDenied: false,
   });
 
   const mountedRef = useRef(true);
+  const enabledRef = useRef(isEffectivelyEnabled);
+  enabledRef.current = isEffectivelyEnabled;
   const unsubRef = useRef<(() => void) | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onLocationChangeRef = useRef(onLocationChange);
   const onErrorRef = useRef(onError);
   onLocationChangeRef.current = onLocationChange;
   onErrorRef.current = onError;
+  const authFailedRef = useRef(false);
 
   const fetchLocation = useCallback(async (isBackground = false) => {
-    if (!mountedRef.current) return;
+    if (!mountedRef.current || !enabledRef.current || authFailedRef.current) return;
+
+    // Don't attempt API call if no auth token is available yet
+    const hasToken = typeof window !== "undefined" && !!localStorage.getItem("auth-token");
+    if (!hasToken) return;
+
     if (!isBackground) setState(prev => ({ ...prev, loading: true }));
 
     try {
@@ -59,6 +71,11 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
       if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
       const res = await fetch('/api/user/location', { headers });
       if (res.status === 401) {
+        authFailedRef.current = true;
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
         if (mountedRef.current) setState(prev => ({ ...prev, loading: false, error: null }));
         return;
       }
@@ -67,6 +84,7 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
       if (!mountedRef.current) return;
 
       if (data.success) {
+        authFailedRef.current = false;
         setState(prev => {
           const newLoc = data.location;
           if (newLoc && JSON.stringify(prev.location) !== JSON.stringify(newLoc)) {
@@ -78,16 +96,17 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
         setState(prev => ({ ...prev, loading: false, error: data.error || 'Unknown error' }));
         onErrorRef.current?.(data.error || 'Unknown error');
       }
-      } catch (err: any) {
-        if (!mountedRef.current) return;
-        const msg = err?.message || 'Failed to fetch location';
-        const isUnauth = msg.toLowerCase().includes('unauthorized') || msg.includes('401');
-        if (!isUnauth) onErrorRef.current?.(msg);
-        setState(prev => ({ ...prev, loading: false, error: isUnauth ? null : msg }));
-      }
+    } catch (err: any) {
+      if (!mountedRef.current) return;
+      const msg = err?.message || 'Failed to fetch location';
+      const isUnauth = msg.toLowerCase().includes('unauthorized') || msg.includes('401');
+      if (!isUnauth) onErrorRef.current?.(msg);
+      setState(prev => ({ ...prev, loading: false, error: isUnauth ? null : msg }));
+    }
   }, []);
 
   const updateBrowserLocation = useCallback(async () => {
+    if (!mountedRef.current || !enabledRef.current || authFailedRef.current) return;
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setState(prev => ({ ...prev, permissionDenied: true, error: 'Geolocation not supported' }));
       return;
@@ -113,10 +132,25 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
         body: JSON.stringify({ latitude, longitude }),
       });
 
+      if (res.status === 401) {
+        authFailedRef.current = true;
+        enabledRef.current = false;
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+        if (unsubRef.current) {
+          try { unsubRef.current(); } catch {}
+          unsubRef.current = null;
+        }
+        return;
+      }
+
       if (!res.ok) throw new Error(`Failed to save location (${res.status})`);
       const data = await res.json();
 
       if (data.success && mountedRef.current) {
+        authFailedRef.current = false;
         setState(prev => {
           const newLoc = data.location;
           if (newLoc && JSON.stringify(prev.location) !== JSON.stringify(newLoc)) {
@@ -126,69 +160,61 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
         });
       }
     } catch (err: any) {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || !enabledRef.current) return;
 
-      // Exception handling: POST to notify server that geolocation access was denied/failed
-      try {
-        const fallbackToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
-        const fallbackHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (fallbackToken) fallbackHeaders["Authorization"] = `Bearer ${fallbackToken}`;
-        const res = await fetch('/api/user/location', {
-          method: 'POST',
-          headers: fallbackHeaders,
-          body: JSON.stringify({ latitude: null, longitude: null }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && mountedRef.current) {
-            setState(prev => ({
-              location: data.location,
-              loading: false,
-              error: null,
-              permissionDenied: true
-            }));
-            return;
-          }
-        }
-      } catch (postErr) {
-        console.error("Failed to post location block fallback:", postErr);
-      }
+      const errMsg = err?.message || '';
+      const isUnauth = errMsg.toLowerCase().includes('unauthorized') || errMsg.includes('401');
+      if (isUnauth) return;
 
       if (err.code === 1) {
         setState(prev => ({ ...prev, permissionDenied: true, loading: false }));
       } else {
-        setState(prev => ({ ...prev, loading: false, error: err?.message || 'Geolocation failed' }));
-        onErrorRef.current?.(err?.message || 'Geolocation failed');
+        setState(prev => ({ ...prev, loading: false }));
       }
     }
   }, []);
 
   useEffect(() => {
-    if (!enabled) {
+    enabledRef.current = isEffectivelyEnabled;
+    if (!isEffectivelyEnabled) {
       setState({ location: null, loading: false, error: null, permissionDenied: false });
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+      if (unsubRef.current) {
+        try { unsubRef.current(); } catch {}
+        unsubRef.current = null;
+      }
       return;
     }
+    authFailedRef.current = false;
 
     mountedRef.current = true;
 
-    fetchLocation(true);
+    // Settle delay to let session state settle after login navigation
+    const initialFetchTimer = setTimeout(() => {
+      if (mountedRef.current && enabledRef.current) fetchLocation(true);
+    }, 500);
 
     const geoTimer = setTimeout(() => {
-      if (mountedRef.current) updateBrowserLocation();
-    }, 1500);
+      if (mountedRef.current && enabledRef.current) updateBrowserLocation();
+    }, 2500);
 
     pollRef.current = setInterval(() => {
-      fetchLocation(true);
+      if (enabledRef.current) fetchLocation(true);
     }, pollIntervalMs);
 
     if (typeof window !== 'undefined') {
       unsubRef.current = pbSubscribe('user_session_activities', '*', () => {
-        if (mountedRef.current) fetchLocation(true);
+        if (mountedRef.current && enabledRef.current) fetchLocation(true);
       });
     }
 
     return () => {
       mountedRef.current = false;
+      clearTimeout(geoTimer);
+      clearTimeout(initialFetchTimer);
       if (pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
@@ -198,7 +224,7 @@ export function useUserLocation(options: UseUserLocationOptions = {}) {
         unsubRef.current = null;
       }
     };
-  }, [enabled, pollIntervalMs, fetchLocation, updateBrowserLocation]);
+  }, [isEffectivelyEnabled, pollIntervalMs, fetchLocation, updateBrowserLocation]);
 
   const refetch = useCallback(() => {
     fetchLocation(false);

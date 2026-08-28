@@ -191,10 +191,10 @@ export default function Home() {
   useEffect(() => {
     setMounted(true);
     const isSigningOut = typeof window !== "undefined" && Boolean((window as any).__latexy_signOutInProgress);
-    if (status === "authenticated" && !isSigningOut) {
+    if (status === "authenticated" && !!session?.user && !isSigningOut) {
       router.replace("/dashboard");
     }
-  }, [status]);
+  }, [status, session, router]);
 
   useEffect(() => {
     const len = testimonials.length || 1;

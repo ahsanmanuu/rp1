@@ -263,11 +263,18 @@ const nextConfig: NextConfig = {
     // empty array is required to truly disable it.
     optimizePackageImports: IS_CONSTRAINED
       ? []
-      : ['pdfjs-dist', 'framer-motion', 'lucide-react', 'recharts', '@statelyai/graph'],
+      : [
+          'pdfjs-dist',
+          'framer-motion',
+          'lucide-react',
+          'recharts',
+          '@statelyai/graph',
+          'date-fns',
+        ],
   },
   turbopack: {},
   webpack: (config, { isServer, webpack }) => {
-    config.parallelism = IS_CONSTRAINED ? 1 : 50;
+    config.parallelism = IS_CONSTRAINED ? 1 : (process.env.NODE_ENV === 'development' ? 4 : 8);
 
     // Skip JS/CSS minification on cPanel builds: SWC/Terser holding every
     // chunk in memory simultaneously is the single biggest peak-memory spike.
@@ -314,6 +321,8 @@ const nextConfig: NextConfig = {
     };
 
     config.watchOptions = {
+      aggregateTimeout: 300,
+      poll: false,
       ignored: [
         '**/public/uploads/**',
         '**/tmp/**',
@@ -325,6 +334,12 @@ const nextConfig: NextConfig = {
         '**/scratch_project/**',
         '**/node_modules/**',
         '**/.next/**',
+        '**/.git/**',
+        '**/.gemini/**',
+        '**/coverage/**',
+        '**/dist/**',
+        '**/*.tmp',
+        '**/*.swp',
       ],
     };
 

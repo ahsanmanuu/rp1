@@ -35,12 +35,19 @@ export interface QuotaStatus {
   ai: AiStatus;
 }
 
-const CACHE_TTL = 15000;
-const POLL_INTERVAL = 10000;
+export interface UseGlobalQuotasOptions {
+  enabled?: boolean;
+  pollIntervalMs?: number;
+}
 
-export function useGlobalQuotas() {
+const CACHE_TTL = 30000;
+const DEFAULT_POLL_INTERVAL = 60000;
+
+export function useGlobalQuotas(options: UseGlobalQuotasOptions = {}) {
+  const { enabled = true, pollIntervalMs = DEFAULT_POLL_INTERVAL } = options;
+
   const [status, setStatus] = useState<QuotaStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
   const [showProjectLimitModal, setShowProjectLimitModal] = useState(false);
   const [showAiLimitModal, setShowAiLimitModal] = useState(false);
@@ -49,8 +56,27 @@ export function useGlobalQuotas() {
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasShownProjectModalRef = useRef(false);
   const hasShownAiDismissedRef = useRef(false);
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+  const authFailedRef = useRef(false);
 
   const fetchStatus = useCallback(async (fresh = false) => {
+    if (!enabledRef.current || (authFailedRef.current && !fresh)) {
+      setLoading(false);
+      return;
+    }
+
+    // Don't attempt API call if no auth token is available yet
+    const hasToken = typeof window !== "undefined" && !!localStorage.getItem("auth-token");
+    if (!hasToken) {
+      setLoading(false);
+      return;
+    }
+
+    if (typeof document !== "undefined" && document.hidden && !fresh) {
+      return;
+    }
+
     try {
       if (!fresh && cacheRef.current && cacheRef.current.expiry > Date.now()) {
         setStatus(cacheRef.current.data);
@@ -64,8 +90,13 @@ export function useGlobalQuotas() {
       if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
       const res = await fetch(url, { cache: 'no-store', headers });
       if (res.status === 401) {
+        authFailedRef.current = true;
         setLoading(false);
         setError(null);
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -73,6 +104,7 @@ export function useGlobalQuotas() {
 
       if ('error' in data) throw new Error(String(data.error));
 
+      authFailedRef.current = false;
       cacheRef.current = { data, expiry: Date.now() + CACHE_TTL };
       setStatus(data);
       setError(null);
@@ -92,16 +124,25 @@ export function useGlobalQuotas() {
         hasShownAiDismissedRef.current = false;
       }
     } catch (err: any) {
-      setError(err?.message || 'Failed to fetch quota status');
+      const msg = err?.message || 'Failed to fetch quota status';
+      const isUnauth = msg.includes('401') || msg.toLowerCase().includes('unauthorized');
+      setError(isUnauth ? null : msg);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchStatus();
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
+    authFailedRef.current = false;
 
-    pollIntervalRef.current = setInterval(fetchStatus, POLL_INTERVAL);
+    // Settle delay to let session state settle after login navigation
+    const initialTimer = setTimeout(() => fetchStatus(), 500);
+
+    pollIntervalRef.current = setInterval(fetchStatus, pollIntervalMs);
 
     const handleProjectLimitTriggered = () => setShowProjectLimitModal(true);
     const handleAiCapTriggered = () => {
@@ -109,18 +150,27 @@ export function useGlobalQuotas() {
       setShowAiLimitModal(true);
     };
     const handleOpenAiSubscription = () => setShowAiLimitModal(true);
+    const handleVisibilityChange = () => {
+      if (!document.hidden) fetchStatus();
+    };
 
     window.addEventListener('project-limit-triggered', handleProjectLimitTriggered);
     window.addEventListener('ai-cap-triggered', handleAiCapTriggered);
     window.addEventListener('open-ai-subscription', handleOpenAiSubscription);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      clearTimeout(initialTimer);
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
       window.removeEventListener('project-limit-triggered', handleProjectLimitTriggered);
       window.removeEventListener('ai-cap-triggered', handleAiCapTriggered);
       window.removeEventListener('open-ai-subscription', handleOpenAiSubscription);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [fetchStatus]);
+  }, [enabled, pollIntervalMs, fetchStatus]);
 
   return {
     status,

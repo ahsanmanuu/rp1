@@ -42,6 +42,16 @@ export function createPb() {
 const recordCache = new Map<string, { record: any; expiry: number }>();
 const recordAuthPromises = new Map<string, Promise<any>>();
 
+export function invalidateRecordCache(token?: string) {
+  if (token) {
+    recordCache.delete(token);
+    recordAuthPromises.delete(token);
+  } else {
+    recordCache.clear();
+    recordAuthPromises.clear();
+  }
+}
+
 /**
  * Server-side PocketBase client rehydrated from an auth token cookie.
  * Automatically loads the user record so authStore.record is available.
@@ -198,18 +208,22 @@ export async function authFromToken(token: string): Promise<PocketBase> {
 
 /**
  * Admin-authenticated PocketBase client.
- * Cached in-memory so we don't re-auth on every request.
+ * Cached across Next.js dev hot-reloads via globalThis.
  */
-let _adminPb: PocketBase | null = null;
-let _adminAuthPromise: Promise<PocketBase> | null = null;
-let _adminPbFailureAt: number | null = null;
+const globalForPb = globalThis as unknown as {
+  _adminPb?: PocketBase | null;
+  _adminAuthPromise?: Promise<PocketBase> | null;
+  _adminPbFailureAt?: number | null;
+  _pbReachabilityCache?: { reachable: boolean; timestamp: number } | null;
+};
+
 const ADMIN_PB_FAILURE_TTL = 3_000; // 3 seconds — short transient failure cache
 
 /** Force-clear the cached admin client so the next pbAdmin() call re-authenticates. */
 export function clearAdminCache() {
-  _adminPb = null;
-  _adminAuthPromise = null;
-  _adminPbFailureAt = null;
+  globalForPb._adminPb = null;
+  globalForPb._adminAuthPromise = null;
+  globalForPb._adminPbFailureAt = null;
 }
 
 /**
@@ -236,7 +250,6 @@ function getAdminCredentials(): { email: string; password: string } {
     if (typeof window === 'undefined') {
       const fs = require('fs');
       const path = require('path');
-      // Check PB_DATA_DIR first (Render persistent disk), then default pb_data, then root
       const pbDataDir = process.env.PB_DATA_DIR || path.join(process.cwd(), 'pb_data');
       const candidates = [
         path.join(pbDataDir, 'admin_creds.json'),
@@ -273,37 +286,45 @@ function base64UrlDecode(str: string): string {
   return atob(base64);
 }
 
-/** Quick health check — is PocketBase reachable? Avoids triggering a full auth flow. */
-export async function isPocketBaseReachable(): Promise<boolean> {
+/** Quick health check with 30s TTL cache — avoids redundant network hops on every DB query. */
+export async function isPocketBaseReachable(fresh = false): Promise<boolean> {
+  const now = Date.now();
+  if (!fresh && globalForPb._pbReachabilityCache && now - globalForPb._pbReachabilityCache.timestamp < 30000) {
+    return globalForPb._pbReachabilityCache.reachable;
+  }
   try {
     const res = await fetch(PB_URL + '/api/health', { method: 'GET', signal: AbortSignal.timeout(3000) });
-    return res.ok;
+    const reachable = res.ok;
+    globalForPb._pbReachabilityCache = { reachable, timestamp: now };
+    return reachable;
   } catch {
+    globalForPb._pbReachabilityCache = { reachable: false, timestamp: now };
     return false;
   }
 }
 
 export async function pbAdmin(): Promise<PocketBase> {
   // Return cached valid client instantly — bypass redundant authRefresh network calls
-  if (_adminPb && _adminPb.authStore.isValid && _adminPb.authStore.token) {
+  const cachedAdmin = globalForPb._adminPb;
+  if (cachedAdmin && cachedAdmin.authStore.isValid && cachedAdmin.authStore.token) {
     try {
-      const parts = _adminPb.authStore.token.split('.');
+      const parts = cachedAdmin.authStore.token.split('.');
       if (parts.length === 3) {
         const payload = JSON.parse(base64UrlDecode(parts[1]));
         // If token is valid for more than 1 hour, return immediately (0ms latency)
         if (payload.exp && payload.exp * 1000 - Date.now() > 3600_000) {
-          return _adminPb;
+          return cachedAdmin;
         }
       }
     } catch {}
     // Token near expiration — attempt refresh in background, fallback to re-auth
     try {
-      await _adminPb.collection('_superusers').authRefresh();
-      return _adminPb;
+      await cachedAdmin.collection('_superusers').authRefresh();
+      return cachedAdmin;
     } catch {
-      _adminPb.authStore.clear();
-      _adminPb = null;
-      _adminAuthPromise = null;
+      cachedAdmin.authStore.clear();
+      globalForPb._adminPb = null;
+      globalForPb._adminAuthPromise = null;
     }
   }
 
@@ -313,20 +334,20 @@ export async function pbAdmin(): Promise<PocketBase> {
     try {
       const { ensureAndStartPocketBase } = await import('./pb-starter');
       await ensureAndStartPocketBase();
-      online = await isPocketBaseReachable();
+      online = await isPocketBaseReachable(true);
     } catch {}
   }
 
   if (online) {
-    _adminPbFailureAt = null;
+    globalForPb._adminPbFailureAt = null;
   } else {
-    _adminPbFailureAt = Date.now();
+    globalForPb._adminPbFailureAt = Date.now();
     throw new Error('PocketBase is unreachable');
   }
 
   // Deduplicate concurrent auth requests
-  if (_adminAuthPromise) {
-    return _adminAuthPromise;
+  if (globalForPb._adminAuthPromise) {
+    return globalForPb._adminAuthPromise;
   }
 
   const pb = new PocketBase(PB_URL);
@@ -337,22 +358,29 @@ export async function pbAdmin(): Promise<PocketBase> {
     try {
       const fs = require('fs');
       const path = require('path');
+      const os = require('os');
       const pbDataDir = process.env.PB_DATA_DIR || path.join(process.cwd(), 'pb_data');
-      const tokenPath = path.join(pbDataDir, 'admin_token.json');
-      if (fs.existsSync(tokenPath)) {
-        const data = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
-        if (data.token && data.model && data.email === email) {
-          const payload = JSON.parse(base64UrlDecode(data.token.split('.')[1]));
-          const now = Date.now();
-          if (payload.exp && payload.exp * 1000 > now) {
-            pb.authStore.save(data.token, data.model);
-            try {
-              await pb.collection('_superusers').authRefresh();
-              _adminPb = pb;
-              return pb;
-            } catch {
-              pb.authStore.clear();
-              try { fs.unlinkSync(tokenPath); } catch {}
+      const tokenCandidates = [
+        path.join(pbDataDir, 'admin_token.json'),
+        path.join(os.tmpdir(), 'rp1_admin_token.json'),
+        path.join(process.cwd(), 'pb_data', 'admin_token.json')
+      ];
+      for (const tokenPath of tokenCandidates) {
+        if (fs.existsSync(tokenPath)) {
+          const data = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+          if (data.token && data.model && data.email === email) {
+            const payload = JSON.parse(base64UrlDecode(data.token.split('.')[1]));
+            const now = Date.now();
+            if (payload.exp && payload.exp * 1000 > now) {
+              pb.authStore.save(data.token, data.model);
+              try {
+                await pb.collection('_superusers').authRefresh();
+                globalForPb._adminPb = pb;
+                return pb;
+              } catch {
+                pb.authStore.clear();
+                try { fs.unlinkSync(tokenPath); } catch {}
+              }
             }
           }
         }
@@ -360,7 +388,7 @@ export async function pbAdmin(): Promise<PocketBase> {
     } catch {}
   }
 
-  _adminAuthPromise = (async () => {
+  globalForPb._adminAuthPromise = (async () => {
     // PocketBase v0.23+: admins are now _superusers collection
     await pb.collection('_superusers').authWithPassword(email, password);
 
@@ -370,26 +398,34 @@ export async function pbAdmin(): Promise<PocketBase> {
         const os = require('os');
         const path = require('path');
         const fs = require('fs');
-        const tokenPath = path.join(os.tmpdir(), 'rp1_admin_token.json');
-        fs.mkdirSync(path.dirname(tokenPath), { recursive: true });
-        fs.writeFileSync(tokenPath, JSON.stringify({
-          token: pb.authStore.token,
-          model: pb.authStore.record,
-          email,
-        }, null, 2));
+        const pbDataDir = process.env.PB_DATA_DIR || path.join(process.cwd(), 'pb_data');
+        const tokenPaths = [
+          path.join(pbDataDir, 'admin_token.json'),
+          path.join(os.tmpdir(), 'rp1_admin_token.json')
+        ];
+        for (const tp of tokenPaths) {
+          try {
+            fs.mkdirSync(path.dirname(tp), { recursive: true });
+            fs.writeFileSync(tp, JSON.stringify({
+              token: pb.authStore.token,
+              model: pb.authStore.record,
+              email,
+            }, null, 2));
+          } catch {}
+        }
       } catch {}
     }
 
-    _adminPb = pb;
-    _adminAuthPromise = null;
+    globalForPb._adminPb = pb;
+    globalForPb._adminAuthPromise = null;
     return pb;
   })().catch((err) => {
-    _adminAuthPromise = null;
-    _adminPbFailureAt = Date.now();
+    globalForPb._adminAuthPromise = null;
+    globalForPb._adminPbFailureAt = Date.now();
     throw err;
   });
 
-  return _adminAuthPromise;
+  return globalForPb._adminAuthPromise;
 }
 
 /** Reverse map: PB field name → Prisma relation name.

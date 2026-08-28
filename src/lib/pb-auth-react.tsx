@@ -42,7 +42,7 @@ export function SessionProvider({ children, refetchInterval = 120, refetchOnWind
   const [status, setStatus] = useState<SessionStatus>(() => {
     if (typeof window !== "undefined") {
       const hasToken = !!localStorage.getItem("auth-token");
-      const hasCookie = document.cookie.includes("pb_auth");
+      const hasCookie = document.cookie.includes("pb_token") || document.cookie.includes("pb_auth");
       if (!hasToken && !hasCookie) return "unauthenticated";
     }
     return "loading";
@@ -72,6 +72,14 @@ export function SessionProvider({ children, refetchInterval = 120, refetchOnWind
         sessionTokenRef.current = null;
         if (typeof window !== "undefined") localStorage.removeItem("auth-token");
       }
+      return;
+    }
+
+    // Never re-authenticate (or resurrect a token into localStorage) while a
+    // logout is in progress. This closes a race where an in-flight session
+    // refresh completes after signOut() has cleared storage but before the
+    // server has deleted the DB session, bouncing the user back into the app.
+    if (typeof window !== "undefined" && (window as any).__latexy_signOutInProgress) {
       return;
     }
 
@@ -112,25 +120,12 @@ export function SessionProvider({ children, refetchInterval = 120, refetchOnWind
           if (typeof window !== "undefined") localStorage.removeItem("auth-token");
         }
       } else if (res.status === 401) {
-        const hasStoredToken = typeof window !== "undefined" && !!localStorage.getItem("auth-token");
-        if (!hasStoredToken) {
-          setData(null);
-          setStatus("unauthenticated");
-          statusRef.current = "unauthenticated";
-          sessionTokenRef.current = null;
-        } else if (retryCount.current < MAX_RETRIES) {
-          retryCount.current++;
-          isFetching.current = false;
-          setTimeout(update, 1000 * retryCount.current);
-          return;
-        } else {
-          // Retries exhausted — token is genuinely invalid, clear it
-          setData(null);
-          setStatus("unauthenticated");
-          statusRef.current = "unauthenticated";
-          sessionTokenRef.current = null;
-          if (typeof window !== "undefined") localStorage.removeItem("auth-token");
-        }
+        // Explicit 401 means token/cookie is invalid or expired
+        setData(null);
+        setStatus("unauthenticated");
+        statusRef.current = "unauthenticated";
+        sessionTokenRef.current = null;
+        if (typeof window !== "undefined") localStorage.removeItem("auth-token");
       } else {
         const hasStoredToken = typeof window !== "undefined" && !!localStorage.getItem("auth-token");
         if (!hasStoredToken) {
@@ -243,50 +238,69 @@ export function useSession(options?: { required?: boolean; onUnauthenticated?: (
 export async function signOut(options?: { callbackUrl?: string }) {
   if (typeof window !== "undefined") {
     (window as any).__latexy_signOutInProgress = true;
-  }
 
-  if (typeof window !== "undefined") {
-    // Fire the logout request (server purges cookies + revokes sessions).
-    // Retried once: a slow backend must not leave the HttpOnly pb_token cookie
-    // (which client JS cannot delete) in the browser.
-    const attemptLogout = () =>
-      fetch("/api/auth/pb-logout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-        },
-        cache: "no-store",
-        signal: AbortSignal.timeout(15000),
-      }).then(
-        () => {},
-        () => {}
-      );
-
+    // 1. Immediately purge client tokens and storage
+    const storedToken = localStorage.getItem("auth-token");
     try {
-      await attemptLogout();
-      await attemptLogout();
+      localStorage.removeItem("auth-token");
+      localStorage.removeItem("pb_token");
+      sessionStorage.clear();
+      // Note: pb_token is an HttpOnly cookie and cannot be cleared from JS —
+      // the server /api/auth/pb-logout endpoint clears it unconditionally.
+      // Writing document.cookie here would only create a stray non-HttpOnly
+      // pb_token, so we deliberately do not touch cookies from the client.
     } catch {}
 
-    // Final safety net: one round-trip to /api/auth/pb-session. If the cookie
-    // survived (timeout race, in-flight poll re-setting it, etc.), the server
-    // treats the missing UserSession row as logged-out and purges the cookie.
+    const logoutHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+    };
+    if (storedToken) logoutHeaders["Authorization"] = `Bearer ${storedToken}`;
+
+    // 2. Fire the logout request to purge the server session + HttpOnly cookies
     try {
-      await fetch(`/api/auth/pb-session?_=${Date.now()}`, {
+      await fetch("/api/auth/pb-logout", {
+        method: "POST",
+        headers: logoutHeaders,
+        body: JSON.stringify({ token: storedToken }),
         cache: "no-store",
-        signal: AbortSignal.timeout(10000),
+        // Generous timeout: an aborted request could leave the DB session (and
+        // the HttpOnly pb_token cookie) intact, which would make /login
+        // immediately redirect back into the app.
+        signal: AbortSignal.timeout(15000),
       });
     } catch {}
 
-    try {
-      localStorage.removeItem("auth-token");
-      sessionStorage.clear();
-      document.cookie = "pb_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
-      document.cookie = "admin_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
-      document.cookie = "next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
-      document.cookie = "__Secure-next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
-    } catch {}
-    window.location.href = options?.callbackUrl || "/login";
+    // 3. Confirm the server session is actually gone before navigating. This
+    // guarantees we never land on /login while the session is still valid
+    // (which triggers its auto-redirect to /dashboard). While still
+    // authenticated, re-fire pb-logout so a slow/flaky delete is self-healing.
+    // The loop is bounded so a stuck server can never hang logout.
+    for (let attempt = 0; attempt < 20; attempt++) {
+      try {
+        const res = await fetch(`/api/auth/pb-session?_=${Date.now()}`, {
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache, no-store, must-revalidate" },
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (!json.user) break;
+          await fetch("/api/auth/pb-logout", {
+            method: "POST",
+            headers: logoutHeaders,
+            body: JSON.stringify({ token: storedToken }),
+            cache: "no-store",
+          }).catch(() => {});
+        } else {
+          break;
+        }
+      } catch {}
+      await new Promise((r) => setTimeout(r, 300));
+    }
+
+    // 4. Clean navigation to callback destination (default to /login)
+    const targetUrl = options?.callbackUrl || "/login";
+    window.location.href = targetUrl;
   }
 }
 

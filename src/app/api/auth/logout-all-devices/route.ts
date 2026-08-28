@@ -50,6 +50,8 @@ export async function POST(req: NextRequest) {
       if (ids.length > 0) {
         await Promise.all(ids.map((id: string) => admPb.collection("user_sessions").delete(id)));
       }
+      const { invalidateRecordCache } = await import("@/lib/pb");
+      invalidateRecordCache();
     } catch (pbErr: any) {
       console.error("[LOGOUT_ALL_DEVICES] PocketBase session deletion failed:", pbErr.message);
     }

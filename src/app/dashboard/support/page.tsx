@@ -240,7 +240,10 @@ export default function SupportPage() {
 
   const fetchNotifications = async () => {
     try {
-      const res = await fetch('/api/user/notifications');
+      const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+      const headers: Record<string, string> = {};
+      if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
+      const res = await fetch('/api/user/notifications', { headers });
       if (res.ok) {
         const data = await res.json();
         setNotifications(data.notifications || []);
@@ -251,9 +254,12 @@ export default function SupportPage() {
 
   const markAllRead = async () => {
     try {
+      const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
       await fetch('/api/user/notifications', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ markAll: true }),
       });
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));

@@ -5,31 +5,44 @@ import { useSession } from "@/lib/pb-auth-react";
 
 export function SessionSyncProvider({ children }: { children: React.ReactNode }) {
   const { data: session, update } = useSession();
+  const user = session?.user;
+  const userId = user?.id;
+  const currentPoints = user?.points;
+  const currentMembership = user?.membership;
 
   useEffect(() => {
-    const user = session?.user;
-    if (!user?.id) return;
+    if (!userId) return;
 
     const checkSync = async () => {
+      if (typeof document !== "undefined" && document.hidden) return;
       try {
-        const res = await fetch("/api/user/check-membership");
+        const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+        const headers: Record<string, string> = {};
+        if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
+        const res = await fetch("/api/user/check-membership", { headers });
         if (!res.ok) return;
         const data = await res.json();
         if (data.success) {
-          const currentPoints = user?.points;
-          const currentMembership = user?.membership;
           if (data.points !== currentPoints || data.membership !== currentMembership) {
             await update();
           }
         }
-      } catch (err) {
-        console.error("[Sync] Polling check failed:", err);
+      } catch {
+        // Silently ignore sync poll errors
       }
     };
 
-    const intervalId = setInterval(checkSync, 30000);
-    return () => clearInterval(intervalId);
-  }, [session, update]);
+    const intervalId = setInterval(checkSync, 60000);
+    const handleVisibilityChange = () => {
+      if (!document.hidden) checkSync();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [userId, currentPoints, currentMembership, update]);
 
   return <>{children}</>;
 }

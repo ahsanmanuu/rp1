@@ -36,8 +36,12 @@ function UploadContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session, status } = useSession();
+  const [mounted, setMounted] = useState(false);
 
-  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [file, setFile] = useState<File | null>(null);
   const [isDragActive, setIsDragActive] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -53,7 +57,7 @@ function UploadContent() {
 
   // Fetch reports and projects — only after session is confirmed
   useEffect(() => {
-    if (status !== "authenticated") return;
+    if (!mounted || status !== "authenticated" || !session?.user?.id) return;
     const fetchData = async () => {
       try {
         const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
@@ -65,6 +69,10 @@ function UploadContent() {
           fetch('/api/projects?type=DOC2LATEX', { headers: authHeaders }),
           fetch('/api/projects?type=LATEX_STUDIO', { headers: authHeaders })
         ]);
+
+        if (repRes.status === 401 || docRes.status === 401 || studioRes.status === 401) {
+          return;
+        }
         
         let fetchedReports = [];
         if (repRes.ok) {
@@ -1033,14 +1041,14 @@ function UploadContent() {
     }
   };
 
-  if (status === "loading" && !wasVerified) {
+  if (!mounted || status === "loading") {
     return <ScholarlySplashScreen />;
   }
 
   // 2. Unauthenticated state — EXCEPT while an upload/analysis is in flight:
   // a transient 401 from the 30s session poll must never yank the user to the
   // login panel mid-upload (big files take 10-30 minutes).
-  if ((status === "unauthenticated" || (!session && !wasVerified && status !== "loading")) &&
+  if (status === "unauthenticated" &&
       !(typeof window !== "undefined" && (window as any).__uploadInFlight)) {
     return (
       <div style={{ height: 'calc(100vh - 80px)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--background)' }}>

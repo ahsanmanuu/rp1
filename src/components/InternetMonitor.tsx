@@ -229,17 +229,17 @@ export default function InternetMonitor() {
       try {
         const response = await originalFetch(input, init);
 
-        // Cache successful JSON GET responses
-        if (response.ok && method === "GET") {
-          const clone = response.clone();
+        // Cache successful JSON GET responses for relevant API endpoints
+        if (response.ok && method === "GET" && url.startsWith("/api/")) {
           try {
-            const contentType = clone.headers.get("content-type");
+            const contentType = response.headers.get("content-type");
             if (contentType && contentType.includes("application/json")) {
+              const clone = response.clone();
               clone.json().then(data => {
                 cacheGetResponse(url, data);
               }).catch(() => {});
             }
-          } catch (e) {}
+          } catch {}
         }
 
         return response;

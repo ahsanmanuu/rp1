@@ -119,71 +119,18 @@ export async function getServerSession(): Promise<PbServerSession | null> {
 
     [pb, sessionRecord] = await Promise.all([pbPromise, dbPromise]);
 
+    // The DB row is the source of truth for active sessions (makes logout stick).
+    // If the session row is missing or deleted, the user is logged out.
+    if (!sessionRecord || !sessionRecord.user) {
+      return null;
+    }
+
+    // Verify session hasn't expired
+    if (sessionRecord.expiresAt && new Date(sessionRecord.expiresAt).getTime() < Date.now()) {
+      return null;
+    }
+
     const pbRecord: any = pb?.authStore?.record;
-
-    // ── Auto-heal: session row missing but JWT may still be valid ─────────
-    if (!sessionRecord && pbRecord) {
-      try {
-        const userId = pbRecord.id;
-        const payloadStr = token.split('.')[1];
-        const payload = JSON.parse(Buffer.from(payloadStr, 'base64url').toString('utf8'));
-        const expiresAt = new Date((payload?.exp || Date.now() / 1000 + 86400) * 1000);
-
-        let targetUser = await prisma.user.findUnique({ where: { id: userId } }).catch(() => null);
-        if (!targetUser) {
-          targetUser = await prisma.user.upsert({
-            where: { id: userId },
-            update: { email: pbRecord.email },
-            create: {
-              id: userId,
-              email: pbRecord.email,
-              name: pbRecord.name || pbRecord.email?.split('@')[0] || '',
-              membership: 'free',
-              role: 'user',
-              points: 50,
-            }
-          }).catch(() => null);
-        }
-
-        if (targetUser) {
-          await prisma.userSession.upsert({
-            where: { sessionToken: token },
-            update: { lastActiveAt: new Date(), expiresAt },
-            create: {
-              userId,
-              sessionToken: token,
-              machineId: 'auto_healed',
-              ipAddress: '127.0.0.1',
-              location: 'Auto-healed',
-              userAgent: 'auto-heal',
-              lastActiveAt: new Date(),
-              expiresAt,
-            }
-          }).catch(() => {});
-
-          sessionRecord = await prisma.userSession.findUnique({
-            where: { sessionToken: token },
-            include: { user: true }
-          }).catch(() => null);
-        }
-      } catch (e) {
-        console.warn("[AUTH] Auto-heal failed:", e);
-      }
-    }
-
-    // ── Build session from whichever auth source succeeded ────────────────
-    // If we have a PB record, use it as the identity source.
-    // If we have a DB session record, check expiry and use its user data.
-    // Only fail if BOTH are missing.
-    if (!pbRecord && (!sessionRecord || !sessionRecord.user)) {
-      console.warn("[AUTH] No valid auth from PB or DB — returning null");
-      return null;
-    }
-
-    // If DB record exists, verify it hasn't expired (logout sets expiresAt in the past)
-    if (sessionRecord?.expiresAt && new Date(sessionRecord.expiresAt).getTime() < Date.now()) {
-      return null;
-    }
 
     let record: any = pbRecord;
     if (!record && sessionRecord?.user) {

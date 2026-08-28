@@ -49,22 +49,25 @@ const FALLBACK_MEMBERSHIP: MembershipData = {
 
 export function useMembershipRealtime(options: UseMembershipOptions = {}) {
   const {
-    pollIntervalMs = 30000,
+    pollIntervalMs = 60000,
     enabled = true,
     userId,
     onMembershipChange,
     onError,
   } = options;
 
+  const isEffectivelyEnabled = enabled && !!userId;
+
   const [state, setState] = useState<MembershipState>({
     data: null,
-    loading: true,
+    loading: isEffectivelyEnabled,
     error: null,
     isStale: false,
   });
 
   const prevPlanRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fetchRef = useRef<((bg?: boolean, fresh?: boolean) => void) | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
   const onMembershipChangeRef = useRef(onMembershipChange);
@@ -73,12 +76,17 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
   onErrorRef.current = onError;
   const userIdRef = useRef(userId);
   userIdRef.current = userId;
+  const authFailedRef = useRef(false);
 
   const refetchRef = useRef<(() => void) | null>(null);
 
   if (fetchRef.current === null) {
     fetchRef.current = async (isBackground = false, fresh = false) => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || !userIdRef.current || (authFailedRef.current && !fresh)) return;
+      if (typeof document !== "undefined" && document.hidden && !fresh) return;
+
+      const hasToken = typeof window !== "undefined" && !!localStorage.getItem("auth-token");
+      if (!hasToken) return;
 
       if (!isBackground && !prevPlanRef.current) {
         setState(prev => ({ ...prev, loading: true, error: null }));
@@ -90,6 +98,22 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
         const headers: Record<string, string> = {};
         if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
         const res = await fetch(url, { headers });
+        if (res.status === 401) {
+          authFailedRef.current = true;
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          if (mountedRef.current) {
+            setState(prev => ({
+              ...prev,
+              loading: false,
+              error: null,
+              data: prev.data || FALLBACK_MEMBERSHIP,
+            }));
+          }
+          return;
+        }
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           throw new Error(body?.error || `Failed to load membership (${res.status})`);
@@ -99,6 +123,7 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
         if (!mountedRef.current) return;
 
         if (data.success) {
+          authFailedRef.current = false;
           setState({
             data: data as MembershipData,
             loading: false,
@@ -140,7 +165,7 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
   useEffect(() => {
     mountedRef.current = true;
 
-    if (!enabled) {
+    if (!isEffectivelyEnabled) {
       setState({
         data: FALLBACK_MEMBERSHIP,
         loading: false,
@@ -149,10 +174,12 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
       });
       return;
     }
+    authFailedRef.current = false;
 
-    fetchRef.current?.(false);
+    // Settle delay to let session state settle after login navigation
+    const initialTimer = setTimeout(() => fetchRef.current?.(false), 500);
 
-    const id = setInterval(() => {
+    pollIntervalRef.current = setInterval(() => {
       fetchRef.current?.(true);
     }, pollIntervalMs);
 
@@ -183,14 +210,17 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
 
     return () => {
       mountedRef.current = false;
-      clearInterval(id);
+      clearTimeout(initialTimer);
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
       if (unsubRef.current) {
         try { unsubRef.current(); } catch {}
         unsubRef.current = null;
       }
     };
-     
-  }, [enabled, pollIntervalMs]);
+  }, [isEffectivelyEnabled, pollIntervalMs]);
 
-  return { ...state, refetch: refetchRef.current! };
+  return { ...state, refetch: () => refetchRef.current?.() };
 }

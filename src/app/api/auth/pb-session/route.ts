@@ -35,72 +35,6 @@ export async function GET(req: NextRequest) {
     dbError = true;
   }
 
-  // Auto-healing fallback: if initial session DB row miss occurs right after login
-  if (!sessionRecord && !dbError) {
-    try {
-      // Decode JWT token payload directly to verify token validity
-      const parts = token.split('.');
-      if (parts.length === 3) {
-        const payloadStr = Buffer.from(parts[1], 'base64url').toString('utf8');
-        const payload = JSON.parse(payloadStr);
-        if (payload && payload.id && payload.exp && payload.exp * 1000 > Date.now()) {
-          const userId = payload.id;
-          const expiresAt = new Date(payload.exp * 1000);
-          
-          // Verify user exists or sync
-          let targetUser = await prisma.user.findUnique({ where: { id: userId } }).catch(() => null);
-          if (!targetUser) {
-            try {
-              const { createPb } = await import("@/lib/pb");
-              const pb = createPb();
-              pb.authStore.save(token, null);
-              const authData = await pb.collection("users").authRefresh().catch(() => null);
-              if (authData?.record) {
-                const rec = authData.record;
-                targetUser = await prisma.user.upsert({
-                  where: { id: userId },
-                  update: { email: rec.email },
-                  create: {
-                    id: userId,
-                    email: rec.email,
-                    name: rec.name || rec.email?.split("@")[0] || "",
-                    membership: "free",
-                    role: "user",
-                    points: 50,
-                  }
-                }).catch(() => null);
-              }
-            } catch {}
-          }
-
-          if (targetUser) {
-            await prisma.userSession.upsert({
-              where: { sessionToken: token },
-              update: { lastActiveAt: new Date(), expiresAt },
-              create: {
-                userId,
-                sessionToken: token,
-                machineId: "auto_healed",
-                ipAddress: "127.0.0.1",
-                location: "Unknown Location",
-                userAgent: req.headers.get("user-agent") || "unknown",
-                lastActiveAt: new Date(),
-                expiresAt,
-              }
-            }).catch(() => {});
-
-            sessionRecord = await prisma.userSession.findUnique({
-              where: { sessionToken: token },
-              include: { user: true }
-            }).catch(() => null);
-          }
-        }
-      }
-    } catch (healErr) {
-      console.warn("[PB-Session API] Auto-heal session check failed:", healErr);
-    }
-  }
-
   // DB temporarily unavailable: do not confirm or kill the session, ask the client to retry
   if (dbError) {
     const response = NextResponse.json({ error: "Authentication service temporarily unavailable" }, { status: 503 });
@@ -122,8 +56,18 @@ export async function GET(req: NextRequest) {
 
   // Logged out, expired, or unknown token → unauthenticated
   if (!sessionActive || !dbUser) {
-    try { cookieStore.delete('pb_token'); } catch {}
-    const response = NextResponse.json({ user: null, authenticated: false });
+    const response = NextResponse.json({ user: null, authenticated: false }, { status: 401 });
+    const AUTH_COOKIE_NAMES = ['pb_token', 'admin_session', 'next-auth.session-token', '__Secure-next-auth.session-token'];
+    AUTH_COOKIE_NAMES.forEach(c => {
+      try { cookieStore.delete(c); } catch {}
+      response.cookies.set(c, "", {
+        path: "/",
+        expires: new Date(0),
+        maxAge: 0,
+        httpOnly: true,
+        sameSite: "lax",
+      });
+    });
     Object.entries(noCacheHeaders).forEach(([k, v]) => response.headers.set(k, v));
     return response;
   }

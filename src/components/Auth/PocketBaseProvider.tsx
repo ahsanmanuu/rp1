@@ -115,10 +115,22 @@ export function PocketBaseProvider({ children }: { children: ReactNode }) {
   }, [fetchSession]);
 
   const signOut = useCallback(async () => {
-    await fetch("/api/auth/pb-logout", { method: "POST" });
+    const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+    try {
+      localStorage.removeItem("auth-token");
+      localStorage.removeItem("pb_token");
+      sessionStorage.clear();
+      document.cookie = "pb_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
+      document.cookie = "admin_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
+      document.cookie = "next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
+      document.cookie = "__Secure-next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
+    } catch {}
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
+    await fetch("/api/auth/pb-logout", { method: "POST", headers, body: JSON.stringify({ token: storedToken }) }).catch(() => {});
     setSession({ user: null, status: "unauthenticated" });
-    router.push("/login");
-  }, [router]);
+    window.location.href = "/login";
+  }, []);
 
   return (
     <PbSessionCtx.Provider value={{ ...session, update, signOut }}>

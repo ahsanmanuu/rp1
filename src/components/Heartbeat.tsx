@@ -17,7 +17,10 @@ export function Heartbeat() {
     }
 
     const ping = () => {
-      fetch('/api/user/heartbeat', { method: 'POST' }).then((res) => {
+      const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+      const headers: Record<string, string> = {};
+      if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
+      fetch('/api/user/heartbeat', { method: 'POST', headers }).then((res) => {
         if (res.status === 401) {
           // Session was deleted (force-logout) — refresh to sync state
           update();

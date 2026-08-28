@@ -1,8 +1,8 @@
-﻿"use client";
+"use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSession } from "@/lib/pb-auth-react";
 
-const POLL_INTERVAL = 15000;
+const POLL_INTERVAL = 60000;
 
 /**
  * useProjectLimit
@@ -18,11 +18,13 @@ export function useProjectLimit() {
   const [limitChecked, setLimitChecked] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isAuthenticated = status === "authenticated" && !!session?.user?.id;
 
   const checkLimit = useCallback(async () => {
-    if (status === "loading" || !session?.user) return;
+    if (!isAuthenticated) return;
+    if (typeof document !== "undefined" && document.hidden) return;
 
-    const membership = (session.user as any)?.membership || "free";
+    const membership = (session?.user as any)?.membership || "free";
     if (membership !== "free") {
       setLimitChecked(true);
       return;
@@ -34,6 +36,10 @@ export function useProjectLimit() {
       if (storedToken) authHeaders["Authorization"] = `Bearer ${storedToken}`;
       const res = await fetch("/api/projects/limit-status", { headers: authHeaders });
       if (res.status === 401) {
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
         setLimitChecked(true);
         return;
       }
@@ -48,22 +54,39 @@ export function useProjectLimit() {
     } finally {
       setLimitChecked(true);
     }
-  }, [status, session?.user]);
+  }, [isAuthenticated, session?.user]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+      return;
+    }
+
     checkLimit();
     pollRef.current = setInterval(checkLimit, POLL_INTERVAL);
 
     const handleProjectLimitTriggered = () => {
       setShowLimitModal(true);
     };
+    const handleVisibilityChange = () => {
+      if (!document.hidden) checkLimit();
+    };
+
     window.addEventListener("project-limit-triggered", handleProjectLimitTriggered);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
       window.removeEventListener("project-limit-triggered", handleProjectLimitTriggered);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [checkLimit]);
+  }, [isAuthenticated, checkLimit]);
 
   return { showLimitModal, setShowLimitModal, limitChecked };
 }

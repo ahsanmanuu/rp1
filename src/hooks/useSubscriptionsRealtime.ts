@@ -36,29 +36,38 @@ const FALLBACK: SubscriptionSnapshot = {
  */
 export function useSubscriptionsRealtime(options: UseSubscriptionsOptions = {}) {
   const {
-    pollIntervalMs = 30000,
+    pollIntervalMs = 60000,
     enabled = true,
     userId,
     onError,
   } = options;
 
+  const isEffectivelyEnabled = enabled && !!userId;
+
   const [state, setState] = useState<SubscriptionsState>({
     data: null,
-    loading: true,
+    loading: isEffectivelyEnabled,
     error: null,
   });
 
   const mountedRef = useRef(true);
   const unsubRef = useRef<(() => void) | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fetchRef = useRef<((bg?: boolean, fresh?: boolean) => void) | null>(null);
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
   const userIdRef = useRef(userId);
   userIdRef.current = userId;
+  const authFailedRef = useRef(false);
 
   if (fetchRef.current === null) {
     fetchRef.current = async (isBackground = false, fresh = false) => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || !userIdRef.current || (authFailedRef.current && !fresh)) return;
+      if (typeof document !== "undefined" && document.hidden && !fresh) return;
+
+      // Don't attempt API call if no auth token is available yet
+      const hasToken = typeof window !== "undefined" && !!localStorage.getItem("auth-token");
+      if (!hasToken) return;
 
       if (!isBackground) {
         setState(prev => ({ ...prev, loading: true, error: null }));
@@ -72,6 +81,17 @@ export function useSubscriptionsRealtime(options: UseSubscriptionsOptions = {}) 
         const headers: Record<string, string> = {};
         if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
         const res = await fetch(url, { cache: 'no-store', headers });
+        if (res.status === 401) {
+          authFailedRef.current = true;
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          if (mountedRef.current) {
+            setState(prev => ({ ...prev, loading: false, error: null, data: prev.data || FALLBACK }));
+          }
+          return;
+        }
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           throw new Error(body?.error || `Failed to load subscriptions (${res.status})`);
@@ -81,6 +101,7 @@ export function useSubscriptionsRealtime(options: UseSubscriptionsOptions = {}) 
         if (!mountedRef.current) return;
 
         if (data.success) {
+          authFailedRef.current = false;
           setState(prev => ({
             data: {
               membership: data.membership ?? prev.data?.membership ?? null,
@@ -119,14 +140,16 @@ export function useSubscriptionsRealtime(options: UseSubscriptionsOptions = {}) 
   useEffect(() => {
     mountedRef.current = true;
 
-    if (!enabled) {
+    if (!isEffectivelyEnabled) {
       setState({ data: FALLBACK, loading: false, error: null });
       return;
     }
+    authFailedRef.current = false;
 
-    fetchRef.current?.(false);
+    // Settle delay to let session state settle after login navigation
+    const initialTimer = setTimeout(() => fetchRef.current?.(false), 500);
 
-    const id = setInterval(() => {
+    pollIntervalRef.current = setInterval(() => {
       fetchRef.current?.(true);
     }, pollIntervalMs);
 
@@ -165,13 +188,17 @@ export function useSubscriptionsRealtime(options: UseSubscriptionsOptions = {}) 
 
     return () => {
       mountedRef.current = false;
-      clearInterval(id);
+      clearTimeout(initialTimer);
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
       if (unsubRef.current) {
         try { unsubRef.current(); } catch {}
         unsubRef.current = null;
       }
     };
-  }, [enabled, pollIntervalMs]);
+  }, [isEffectivelyEnabled, pollIntervalMs]);
 
   return { ...state, refetch };
 }

@@ -187,6 +187,7 @@ export function usePbRealtimeReports(userId?: string) {
   return usePbRealtime({
     collection: 'report_history',
     userId,
+    enabled: !!userId,
     filter: userId ? `userId = "${userId}"` : undefined,
     sort: '-created',
     fields: 'id,userId,projectId,title,statsJson,authorsJson,affiliationsJson,keywordsJson,status,pdfUrl,latexUrl,zipUrl,created,updated',
@@ -232,6 +233,7 @@ export function usePbRealtimeProjects(userId?: string, projectType?: string) {
   return usePbRealtime({
     collection: 'projects',
     userId,
+    enabled: !!userId,
     filter: filterStr,
     sort: '-updated',
     fields: 'id,userId,title,projectType,status,wordCount,charCount,imageCount,chartCount,tableCount,equationCount,citationCount,referenceCount,pseudocodeCount,updated,created',

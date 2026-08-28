@@ -23,8 +23,7 @@ export async function POST(req: Request) {
     });
   });
 
-  // 2. Best-effort session revocation, run in the background so it cannot delay
-  //    the response (a slow PocketBase admin refresh must not time out logout).
+  // 2. Revoke and delete database sessions
   try {
     const body = await req.json().catch(() => ({}));
     const authHeader = req.headers.get("authorization");
@@ -32,26 +31,36 @@ export async function POST(req: Request) {
     const token = cookieStore.get('pb_token')?.value || body?.token || headerToken;
 
     if (token) {
-      void (async () => {
-        // Delete session from Prisma (PB adapter)
+      // Delete session from Prisma (PB adapter)
+      try {
         await prisma.userSession.deleteMany({
           where: { sessionToken: token },
-        }).catch(() => null);
+        });
+      } catch (prismaErr) {
+        console.warn("[AUTH pb-logout] Prisma session deletion warning:", prismaErr);
+      }
 
-        // Delete session from PocketBase directly
-        try {
-          const { pbAdmin } = await import("@/lib/pb");
-          const admPb = await pbAdmin();
-          const records = await admPb.collection("user_sessions").getFullList({
-            filter: `sessionToken = "${token}"`,
-            requestKey: null,
-            $autoCancel: false,
-          });
-          if (records.length > 0) {
-            await Promise.all(records.map((r: any) => admPb.collection("user_sessions").delete(r.id)));
-          }
-        } catch {}
-      })();
+      // Delete session from PocketBase user_sessions collection
+      try {
+        const { pbAdmin } = await import("@/lib/pb");
+        const admPb = await pbAdmin();
+        const records = await admPb.collection("user_sessions").getFullList({
+          filter: `sessionToken = "${token}"`,
+          requestKey: null,
+          $autoCancel: false,
+        });
+        if (records.length > 0) {
+          await Promise.all(records.map((r: any) => admPb.collection("user_sessions").delete(r.id)));
+        }
+      } catch (pbErr) {
+        console.warn("[AUTH pb-logout] PocketBase session deletion warning:", pbErr);
+      }
+
+      // Invalidate server in-memory record cache
+      try {
+        const { invalidateRecordCache } = await import("@/lib/pb");
+        invalidateRecordCache(token);
+      } catch {}
     }
   } catch (err) {
     console.error("[AUTH pb-logout] Error deleting sessions:", err);

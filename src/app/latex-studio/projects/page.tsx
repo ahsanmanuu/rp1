@@ -108,9 +108,14 @@ export default function LaTeXStudioLanding() {
 
   // Fetch server-authoritative limit status (single source of truth)
   const refreshLimitStatus = async () => {
+    if (status !== "authenticated" || !session?.user) return;
     setStatsRefreshing(true);
     try {
-      const res = await fetch('/api/projects/limit-status', { cache: 'no-store' });
+      const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+      const authHeaders: Record<string, string> = {};
+      if (storedToken) authHeaders["Authorization"] = `Bearer ${storedToken}`;
+      const res = await fetch('/api/projects/limit-status', { cache: 'no-store', headers: authHeaders });
+      if (res.status === 401) return;
       const data = await res.json();
       setLimitStatus({ count: data.count ?? 0, max: data.max ?? null, limitReached: !!data.limitReached });
       setMembership(data.membership || 'free');
@@ -125,14 +130,20 @@ export default function LaTeXStudioLanding() {
       .then(data => setCustomTemplates(data.templates || []))
       .catch(console.error);
 
-    // Fetch membership for expiry reminder (non-blocking, doesn't affect limit logic)
-    fetch('/api/user/check-membership')
-      .then(res => res.json())
-      .then(data => { if (data.success) setMembership(data.membership || 'free'); })
-      .catch(() => {});
+    const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+    const authHeaders: Record<string, string> = {};
+    if (storedToken) authHeaders["Authorization"] = `Bearer ${storedToken}`;
 
-    // Fetch authoritative limit status
-    refreshLimitStatus();
+    // Fetch membership for expiry reminder (non-blocking, doesn't affect limit logic)
+    if (status === "authenticated" && session?.user) {
+      fetch('/api/user/check-membership', { headers: authHeaders })
+        .then(res => res.json())
+        .then(data => { if (data.success) setMembership(data.membership || 'free'); })
+        .catch(() => {});
+      
+      // Fetch authoritative limit status
+      refreshLimitStatus();
+    }
 
     if (!session?.user?.email) return;
     const studioFs = new StudioFS(session.user.email);

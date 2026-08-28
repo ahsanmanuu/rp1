@@ -63,17 +63,81 @@ export default function RootLayout({
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <Script id="chunk-retry" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: `
+        <script dangerouslySetInnerHTML={{ __html: `
           (function(){
             var lastReload = 0;
+            function isExtensionError(e){
+              if (!e) return false;
+              var msg = '';
+              try {
+                if (typeof e === 'string') {
+                  msg = e;
+                } else {
+                  msg = (e.message || '') + ' ' +
+                        (e.filename || '') + ' ' +
+                        (e.name || '') + ' ' +
+                        (e.stack || '') + ' ' +
+                        (e.error ? (e.error.message || '') + ' ' + (e.error.stack || '') : '') + ' ' +
+                        (e.reason ? (typeof e.reason === 'string' ? e.reason : (e.reason.message || '') + ' ' + (e.reason.stack || '')) : '') + ' ' +
+                        (e.target ? (e.target.src || e.target.href || e.target.outerHTML || '') : '') + ' ' +
+                        (typeof e.toString === 'function' ? e.toString() : '');
+                }
+              } catch(err) { msg = ''; }
+              var str = String(msg || '').toLowerCase();
+              return str.indexOf('chrome-extension://') !== -1 ||
+                     str.indexOf('moz-extension://') !== -1 ||
+                     str.indexOf('safari-extension://') !== -1 ||
+                     str.indexOf('ojplmecpdpgccookcobabopnaifgidhf') !== -1 ||
+                     str.indexOf('couponcollection') !== -1 ||
+                     str.indexOf('autocoupon') !== -1 ||
+                     str.indexOf('affiliatecashback') !== -1 ||
+                     str.indexOf('invalid/') !== -1 ||
+                     str.indexOf('script.js') !== -1 ||
+                     str.indexOf('content.ts') !== -1 ||
+                     str.indexOf('bhk') !== -1 ||
+                     str.indexOf('unpaywall') !== -1 ||
+                     str.indexOf('mutationobserver') !== -1 ||
+                     str.indexOf('parameter 1 is not of type') !== -1 ||
+                     str.indexOf("not of type 'node'") !== -1 ||
+                     str.indexOf('disconnected port object') !== -1 ||
+                     str.indexOf('err_network_io_suspended') !== -1 ||
+                     str.indexOf('err_network_changed') !== -1 ||
+                     str.indexOf('editorworkerservice') !== -1 ||
+                     str.indexOf('editorworkermain') !== -1 ||
+                     str.indexOf('failed to load worker script') !== -1 ||
+                     str.indexOf('failed to fetch dynamically imported module') !== -1 ||
+                     str.indexOf('web_accessible_resources') !== -1;
+            }
             if (typeof window !== 'undefined') {
               if (window.MutationObserver && window.MutationObserver.prototype) {
                 var _origObserve = window.MutationObserver.prototype.observe;
                 window.MutationObserver.prototype.observe = function(target, options) {
-                  if (!target || !(target instanceof Node)) {
-                    return; // Safely ignore invalid targets passed by third-party extension scripts
+                  if (!target || typeof target !== 'object' || typeof target.nodeType !== 'number') {
+                    return;
                   }
-                  return _origObserve.apply(this, arguments);
+                  try {
+                    return _origObserve.apply(this, arguments);
+                  } catch (err) {
+                    return;
+                  }
+                };
+              }
+              if (typeof console !== 'undefined') {
+                var _origConsoleError = console.error;
+                var _origConsoleWarn = console.warn;
+                console.error = function() {
+                  var args = Array.prototype.slice.call(arguments);
+                  for (var i = 0; i < args.length; i++) {
+                    if (isExtensionError(args[i])) return;
+                  }
+                  return _origConsoleError.apply(console, arguments);
+                };
+                console.warn = function() {
+                  var args = Array.prototype.slice.call(arguments);
+                  for (var i = 0; i < args.length; i++) {
+                    if (isExtensionError(args[i])) return;
+                  }
+                  return _origConsoleWarn.apply(console, arguments);
                 };
               }
               if (window.fetch) {
@@ -88,68 +152,37 @@ export default function RootLayout({
                 };
               }
             }
-            function isExtensionError(e){
-              if (!e) return false;
-              var msg = (typeof e === 'string' ? e : '') + ' ' +
-                        (e.message || '') + ' ' +
-                        (e.filename || '') + ' ' +
-                        (e.name || '') + ' ' +
-                        (e.stack || '') + ' ' +
-                        (e.error ? (e.error.message || '') + ' ' + (e.error.stack || '') : '') + ' ' +
-                        (e.reason ? (e.reason.message || '') + ' ' + (e.reason.stack || '') : '') + ' ' +
-                        (e.target ? (e.target.src || e.target.href || e.target.outerHTML || '') : '');
-              var str = String(msg).toLowerCase();
-              return str.indexOf('chrome-extension://') !== -1 ||
-                     str.indexOf('moz-extension://') !== -1 ||
-                     str.indexOf('safari-extension://') !== -1 ||
-                     str.indexOf('couponcollection') !== -1 ||
-                     str.indexOf('autocoupon') !== -1 ||
-                     str.indexOf('affiliatecashback') !== -1 ||
-                     str.indexOf('invalid/') !== -1 ||
-                     str.indexOf('script.js') !== -1 ||
-                     str.indexOf('bhk') !== -1 ||
-                     str.indexOf('unpaywall') !== -1 ||
-                     str.indexOf('mutationobserver') !== -1 ||
-                     str.indexOf('parameter 1 is not of type') !== -1 ||
-                     str.indexOf("not of type 'node'") !== -1 ||
-                     str.indexOf('disconnected port object') !== -1 ||
-                     str.indexOf('err_network_io_suspended') !== -1 ||
-                     str.indexOf('err_network_changed') !== -1 ||
-                     str.indexOf('editorworkerservice') !== -1 ||
-                     str.indexOf('editorworkermain') !== -1 ||
-                     str.indexOf('failed to load worker script') !== -1;
-            }
             function isChunkError(e){
               if (isExtensionError(e)) return false;
-              var m = (e && (e.message || e.name || (e.reason && e.reason.message))) || '';
-              return m.indexOf('Loading chunk') !== -1 || m.indexOf('Loading CSS') !== -1 || m.indexOf('ChunkLoadError') !== -1 || m.indexOf('Failed to fetch dynamically imported module') !== -1 || m.indexOf('ImportModuleError') !== -1;
+              var m = (e && (e.message || e.name || (e.reason && (e.reason.message || e.reason)))) || '';
+              if (typeof m !== 'string') m = String(m);
+              var lower = m.toLowerCase();
+              if (lower.indexOf('chrome-extension') !== -1 || lower.indexOf('moz-extension') !== -1) return false;
+              var isNextChunk = lower.indexOf('_next/static') !== -1 || lower.indexOf('loading chunk') !== -1 || lower.indexOf('chunkloaderror') !== -1;
+              return isNextChunk;
             }
             function forceReload(){
               var now = Date.now();
-              if (now - lastReload < 20000) return;
+              if (now - lastReload < 30000) return;
               lastReload = now;
-              setTimeout(function(){ window.location.reload() }, 1500);
+              setTimeout(function(){ window.location.reload() }, 2000);
             }
             function extractChunkUrl(msg){
-              if (!msg) return null;
-              var m = msg.match(/\\(timeout:\\s*([^)\\s]+)\\)/);
-              if (m && m[1]) return m[1];
-              m = msg.match(/https?:\\/\\/[^\\s"'<>]+(?:\\.js|\\.css)\\b/);
-              if (m) return m[0];
-              m = msg.match(/_next\\/static\\/[^\\s"'<>]+(?:\\.js|\\.css)\\b/);
-              if (m) return m[0];
-              m = msg.match(/(?:chunk|asset)[:\\s]+([^\\s"'<>]+(?:\\.js|\\.css)\\b)/i);
-              if (m) return m[1];
-              return null;
+              if (!msg || typeof msg !== 'string') return null;
+              var idx = msg.indexOf('_next/static/');
+              if (idx === -1) return null;
+              var sub = msg.substring(idx);
+              var endIdx = sub.search(/[\\s"'<>()]/);
+              return endIdx === -1 ? sub : sub.substring(0, endIdx);
             }
             function retryResource(url, tagName, attempt){
-              if (url && isExtensionError(url)) return;
+              if (!url || isExtensionError(url) || url.indexOf('extension') !== -1) return;
               attempt = attempt || 0;
               if (attempt > 2) { forceReload(); return; }
               var ts = Date.now();
               var retryUrl = url + (url.indexOf('?') === -1 ? '?' : '&') + '_rt=' + ts;
               fetch(retryUrl, { cache: 'no-store' }).then(function(r){
-                if (!r.ok) { setTimeout(function(){ retryResource(url, tagName, attempt + 1); }, 1200); return; }
+                if (!r.ok) { setTimeout(function(){ retryResource(url, tagName, attempt + 1); }, 1500); return; }
                 r.text().then(function(code){
                   if (tagName === 'SCRIPT') {
                     var s = document.createElement('script');
@@ -158,16 +191,16 @@ export default function RootLayout({
                     setTimeout(function(){ window.location.reload(); }, 500);
                   }
                 });
-              }).catch(function(){ setTimeout(function(){ retryResource(url, tagName, attempt + 1); }, 1200); });
+              }).catch(function(){ setTimeout(function(){ retryResource(url, tagName, attempt + 1); }, 1500); });
             }
 
             window.onerror = function(msg, url, line, col, err) {
               var combo = (msg || '') + ' ' + (url || '') + ' ' + (err ? (err.message || '') + ' ' + (err.stack || '') : '');
-              if (isExtensionError(combo)) return true;
+              if (isExtensionError(combo) || isExtensionError(err) || isExtensionError(msg) || isExtensionError(url)) return true;
             };
 
             window.addEventListener('error', function(e) {
-              if (isExtensionError(e) || isExtensionError(e.target && (e.target.src || e.target.href))) {
+              if (isExtensionError(e) || isExtensionError(e.message) || isExtensionError(e.filename) || isExtensionError(e.error) || isExtensionError(e.target && (e.target.src || e.target.href))) {
                 if (e.preventDefault) e.preventDefault();
                 if (e.stopImmediatePropagation) e.stopImmediatePropagation();
                 return true;
@@ -181,16 +214,16 @@ export default function RootLayout({
             }, true);
 
             window.addEventListener('unhandledrejection', function(e) {
-              if (isExtensionError(e.reason)) {
+              if (isExtensionError(e.reason) || isExtensionError(e)) {
                 e.preventDefault();
+                if (e.stopImmediatePropagation) e.stopImmediatePropagation();
                 return;
               }
               if (isChunkError(e.reason)) {
                 e.preventDefault();
-                var msg = (e.reason && e.reason.message) || '';
-                var url = extractChunkUrl(msg);
+                var msg = (e.reason && (e.reason.message || e.reason)) || '';
+                var url = extractChunkUrl(typeof msg === 'string' ? msg : '');
                 if (url) { retryResource(url, 'SCRIPT', 0); return; }
-                forceReload();
               }
               if (typeof ErrorEvent !== 'undefined' && e.reason instanceof ErrorEvent) {
                 e.preventDefault();

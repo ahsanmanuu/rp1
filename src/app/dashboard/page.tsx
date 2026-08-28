@@ -44,6 +44,7 @@ const safeParse = (str: string) => {
 export default function DashboardPage() {
   const { data: session, status, update } = useSession();
   const router = useRouter();
+  const isAuthenticated = status === "authenticated" && !!session?.user?.id;
   const sessionKey = session?.user?.id || session?.user?.email || '';
   const [projects, setProjects] = useState<any[]>([]);
   const [_loading, setLoading] = useState(true);
@@ -62,7 +63,10 @@ export default function DashboardPage() {
     showAiLimitModal,
     setShowProjectLimitModal,
     setShowAiLimitModal,
-  } = useGlobalQuotas();
+  } = useGlobalQuotas({
+    enabled: isAuthenticated,
+    pollIntervalMs: 30000,
+  });
 
   const {
     data: subscriptions,
@@ -72,6 +76,7 @@ export default function DashboardPage() {
   } = useSubscriptionsRealtime({
     pollIntervalMs: 30000,
     userId: session?.user?.id,
+    enabled: isAuthenticated,
     onError: (err) => console.warn('[Subscriptions] Poll error:', err),
   });
 
@@ -84,6 +89,7 @@ export default function DashboardPage() {
   } = useMembershipRealtime({
     pollIntervalMs: 30000,
     userId: session?.user?.id,
+    enabled: isAuthenticated,
     onMembershipChange: (prev, next) => {
       if (next !== 'free') setShowUpgradeModal(false);
     },
@@ -95,7 +101,8 @@ export default function DashboardPage() {
     permissionDenied,
   } = useUserLocation({
     pollIntervalMs: 30000,
-    enabled: !!session?.user,
+    userId: session?.user?.id,
+    enabled: isAuthenticated,
   });
 
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -106,9 +113,9 @@ export default function DashboardPage() {
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>("premium_3m");
 
   // PB Realtime — Intelligence Reports (report_history collection)
-  const { records: pbReports, loading: reportsLoading, error: reportsError } = usePbRealtimeReports(session?.user?.id);
+  const { records: pbReports, loading: reportsLoading, error: reportsError } = usePbRealtimeReports(isAuthenticated ? session?.user?.id : undefined);
   // PB Realtime — All projects for the user (handles realtime count & type filtering cleanly)
-  const { records: pbAllProjects, loading: projectsLoading } = usePbRealtimeProjects(session?.user?.id);
+  const { records: pbAllProjects, loading: projectsLoading } = usePbRealtimeProjects(isAuthenticated ? session?.user?.id : undefined);
 
   const pbDoc2Latex = useMemo(() => pbAllProjects.filter(p => p.projectType === 'DOC2LATEX'), [pbAllProjects]);
   const pbLatexProjects = useMemo(() => pbAllProjects.filter(p => p.projectType === 'LATEX_STUDIO'), [pbAllProjects]);
@@ -147,29 +154,42 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const offersAuthFailedRef = useRef(false);
   const fetchUserOffers = useCallback(async () => {
+    if (!isAuthenticated || offersAuthFailedRef.current) return;
+    const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+    if (!storedToken) return; // Skip if no token yet
+    const headers: Record<string, string> = {};
+    headers["Authorization"] = `Bearer ${storedToken}`;
     setLoadingOffers(true);
     try {
-      const res = await fetch("/api/user/offers");
+      const res = await fetch("/api/user/offers", { headers });
+      if (res.status === 401) {
+        offersAuthFailedRef.current = true;
+        return;
+      }
       if (!res.ok) {
-        console.warn("Failed to fetch user offers:", res.statusText);
         return;
       }
       const data = await res.json();
       if (data.success) {
+        offersAuthFailedRef.current = false;
         setOffers(data.offers || []);
       }
     } catch (err) {
-      console.error("Failed to fetch user offers:", err);
+      // Silently catch unauthenticated offers fetch
     } finally {
       setLoadingOffers(false);
     }
-  }, []);
+  }, [isAuthenticated]);
 
   const loadAllHistory = useCallback(async (showLoader = false) => {
     if (showLoader) setLoading(true);
     try {
-      const serverRes = await fetch('/api/projects');
+      const storedToken = typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+      const headers: Record<string, string> = {};
+      if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
+      const serverRes = await fetch('/api/projects', { headers });
       let serverData = { projects: [] };
       if (serverRes.ok) {
          const text = await serverRes.text();
@@ -178,7 +198,7 @@ export default function DashboardPage() {
          } catch {
             console.warn('Invalid JSON from /api/projects:', text.substring(0, 50));
          }
-      } else {
+      } else if (serverRes.status !== 401) {
          console.warn('Server error fetching projects:', serverRes.status);
       }
       const serverProjects = (serverData.projects || []).map((p: any) => ({
@@ -539,11 +559,39 @@ export default function DashboardPage() {
     else if (hour < 18) setGreeting("Good afternoon");
     else setGreeting("Good evening");
 
-    if (!session?.user?.email) return;
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', updateConnection);
+        window.removeEventListener('offline', updateConnection);
+        const nav = navigator as any;
+        const conn = nav ? (nav.connection || nav.mozConnection || nav.webkitConnection) : null;
+        if (conn) conn.removeEventListener('change', updateConnection);
+      }
+    };
+  }, []);
+
+  const loadCurrencyAndGeoRef = useRef(loadCurrencyAndGeo);
+  loadCurrencyAndGeoRef.current = loadCurrencyAndGeo;
+  const fetchUserOffersRef = useRef(fetchUserOffers);
+  fetchUserOffersRef.current = fetchUserOffers;
+  const fetchAnnouncementsRef = useRef(fetchAnnouncements);
+  fetchAnnouncementsRef.current = fetchAnnouncements;
+  const refetchSubscriptionsRef = useRef(refetchSubscriptions);
+  refetchSubscriptionsRef.current = refetchSubscriptions;
+  const refetchMembershipRef = useRef(refetchMembership);
+  refetchMembershipRef.current = refetchMembership;
+  const refetchQuotaRef = useRef(refetchQuota);
+  refetchQuotaRef.current = refetchQuota;
+  const routerRef = useRef(router);
+  routerRef.current = router;
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    offersAuthFailedRef.current = false;
     
-    loadCurrencyAndGeo();
-    fetchUserOffers();
-    fetchAnnouncements();
+    loadCurrencyAndGeoRef.current?.();
+    fetchUserOffersRef.current?.();
+    fetchAnnouncementsRef.current?.();
 
     const pb = createPb();
     if (session?.token) {
@@ -554,27 +602,29 @@ export default function DashboardPage() {
     const unsubFns: (() => void)[] = [];
 
     // Subscribe to announcements and offers
-    try { unsubFns.push(pbSubscribe('announcements', '*', () => { fetchAnnouncements(); })); } catch {}
+    try { unsubFns.push(pbSubscribe('announcements', '*', () => { fetchAnnouncementsRef.current?.(); })); } catch {}
 
-    try { unsubFns.push(pbSubscribe('offers', '*', () => { fetchUserOffers(); })); } catch {}
+    try { unsubFns.push(pbSubscribe('offers', '*', () => { fetchUserOffersRef.current?.(); })); } catch {}
 
     // Realtime AI plan updates (admin edits to caps/prices refresh instantly)
-    try { unsubFns.push(pbSubscribe('ai_cap_plans', '*', () => { refetchSubscriptions(); })); } catch {}
+    try { unsubFns.push(pbSubscribe('ai_cap_plans', '*', () => { refetchSubscriptionsRef.current?.(); })); } catch {}
 
     // Subscribe to citation_projects and paper_reviews for realtime counter updates
     if (session?.user?.id) {
       try {
-        unsubFns.push(pbSubscribe('citation_projects', '*', () => { refetchMembership(); }, { filter: `userId = "${session?.user?.id}"` }));
+        unsubFns.push(pbSubscribe('citation_projects', '*', () => { refetchMembershipRef.current?.(); }, { filter: `userId = "${session?.user?.id}"` }));
       } catch {}
       try {
-        unsubFns.push(pbSubscribe('paper_reviews', '*', () => { refetchMembership(); }, { filter: `userId = "${session?.user?.id}"` }));
+        unsubFns.push(pbSubscribe('paper_reviews', '*', () => { refetchMembershipRef.current?.(); }, { filter: `userId = "${session?.user?.id}"` }));
       } catch {}
     }
 
-    // Background refresh for offers and announcements
+    // Background refresh for offers and announcements (30s, guarded)
     const bgPoll = setInterval(() => {
-      fetchUserOffers();
-      fetchAnnouncements();
+      if (isAuthenticated && !offersAuthFailedRef.current) {
+        fetchUserOffersRef.current?.();
+        fetchAnnouncementsRef.current?.();
+      }
     }, 30000);
 
     // Check payment redirect statuses
@@ -585,13 +635,13 @@ export default function DashboardPage() {
       
       if (paymentStatus === 'success') {
         alert("Payment Successful! Your subscription has been activated.");
-        refetchSubscriptions();
-        refetchMembership();
-        refetchQuota();
-        router.replace('/dashboard');
+        refetchSubscriptionsRef.current?.();
+        refetchMembershipRef.current?.();
+        refetchQuotaRef.current?.();
+        routerRef.current?.replace('/dashboard');
       } else if (paymentStatus === 'failed') {
         alert("Payment Failed. Please check payment details and try again.");
-        router.replace('/dashboard');
+        routerRef.current?.replace('/dashboard');
       } else if (upgradeTrigger === 'true') {
         setShowUpgradeModal(true);
       }
@@ -599,23 +649,14 @@ export default function DashboardPage() {
 
     return () => {
       clearInterval(bgPoll);
-      
       // Unsubscribe from all real-time subscriptions
       for (const fn of unsubFns) { try { fn(); } catch {} }
-
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('online', updateConnection);
-        window.removeEventListener('offline', updateConnection);
-        const nav = navigator as any;
-        const conn = nav ? (nav.connection || nav.mozConnection || nav.webkitConnection) : null;
-        if (conn) conn.removeEventListener('change', updateConnection);
-      }
     };
-  }, [session?.user?.id, loadCurrencyAndGeo, router]);
+  }, [isAuthenticated, session?.user?.id]);
 
   useEffect(() => {
     if (showUpgradeModal) {
-      fetchUserOffers();
+      fetchUserOffersRef.current?.();
     }
   }, [showUpgradeModal]);
 
