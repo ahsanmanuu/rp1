@@ -45,8 +45,8 @@ const HAS_STRONG_PROVIDER = !!(process.env.OPENROUTER_API_KEY || process.env.GEM
 // model can reasonably process (Gemini 2.5 Flash supports 1M+ context).
 const WINDOW_HEAD = HAS_STRONG_PROVIDER ? 500000 : 120000;
 const WINDOW_TAIL = HAS_STRONG_PROVIDER ? 150000 : 30000;
-const PASS_TIMEOUT_MS = 420_000;
-const RETRY_TIMEOUT_MS = 180_000;
+const PASS_TIMEOUT_MS = 10_000;
+const RETRY_TIMEOUT_MS = 5_000;
 
 const AI_MODEL_OVERRIDE = process.env.OPENROUTER_API_KEY
   ? 'google/gemini-2.5-flash-001'

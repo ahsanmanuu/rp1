@@ -157,43 +157,7 @@ export async function POST(req: Request) {
     let usedOriginalTemplate = false;
 
     if (modelToUse) {
-      // ── AI MODULAR MAPPING (doc2latex-modular agent) ──────────────────
-      // Client-extracted DOC2LATEX projects get three scoped AI passes
-      // (floats/sections/metadata) producing modular .tex files + a
-      // deterministically composed main.tex. No aiVerdict required — the
-      // AI mapping builds its own verdict from the structured body.
-      // Any failure falls through to the deterministic assembler.
-      let usedAiModular = false;
-      const projectType = String(structured.projectType || (project as any).projectType || '');
-      const isDoc2Latex = projectType === 'DOC2LATEX' ||
-        (Array.isArray(modelToUse.body) && modelToUse.body.length > 0 &&
-         (modelToUse.body.some((n: any) => n.type === 'heading' || n.type === 'figure' || n.type === 'table' || n.type === 'algorithm')));
-      if (isDoc2Latex) {
-        try {
-          const { runModularAiMapping } = await import('@/lib/ai-modular-mapping');
-          const mapped = await runModularAiMapping({
-            structured: modelToUse,
-            templateId: mapLegacyTemplateId(templateId),
-            templateMainTex,
-            userId: session.user.id,
-            userEmail: session.user.email || undefined,
-            projectId,
-          });
-          if (mapped) {
-            fullLatex = mapped.mainTex;
-            extractedComponents = Object.fromEntries(mapped.files.map((f) => [f.path, f.content]));
-            usedAiModular = true;
-            console.log(`[GENERATE-LATEX] AI modular mapping produced ${mapped.files.length} file(s) (model ${mapped.model}, ${mapped.rejected} rejected)`);
-          } else {
-            console.warn('[GENERATE-LATEX] AI modular mapping returned no viable files — using deterministic assembler.');
-          }
-        } catch (modularErr: any) {
-          console.warn('[GENERATE-LATEX] AI modular mapping failed, falling back to assembler:', modularErr?.message || modularErr);
-        }
-      }
-
-      if (!usedAiModular) {
-        console.log(`[GENERATE-LATEX] Assembling from Structured Model...`);
+      console.log(`[GENERATE-LATEX] Fast assembling from Structured Model for template: ${templateId}...`);
 
       // Refresh stats from live body before assembling
       if (modelToUse.body && Array.isArray(modelToUse.body)) {
@@ -206,7 +170,6 @@ export async function POST(req: Request) {
       const assembled = ModularLatexAssembler.assemble(modelToUse, mapLegacyTemplateId(templateId), templateMainTex);
       fullLatex = assembled.mainTex;
       extractedComponents = assembled.files;
-      }
     } else if (rawHtml) {
       console.log(`[GENERATE-LATEX] First-pass extraction required...`);
       const { DeepDocumentParser } = await import('@/lib/deep-parser');
