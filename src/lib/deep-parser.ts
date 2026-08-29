@@ -364,7 +364,7 @@ export class DeepDocumentParser {
               signalCount >= 2 || (hasEqNum && hasRelOp && opCount >= 1)
             );
             if (isRealEquation && clean.length < 140) {
-              result.body.push({ type: 'equation', text: clean });
+              result.body.push({ type: 'equation', text: clean, latex: clean });
               continue;
             }
           }
@@ -528,6 +528,55 @@ export class DeepDocumentParser {
     // Phase 3 & 4: Deep Extraction & Order Preservation
     this.Phase4_deepExtract(manifest, result, mathBlocks, rawHtmlForCitations);
 
+    // ── UNIVERSAL REFERENCE RESCUE PASS ────────────────────────────────────
+    // If landmarkScan did not detect the reference section (e.g. non-standard heading markup,
+    // table format, or styled paragraph), find any heading in result.body matching
+    // References/Bibliography and rescue all trailing items into result.references.
+    if (result.references.length === 0) {
+      const isRefHeadingText = (t: string): boolean =>
+        /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:references?|bibliography|works\s+cited|literature\s+cited|references\s*(?:and|&)\s*notes|reference\s+list)(?:\s*[:.\-–—]|\s*<[^>]*>)*$/i.test(t.trim());
+      
+      const isPostRefText = (t: string): boolean =>
+        /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:acknowledgments?|declarations?|ethics\s+(?:approval|statement)|conflict\s+of\s+interest|competing\s+interests|funding|data\s+availability|authors?\s+contributions?|supplementary|appendix|appendices|supporting|biography|author\s+biography|about\s+the\s+author)\b/i.test(t.trim());
+
+      const refHeadingIdx = result.body.findIndex(n => n.type === 'heading' && n.text && isRefHeadingText(n.text));
+      if (refHeadingIdx !== -1) {
+        const rescuedRaw: string[] = [];
+        let postIdx = result.body.length;
+        for (let j = refHeadingIdx + 1; j < result.body.length; j++) {
+          const n = result.body[j];
+          if (n.type === 'heading' && n.text && isPostRefText(n.text)) {
+            postIdx = j;
+            break;
+          }
+          if (n.type === 'paragraph' && n.text) {
+            const lines = n.text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+            rescuedRaw.push(...lines);
+          } else if (n.type === 'list' && Array.isArray((n as any).items)) {
+            rescuedRaw.push(...(n as any).items);
+          }
+        }
+
+        rescuedRaw.forEach(refText => {
+          const cleanText = refText.replace(/[\u00A0\u202F\u2009\u200B\uFEFF]/g, ' ').trim();
+          if (cleanText.length < 5) return;
+          if (isRefHeadingText(cleanText)) return;
+
+          const isNew = DeepDocumentParser.isNewReferenceStart(cleanText, result.references.length === 0);
+          if (isNew || result.references.length === 0) {
+            result.references.push(cleanText);
+          } else {
+            result.references[result.references.length - 1] += " " + cleanText;
+          }
+        });
+
+        // Remove the rescued reference nodes from body so they aren't rendered as standard body paragraphs
+        if (result.references.length > 0) {
+          result.body.splice(refHeadingIdx, postIdx - refHeadingIdx);
+        }
+      }
+    }
+
     // Phase 4.5: NLP Metadata Enrichment
     const allDocText = result.body.map(n => n.text).join(' ');
     if (result.keywords.length === 0) {
@@ -594,14 +643,20 @@ export class DeepDocumentParser {
     result.body = groupedBody;
 
     // ── UNIVERSAL FIGURE RECONCILIATION PASS ────────────────────────────────
-    // Guarantee that every image present in the document HTML is represented
-    // as a figure/chart node in result.body so it is emitted into the LaTeX code.
+    // Guarantee that genuine content images present in the document HTML are represented
+    // as figure/chart nodes in result.body without resurrecting decorative header/footer logos.
     try {
       const allImgElements = Array.from(doc.querySelectorAll('img')) as Element[];
       const allImageSrcs = new Set<string>();
+      const decorativeImages = ((result as any)._decorativeImages as Set<string>) || new Set<string>();
       for (const img of allImgElements) {
         const src = (img.getAttribute('src') || img.getAttribute('data-src') || '').trim();
-        if (src && !src.startsWith('data:') && !/logo|icon|banner|watermark|divider|spacer|signature|qrcode/i.test(src)) {
+        const alt = (img.getAttribute('alt') || img.getAttribute('title') || '').trim();
+        const isDeco = decorativeImages.has(src.toLowerCase()) ||
+          /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer|decoration/i.test(src) ||
+          /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer|decoration/i.test(alt) ||
+          DeepDocumentParser.isGenericAltText(alt);
+        if (src && !src.startsWith('data:') && !isDeco) {
           allImageSrcs.add(src);
         }
       }
@@ -619,7 +674,7 @@ export class DeepDocumentParser {
 
       let autoFigIdx = 1;
       for (const src of allImageSrcs) {
-        if (!presentFigureIds.has(src.toLowerCase())) {
+        if (!presentFigureIds.has(src.toLowerCase()) && !decorativeImages.has(src.toLowerCase())) {
           const isChart = /rf_chart_|chart_pending_/i.test(src);
           result.body.push({
             type: isChart ? 'chart' : 'figure',
@@ -749,7 +804,8 @@ export class DeepDocumentParser {
 
       if (foundRefs) {
           const isPostRefHeader = (tagName.startsWith('h') || this.detectHeading(el, f.text, manifest) !== null || /^[IVXLCDM\d\.\s]+$/.test(f.text)) &&
-              /^(?:\d+\.?\s*)?(?:acknowledgments?|declarations?|ethics\s+(?:approval|statement)|conflict\s+of\s+interest|competing\s+interests|funding|data\s+availability|authors?\s+contributions?|supplementary|appendix|appendices|supporting|biography|author\s+biography|about\s+the\s+author)/i.test(lower.trim());
+              f.text.length < 100 && f.wordCount < 15 &&
+              /^(?:\d+\.?\s*)?(?:acknowledgments?|declarations?|ethics\s+(?:approval|statement)|conflict\s+of\s+interest|competing\s+interests|funding|data\s+availability|authors?\s+contributions?|supplementary|appendix|appendices|supporting|biography|author\s+biography|about\s+the\s+author)\b/i.test(lower.trim());
           
           if (isPostRefHeader) {
               foundRefs = false;
@@ -769,10 +825,11 @@ export class DeepDocumentParser {
       const refHeaderText = lower.replace(/&lt;[\s\S]*?&gt;/gi, ' ').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
       const isRefGuideline = /\b(?:within|content|main|guideline|style|how to|instruction|write|cite|citation|guidance|prepare)\b/i.test(refHeaderText);
       const isRefHeader = !isRefGuideline && (
-                            (tagName.startsWith('h') && (refHeaderText.includes('reference') || refHeaderText.includes('bibliography'))) ||
-                            (refHeaderText.length < 60 && /^(?:[\dIVX\.\s]+)?(?:references?|bibliography|works cited|literature cited)(?:\s*(?:and|&|source|notes|material|cited|list|section|chapter)\b.*|[.:\s]*(?:[\d.]{1,4})?)$/i.test(refHeaderText))
-                          );
-      if (isRefHeader && i > elements.length * 0.15) {
+        /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:references?|bibliography|works\s+cited|literature\s+cited|references\s*(?:and|&)\s*notes|reference\s+list)(?:\s*[:.\-–—]|\s*<[^>]*>)*$/i.test(refHeaderText) ||
+        ((tagName.startsWith('h') || el.querySelector('strong, b') !== null) && /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:references?|bibliography|works\s+cited|literature\s+cited)\b/i.test(refHeaderText)) ||
+        (refHeaderText.length < 60 && /^(?:[\dIVXLCDM\.\s]+)?(?:references?|bibliography|works\s+cited|literature\s+cited)(?:\s*(?:and|&|source|notes|material|cited|list|section|chapter)\b.*|[.:\s]*(?:[\d.]{1,4})?)$/i.test(refHeaderText))
+      );
+      if (isRefHeader && (i > elements.length * 0.1 || i >= 2)) {
           flush(i);
           foundRefs = true;
           continue;
@@ -1108,6 +1165,8 @@ export class DeepDocumentParser {
       // section (level 1) even if it carries a numbered "X.Y" prefix — a
       // "3.1" at document start is not a subsection of a phantom section.
       let lastHeadingLevel = 0;
+      let hasSeenFirstSectionOrAbstract = false;
+      let hasSeenReferences = false;
 
       for (let i = 0; i < manifest.length; i++) {
           const entry = manifest[i];
@@ -1125,6 +1184,7 @@ export class DeepDocumentParser {
               result.title = text;
           }
           else if (entry.role === 'abstract') {
+              hasSeenFirstSectionOrAbstract = true;
               result.abstract += text.replace(/^(?:abstract|summary)\s*[:.\u2013\u2014\u2212\-\—\–]*/i, '').trim() + " ";
           }
           else if (entry.role === 'keywords') {
@@ -1288,6 +1348,7 @@ export class DeepDocumentParser {
               }
 
               if (entry.role === 'section') {
+                  hasSeenFirstSectionOrAbstract = true;
                   // UNIVERSAL: Check for embedded heading flag set in Phase2
                   const embeddedHeading = entry.elements[0] && (entry.elements[0] as any).__embeddedHeading;
                   if (embeddedHeading) {
@@ -1494,7 +1555,11 @@ export class DeepDocumentParser {
                   if (!src) continue;
 
                   let figCaption = entry.caption;
-                  if (!figCaption) figCaption = img.getAttribute('alt') || img.getAttribute('title') || '';
+                  const rawAlt = (img.getAttribute('alt') || img.getAttribute('title') || '').trim();
+                  const isAltDeco = !rawAlt || /logo|icon|header|banner|footer|decoration|watermark|bullet|spacer|signature|qrcode/i.test(rawAlt) || this.isGenericAltText(rawAlt);
+                  if (!figCaption && !isAltDeco && /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\b/i.test(rawAlt)) {
+                      figCaption = rawAlt;
+                  }
                   if (!figCaption) {
                       let sib = el0.nextElementSibling;
                       for (let h = 0; h < 5 && sib; h++, sib = sib.nextElementSibling) {
@@ -1507,16 +1572,18 @@ export class DeepDocumentParser {
                       }
                   }
 
-                  // FALSE-POSITIVE GUARD: an image with NO caption and NO
-                  // descriptive alt/title is almost always decorative (university
-                  // logo, bullet graphic, background, icon, watermark). It must
-                  // NOT be emitted as a figure node — otherwise it inflates the
-                  // figure count, the AI skeleton, and renders a fake "Figure N"
-                  // float in the PDF. The image file is still written to the
-                  // project directory, so nothing else is lost.
+                  // FALSE-POSITIVE GUARD: an image with NO caption
+                  // is almost always decorative (university logo, header banner, footer icon, bullet graphic, background, watermark).
+                  // When uncaptioned in the front-matter or footer region, it must NEVER be emitted as a body figure float.
                   if (!figCaption) {
-                      const decoHint = /logo|icon|header|banner|bullet|background|watermark|divider|spacer|signature|qr|qrcode/i.test(src);
-                      if (decoHint) continue;
+                      const isFrontMatterImage = !hasSeenFirstSectionOrAbstract;
+                      const isFooterImage = hasSeenReferences;
+                      const decoHint = isFrontMatterImage || isFooterImage || isAltDeco || /logo|icon|header|banner|bullet|background|watermark|divider|spacer|signature|qr|qrcode|footer/i.test(src);
+                      if (decoHint) {
+                          (result as any)._decorativeImages = (result as any)._decorativeImages || new Set<string>();
+                          (result as any)._decorativeImages.add(src.toLowerCase());
+                          continue;
+                      }
                       figCaption = /rf_chart_/i.test(src) ? 'Chart' : 'Figure';
                   }
                   
@@ -1642,21 +1709,33 @@ export class DeepDocumentParser {
               result.body.push({ type: 'list', items, listType: 'itemize' });
           }
           else if (entry.role === 'reference') {
-              const allItems: string[] = [];
+              hasSeenReferences = true;
+              const rawItems: string[] = [];
               entry.elements.forEach((el: Element) => {
                   const tag = el.tagName.toLowerCase();
                   if (tag === 'ul' || tag === 'ol') {
-                      const lis = Array.from(el.querySelectorAll('li')).map(li => li.textContent?.trim() || '').filter(t => t.length > 10);
-                      allItems.push(...lis);
+                      const lis = Array.from(el.querySelectorAll('li')).map(li => (li.textContent || '').trim()).filter(t => t.length > 5);
+                      rawItems.push(...lis);
+                  } else if (tag === 'table') {
+                      const rows = Array.from(el.querySelectorAll('tr')).map(tr => (tr.textContent || '').trim()).filter(t => t.length > 5);
+                      rawItems.push(...rows);
                   } else {
-                      const text = el.textContent?.trim() || '';
-                      if (text.length > 10) allItems.push(text);
+                      const htmlWithBr = el.innerHTML.replace(/<br\s*\/?>/gi, '\n');
+                      const text = el.textContent || '';
+                      if (htmlWithBr.includes('\n')) {
+                        const lines = htmlWithBr.replace(/<[^>]*>/g, '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                        rawItems.push(...lines);
+                      } else if (text.trim().length > 5) {
+                        rawItems.push(text.trim());
+                      }
                   }
               });
 
-              allItems.forEach((refText) => {
-                  const cleanText = refText.trim();
+              rawItems.forEach((refText) => {
+                  const cleanText = refText.replace(/[\u00A0\u202F\u2009\u200B\uFEFF]/g, ' ').trim();
                   if (cleanText.length < 5) return;
+                  if (/^(?:[\dIVX\.\s]+)?(?:references?|bibliography|works cited|literature cited)\s*[:.\-–—]?$/i.test(cleanText)) return;
+
                   const isNew = DeepDocumentParser.isNewReferenceStart(cleanText, result.references.length === 0);
                   if (isNew || result.references.length === 0) {
                       result.references.push(cleanText);
@@ -1670,51 +1749,38 @@ export class DeepDocumentParser {
       result.keywords = result.keywords.map(k => k.replace(/^[\s:.\-–—−\u2013\u2014]+/, '').trim()).filter(Boolean);
   }
 
-  private static isNewReferenceStart(line: string, _isFirst: boolean): boolean {
+  private static isNewReferenceStart(line: string, isFirst: boolean): boolean {
     const trimmed = line.trim();
-    if (trimmed.length < 10) return false;
+    if (trimmed.length < 5) return false;
+    if (isFirst) return true;
 
-    // 1. Matches numeric prefix: [1], 1., 1), [Author2020]
-    // If it starts with a clear numbered or bracketed prefix inside the reference block, it is almost certainly a new reference start.
-    const hasNumberedPrefix = /^\[?\d+\]?[\dots\-\t\s]+/.test(trimmed) || /^\[?\d+\]?[\.\-\t\s]+/.test(trimmed) || /^\[[\w\-]+\]\s*\S/.test(trimmed);
-    if (hasNumberedPrefix) return true;
-
-    // Safety check: a real reference almost always contains a year, quotes, or academic publication keywords.
-    // If none of these are present, it is highly likely instructional text or name list examples.
-    const hasYear = /\b(19|20)\d{2}\b/.test(trimmed);
-    const hasQuotes = /[“”"'\`‘]/.test(trimmed);
-    const hasRefKeywords = /\b(?:vol|volume|no|issue|pp|pages|page|press|university|dept|department|journal|proceedings|proc|conf|conference|transactions|trans|ieee|acm|elsevier|springer|doi|https?|url|www|unpublished|submitted|to\s+be\s+published|in\s+press)\b/i.test(trimmed);
-    
-    if (!hasYear && !hasQuotes && !hasRefKeywords) {
-      return false;
-    }
-
-    // 1. Matches numeric prefix: [1], 1., 1)
-    if (/^\[?\d+\]?[\dots\-\t\s]+/.test(trimmed) || /^\[?\d+\]?[\.\-\t\s]+/.test(trimmed)) return true;
-
-    // 2. Common continuation check: if it starts with lowercase or continuation word, it is NOT a new reference
-    if (/^[a-z]/.test(trimmed)) return false;
-    if (/^(?:vol|no|pp|pages|page|issue|doi|https?|url|journal|proceedings|press|university|edited|editor|editors|in|and|of|for|with|by|at|on|from|to|the|a|an)\b/i.test(trimmed)) return false;
-    if (/^[&,.;\-:\/“"']/.test(trimmed)) return false;
-
-    // 3. Author patterns:
-    // - LastName, F. or LastName, First (including Unicode accents)
-    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,25},\s+[A-Z\u00C0-\u024F\u1E00-\u1EFF][a-z\u00C0-\u024F\u1E00-\u1EFF]?\.?\b/.test(trimmed)) return true;
-    // - LastName F. / LastName F.M. / LastName F.M.,
-    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,25}\s+[A-Z\u00C0-\u024F\u1E00-\u1EFF](?:\.[A-Z\u00C0-\u024F\u1E00-\u1EFF])*\.?\s*(?:,|\s|$)/.test(trimmed)) return true;
-    // - LastName et al.
-    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,25}\s+et\s+al\b/i.test(trimmed)) return true;
-    // - FirstName LastName / FirstName M. LastName,
-    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF][a-z\u00C0-\u024F\u1E00-\u1EFF]+\s+(?:[A-Z\u00C0-\u024F\u1E00-\u1EFF]\.?\s+)?[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,25}\s*(?:,|\s|$)/.test(trimmed)) return true;
-    // - Author (Year)
-    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,25}\s+\(\d{4}\)/.test(trimmed)) return true;
-    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,25}\s*,\s*[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,25}\s+\(\d{4}\)/.test(trimmed)) return true;
-
-    // Default fallback: if it starts with a Capital letter and has a year in the first 60 characters
-    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF]/.test(trimmed) && /\(\d{4}\)/.test(trimmed.substring(0, 60))) {
+    // 1. Matches numeric prefix: [1], 1., 1), (1), [12], 12., 12), [Smith2020], [SMI20]
+    if (/^(?:\[\s*\d+\s*\]|\d+[\.\)\:\-\t\s]+|\(\s*\d+\s*\)|\[[\w\-]+\])\s*\S/.test(trimmed)) {
       return true;
     }
 
+    // 2. Reject obvious continuation lines:
+    if (/^[a-z]/.test(trimmed)) return false;
+    if (/^(?:vol|volume|no|number|pp|pages|page|issue|doi|https?|url|www|isbn|issn|in|and|of|for|with|by|at|on|from|to|the|a|an)\b/i.test(trimmed)) return false;
+    if (/^[&,.;\-:\/“"'\(\)\[\]]/.test(trimmed)) return false;
+
+    // 3. Author name start patterns:
+    // - "LastName, F." / "LastName, First"
+    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,30},\s+[A-Z\u00C0-\u024F\u1E00-\u1EFF]/.test(trimmed)) return true;
+    // - "LastName F." / "LastName F.M."
+    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,30}\s+[A-Z\u00C0-\u024F\u1E00-\u1EFF](?:\.[A-Z\u00C0-\u024F\u1E00-\u1EFF])*\.?\s*(?:,|\s|$)/.test(trimmed)) return true;
+    // - "LastName et al."
+    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,30}\s+et\s+al\b/i.test(trimmed)) return true;
+    // - "FirstName LastName" / "F. LastName" / "F. M. LastName"
+    if (/^(?:[A-Z\u00C0-\u024F\u1E00-\u1EFF]\.?\s+){1,2}[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,30}\s*(?:,|\s|$)/.test(trimmed)) return true;
+    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF][a-z\u00C0-\u024F\u1E00-\u1EFF]+\s+(?:[A-Z\u00C0-\u024F\u1E00-\u1EFF]\.?\s+)?[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,30}\s*(?:,|\s|$)/.test(trimmed)) return true;
+    // - "Author (Year)" or "Author, Author (Year)"
+    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF\-']{1,30}.*?\b(19|20)\d{2}\b/.test(trimmed.substring(0, 100))) return true;
+
+    // 4. Any line starting with a capital letter that contains a year (19xx or 20xx) or quotation marks
+    if (/^[A-Z\u00C0-\u024F\u1E00-\u1EFF]/.test(trimmed) && (/\b(19|20)\d{2}\b/.test(trimmed) || /[“”"'\`‘]/.test(trimmed))) {
+      return true;
+    }
 
     return false;
   }
@@ -2037,6 +2103,15 @@ export class DeepDocumentParser {
 
   private static cleanCaption(s: string): string {
     return s.replace(/&lt;[\s\S]*?&gt;/gi, ' ').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  private static isGenericAltText(caption: string): boolean {
+    if (!caption) return true;
+    const lower = caption.trim().toLowerCase();
+    return /^(?:a\s+)?(?:graph|chart|diagram|plot|picture|image|photo|screenshot|figure|logo|banner|icon|header|footer|decoration|watermark)\s+(?:of|showing|depicting|illustrating)/i.test(lower) ||
+           /^(?:graph|chart|diagram|plot)\s+showing/i.test(lower) ||
+           /^(?:a\s+)?(?:red|blue|green|black|white)\s+(?:and|or|colored|colour)/i.test(lower) ||
+           /^(?:logo|icon|banner|header|footer|decoration|watermark|bullet|divider|spacer|signature|qrcode)$/i.test(lower);
   }
 
   private static tableHtmlDimensions(html: string): { rowCount: number; colCount: number } {

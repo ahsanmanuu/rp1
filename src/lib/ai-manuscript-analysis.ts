@@ -901,6 +901,7 @@ export function applyStructureCorrections(
       newRefs.push(t);
     }
     deepData.references = [...parserRefs, ...newRefs].slice(0, 250);
+    if (deepData.stats) deepData.stats.referenceCount = deepData.references.length;
     if (newRefs.length > 0) applied.push('references');
   }
 

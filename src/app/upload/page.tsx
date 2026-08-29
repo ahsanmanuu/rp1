@@ -1308,9 +1308,8 @@ function UploadContent() {
                     return {
                       wordCount:       projectData.wordCount       || s.wordCount       || 0,
                       charCount:       projectData.charCount       || s.charCount       || 0,
-                      // Images: AI verdict when present; else DB file list is most
-                      // accurate (actual saved assets)
-                      imageCount:      aiCount('figures') ?? Math.max(bodyFigureCount, (projectData.files?.filter((f: any) => f.fileType === 'image' || /^rf_/i.test(f.filename)).length || 0), s.imageCount || 0, projectData.imageCount || 0),
+                      // Images: live body figure count is authoritative when body exists
+                      imageCount:      hasBody ? bodyFigureCount : (aiCount('figures') ?? s.imageCount ?? projectData.imageCount ?? 0),
                       chartCount:      aiCount('charts')     ?? (hasBody ? bodyChartCount      : (s.chartCount      || 0)),
                       tableCount:      aiCount('tables')     ?? (hasBody ? bodyTableCount      : (s.tableCount      || 0)),
                       equationCount:   aiCount('equations')  ?? (hasBody ? bodyEquationCount   : (s.equationCount   || 0)),

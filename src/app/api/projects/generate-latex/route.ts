@@ -191,17 +191,22 @@ export async function POST(req: Request) {
             for (const img of n.images) if (img.src) existingFigIds.add(String(img.src).toLowerCase());
           }
         }
-        let figAutoSeq = (modelToUse.stats?.imageCount || 0) + 1;
-        for (const fig of figureFiles) {
-          const safeName = String(fig.name).replace(/[^a-zA-Z0-9._-]/g, '_');
-          if (!existingFigIds.has(safeName.toLowerCase()) && !existingFigIds.has(String(fig.name).toLowerCase())) {
-            const isChart = /rf_chart_|chart_pending_/i.test(safeName);
-            modelToUse.body.push({
-              type: isChart ? 'chart' : 'figure',
-              id: safeName,
-              caption: isChart ? `Chart ${figAutoSeq++}` : `Figure ${figAutoSeq++}`
-            });
-            existingFigIds.add(safeName.toLowerCase());
+        const hasAnyFiguresInModel = modelToUse.body.some((n: any) => n.type === 'figure' || n.type === 'image' || n.type === 'figure-group' || n.type === 'chart');
+        if (!hasAnyFiguresInModel) {
+          let figAutoSeq = (modelToUse.stats?.imageCount || 0) + 1;
+          for (const fig of figureFiles) {
+            const safeName = String(fig.name).replace(/[^a-zA-Z0-9._-]/g, '_');
+            const isDeco = /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer/i.test(safeName);
+            if (isDeco) continue;
+            if (!existingFigIds.has(safeName.toLowerCase()) && !existingFigIds.has(String(fig.name).toLowerCase())) {
+              const isChart = /rf_chart_|chart_pending_/i.test(safeName);
+              modelToUse.body.push({
+                type: isChart ? 'chart' : 'figure',
+                id: safeName,
+                caption: isChart ? `Chart ${figAutoSeq++}` : `Figure ${figAutoSeq++}`
+              });
+              existingFigIds.add(safeName.toLowerCase());
+            }
           }
         }
       }
@@ -288,11 +293,30 @@ export async function POST(req: Request) {
       } catch {}
 
       const binaryNames = Array.from(binaryNamesSet);
-      const figBins = binaryNames.filter(n => /^rf_fig_\d+\./i.test(n)).sort((a, b) => numIn(a) - numIn(b));
-      const chartBins = binaryNames.filter(n => /^(rf_chart_|chart_pending_)/i.test(n)).sort((a, b) => numIn(a) - numIn(b));
-      if (figBins.length === 0 && binaryNames.length > 0) {
-        figBins.push(...binaryNames.filter(n => /\.(png|jpe?g|webp|gif|svg|eps)$/i.test(n)));
+      // Collect valid body figure/chart IDs from modelToUse
+      const modelBodyFigIds: string[] = [];
+      const modelBodyChartIds: string[] = [];
+      if (modelToUse && Array.isArray(modelToUse.body)) {
+        for (const n of modelToUse.body) {
+          if (n.type === 'chart') {
+            if (n.id) modelBodyChartIds.push(String(n.id).trim());
+          } else if (n.type === 'figure' || n.type === 'image') {
+            if (n.id) modelBodyFigIds.push(String(n.id).trim());
+          } else if (n.type === 'figure-group' && Array.isArray(n.images)) {
+            for (const img of n.images) {
+              if (img.src) modelBodyFigIds.push(String(img.src).trim());
+            }
+          }
+        }
       }
+
+      const figBins = (modelBodyFigIds.length > 0 ? modelBodyFigIds : binaryNames)
+        .filter(n => !/logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer/i.test(n))
+        .filter(n => /^rf_fig_\d+\./i.test(n) || /\.(png|jpe?g|webp|gif|svg|eps)$/i.test(n))
+        .sort((a, b) => numIn(a) - numIn(b));
+      const chartBins = (modelBodyChartIds.length > 0 ? modelBodyChartIds : binaryNames)
+        .filter(n => /^(rf_chart_|chart_pending_)/i.test(n) || /chart/i.test(n))
+        .sort((a, b) => numIn(a) - numIn(b));
 
       if (figBins.length > 0 || chartBins.length > 0) {
         let fi = 0, ci = 0;
@@ -303,9 +327,14 @@ export async function POST(req: Request) {
           .sort((a, b) => numIn(a) - numIn(b));
         const apply = (content: string) => content.replace(incRe, (m, ref) => {
           const r = String(ref).trim();
-          if (/^rf_/i.test(r) && (figBins.includes(r) || chartBins.includes(r))) return m; // already correct
+          const baseName = path.basename(r);
+          // If the reference is already a known specific file in binaryNamesSet or figBins/chartBins, keep it!
+          if (binaryNamesSet.has(r) || binaryNamesSet.has(baseName) || figBins.includes(r) || chartBins.includes(r)) {
+            return m;
+          }
           const isChart = isChartRef(r);
           const pool = (isChart && chartBins.length > 0) ? chartBins : figBins;
+          if (pool.length === 0) return m;
           const idx = isChart && chartBins.length > 0 ? ci : fi;
           const target = pool[idx % pool.length];
           if (!target) return m;

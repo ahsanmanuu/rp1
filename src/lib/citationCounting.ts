@@ -15,6 +15,7 @@
 
 const REF_ENTRY_LINE_RE = /^\[\s*\d{1,3}\s*\]\s*[.\-–—\t\s]/;
 const REF_ENTRY_ONLY_RE = /^\[\s*\d{1,3}\s*\]\s*$/;
+const REF_AUTHOR_YEAR_LINE_RE = /^[A-Z\u00C0-\u024F][A-Za-z\u00C0-\u024F\-']{1,25}(?:,\s+[A-Z]\.?|\s+[A-Z]\.?| et al\b).*?\b(19|20)\d{2}\b/;
 
 /** Remove reference-list entries from HTML text used for in-text citation counting. */
 export function stripReferenceEntriesFromHtml(html: string): string {
@@ -23,8 +24,6 @@ export function stripReferenceEntriesFromHtml(html: string): string {
     .map(chunk => {
       const textOnly = chunk.replace(/<[^>]*>/g, '').replace(/&nbsp;|&amp;|&lt;|&gt;|&quot;/gi, ' ').trim();
       if (REF_ENTRY_ONLY_RE.test(textOnly) || REF_ENTRY_LINE_RE.test(textOnly)) {
-        // Chunk is entirely a reference entry — drop it. But a chunk may contain
-        // several entries on separate lines ("[1]. A\n[2]. B"): strip entry lines only.
         const lines = chunk.split('\n').map(line => {
           const lt = line.replace(/<[^>]*>/g, '').replace(/&nbsp;|&amp;|&lt;|&gt;|&quot;/gi, ' ').trim();
           if (REF_ENTRY_ONLY_RE.test(lt) || REF_ENTRY_LINE_RE.test(lt)) return '';
@@ -33,8 +32,6 @@ export function stripReferenceEntriesFromHtml(html: string): string {
         const rejoined = lines.join('\n').trim();
         return rejoined.length > 0 ? rejoined : '';
       }
-      // Chunk is a normal paragraph — also drop any embedded entry lines
-      // (mammoth can merge entries into one paragraph with newlines).
       return chunk
         .split('\n')
         .map(line => {
@@ -77,19 +74,13 @@ export function mergeCitations(text: string): string {
 }
 
 /**
- * Count unique in-text citation numbers from raw document HTML.
+ * Count unique in-text citation numbers and author-year citations from raw document HTML.
  * Reference-list entries are excluded; instructional bracket usage is excluded.
  * False positive exclusions: "[1.0]", "[Table 1]", "[Fig. 1]", "[n]",
  * mathematical ranges like "[0, 1]".
  */
 export function countCitationsFromHtml(rawHtml: string): number {
   const mergedHtml = mergeCitations(stripReferenceEntriesFromHtml(rawHtml || ''));
-  // Exclude brackets that are clearly NOT citations:
-  // - [N.N] (decimal numbers like [1.0], [2.5])
-  // - [Table N], [Fig. N], [Figure N], [Alg. N] (component references)
-  // - [n], [x], [i], [k] (single lowercase variable names)
-  // - [0, 1], [0.0, 1.0] (mathematical ranges)
-  // Then match standard citation patterns [N], [N,M], [N-M]
   const cleanedHtml = mergedHtml
     .replace(/\[\s*\d+\.\d+\s*\]/gi, '')          // [1.0], [2.5]
     .replace(/\[(?:table|fig(?:ure)?|alg(?:orithm)?|eq(?:uation)?)\.?\s*\d+\]/gi, '') // [Table 1], [Fig. 1]
@@ -123,5 +114,18 @@ export function countCitationsFromHtml(rawHtml: string): number {
       }
     }
   }
-  return seen.size;
+
+  // Count parenthetical author-year citations: (Smith, 2020), (Vaswani et al., 2017; Devlin et al., 2019)
+  const seenParenthetical = new Set<string>();
+  const parenMatches = cleanedHtml.match(/\(([A-Z][a-zA-Z\u00C0-\u017F]+(?: et al\.?)?(?:,\s*|\s+)(?:19|20)\d{2}(?:[a-z])?(?:;\s*[A-Z][a-zA-Z\u00C0-\u017F]+(?: et al\.?)?(?:,\s*|\s+)(?:19|20)\d{2}(?:[a-z])?)*)\)/g) || [];
+  for (const pm of parenMatches) {
+    const inner = pm.replace(/[()]/g, '');
+    const parts = inner.split(';').map(p => p.trim()).filter(Boolean);
+    for (const p of parts) {
+      const key = p.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (key) seenParenthetical.add(key);
+    }
+  }
+
+  return seen.size + seenParenthetical.size;
 }

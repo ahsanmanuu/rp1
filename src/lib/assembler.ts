@@ -727,6 +727,142 @@ export class LatexAssembler {
     return LatexAssembler.GENERIC_ALT_PATTERNS.some(p => p.test(lower));
   }
 
+  public static sanitizeMathToLatex(mathStr: string): string {
+    if (!mathStr) return '';
+    let s = mathStr;
+
+    // 1. HTML entities
+    s = s
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '\\&')
+      .replace(/&le;/g, '\\le ')
+      .replace(/&ge;/g, '\\ge ')
+      .replace(/&plusmn;/g, '\\pm ')
+      .replace(/&times;/g, '\\times ')
+      .replace(/&divide;/g, '\\div ')
+      .replace(/&ne;/g, '\\neq ')
+      .replace(/&asymp;/g, '\\approx ')
+      .replace(/&infin;/g, '\\infty ')
+      .replace(/&sum;/g, '\\sum ')
+      .replace(/&int;/g, '\\int ')
+      .replace(/&radic;/g, '\\sqrt ')
+      .replace(/&part;/g, '\\partial ');
+
+    // 2. Unicode math operators and symbols -> standard LaTeX
+    const UNICODE_MATH_MAP: [RegExp, string][] = [
+      [/≤/g, '\\le '],
+      [/≥/g, '\\ge '],
+      [/≠/g, '\\neq '],
+      [/≈/g, '\\approx '],
+      [/≡/g, '\\equiv '],
+      [/∼/g, '\\sim '],
+      [/≪/g, '\\ll '],
+      [/≫/g, '\\gg '],
+      [/∝/g, '\\propto '],
+      [/∈/g, '\\in '],
+      [/∉/g, '\\notin '],
+      [/⊂/g, '\\subset '],
+      [/⊆/g, '\\subseteq '],
+      [/⊃/g, '\\supset '],
+      [/⊇/g, '\\supseteq '],
+      [/±/g, '\\pm '],
+      [/∓/g, '\\mp '],
+      [/×/g, '\\times '],
+      [/÷/g, '\\div '],
+      [/·/g, '\\cdot '],
+      [/∘/g, '\\circ '],
+      [/°/g, '^\\circ '],
+      [/∧/g, '\\land '],
+      [/∨/g, '\\lor '],
+      [/¬/g, '\\neg '],
+      [/∀/g, '\\forall '],
+      [/∃/g, '\\exists '],
+      [/∅/g, '\\emptyset '],
+      [/∪/g, '\\cup '],
+      [/∩/g, '\\cap '],
+      [/∑/g, '\\sum '],
+      [/∏/g, '\\prod '],
+      [/∫/g, '\\int '],
+      [/∬/g, '\\iint '],
+      [/∭/g, '\\iiint '],
+      [/∮/g, '\\oint '],
+      [/√/g, '\\sqrt '],
+      [/∞/g, '\\infty '],
+      [/∂/g, '\\partial '],
+      [/∇/g, '\\nabla '],
+      [/→/g, '\\to '],
+      [/←/g, '\\gets '],
+      [/⇒/g, '\\Rightarrow '],
+      [/⇐/g, '\\Leftarrow '],
+      [/⇔/g, '\\Leftrightarrow '],
+      [/↦/g, '\\mapsto '],
+      [/α/g, '\\alpha '],
+      [/β/g, '\\beta '],
+      [/γ/g, '\\gamma '],
+      [/δ/g, '\\delta '],
+      [/ε/g, '\\varepsilon '],
+      [/ζ/g, '\\zeta '],
+      [/η/g, '\\eta '],
+      [/θ/g, '\\theta '],
+      [/ι/g, '\\iota '],
+      [/κ/g, '\\kappa '],
+      [/λ/g, '\\lambda '],
+      [/μ/g, '\\mu '],
+      [/ν/g, '\\nu '],
+      [/ξ/g, '\\xi '],
+      [/π/g, '\\pi '],
+      [/ρ/g, '\\rho '],
+      [/σ/g, '\\sigma '],
+      [/τ/g, '\\tau '],
+      [/υ/g, '\\upsilon '],
+      [/φ/g, '\\phi '],
+      [/χ/g, '\\chi '],
+      [/ψ/g, '\\psi '],
+      [/ω/g, '\\omega '],
+      [/Γ/g, '\\Gamma '],
+      [/Δ/g, '\\Delta '],
+      [/Θ/g, '\\Theta '],
+      [/Λ/g, '\\Lambda '],
+      [/Ξ/g, '\\Xi '],
+      [/Π/g, '\\Pi '],
+      [/Σ/g, '\\Sigma '],
+      [/Υ/g, '\\Upsilon '],
+      [/Φ/g, '\\Phi '],
+      [/Ψ/g, '\\Psi '],
+      [/Ω/g, '\\Omega '],
+      [/²/g, '^2'],
+      [/³/g, '^3'],
+      [/¹/g, '^1'],
+      [/⁰/g, '^0'],
+      [/⁴/g, '^4'],
+      [/⁵/g, '^5'],
+      [/⁶/g, '^6'],
+      [/⁷/g, '^7'],
+      [/⁸/g, '^8'],
+      [/⁹/g, '^9'],
+      [/⁺/g, '^+'],
+      [/⁻/g, '^-'],
+      [/₀/g, '_0'],
+      [/₁/g, '_1'],
+      [/₂/g, '_2'],
+      [/₃/g, '_3'],
+      [/₄/g, '_4'],
+      [/₅/g, '_5'],
+      [/₆/g, '_6'],
+      [/₇/g, '_7'],
+      [/₈/g, '_8'],
+      [/₉/g, '_9'],
+      [/₊/g, '_+'],
+      [/₋/g, '_-'],
+    ];
+
+    for (const [rx, rep] of UNICODE_MATH_MAP) {
+      s = s.replace(rx, rep);
+    }
+    return s;
+  }
+
   public static cleanFigureCaption(rawCaption: string): string {
     if (!rawCaption) return '';
     
@@ -918,7 +1054,7 @@ export class LatexAssembler {
       case 'algorithm':
         return LatexAssembler.assembleAlgorithm(node, mathBlocks);
       case 'equation': {
-        const latex = (node.latex || "").trim();
+        const latex = (node.latex || (node as any).text || "").trim();
         if (!latex) return "";
         let finalContent = latex;
         // Strip wrapping $ signs if present
@@ -932,9 +1068,9 @@ export class LatexAssembler {
         }
         
         // UNROLL MARKERS: Equations might still have markers from the parser
-        finalContent = finalContent.replace(/MATHBLOCKX(\d+)XMARKER/g, (match, idx) => {
+        finalContent = finalContent.replace(/MATHBLOCKX(\d+)XMARKER/g, (match: string, idx: string) => {
             const entry = mathBlocks[parseInt(idx)];
-            return typeof entry === 'string' ? entry : (entry?.latex || "");
+            return typeof entry === 'string' ? entry : (entry?.latex || entry?.tex || entry?.raw || "");
         });
 
         // Strip trailing plaintext equation numbers like (1), [1], \left( 3 \right), \tag{3} universally
@@ -964,10 +1100,15 @@ export class LatexAssembler {
         // Force conversion of \[ ... \] or $$ ... $$ to standard format
         finalContent = finalContent.replace(/^\\\[|\\\]$|^\$\$|\$\$$/g, '').trim();
 
-        const lines = finalContent.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        // Convert unicode math and HTML entities into standard LaTeX math commands
+        finalContent = LatexAssembler.sanitizeMathToLatex(finalContent);
+
+        const lines = finalContent.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
         const activeEnv = envWrapper || 'equation';
-        if (lines.length > 1 && activeEnv !== 'display') {
+        if (lines.length > 1 && activeEnv !== 'display' && !activeEnv.startsWith('align')) {
             return `\n\\begin{${activeEnv}}\n\\begin{aligned}\n${lines.join(' \\\\\n')}\n\\end{aligned}\n${labelStr}\\end{${activeEnv}}\n`;
+        } else if (lines.length > 1 && activeEnv.startsWith('align')) {
+            return `\n\\begin{${activeEnv}}\n${lines.join(' \\\\\n')}\n${labelStr}\\end{${activeEnv}}\n`;
         } else if (activeEnv === 'display') {
             return `\n\\[\n${finalContent}\n${labelStr}\\]\n`;
         } else {
@@ -1352,15 +1493,17 @@ export class LatexAssembler {
   // "Smith"]; "Smith, J. (2020)" → ["Smith"]. In-text parenthetical citations
   // always cite the SURNAME ("(Smith et al., 2021)"), so aliasing only the
   // first word leaves those cites with no bibitem — the "[?]" bug.
+  // Extract all potential author surnames from the author segment of a reference string.
+  // Handles "Smith, J.", "John Smith", "A. Vaswani, N. Shazeer", "Doe, J. & Watson, J."
   static surnameCandidates(cleanRef: string): string[] {
     const clean = cleanRef.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '').trim();
-    const authorSeg = (clean.split(',')[0] || '').replace(/\s+/g, ' ').trim();
-    const first = (authorSeg.match(/^([A-Z][a-zA-Z\u00C0-\u017F\-']+)/) || [])[1] || '';
-    const words = authorSeg.split(' ').filter(Boolean);
-    const last = words.length > 1
-      ? (words[words.length - 1].match(/^[A-Za-z\u00C0-\u017F\-']+/) || [])[0] || ''
-      : '';
-    return [...new Set([first, last].filter(Boolean))];
+    // Segment before title (often in quotes or before year/journal)
+    const authorSeg = clean.split(/[“"'\(\d]/)[0] || clean.split(',')[0] || '';
+    const words = authorSeg.replace(/[^A-Za-z\u00C0-\u017F\s\-']/g, ' ').split(/\s+/).filter(w => {
+      const lower = w.toLowerCase();
+      return w.length >= 2 && !['and', 'et', 'al', 'ed', 'eds', 'the', 'in', 'of', 'vol', 'pp', 'dr', 'prof'].includes(lower);
+    });
+    return [...new Set(words)];
   }
 
   // Resolves parenthetical citations like "(Smith et al., 2020)" in body text
@@ -1378,7 +1521,7 @@ export class LatexAssembler {
     }).filter(m => m.authors.length > 0 && m.year);
     if (refMeta.length === 0) return;
 
-    const rx = /\(([A-Z][a-zA-Z\u00C0-\u017F]+(?: et al\.?)?(?:,\s*|\s+)(?:19|20)\d{2}(?:[a-z])?(?:;\s*[A-Z][a-zA-Z\u00C0-\u017F]+(?: et al\.?)?(?:,\s*|\s+)(?:19|20)\d{2}(?:[a-z])?)*)\)/g;
+    const rx = /\(([A-Z][a-zA-Z\u00C0-\u017F]+(?: et al\.?| & [A-Z][a-zA-Z\u00C0-\u017F]+| and [A-Z][a-zA-Z\u00C0-\u017F]+)?(?:,\s*|\s+)(?:19|20)\d{2}(?:[a-z])?(?:;\s*[A-Z][a-zA-Z\u00C0-\u017F]+(?: et al\.?| & [A-Z][a-zA-Z\u00C0-\u017F]+| and [A-Z][a-zA-Z\u00C0-\u017F]+)?(?:,\s*|\s+)(?:19|20)\d{2}(?:[a-z])?)*)\)/g;
     const matchRef = (part: string): string | null => {
       const clean = part.trim();
       const author = (clean.match(/^([A-Za-z\u00C0-\u017F]+)/) || [])[1] || '';
@@ -1390,8 +1533,7 @@ export class LatexAssembler {
       if (exactHit) return exactHit.key;
       // AUTHOR-ONLY FALLBACK: when the DOCX cites "(Resnik, 1998)" but the
       // reference list says "(Resnik, 2005)" (year drift in the source), map to
-      // the unique reference by surname anyway. Without this the parenthetical
-      // engine emits \cite{Resnik1998}, which has no bibitem — "[?]" in the PDF.
+      // the unique reference by surname anyway.
       const authorHits = refMeta.filter(m => m.authors.includes(a));
       if (authorHits.length === 1) return authorHits[0].key;
       return null;
@@ -1577,15 +1719,6 @@ export class LatexAssembler {
             return `\\cite{${refs}}`;
         });
 
-        // 3.5 PARENTHETICAL CITATION ENGINE (e.g., (Smith, 2020; Doe et al., 2021))
-        // Guard: Check for strict 4-digit years (19xx or 20xx) to avoid false positives on parameters like (n = 50, p < 0.05)
-        sanitized = sanitized.replace(/\(([A-Z][a-zA-Z\u00C0-\u017F]+(?: et al\.?)?(?:,\s*|\s+)(?:19|20)\d{2}(?:[a-z])?(?:;\s*[A-Z][a-zA-Z\u00C0-\u017F]+(?: et al\.?)?(?:,\s*|\s+)(?:19|20)\d{2}(?:[a-z])?)*)\)/g, (match, inner) => {
-            const refs = inner.split(';').map((p: string) => {
-                // Strip non-alphanumeric to create a valid citation key (e.g. "Smithetal2020")
-                return p.replace(/[^\w]/g, '');
-            }).join(',');
-            return `\\cite{${refs}}`;
-        });
     } else if (options?.isBibItem) {
         // 🛡️ In Bibliography: strictly strip numeric labels like [1] to avoid double-labeling or cite loops
         sanitized = sanitized.replace(/^\[\s*\d+\s*\][\s\.]*/, "");
@@ -2275,30 +2408,73 @@ export class ModularLatexAssembler {
     const useBibtex = false;
       const buildBibEntry = (key: string, ref: string, idx: number): string => {
         const cleanRef = ref.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '').trim();
-        const authorMatch = cleanRef.match(/^([^,.]+)/);
-        const authorDisplay = (authorMatch ? authorMatch[1].replace(/["']/g, '') : `Author ${idx + 1}`).replace(/\s+/g, ' ').trim();
-        const yearMatch = cleanRef.match(/\b(19|20)\d{2}\b/);
-        const year = yearMatch ? yearMatch[0] : '2024';
-        const titleMatch = cleanRef.match(/["']([^"']+)["']/);
-        let title = titleMatch ? titleMatch[1] : '';
-        if (!title) {
-          const afterAuthor = cleanRef.replace(/^[^,]+,\s*/, '');
-          const journalIdx = afterAuthor.search(/(?:Journal|Proc|Conference|Rev\.|Transactions?)\s+[^,\n]+/i);
-          title = (journalIdx > 0 ? afterAuthor.substring(0, journalIdx) : afterAuthor).trim();
+        
+        // 1. Author extraction
+        let authorDisplay = `Author ${idx + 1}`;
+        const authorSeg = cleanRef.split(/[“"'\(\d]/)[0] || cleanRef.split(',')[0] || '';
+        const cleanAuthorSeg = authorSeg.replace(/[.,;:\-\s]+$/, '').trim();
+        if (cleanAuthorSeg.length > 2) {
+          authorDisplay = cleanAuthorSeg.replace(/["']/g, '');
         }
-        title = title.replace(/[.,;:]+$/, '').substring(0, 200);
-        const journalMatch = cleanRef.match(/(?:Journal|Proc|Conference|Rev\.|Transactions?)\s+[^,\n]+/i);
-        const journal = journalMatch ? journalMatch[0].replace(/[.:]+$/, '').replace(/\s+/g, ' ') : 'Journal';
-        const pagesMatch = cleanRef.match(/\bpp?\.\s*\d+[\d–-]*\b/i);
-        const pages = pagesMatch ? pagesMatch[0].replace(/\s+/g, ' ') : '';
-        const volumeMatch = cleanRef.match(/\bvol(?:ume)?\.?\s*\d+/i);
-        const volume = volumeMatch ? volumeMatch[0].replace(/\s+/g, ' ') : '';
-        return `@article{${key},
-  author = {${authorDisplay}},
-  title = {${title || 'Reference Title'}},
-  journal = {${journal}},
-  year = {${year}}${volume ? `,\n  volume = {${volume.replace(/^vol(?:ume)?\.?\s*/i, '')}}` : ''}${pages ? `,\n  pages = {${pages.replace(/^pp?\.?\s*/i, '')}}` : ''}
-}`;
+
+        // 2. Year extraction (exclude page numbers like pp. 1877-1901)
+        const withoutPages = cleanRef.replace(/\bpp?\.?\s*\d+[\d–-]*\b/i, '');
+        const allYears = Array.from(withoutPages.matchAll(/\b(19|20)\d{2}\b/g)).map(m => m[0]);
+        const year = allYears.length > 0
+          ? (/\(\d{4}\)/.test(cleanRef) ? (cleanRef.match(/\((\d{4})\)/)?.[1] || allYears[0]) : allYears[allYears.length - 1])
+          : '2024';
+
+        // 3. Title extraction
+        const quoteTitleMatch = cleanRef.match(/[“"']([^”"']{5,})[”"']/);
+        let title = quoteTitleMatch ? quoteTitleMatch[1] : '';
+        if (!title) {
+          // APA style: Author (Year). Title. Journal...
+          const afterYearMatch = cleanRef.match(/\((?:19|20)\d{2}[a-z]?\)\.?\s*([^.]+)\./);
+          if (afterYearMatch && afterYearMatch[1].trim().length > 5) {
+            title = afterYearMatch[1].trim();
+          } else {
+            const parts = cleanRef.split(/\.\s+/);
+            if (parts.length >= 2 && parts[1].length > 5 && !/^\(?\d{4}\)?$/.test(parts[1].trim())) {
+              title = parts[1];
+            } else {
+              const afterAuthor = cleanRef.substring(cleanAuthorSeg.length).replace(/^[\s,.:()]+/, '');
+              const journalIdx = afterAuthor.search(/(?:Journal|Proc|Conference|Rev\.|Transactions?|IEEE|ACM|Springer|Elsevier)\s+[^,\n]+/i);
+              title = (journalIdx > 0 ? afterAuthor.substring(0, journalIdx) : afterAuthor).trim();
+            }
+          }
+        }
+        title = title.replace(/[.,;:]+$/, '').substring(0, 200).trim();
+
+        // 4. Journal / Booktitle
+        const journalMatch = cleanRef.match(/(?:(?:IEEE|ACM|Springer|Elsevier|Nature|Science|Wiley)\s+)?(?:Journal|Transactions?|Letters?|Proc(?:\.|eedings)?|Conference|Symposium|Review|Rev\.)\s+[^,\n.\d]+/i);
+        let journal = journalMatch ? journalMatch[0].replace(/[.:]+$/, '').trim() : '';
+        if (!journal) {
+          if (/conference|proceedings|symposium/i.test(cleanRef)) {
+            journal = 'Conference Proceedings';
+          } else {
+            journal = 'Journal Article';
+          }
+        }
+
+        // 5. Volume, Pages, DOI
+        const volumeMatch = cleanRef.match(/\bvol(?:ume)?\.?\s*(\d+)/i);
+        const volume = volumeMatch ? volumeMatch[1] : '';
+        const pagesMatch = cleanRef.match(/\bpp?\.?\s*(\d+(?:[\d–-]+\d+)?)/i);
+        const pages = pagesMatch ? pagesMatch[1] : '';
+        const doiMatch = cleanRef.match(/\b10\.\d{4,9}\/[-._;()/:A-Za-z0-9]+/);
+        const doi = doiMatch ? doiMatch[0] : '';
+
+        const fields: string[] = [
+          `  author = {${authorDisplay}}`,
+          `  title = {${title || 'Reference Title'}}`,
+          `  journal = {${journal}}`,
+          `  year = {${year}}`
+        ];
+        if (volume) fields.push(`  volume = {${volume}}`);
+        if (pages) fields.push(`  pages = {${pages}}`);
+        if (doi) fields.push(`  doi = {${doi}}`);
+
+        return `@article{${key},\n${fields.join(',\n')}\n}`;
       };
 
       const seenBibKeys = new Set<string>();
