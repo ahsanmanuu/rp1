@@ -45,8 +45,8 @@ const HAS_STRONG_PROVIDER = !!(process.env.OPENROUTER_API_KEY || process.env.GEM
 // model can reasonably process (Gemini 2.5 Flash supports 1M+ context).
 const WINDOW_HEAD = HAS_STRONG_PROVIDER ? 500000 : 120000;
 const WINDOW_TAIL = HAS_STRONG_PROVIDER ? 150000 : 30000;
-const PASS_TIMEOUT_MS = 10_000;
-const RETRY_TIMEOUT_MS = 5_000;
+const PASS_TIMEOUT_MS = 120_000;
+const RETRY_TIMEOUT_MS = 60_000;
 
 const AI_MODEL_OVERRIDE = process.env.OPENROUTER_API_KEY
   ? 'google/gemini-2.5-flash-001'
@@ -421,7 +421,7 @@ function composeMainTex(
   templateMainTex: string | undefined,
   files: AiModularFile[],
 ): string {
-  const metadatas = files.filter((f) => f.path.startsWith('metadata/'));
+  const metadatas = files.filter((f) => f.path.startsWith('metadata/') && f.path.endsWith('.tex'));
   const isReferencesSection = (f: AiModularFile) => {
     const slugMatch = /sections\/\d+_(?:references|bibliography|works_cited|references_cited)\.tex$/i.test(f.path);
     if (slugMatch) return true;
@@ -429,10 +429,11 @@ function composeMainTex(
     return /^\\(?:section|chapter|subsection)\*?\s*\{\s*(?:References|Bibliography|REFERENCES|BIBLIOGRAPHY|Reference|Works\s+Cited)\s*\}(?:\s*\\label\{[^}]*\})?\s*$/i.test(trimmed);
   };
   const sections = files
-    .filter((f) => f.path.startsWith('sections/') && !isReferencesSection(f))
+    .filter((f) => f.path.startsWith('sections/') && f.path.endsWith('.tex') && !isReferencesSection(f))
     .sort((a, b) => a.path.localeCompare(b.path));
-  const floats = files.filter((f) => f.path.startsWith('floats/'));
+  const floats = files.filter((f) => f.path.startsWith('floats/') && f.path.endsWith('.tex'));
   const bib = files.find((f) => f.path === 'references/bibliography.tex');
+  const bibFile = files.find((f) => f.path === 'references/references.bib' || f.path === 'references.bib');
   const existingFloats = new Set(floats.map((f) => f.path));
 
   for (const f of sections) {
@@ -467,7 +468,12 @@ function composeMainTex(
   for (const f of floats) {
     if (!bodyJoined.includes(`\\input{${f.path}}`)) body.push(`\\input{${f.path}}`);
   }
-  if (bib) body.push(`\\input{references/bibliography.tex}`);
+  if (bib) {
+    body.push(`\\input{references/bibliography.tex}`);
+  } else if (bibFile) {
+    body.push(`\\bibliographystyle{plain}`);
+    body.push(`\\bibliography{references/references}`);
+  }
   body.push('\\end{document}');
 
   return `${preamble.join('\n')}\n\n${body.join('\n')}\n`;

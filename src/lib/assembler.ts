@@ -2273,85 +2273,58 @@ export class ModularLatexAssembler {
     // single pass. This also eliminates the duplicate references.bib /
     // references/references.bib files that confused project directories.
     const useBibtex = false;
-    if ((doc.references || []).length > 0) {
-      if (useBibtex) {
-        const bibKey = templateId === 'article_ieee' || (tpl?.assetFolder === 'ieee') ? 'IEEEtran'
-          : templateId.includes('acm') || (tpl?.assetFolder === 'acm') ? 'acm'
-          : templateId.includes('elsevier') || (tpl?.assetFolder === 'elsevier') ? 'elsarticle-num'
-          : templateId.includes('springer') || tpl?.publisher === 'Springer' ? 'llncs'
-          : (tpl?.mapping?.bibliographyStyle || 'plain');
-        const bibFileName = 'references';
-        const buildBibEntry = (key: string, ref: string, idx: number): string => {
-          const cleanRef = ref.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '').trim();
-          const authorMatch = cleanRef.match(/^([^,.]+)/);
-          const authorDisplay = (authorMatch ? authorMatch[1].replace(/["']/g, '') : `Author ${idx + 1}`).replace(/\s+/g, ' ').trim();
-          const yearMatch = cleanRef.match(/\b(19|20)\d{2}\b/);
-          const year = yearMatch ? yearMatch[0] : '2024';
-          const titleMatch = cleanRef.match(/["']([^"']+)["']/);
-          let title = titleMatch ? titleMatch[1] : '';
-          if (!title) {
-            const afterAuthor = cleanRef.replace(/^[^,]+,\s*/, '');
-            const journalIdx = afterAuthor.search(/(?:Journal|Proc|Conference|Rev\.|Transactions?)\s+[^,\n]+/i);
-            title = (journalIdx > 0 ? afterAuthor.substring(0, journalIdx) : afterAuthor).trim();
-          }
-          title = title.replace(/[.,;:]+$/, '').substring(0, 200);
-          const journalMatch = cleanRef.match(/(?:Journal|Proc|Conference|Rev\.|Transactions?)\s+[^,\n]+/i);
-          const journal = journalMatch ? journalMatch[0].replace(/[.:]+$/, '').replace(/\s+/g, ' ') : 'Journal';
-          const pagesMatch = cleanRef.match(/\bpp?\.\s*\d+[\d–-]*\b/i);
-          const pages = pagesMatch ? pagesMatch[0].replace(/\s+/g, ' ') : '';
-          const volumeMatch = cleanRef.match(/\bvol(?:ume)?\.?\s*\d+/i);
-          const volume = volumeMatch ? volumeMatch[0].replace(/\s+/g, ' ') : '';
-          return `@article{${key},
+      const buildBibEntry = (key: string, ref: string, idx: number): string => {
+        const cleanRef = ref.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '').trim();
+        const authorMatch = cleanRef.match(/^([^,.]+)/);
+        const authorDisplay = (authorMatch ? authorMatch[1].replace(/["']/g, '') : `Author ${idx + 1}`).replace(/\s+/g, ' ').trim();
+        const yearMatch = cleanRef.match(/\b(19|20)\d{2}\b/);
+        const year = yearMatch ? yearMatch[0] : '2024';
+        const titleMatch = cleanRef.match(/["']([^"']+)["']/);
+        let title = titleMatch ? titleMatch[1] : '';
+        if (!title) {
+          const afterAuthor = cleanRef.replace(/^[^,]+,\s*/, '');
+          const journalIdx = afterAuthor.search(/(?:Journal|Proc|Conference|Rev\.|Transactions?)\s+[^,\n]+/i);
+          title = (journalIdx > 0 ? afterAuthor.substring(0, journalIdx) : afterAuthor).trim();
+        }
+        title = title.replace(/[.,;:]+$/, '').substring(0, 200);
+        const journalMatch = cleanRef.match(/(?:Journal|Proc|Conference|Rev\.|Transactions?)\s+[^,\n]+/i);
+        const journal = journalMatch ? journalMatch[0].replace(/[.:]+$/, '').replace(/\s+/g, ' ') : 'Journal';
+        const pagesMatch = cleanRef.match(/\bpp?\.\s*\d+[\d–-]*\b/i);
+        const pages = pagesMatch ? pagesMatch[0].replace(/\s+/g, ' ') : '';
+        const volumeMatch = cleanRef.match(/\bvol(?:ume)?\.?\s*\d+/i);
+        const volume = volumeMatch ? volumeMatch[0].replace(/\s+/g, ' ') : '';
+        return `@article{${key},
   author = {${authorDisplay}},
-  title = {${title}},
+  title = {${title || 'Reference Title'}},
   journal = {${journal}},
   year = {${year}}${volume ? `,\n  volume = {${volume.replace(/^vol(?:ume)?\.?\s*/i, '')}}` : ''}${pages ? `,\n  pages = {${pages.replace(/^pp?\.?\s*/i, '')}}` : ''}
 }`;
-        };
-        const seenBibKeys = new Set<string>();
-        const bibEntries: string[] = [];
-        (doc.references || []).forEach((ref: string, idx: number) => {
-          // Key MUST match the in-text citation keys (`\cite{refN}`) produced by
-          // LatexAssembler.escape — otherwise every citation renders as `[?]`
-          // and the bibliography comes out empty (destroyed PDF layout).
-          let key = `ref${idx + 1}`;
-          const numMatch = ref.match(/^\[(\d+)\]/);
-          if (numMatch && parseInt(numMatch[1]) === idx + 1) key = `ref${numMatch[1]}`;
-          if (!seenBibKeys.has(key)) {
-            seenBibKeys.add(key);
-            bibEntries.push(buildBibEntry(key, ref, idx));
-          }
-          // Author-year alias entries are intentionally OMITTED here.
-          // Generating separate BibTeX entries for each author-year variant
-          // (e.g. Smith2020, Smithetal2020) causes natbib to render each as
-          // a separate \bibitem, producing TRIPLE duplicate bibliography entries
-          // in the compiled PDF. Numbered \cite{refN} citations resolve via the
-          // primary key only.
-        });
-        const bibContent = bibEntries.join('\n\n');
-        const refHeaderCmd = '';
-        files[`references/${bibFileName}.bib`] = bibContent;
-        files[`${bibFileName}.bib`] = bibContent;
-        files['references/bibliography.tex'] = `\n${refHeaderCmd}\\bibliographystyle{${bibKey}}\n\\bibliography{${bibFileName}}\n`;
-        header.push("\\input{references/bibliography.tex}");
-      } else {
-        const seenBibKeys = new Set<string>();
-        const bibItems: string[] = [];
-        (doc.references || []).forEach((ref: string, idx: number) => {
-          let key = `ref${idx + 1}`;
-          const numMatch = ref.match(/^\[(\d+)\]/);
-          if (numMatch && parseInt(numMatch[1]) === idx + 1) key = `ref${numMatch[1]}`;
-          if (seenBibKeys.has(key)) return;
-          seenBibKeys.add(key);
-          const cleanRef = ref.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '');
-          bibItems.push(`\\bibitem{${key}} ${LatexAssembler.escape(cleanRef, mathBlocks, { skipCitations: true, isBibItem: true })}`);
-        });
-        const refHeaderCmd = '';
-        const bibContent = `\n${refHeaderCmd}\\begin{thebibliography}{99}\n${bibItems.join('\n')}\n\\end{thebibliography}`;
-        files['references/bibliography.tex'] = bibContent;
-        header.push("\\input{references/bibliography.tex}");
-      }
-    }
+      };
+
+      const seenBibKeys = new Set<string>();
+      const bibItems: string[] = [];
+      const bibEntries: string[] = [];
+
+      (doc.references || []).forEach((ref: string, idx: number) => {
+        let key = `ref${idx + 1}`;
+        const numMatch = ref.match(/^\[(\d+)\]/);
+        if (numMatch && parseInt(numMatch[1]) === idx + 1) key = `ref${numMatch[1]}`;
+        if (seenBibKeys.has(key)) return;
+        seenBibKeys.add(key);
+
+        const cleanRef = ref.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '');
+        bibItems.push(`\\bibitem{${key}} ${LatexAssembler.escape(cleanRef, mathBlocks, { skipCitations: true, isBibItem: true })}`);
+        bibEntries.push(buildBibEntry(key, ref, idx));
+      });
+
+      const bibContent = `\n\\begin{thebibliography}{99}\n${bibItems.join('\n')}\n\\end{thebibliography}`;
+      files['references/bibliography.tex'] = bibContent;
+      header.push("\\input{references/bibliography.tex}");
+
+      // Also generate .bib files for DocIDE assets and external BibTeX usage
+      const bibFileContent = bibEntries.join('\n\n') + '\n';
+      files['references/references.bib'] = bibFileContent;
+      files['references.bib'] = bibFileContent;
 
     header.push("\\end{document}");
 

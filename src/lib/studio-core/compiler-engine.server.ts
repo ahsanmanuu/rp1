@@ -792,7 +792,13 @@ export async function runHardenedPipeline(
                   if (structuredModel && structuredModel.body && Array.isArray(structuredModel.body) && structuredModel.body.length > 0) {
                     const { ModularLatexAssembler } = await import('@/lib/assembler');
                     const { mapLegacyTemplateId } = await import('@/lib/templates/registry');
-                    const assembled = ModularLatexAssembler.assemble(structuredModel, mapLegacyTemplateId('generic_academic'));
+                    let tplId = 'generic_academic';
+                    try {
+                      const { prisma } = require('@/lib/prisma');
+                      const pData = await prisma.project.findUnique({ where: { id: projectId }, select: { templateName: true } }).catch(() => null);
+                      if (pData?.templateName) tplId = pData.templateName;
+                    } catch {}
+                    const assembled = ModularLatexAssembler.assemble(structuredModel, mapLegacyTemplateId(tplId));
                     if (assembled && assembled.files) {
                       const matchingKey = Object.keys(assembled.files).find(k => 
                         normalizePath(k) === norm || k.toLowerCase().endsWith(cand.toLowerCase())

@@ -1378,7 +1378,7 @@ ${commonInputs()}
 6. Every file must compile standalone inside a float — no document scaffolding, no \\section, no \\captionof, no structural commands (rule 4 of the universal rules).`;
     }
 
-    return `You are a world-class scholarly LaTeX typesetting engine with 20 years of experience in academic publishing (IEEE, ACM, Springer LNCS, Elsevier, Nature). Your job is to generate the front-matter LaTeX files and the bibliography file of a manuscript.
+    return `You are a world-class scholarly LaTeX typesetting engine with 20 years of experience in academic publishing (IEEE, ACM, Springer LNCS, Elsevier, Nature). Your job is to generate the front-matter LaTeX files and the bibliography files of a manuscript.
 
 ## YOUR TASK (scope: metadata)
 ${commonInputs()}
@@ -1393,7 +1393,9 @@ ${commonInputs()}
    \\bibitem{ref1}<verbatim entry 1>
    \\bibitem{ref2}<verbatim entry 2>
    \\end{thebibliography}
-   Rules: one \\bibitem per entry in input B's references array, IN ORDER, verbatim text. Strip any leading "[N]" / "N." / "N)" numbering prefix from each entry (the thebibliography environment numbers entries automatically — a kept "[1]" prefix would double-print). Key assignment: numbered-style documents → ref1, ref2, ... (matching the \\cite{refN} keys the section mapper emits); author-year documents → slug like {smith2020} per entry (first author surname lowercase + year, no punctuation — match how the section mapper emits \\cite for that entry). Never drop, merge, reword or reorder reference entries. If input B has an empty references array, omit the entire file.`;
+   Rules: one \\bibitem per entry in input B's references array, IN ORDER, verbatim text. Strip any leading "[N]" / "N." / "N)" numbering prefix from each entry (the thebibliography environment numbers entries automatically — a kept "[1]" prefix would double-print). Key assignment: numbered-style documents → ref1, ref2, ... (matching the \\cite{refN} keys the section mapper emits); author-year documents → slug like {smith2020} per entry (first author surname lowercase + year, no punctuation — match how the section mapper emits \\cite for that entry). Never drop, merge, reword or reorder reference entries.
+6. "references/references.bib" — the BibTeX representation of all references from input B's references array. Format each reference into valid @article / @inproceedings / @book / @misc with matching keys (ref1, ref2, ...).
+If input B has an empty references array, omit the bibliography files.`;
   },
   parseResponse(raw) {
     try {

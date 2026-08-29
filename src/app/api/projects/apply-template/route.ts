@@ -5,6 +5,7 @@ import path from 'path';
 import { autoHealLatex } from '@/lib/latex';
 import { DeepDocumentParser } from '@/lib/deep-parser';
 import { ModularLatexAssembler } from '@/lib/assembler';
+import { runModularAiMapping } from '@/lib/ai-modular-mapping';
 import { getTemplateById, mapLegacyTemplateId } from '@/lib/templates/registry';
 
 import { getServerSession } from "@/lib/auth-pb";
@@ -224,9 +225,36 @@ export async function POST(req: Request) {
           modelToUse.stats.imageCount = modelToUse.body.filter((n: any) => n.type === 'figure' || n.type === 'image' || n.type === 'figure-group').length || modelToUse.stats.imageCount;
         }
 
-        const assembled = ModularLatexAssembler.assemble(modelToUse, mapLegacyTemplateId(templateId), templateMainTex);
-        fullLatex = assembled.mainTex;
-        extractedComponents = assembled.files;
+        let aiModularSuccess = false;
+        try {
+          console.log(`[LATEX_SYNC] Attempting Phase 2 AI Modular Mapping for template: ${templateId}...`);
+          const aiResult = await runModularAiMapping({
+            structured: modelToUse,
+            templateId,
+            templateMainTex,
+            userId: session.user.id,
+            userEmail: session.user.email,
+            projectId
+          });
+          if (aiResult && aiResult.files && aiResult.files.length > 0) {
+            fullLatex = aiResult.mainTex;
+            extractedComponents = {};
+            for (const f of aiResult.files) {
+              extractedComponents[f.path] = f.content;
+            }
+            aiModularSuccess = true;
+            console.log(`[LATEX_SYNC] AI Modular Mapping succeeded with ${aiResult.files.length} files (${aiResult.model})`);
+          }
+        } catch (aiErr: any) {
+          console.warn(`[LATEX_SYNC] AI Modular Mapping failed, falling back:`, aiErr?.message || aiErr);
+        }
+
+        if (!aiModularSuccess) {
+          console.log(`[LATEX_SYNC] Assembling via deterministic ModularLatexAssembler...`);
+          const assembled = ModularLatexAssembler.assemble(modelToUse, mapLegacyTemplateId(templateId), templateMainTex);
+          fullLatex = assembled.mainTex;
+          extractedComponents = assembled.files;
+        }
     } else if (rawHtml) {
         console.log(`[LATEX_SYNC] Initial Extraction required (First-pass)...`);
         const parsedModel = DeepDocumentParser.parse(rawHtml, structured.mathBlocks || [], project.title, {}, rawXml);

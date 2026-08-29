@@ -251,6 +251,8 @@ const METADATA_PATHS = new Set([
   'metadata/abstract.tex',
   'metadata/keywords.tex',
   'references/bibliography.tex',
+  'references/references.bib',
+  'references.bib',
 ]);
 
 // Section files may \input our own verified float files (wiring floats into
@@ -364,6 +366,28 @@ export function sanitizeAiMetadataFile(raw: unknown, path: string): string | nul
 }
 
 /**
+ * Validates a BibTeX file emitted by doc2latex-modular (references/references.bib).
+ */
+export function sanitizeAiBibFile(raw: unknown, path: string): string | null {
+  if (path !== 'references/references.bib' && path !== 'references.bib' && !path.endsWith('.bib')) return null;
+  if (typeof raw !== 'string') return null;
+  let s = raw.trim();
+  s = s
+    .replace(/[\uFFFD]/g, '')
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/[\uE000-\uF8FF]/g, '')
+    .replace(/[\uFFFC-\uFFFE]/g, '')
+    .replace(/[\u2000-\u200A]/g, ' ')
+    .replace(/[\u202F\u00A0]/g, ' ')
+    .replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
+  if (s.length < 5 || s.length > 200000) return null;
+  if (!braceBalance(s)) return null;
+  return s;
+}
+
+/**
  * Normalizes a raw doc2latex-modular response into validated modular files.
  * `imageFiles` enables float verification for figure/chart fragments.
  */
@@ -402,6 +426,10 @@ export function normalizeModularFiles(
       out.push({ path, content: safe });
     } else if (path.endsWith('.tex')) {
       const safe = sanitizeAiMetadataFile(content, path);
+      if (!safe) { rejected++; continue; }
+      out.push({ path, content: safe });
+    } else if (path.endsWith('.bib') || path === 'references/references.bib' || path === 'references.bib') {
+      const safe = sanitizeAiBibFile(content, path);
       if (!safe) { rejected++; continue; }
       out.push({ path, content: safe });
     } else {
