@@ -141,11 +141,23 @@ function stripTags(html: string): string {
 }
 
 function cleanAuthorName(name: string): string {
-  return name
+  let n = name
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\((?:\d+\s*pt|bold|italic|title\s*case|single\s*column|line\s*spacing|affiliations?|institution)[^)]*\)/gi, '')
+    .replace(/\b(?:bold|italic|title\s*case)\b/gi, '')
     .replace(/\s+/g, ' ')
-    .replace(/[*†‡§¶#\d\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070]+$/g, '')
-    .replace(/^[*†‡§¶#\d\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070\s.]+/g, '')
+    .trim();
+
+  // Extract trailing affiliation markers: (1), [1], ¹, 1
+  const trailingMarkerMatch = n.match(/(?:[\s,]+)?(?:\(\s*([1-9\d,\s*†‡]+)\s*\)|\[\s*([1-9\d,\s*†‡]+)\s*\]|([\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070*†‡]+)|(?:\b|\s)([1-9]\d*(?:\s*,\s*[1-9]\d*)*))\s*$/);
+  if (trailingMarkerMatch) {
+    n = n.substring(0, trailingMarkerMatch.index).trim();
+  }
+
+  return n
+    .replace(/^[*†‡§¶#\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070\s.:)\-]+/g, '')
+    .replace(/[*†‡§¶#\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070]+$/g, '')
+    .replace(/^[\s,;()\-–—]+|[\s,;()\-–—]+$/g, '')
     .trim();
 }
 
@@ -814,7 +826,11 @@ export function applyStructureCorrections(
 
   // ── Title ────────────────────────────────────────────────────────────────
   if (verdict.title?.text && (verdict.title.confidence ?? 100) >= 55) {
-    const t = verdict.title.text.replace(/\s+/g, ' ').trim();
+    let t = verdict.title.text
+      .replace(/\((?:\d+\s*pt|bold|italic|title\s*case|single\s*column|line\s*spacing)[^)]*\)/gi, '')
+      .replace(/\s+/g, ' ')
+      .replace(/^[\s,;()\-–—]+|[\s,;()\-–—]+$/g, '')
+      .trim();
     if (t.length >= 4 && t.length <= 300) {
       const prev = deepData.title || '';
       deepData.title = t;
@@ -825,16 +841,34 @@ export function applyStructureCorrections(
   // ── Authors (with affiliations) ──────────────────────────────────────────
   if (verdict.authors && verdict.authors.length > 0) {
     const authors: AuthorInfo[] = [];
-    for (const a of verdict.authors) {
-      const name = cleanAuthorName(String(a?.name || '').trim());
+    for (let idx = 0; idx < verdict.authors.length; idx++) {
+      const a = verdict.authors[idx];
+      const rawName = String(a?.name || '').trim();
+      const name = cleanAuthorName(rawName);
       if (!name || name.length < 3) continue;
       if (/^(author|anonymous|unknown|n\/?a|et\.?\s?al\.?)$/i.test(name)) continue;
       if (/@/.test(name)) continue;
       const affs = (a?.affiliations || []).map(cleanAffiliation).filter(Boolean).slice(0, 3);
+
+      // Preserve existing affiliation IDs if parser already found them, or extract from rawName
+      const existingAut = deepData.authors?.find(ea => ea.name.toLowerCase() === name.toLowerCase());
+      let affIds = existingAut?.affiliationIds && existingAut.affiliationIds.length > 0
+        ? existingAut.affiliationIds
+        : (a as any)?.affiliationIds || (a as any)?.affilId ? [(a as any).affilId] : [];
+
+      if (!affIds || affIds.length === 0) {
+        const markerMatch = rawName.match(/(?:[\s,]+)?(?:\(\s*([1-9\d,\s*†‡]+)\s*\)|\[\s*([1-9\d,\s*†‡]+)\s*\]|([\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070*†‡]+)|(?:\b|\s)([1-9]\d*(?:\s*,\s*[1-9]\d*)*))\s*$/);
+        if (markerMatch) {
+          const rawIds = markerMatch[1] || markerMatch[2] || markerMatch[3] || markerMatch[4] || '';
+          const cleanedId = rawIds.replace(/\u00b9/g, '1').replace(/\u00b2/g, '2').replace(/\u00b3/g, '3').replace(/[^0-9,]/g, '').trim();
+          if (cleanedId) affIds = cleanedId.split(',').map(s => s.trim()).filter(Boolean);
+        }
+      }
+
       authors.push({
         name,
         affiliation: affs.length > 0 ? affs.join('; ') : undefined,
-        affiliationIds: [],
+        affiliationIds: affIds,
       });
     }
     if (authors.length > 0) {
@@ -872,7 +906,12 @@ export function applyStructureCorrections(
   // as "[?]"). AI entries that the parser missed are APPENDED after the parser's
   // list so the numbering stays stable.
   if (verdict.references && verdict.references.length > 0) {
-    const parserRefs = Array.isArray(deepData.references) ? deepData.references.slice() : [];
+    // Universal guideline/instructional noise filter for references
+    const isGuidelineNoise = (refText: string): boolean =>
+      /^(?:references\s+within\s+main\s+content|references\s+in\s+the\s+reference\s+list|example\s+of\s+list\s+of\s+references|guidelines?|instructions?|notes?|format|how\s+to\s+cite|citation\s+format|sample\s+references)/i.test(refText) ||
+      /^(?:•|·|\*|\-)\s+(?:enclose|where\s+appropriate|the\s+reference|multiple\s+reference|when\s+referring|do\s+not|if\s+there|reference'\s+details|use\s+|there\s+must|if\s+website|separate\s+each|research\s+papers|titles\s+of|any\s+of|please\s+follow)/i.test(refText);
+
+    const parserRefs = (Array.isArray(deepData.references) ? deepData.references.slice() : []).filter(r => !isGuidelineNoise(String(r || '')));
     const parserNorms = new Set(parserRefs.map(r => String(r).replace(/\s+/g, ' ').trim().toLowerCase()));
     
     // Extract signature (first author surname + 4-digit year) from reference string
@@ -889,7 +928,7 @@ export function applyStructureCorrections(
     
     for (const r of verdict.references) {
       const t = String(r || '').replace(/\s+/g, ' ').trim();
-      if (!t || t.length < 5) continue;
+      if (!t || t.length < 5 || isGuidelineNoise(t)) continue;
       const norm = t.toLowerCase();
       if (parserNorms.has(norm)) continue;
       

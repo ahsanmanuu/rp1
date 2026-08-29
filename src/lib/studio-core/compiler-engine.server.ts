@@ -1977,7 +1977,7 @@ export async function runDoc2LatexCompiler(
           const entries = await fs.promises.readdir(uploadsDir);
           for (const name of entries) {
             const lower = name.toLowerCase();
-            if (!/^rf_(fig|chart)_\d+\.(png|jpe?g|gif|webp|svg|eps|bmp|tiff?|pdf|heic|heif|avif)$/i.test(name)) {
+            if (!/\.(png|jpe?g|gif|webp|svg|eps|bmp|tiff?|pdf|heic|heif|avif)$/i.test(name)) {
               continue;
             }
             const ext = (path.extname(name).toLowerCase().replace(/^\./, '') || 'png');
@@ -1985,13 +1985,18 @@ export async function runDoc2LatexCompiler(
             const buffer = await fs.promises.readFile(path.join(uploadsDir, name));
             if (!buffer || buffer.length === 0) continue;
             const content = `data:image/${mime};base64,${buffer.toString('base64')}`;
-            const existing = (files as any[]).find((f) => String(f?.path || '').toLowerCase() === lower);
-            if (existing) {
-              if (existing.content && String(existing.content).length >= 1500) continue;
-              existing.content = content;
-            } else {
-              (files as any[]).push({ path: name, content });
-              present.add(lower);
+
+            for (const targetPath of [name, `assets/${name}`, `figures/${name}`]) {
+              const targetLower = targetPath.toLowerCase();
+              const existing = (files as any[]).find((f) => String(f?.path || '').toLowerCase() === targetLower);
+              if (existing) {
+                if (!existing.content || String(existing.content).length < 200) {
+                  existing.content = content;
+                }
+              } else {
+                (files as any[]).push({ path: targetPath, content });
+                present.add(targetLower);
+              }
             }
           }
         }

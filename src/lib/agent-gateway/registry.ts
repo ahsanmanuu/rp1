@@ -966,19 +966,20 @@ Analyze the manuscript and return ONE JSON object (no markdown, no commentary be
 7. Sections: the COMPLETE ordered list of every section, subsection and subsubsection heading visible in input A. level 1 = \\section, level 2 = \\subsection, level 3 = \\subsubsection. Drop leading numbering ("1.", "1.1", "1.1.2", "[1]", "I."). "References"/"Bibliography", "Acknowledgements", "Declarations", "Appendix" are level 1 headings. Never omit, merge or reorder sections. Keep every heading's implied depth: a "3.2" heading belongs at level 2, "3.2.1" at level 3 — never flatten them to level 1.
 8. figures/tables/algorithms: list EVERY figure, table and algorithm visible in input A with its caption/title copied VERBATIM, in document order. Empty arrays when none exist. An image without any caption or descriptive alt text is NOT a figure - do not count or list it. Uncaptioned university logos, journal header banners, publisher badges, and footer watermarks are decorative assets, NOT figures.
 9. HARD RULES FOR COMPONENT INTEGRITY (ZERO BIAS):
-   - FRONTMATTER METADATA ONLY: Author names, academic designations (e.g., 'Assistant Professor', 'Deputy Librarian', 'Lecturer', 'Dr.', 'Prof.'), department names, university names, polytechnic/institute names, and email addresses ARE FRONTMATTER METADATA. They MUST NEVER be placed in the "sections" array or counted as sections/headings — even if they are visually styled as headings in the converted text (a Word author block often is). Put them ONLY in the "authors"/"affiliations" fields.
-   - SECTION HEADINGS ARE NOT EQUATIONS: Section and subsection titles (e.g. "6. AI-Assisted Responsible Citation (ARC) Framework", "3.1 Methods") ARE HEADINGS ONLY. They MUST NEVER be included in "equations" or classified as math, even when they appear inside equation-looking delimiters or math markup in the converted text. An "equation" MUST contain real math operators (=, <, >, sums, integrals, Greek letters, exponents) — pure words are never an equation.
+   - FRONTMATTER METADATA ONLY: Author names, academic designations (e.g., 'Assistant Professor', 'Deputy Librarian', 'Lecturer', 'Dr.', 'Prof.'), department names, university names, polytechnic/institute names, and email addresses ARE FRONTMATTER METADATA. They MUST NEVER be placed in the "sections" array or counted as sections/headings. Strip template styling annotations like "(24 pt, Bold, Title Case)" or "(16 pt, Bold, Title Case)". Preserve ordinal numbers in names (e.g. "1st Author", "2nd Author").
+   - SECTION HEADINGS ARE NOT EQUATIONS: Section and subsection titles (e.g. "6. AI-Assisted Responsible Citation (ARC) Framework", "3.1 Methods") ARE HEADINGS ONLY. They MUST NEVER be included in "equations" or classified as math.
    - FIGURE CAPTIONS ARE NOT SECTIONS: "Figure N: <caption>" / "Table N: <caption>" lines are CAPTIONS, never headings — do not put them in "sections".
    - FIGURES & CHARTS: Count by "Fig." or "Figure" captions ONLY, excluding charts/plots. Sub-figures (a)(b)(c) under one "Fig. N" = 1 figure. Do NOT count images without captions or decorative header/footer logos. When input I classifies an image file as a chart (filename contains "rf_chart" or "chart_pending"), it is a CHART even if its caption reads "Fig. N" — report it under "charts" only.
    - CHARTS: Count chart/plot images only (a chart with a "Fig." caption counts here, not under figures).
-   - TABLES: Count by "Table" or "TABLE" captions. Do NOT count algorithm or equation tables. A 2-column key-value table IS a table. A layout table used for author affiliations is NOT a table.
-   - EQUATIONS: Count ONLY display equations — numbered equations like (1), (2), or explicit equation/align/gather blocks. Inline math ($x$), parameter assignments ("n = 100"), inequality constraints, section titles, and simple expressions in prose are NOT equations. When in doubt, do NOT count it.
+   - TABLES: Count by "Table" or "TABLE" captions. Do NOT count algorithm or equation tables.
+   - EQUATIONS: Count ONLY display equations — numbered equations like (1), (2), or explicit equation/align/gather blocks. Inline math ($x$), parameter assignments ("n = 100"), inequality constraints, section titles, and simple expressions in prose are NOT equations.
    - PSEUDOCODE: Count "Algorithm N" or "Pseudocode N" blocks only.
-   - NEVER inflate counts. If you see 3 tables, report 3 — not 5. Under-counting by 1 is acceptable; over-counting by even 1 is a FAILURE.
+   - REFERENCES INTEGRITY: Only extract genuine academic bibliography entries (with authors, year, journal/conference/publisher). IGNORE template instructional guidelines (e.g. "• Enclose the citation number...", "• Where appropriate, include...", "References within Main Content...", "Example of List of References").
+   - NEVER inflate counts. If you see 3 tables, report 3 — not 5.
    - CONSISTENCY CHECK: the number of entries you list in "figures"/"tables"/"algorithms" MUST equal your "components" figures/tables/pseudocode counts. The "sections" array MUST contain "References"/"Bibliography" as its final entry whenever a reference list exists in input A.
    - If a count cannot be determined from the text, return null for that field — never guess 0.
 10. Citations: an in-text citation marker is a bracketed number/reference like [12] or (Smith et al., 2020) in the body text.
-11. References: include the actual bibliography entries verbatim (up to 150). If no bibliography is visible in the text, return [].
+11. References: include the actual bibliography entries verbatim (up to 150), excluding template instructional text. If no bibliography is visible in the text, return [].
 12. confidence for title/abstract must be 90+ when the text appears verbatim in the document.
 13. JSON keys must match EXACTLY. Escape backslashes and quotes properly.
 14. RESPONSE BUDGET: be maximally economical. Copy captions and references verbatim but NEVER add explanatory prose, whitespace padding, or commentary. Keep "notes" under 15 words. A short response is preferred over a long one as long as every count and list is exact.
@@ -1076,6 +1077,9 @@ When extracting authors:
 - Strip only the affiliation marker (superscript digit, symbol, footnote ref) from the name — keep the full real name
 - "Mohammad Aadil Khan1" → "Mohammad Aadil Khan" (the "1" is an affiliation marker)
 - "Smith, J.1,2" → "Smith, J." (keep the comma/period name format as-is)
+- "1st Author" or "2nd Author" → "1st Author" or "2nd Author" (NEVER strip digits from ordinal words like 1st, 2nd, 3rd)
+- Strip template font/style annotations in parentheses, such as "(16 pt, Bold, Title Case)" or "(24 pt, Bold)"
+- NEVER treat template style phrases like "Bold", "Title Case", "Line Spacing" as author names or affiliations
 - Do NOT strip parts of names that happen to look like markers (e.g. "Dr. Kumar1" → "Dr. Kumar")
 - If the HTML shows ${'<sup>'} tags, those are affiliation markers — strip them from author names
 
@@ -1088,7 +1092,7 @@ When extracting affiliations:
 ## HARD RULES
 1. Use ONLY text that actually appears in input A (and A2 if present). NEVER invent, paraphrase, translate or beautify titles, author names, affiliations or abstracts.
 2. If a field is missing from the front matter, set it to null (or [] for arrays). Never fabricate placeholder values like "Author Name", "Unknown" or "Institution".
-3. Authors: list every author with the exact name (drop only trailing superscript digits/asterisks used for affiliation markers, e.g. "John Doe1" -> "John Doe"). Attach the matching affiliation(s) from the manuscript.
+3. Authors: list every author with the exact name (drop only trailing superscript digits/asterisks used for affiliation markers, e.g. "John Doe1" -> "John Doe"). Strip template style annotations like "(16 pt, Bold, Title Case)". Preserve ordinal numbers ("1st Author"). Attach the matching affiliation(s) from the manuscript.
 4. Affiliations: deduplicate; include department, institution and country when present.
 5. Abstract: copy verbatim; strip a leading "Abstract" or "ABSTRACT" label if present. Include keywords if they appear within the abstract block.
 6. Keywords: exact terms as they appear, no numbering, no bullet prefixes. If keywords are labeled (e.g. "Keywords: AI, ML"), extract only the terms after the label.
