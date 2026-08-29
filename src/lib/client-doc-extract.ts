@@ -349,8 +349,25 @@ export async function extractClientDocx(file: File): Promise<ClientDocxEnvelope>
   const warnings: string[] = [];
   let figIdx = 1;
 
+  let processedArrayBuffer = arrayBuffer;
+  try {
+    const zip = await JSZip.loadAsync(arrayBuffer);
+    const docEntry = zip.file('word/document.xml');
+    if (docEntry) {
+      let docXml = await docEntry.async('text');
+      if (docXml.includes('AlternateContent')) {
+        docXml = docXml.replace(/<mc:AlternateContent[\s\S]*?<mc:Fallback>([\s\S]*?)<\/mc:Fallback>[\s\S]*?<\/mc:AlternateContent>/gi, '$1');
+        docXml = docXml.replace(/<AlternateContent[\s\S]*?<Fallback>([\s\S]*?)<\/Fallback>[\s\S]*?<\/AlternateContent>/gi, '$1');
+        zip.file('word/document.xml', docXml);
+        processedArrayBuffer = await zip.generateAsync({ type: 'arraybuffer' });
+      }
+    }
+  } catch {
+    /* non-critical, proceed with original buffer */
+  }
+
   const result = await mammoth.convertToHtml(
-    { arrayBuffer },
+    { arrayBuffer: processedArrayBuffer },
     {
       convertImage: mammoth.images.imgElement(async (image) => {
         const contentType = String(image.contentType || 'image/png');

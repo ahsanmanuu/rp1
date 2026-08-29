@@ -239,13 +239,23 @@ export class LatexAssembler {
     if (!isElsevier) preamble.push(`\\title{${escTitle}}`);
     
     // --- 2. METADATA FILES ---
-    files['metadata/title.txt'] = doc.title || "";
+    const cleanTitle = (doc.title || "")
+      .replace(/\((?:\d+\s*pt|bold|italic|title\s*case|single\s*column|line\s*spacing)[^)]*\)/gi, '')
+      .replace(/^[\s,;()\-–—]+|[\s,;()\-–—]+$/g, '')
+      .trim();
+    files['metadata/title.txt'] = cleanTitle || doc.title || "";
     
     const orgs = (doc.organizations || []).map(o => LatexAssembler.escape(o, []));
     files['metadata/organizations.json'] = JSON.stringify(doc.organizations, null, 2);
     
     const authorLines = (doc.authors || []).map((a, idx) => {
-      const name = LatexAssembler.escape(typeof a.name === 'string' ? a.name : (a as any).text || "Author", []);
+      const rawName = typeof a.name === 'string' ? a.name : (a as any).text || "Author";
+      const cleanName = rawName
+        .replace(/\((?:\d+\s*pt|bold|italic|title\s*case|single\s*column|line\s*spacing|affiliations?|institution)[^)]*\)/gi, '')
+        .replace(/\b(?:bold|italic|title\s*case)\b/gi, '')
+        .replace(/^[\s,;()\-–—]+|[\s,;()\-–—]+$/g, '')
+        .trim();
+      const name = LatexAssembler.escape(cleanName || "Author", []);
       const email = a.email ? LatexAssembler.escape(a.email, []) : "";
 
       let affil = "Institution";
@@ -601,23 +611,23 @@ export class LatexAssembler {
         
         // Save individual components to dedicated folders
         if (node.type === 'table') {
-            const tableContent = LatexAssembler.assembleTable(node, mathBlocks);
-            files[`tables/table_${nodeIdx}.tex`] = tableContent;
+            const tableContent = LatexAssembler.assembleNode(node, mathBlocks);
+            if (tableContent && tableContent.trim().length > 0) files[`tables/table_${nodeIdx}.tex`] = tableContent;
         } else if (node.type === 'figure' || node.type === 'image') {
             const figContent = LatexAssembler.assembleNode(node, mathBlocks);
-            files[`figures/figure_${nodeIdx}.tex`] = figContent;
+            if (figContent && figContent.trim().length > 0) files[`figures/figure_${nodeIdx}.tex`] = figContent;
         } else if (node.type === 'chart') {
             const chartContent = LatexAssembler.assembleNode(node, mathBlocks);
-            files[`figures/figure_${nodeIdx}.tex`] = chartContent;
+            if (chartContent && chartContent.trim().length > 0) files[`figures/figure_${nodeIdx}.tex`] = chartContent;
         } else if (node.type === 'figure-group') {
             const groupContent = LatexAssembler.assembleFigureGroup(node, mathBlocks);
-            files[`figures/figure_group_${nodeIdx}.tex`] = groupContent;
+            if (groupContent && groupContent.trim().length > 0) files[`figures/figure_group_${nodeIdx}.tex`] = groupContent;
         } else if (node.type === 'algorithm') {
             const algoContent = LatexAssembler.assembleAlgorithm(node, mathBlocks);
-            files[`algorithms/algo_${nodeIdx}.tex`] = algoContent;
+            if (algoContent && algoContent.trim().length > 0) files[`algorithms/algo_${nodeIdx}.tex`] = algoContent;
         } else if (node.type === 'equation') {
             const eqContent = LatexAssembler.assembleNode(node, mathBlocks);
-            files[`equations/eq_${nodeIdx}.tex`] = eqContent;
+            if (eqContent && eqContent.trim().length > 0) files[`equations/eq_${nodeIdx}.tex`] = eqContent;
         }
     });
     flushSection();
@@ -860,6 +870,12 @@ export class LatexAssembler {
     for (const [rx, rep] of UNICODE_MATH_MAP) {
       s = s.replace(rx, rep);
     }
+
+    // 3. Plaintext equation powers (e.g. (a + b)2 -> (a + b)^2, a2 + b2 -> a^2 + b^2, m2, cm3, 10-3)
+    s = s.replace(/(\([a-zA-Z0-9_+\-/*\s]+\))(\d+)(?=\s*[=+\-*/^_<>\\]|\s*$)/g, '$1^$2');
+    s = s.replace(/\b([a-zA-Z])(\d+)(?=\s*[=+\-*/^_<>\\]|\s*$)/g, '$1^$2');
+    s = s.replace(/\b(cm|mm|km|nm|Wb|m)(\d+)\b/g, '$1^{$2}');
+
     return s;
   }
 
@@ -1081,6 +1097,11 @@ export class LatexAssembler {
             finalContent = finalContent.substring(0, trailingNumMatch.index).trim();
             const labelVal = trailingNumMatch[1] || trailingNumMatch[2] || trailingNumMatch[3] || trailingNumMatch[4] || trailingNumMatch[5];
             labelStr = `\\label{eq:${labelVal}}\n`;
+        }
+
+        // SUPPRESS PHANTOM EMPTY EQUATION: If no math content remains after stripping label/number, drop it!
+        if (finalContent.trim().length === 0) {
+            return '';
         }
 
         // Strip wrapping environment and get bare equation content
@@ -2378,7 +2399,9 @@ export class ModularLatexAssembler {
             files[`algorithms/algo_${nodeIdx}.tex`] = "% Required Packages: \\usepackage{algorithm}, \\usepackage{algpseudocode}\n\n" + content;
         } else if (node.type === 'equation') {
             const content = LatexAssembler.assembleNode(node as any, mathBlocks);
-            files[`equations/eq_${nodeIdx}.tex`] = "% Required Packages: \\usepackage{amsmath}, \\usepackage{amssymb}, \\usepackage{amsfonts}\n\n" + content;
+            if (content && content.trim().length > 0) {
+              files[`equations/eq_${nodeIdx}.tex`] = "% Required Packages: \\usepackage{amsmath}, \\usepackage{amssymb}, \\usepackage{amsfonts}\n\n" + content;
+            }
         }
     });
     flushSection();

@@ -491,17 +491,9 @@ export class DeepDocumentParser {
     (result as any).fullText = allText;
 
     const allSignificantRaw = Array.from(doc.querySelectorAll('p, h1, h2, h3, h4, h5, h6, table, img, figure, ul, ol, pre, blockquote, div')) as Element[];
-    // Fix Figure/Table Duplication: Filter out elements that are nested inside semantic block elements that are processed as single units
+    // Fix Figure/Table/Image Duplication: Filter out elements that are nested inside semantic block elements
     const allSignificant = allSignificantRaw.filter(el => {
       const tag = el.tagName.toLowerCase();
-      let parent = el.parentElement;
-      while (parent) {
-        const parentTag = parent.tagName.toLowerCase();
-        if (['table', 'figure', 'ul', 'ol', 'pre', 'blockquote'].includes(parentTag)) {
-          if (allSignificantRaw.includes(parent)) return false;
-        }
-        parent = parent.parentElement;
-      }
       
       // Discard generic divs if they contain block-level children (keeps block children instead)
       if (tag === 'div') {
@@ -509,14 +501,36 @@ export class DeepDocumentParser {
         if (hasBlockChildren) return false;
       }
       
-      // For p elements containing an image: if p has NO prose text (just image/caption), discard p in favor of img
+      // For p elements containing an image: if p has NO separate prose text, discard p in favor of img
       if (tag === 'p' && el.querySelector('img') !== null) {
-        const textWithoutImg = (el.textContent || '').replace(/CHARTIMGX\w+XEND/g, '').trim();
-        const isCaption = /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\s*[\d.]+/i.test(textWithoutImg);
-        if (!isCaption && textWithoutImg.length < 5) {
-          // Empty paragraph containing an image -> discard p so the img element itself is processed cleanly
+        const clone = el.cloneNode(true) as Element;
+        Array.from(clone.querySelectorAll('img')).forEach(i => i.remove());
+        const prose = (clone.textContent || '').replace(/CHARTIMGX\w+XEND/g, '').trim();
+        const isCaption = /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\s*[\d.]+/i.test(prose);
+        if (!isCaption && prose.length < 5) {
+          // Paragraph is just a wrapper for the image -> discard p so img itself is processed cleanly
           return false;
         }
+      }
+
+      let parent = el.parentElement;
+      while (parent) {
+        const parentTag = parent.tagName.toLowerCase();
+        if (['table', 'figure', 'ul', 'ol', 'pre', 'blockquote', 'p'].includes(parentTag)) {
+          if (allSignificantRaw.includes(parent)) {
+            // Check if parent p was kept
+            if (parentTag === 'p') {
+              const clone = parent.cloneNode(true) as Element;
+              Array.from(clone.querySelectorAll('img')).forEach(i => i.remove());
+              const prose = (clone.textContent || '').replace(/CHARTIMGX\w+XEND/g, '').trim();
+              const isCaption = /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\s*[\d.]+/i.test(prose);
+              if (isCaption || prose.length >= 5) return false; // parent p is kept with prose, discard child
+            } else {
+              return false;
+            }
+          }
+        }
+        parent = parent.parentElement;
       }
 
       return true;
@@ -653,8 +667,8 @@ export class DeepDocumentParser {
         const src = (img.getAttribute('src') || img.getAttribute('data-src') || '').trim();
         const alt = (img.getAttribute('alt') || img.getAttribute('title') || '').trim();
         const isDeco = decorativeImages.has(src.toLowerCase()) ||
-          /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer|decoration/i.test(src) ||
-          /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer|decoration/i.test(alt) ||
+          /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer|decoration|license|badge|cc[-_]by|creative\s*commons|copyright/i.test(src) ||
+          /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer|decoration|license|badge|cc[-_]by|creative\s*commons|copyright/i.test(alt) ||
           DeepDocumentParser.isGenericAltText(alt);
         if (src && !src.startsWith('data:') && !isDeco) {
           allImageSrcs.add(src);
@@ -917,6 +931,14 @@ export class DeepDocumentParser {
               nextRole = 'figure';
           }
       }
+      else if (
+          tagName === 'p' &&
+          /^(?:Fig(?:ure)?|Chart|Diagram|Photo|Image)\.?\s*[\d.]+\s*[:.\-–—]\s*\S/i.test(f.text.trim()) &&
+          !DeepDocumentParser.isFigureCaptionProse(f.text.trim()) &&
+          f.wordCount < 30
+      ) {
+          nextRole = 'figure';
+      }
       else if (ALGO_LABEL_PATTERN.test(f.text) && f.text.length < 150) {
           nextRole = 'algorithm';
       }
@@ -1171,17 +1193,18 @@ export class DeepDocumentParser {
       for (let i = 0; i < manifest.length; i++) {
           const entry = manifest[i];
           
-          // Filter out already consumed elements (like captions) across non-media roles
-          if (entry.role !== 'table' && entry.role !== 'figure') {
-              entry.elements = entry.elements.filter((el: Element) => !consumedCaptions.has(el));
-              if (entry.elements.length === 0) continue;
-          }
+          // Filter out already consumed elements (like captions)
+          entry.elements = entry.elements.filter((el: Element) => !consumedCaptions.has(el));
+          if (entry.elements.length === 0) continue;
 
           const text = entry.elements.map((e: Element) => e.textContent || '').join('\n').trim();
           if (!text && entry.role !== 'table' && entry.role !== 'figure') continue;
 
           if (entry.role === 'title') {
-              result.title = text;
+              result.title = text
+                .replace(/\((?:\d+\s*pt|bold|italic|title\s*case|single\s*column|line\s*spacing)[^)]*\)/gi, '')
+                .replace(/^[\s,;()\-–—]+|[\s,;()\-–—]+$/g, '')
+                .trim();
           }
           else if (entry.role === 'abstract') {
               hasSeenFirstSectionOrAbstract = true;
@@ -1221,10 +1244,15 @@ export class DeepDocumentParser {
           }
           else if (entry.role === 'author') {
               let authorText = text;
+              // Clean styling guidance in parentheses e.g. "(16 pt, Bold, Title Case)" or "(Assistant Professor)"
+              authorText = authorText
+                .replace(/\((?:\d+\s*pt|bold|italic|title\s*case|single\s*column|line\s*spacing|affiliations?|institution)[^)]*\)/gi, '')
+                .replace(/\b(?:bold|italic|title\s*case)\b/gi, '');
+
               let orgFragment = '';
-              const affilIdx = text.search(AFFIL_KEYWORDS);
+              const affilIdx = authorText.search(AFFIL_KEYWORDS);
               if (affilIdx > 0) {
-                const preAffil = text.substring(0, affilIdx);
+                const preAffil = authorText.substring(0, affilIdx);
                 const lastSep = Math.max(preAffil.lastIndexOf(','), preAffil.lastIndexOf('\n'), preAffil.lastIndexOf(';'));
                 if (lastSep > 0) {
                   authorText = preAffil.substring(0, lastSep).trim();
@@ -1239,17 +1267,27 @@ export class DeepDocumentParser {
               }
               const names = authorText.split(/[,;&]|\s+and\s+/i).map((n: string) => n.trim()).filter((n: string) => n.length > 2);
               names.forEach((n: string) => {
-                  const fnMatch = n.match(/([\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070\d]+)/);
-                  const affilId = fnMatch ? fnMatch[1].replace(/\u00b9/g, '1').replace(/\u00b2/g, '2').replace(/\u00b3/g, '3') : '';
-                  const cleanName = n
-                    .replace(/^[*\u2020\u2021\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070\d\s.:)\-]+/g, '')
-                    .replace(/[*\u2020\u2021\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070\d]/g, '')
+                  // Extract trailing superscript/affiliation marker: e.g. "Name of 1st Author 1", "John Doe¹", "Jane Doe, MD 1,2"
+                  // Do NOT strip "1" from "1st" or "2" from "2nd"!
+                  const trailingMarkerMatch = n.match(/(?:[\s,]+)?(?:\(\s*([1-9\d,\s*†‡]+)\s*\)|\[\s*([1-9\d,\s*†‡]+)\s*\]|([\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070*†‡]+)|(?:\b|\s)([1-9]\d*(?:\s*,\s*[1-9]\d*)*))\s*$/);
+                  let affilId = '';
+                  let rawClean = n;
+                  if (trailingMarkerMatch) {
+                    const rawIds = trailingMarkerMatch[1] || trailingMarkerMatch[2] || trailingMarkerMatch[3] || trailingMarkerMatch[4] || '';
+                    affilId = rawIds.replace(/\u00b9/g, '1').replace(/\u00b2/g, '2').replace(/\u00b3/g, '3').replace(/[^0-9,]/g, '').trim();
+                    rawClean = n.substring(0, trailingMarkerMatch.index).trim();
+                  }
+                  const cleanName = rawClean
+                    .replace(/^[*\u2020\u2021\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070\s.:)\-]+/g, '')
+                    .replace(/[\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070*†‡]/g, '')
+                    .replace(/\((?:\d+\s*pt|bold|italic|title\s*case)[^)]*\)/gi, '')
+                    .replace(/^[\s,;()\-–—]+|[\s,;()\-–—]+$/g, '')
                     .trim();
                   if (cleanName.length < 2) return;
                   if (AFFIL_KEYWORDS.test(cleanName) || cleanName.split(' ').length > 7) return;
-                  let aut = result.authors.find(a => a.name === cleanName);
+                  let aut = result.authors.find(a => a.name.toLowerCase() === cleanName.toLowerCase());
                   if (!aut) {
-                      aut = { name: cleanName, affiliationIds: affilId ? [affilId] : [] };
+                      aut = { name: cleanName, affiliationIds: affilId ? affilId.split(',').map(s => s.trim()).filter(Boolean) : [] };
                       result.authors.push(aut);
                   }
               });
@@ -1505,6 +1543,24 @@ export class DeepDocumentParser {
               const imgs: Element[] = Array.from(el0.querySelectorAll('img'));
               if (imgs.length === 0 && el0.tagName.toLowerCase() === 'img') imgs.push(el0 as Element);
 
+              // PAIR STANDALONE CAPTIONS: If el0 has no <img>, check adjacent sibling elements
+              if (imgs.length === 0) {
+                let sib = el0.previousElementSibling;
+                for (let h = 0; h < 5 && sib && imgs.length === 0; h++, sib = sib.previousElementSibling) {
+                  const sibImgs = Array.from(sib.querySelectorAll('img')) as Element[];
+                  if (sibImgs.length > 0) imgs.push(...sibImgs);
+                  else if (sib.tagName.toLowerCase() === 'img') imgs.push(sib);
+                }
+                if (imgs.length === 0) {
+                  sib = el0.nextElementSibling;
+                  for (let h = 0; h < 5 && sib && imgs.length === 0; h++, sib = sib.nextElementSibling) {
+                    const sibImgs = Array.from(sib.querySelectorAll('img')) as Element[];
+                    if (sibImgs.length > 0) imgs.push(...sibImgs);
+                    else if (sib.tagName.toLowerCase() === 'img') imgs.push(sib);
+                  }
+                }
+              }
+
               // Extract sub-captions if multiple images are side-by-side
               let subCaptions: string[] = [];
               if (imgs.length > 1) {
@@ -1556,7 +1612,7 @@ export class DeepDocumentParser {
 
                   let figCaption = entry.caption;
                   const rawAlt = (img.getAttribute('alt') || img.getAttribute('title') || '').trim();
-                  const isAltDeco = !rawAlt || /logo|icon|header|banner|footer|decoration|watermark|bullet|spacer|signature|qrcode/i.test(rawAlt) || this.isGenericAltText(rawAlt);
+                  const isAltDeco = !rawAlt || /logo|icon|header|banner|footer|decoration|watermark|bullet|spacer|signature|qrcode|license|badge|cc[-_]by|creative\s*commons/i.test(rawAlt) || this.isGenericAltText(rawAlt);
                   if (!figCaption && !isAltDeco && /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\b/i.test(rawAlt)) {
                       figCaption = rawAlt;
                   }
@@ -1573,12 +1629,12 @@ export class DeepDocumentParser {
                   }
 
                   // FALSE-POSITIVE GUARD: an image with NO caption
-                  // is almost always decorative (university logo, header banner, footer icon, bullet graphic, background, watermark).
+                  // is almost always decorative (university logo, header banner, footer icon, bullet graphic, background, watermark, license badge).
                   // When uncaptioned in the front-matter or footer region, it must NEVER be emitted as a body figure float.
                   if (!figCaption) {
                       const isFrontMatterImage = !hasSeenFirstSectionOrAbstract;
                       const isFooterImage = hasSeenReferences;
-                      const decoHint = isFrontMatterImage || isFooterImage || isAltDeco || /logo|icon|header|banner|bullet|background|watermark|divider|spacer|signature|qr|qrcode|footer/i.test(src);
+                      const decoHint = isFrontMatterImage || isFooterImage || isAltDeco || /logo|icon|header|banner|bullet|background|watermark|divider|spacer|signature|qr|qrcode|footer|license|badge|cc[-_]by|creative\s*commons/i.test(src);
                       if (decoHint) {
                           (result as any)._decorativeImages = (result as any)._decorativeImages || new Set<string>();
                           (result as any)._decorativeImages.add(src.toLowerCase());
@@ -1736,10 +1792,17 @@ export class DeepDocumentParser {
                   if (cleanText.length < 5) return;
                   if (/^(?:[\dIVX\.\s]+)?(?:references?|bibliography|works cited|literature cited)\s*[:.\-–—]?$/i.test(cleanText)) return;
 
-                  const isNew = DeepDocumentParser.isNewReferenceStart(cleanText, result.references.length === 0);
-                  if (isNew || result.references.length === 0) {
+                  // Universal guideline/instructional noise filter
+                  const isGuidelineNoise = /^(?:references\s+within\s+main\s+content|references\s+in\s+the\s+reference\s+list|example\s+of\s+list\s+of\s+references|guidelines?|instructions?|notes?|format|how\s+to\s+cite|citation\s+format|sample\s+references)/i.test(cleanText) ||
+                    /^(?:•|·|\*|\-)\s+(?:enclose|where\s+appropriate|the\s+reference|multiple\s+reference|when\s+referring|do\s+not|if\s+there|reference'\s+details|use\s+|there\s+must|if\s+website|separate\s+each|research\s+papers|titles\s+of|any\s+of|please\s+follow)/i.test(cleanText);
+                  if (isGuidelineNoise) return;
+
+                  const isNumberedRef = /^(?:\[\s*\d+\s*\]|\d+[\.\)\:\-\t\s]+|\(\s*\d+\s*\)|\[[\w\-]+\])\s*\S/.test(cleanText);
+                  const isAuthorRef = DeepDocumentParser.isNewReferenceStart(cleanText, false);
+
+                  if (isNumberedRef || isAuthorRef) {
                       result.references.push(cleanText);
-                  } else {
+                  } else if (result.references.length > 0) {
                       result.references[result.references.length - 1] += " " + cleanText;
                   }
               });
@@ -1991,8 +2054,12 @@ export class DeepDocumentParser {
     };
 
     // Scan next and previous siblings up to 35 hops (mammoth can inject several empty paragraphs between img and caption)
-    let next = el.nextElementSibling;
-    let prev = el.previousElementSibling;
+    const blockEl = (el.tagName.toLowerCase() === 'img' && el.parentElement && ['p', 'div', 'span', 'figure'].includes(el.parentElement.tagName.toLowerCase()))
+      ? el.parentElement
+      : el;
+
+    let next = blockEl.nextElementSibling || el.nextElementSibling;
+    let prev = blockEl.previousElementSibling || el.previousElementSibling;
     for (let i = 0; i < 35; i++) {
       if (next && !processed.has(next)) {
         const t = next.textContent?.trim() || '';
@@ -2035,15 +2102,17 @@ export class DeepDocumentParser {
             return this.cleanCaption(afterPrefix.length > 0 ? `${cleanPrefix}: ${afterPrefix}` : cleanPrefix);
           }
         }
-        // Stop scanning forward if we hit a substantial text paragraph (not a caption, not empty, not sub-caption)
-        if (next.tagName.toLowerCase() === 'p' || next.tagName.toLowerCase() === 'div') {
-          const textVal = next.textContent?.trim() || '';
-          if (textVal.length > 300 || (textVal.length > 150 && !rx.test(textVal) && !textVal.includes('   '))) {
+        // Stop scanning forward if we hit a heading, table, another image, or substantial prose paragraph
+        if (next) {
+          const tag = next.tagName.toLowerCase();
+          if (/^h[1-6]$/.test(tag) || tag === 'table' || (tag === 'img' && next !== el) || next.querySelector('img, table, h1, h2, h3, h4, h5, h6')) {
             next = null;
+          } else if (tag === 'p' || tag === 'div') {
+            const textVal = next.textContent?.trim() || '';
+            if (textVal.length > 200 || (textVal.length > 80 && !rx.test(textVal) && !textVal.includes('   '))) {
+              next = null;
+            }
           }
-        }
-        if (next && ['table'].includes(next.tagName.toLowerCase())) {
-          next = null;
         }
       }
       
@@ -2084,15 +2153,17 @@ export class DeepDocumentParser {
             return this.cleanCaption(afterPrefix.length > 0 ? `${cleanPrefix}: ${afterPrefix}` : cleanPrefix);
           }
         }
-        // Stop scanning backward if we hit a substantial text paragraph
-        if (prev.tagName.toLowerCase() === 'p' || prev.tagName.toLowerCase() === 'div') {
-          const textVal = prev.textContent?.trim() || '';
-          if (textVal.length > 300 || (textVal.length > 150 && !rx.test(textVal) && !textVal.includes('   '))) {
+        // Stop scanning backward if we hit a heading, table, another image, or substantial prose paragraph
+        if (prev) {
+          const tag = prev.tagName.toLowerCase();
+          if (/^h[1-6]$/.test(tag) || tag === 'table' || (tag === 'img' && prev !== el) || prev.querySelector('img, table, h1, h2, h3, h4, h5, h6')) {
             prev = null;
+          } else if (tag === 'p' || tag === 'div') {
+            const textVal = prev.textContent?.trim() || '';
+            if (textVal.length > 200 || (textVal.length > 80 && !rx.test(textVal) && !textVal.includes('   '))) {
+              prev = null;
+            }
           }
-        }
-        if (prev && ['table'].includes(prev.tagName.toLowerCase())) {
-          prev = null;
         }
       }
       next = next?.nextElementSibling || null;
