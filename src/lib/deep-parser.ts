@@ -484,6 +484,23 @@ export class DeepDocumentParser {
         }
     });
 
+    // Separate inline <img> elements out of prose <p> elements so images and prose are both preserved
+    Array.from(doc.querySelectorAll('p, div')).forEach(el => {
+      const imgs = Array.from(el.querySelectorAll('img'));
+      if (imgs.length > 0 && el.tagName.toLowerCase() === 'p') {
+        const textWithoutImgs = (el.textContent || '').replace(/CHARTIMGX\w+XEND/g, '').trim();
+        const isCaption = /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\s*[\d.]+/i.test(textWithoutImgs);
+        if (!isCaption && textWithoutImgs.length >= 5) {
+          const parent = el.parentNode;
+          if (parent) {
+            imgs.forEach(img => {
+              parent.insertBefore(img, el.nextSibling);
+            });
+          }
+        }
+      }
+    });
+
     // Phase 1: Character/Word Census
     const allText = (doc.body.textContent || '');
     result.stats.charCount = allText.replace(/\s/g, '').length;

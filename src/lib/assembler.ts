@@ -2327,7 +2327,14 @@ export class ModularLatexAssembler {
                     return;
                 }
                 return;
-            } else return;
+            } else if (['equation', 'figure', 'image', 'figure-group', 'table', 'algorithm', 'chart'].includes(node.type)) {
+                // Equations, tables, figures, algorithms appearing before a heading are genuine content
+                frontMatterDone = true;
+                currentSectionTitle = "main";
+                currentSectionNodes = [];
+            } else {
+                return;
+            }
         }
 
         if (node.type === 'heading') {

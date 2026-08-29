@@ -347,6 +347,7 @@ export async function POST(req: Request) {
           if (!/\.tex$/i.test(k)) continue;
           extractedComponents[k] = apply(extractedComponents[k]);
         }
+        if (fullLatex) fullLatex = apply(fullLatex);
         console.log(`[GENERATE-LATEX] Remapped figure references: ${fi} figure(s), ${ci} chart(s) -> binaries (figBins=${figBins.length}, chartBins=${chartBins.length}).`);
       }
     }
