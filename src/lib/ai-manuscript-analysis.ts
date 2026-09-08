@@ -62,7 +62,7 @@ export interface AiStructureVerdict {
 // Worst case = max(passA, passB) + margin, still well under the ~300s platform
 // request cap so the upload request always completes.
 const FRONTMATTER_PASS_TIMEOUT_MS = 60000;
-const STRUCTURE_PASS_TIMEOUT_MS = 90000;
+const STRUCTURE_PASS_TIMEOUT_MS = 120000;
 
 // Extra budget for the scoped count re-verification pass (only fires when the
 // AI's count disagrees with the deterministic count by more than 1).
@@ -356,7 +356,7 @@ function isFrontMatterNoiseSection(title: string): boolean {
   if (/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of|head of department|researcher|research scholar|phd scholar|scholar|librarian|bibliographer|fellow|senior research fellow|technical assistant|mr\.|ms\.|mrs\.|md)\b/i.test(probe)) return true;
   if (/^(?:email|e-mail|mail|phone|tel|orcid|corresponding author)\b/i.test(probe)) return true;
   if (/\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy)\b/i.test(probe.toLowerCase())) return true;
-  if (/\b(?:librarian|professor|scholar|fellow|lecturer|assistant|associate|researcher)\b/i.test(probe.toLowerCase()) && probe.length < 80) return true;
+  if (/^(?:librarian|deputy librarian|professor|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of department|phd scholar|research scholar|senior research fellow|technical assistant)(?:,|\s+at\b|\s+in\b|\s*\(|\s*$)/i.test(probe.trim())) return true;
   // Figure/Table/Algorithm caption lines are captions, never sections.
   if (/^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(probe) && probe.length < 120) return true;
   return false;

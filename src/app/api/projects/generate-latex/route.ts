@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { autoHealLatex } from '@/lib/latex';
 import { ModularLatexAssembler } from '@/lib/assembler';
+import { runModularAiMapping } from '@/lib/ai-modular-mapping';
 import { getTemplateById, mapLegacyTemplateId } from '@/lib/templates/registry';
 import { getServerSession } from "@/lib/auth-pb";
 import { calculateDocumentStats } from '@/lib/stats';
@@ -178,6 +179,7 @@ export async function POST(req: Request) {
     let fullLatex = "";
     let extractedComponents: Record<string, string> = {};
     let usedOriginalTemplate = false;
+    let aiModularSuccess = false;
 
     if (modelToUse) {
       console.log(`[GENERATE-LATEX] Fast assembling from Structured Model for template: ${templateId}...`);
@@ -219,10 +221,62 @@ export async function POST(req: Request) {
         modelToUse.stats.imageCount = modelToUse.body.filter((n: any) => n.type === 'figure' || n.type === 'image' || n.type === 'figure-group').length || modelToUse.stats.imageCount;
       }
 
-      console.log(`[GENERATE-LATEX] Assembling via ModularLatexAssembler for template ${templateId}...`);
-      const assembled = ModularLatexAssembler.assemble(modelToUse, mapLegacyTemplateId(templateId), templateMainTex);
-      fullLatex = assembled.mainTex;
-      extractedComponents = assembled.files;
+      // Collect all available figure names across upload payloads, manifest, disk and DB
+      const availableFigureNamesSet = new Set<string>();
+      for (const fig of figureFiles) availableFigureNamesSet.add(fig.name);
+      if (Array.isArray(structured.figureManifest)) {
+        for (const f of structured.figureManifest) {
+          const name = typeof f === 'string' ? f : f?.name;
+          if (name) availableFigureNamesSet.add(name);
+        }
+      }
+      if (fs.existsSync(projectDir)) {
+        try {
+          const checkDirs = [projectDir, path.join(projectDir, 'assets'), path.join(projectDir, 'figures')];
+          for (const d of checkDirs) {
+            if (fs.existsSync(d)) {
+              for (const f of fs.readdirSync(d)) {
+                if (/\.(png|jpe?g|webp|gif|pdf|eps|svg|tiff?|bmp)$/i.test(f)) availableFigureNamesSet.add(f);
+              }
+            }
+          }
+        } catch {}
+      }
+      const availableFigureNames = Array.from(availableFigureNamesSet);
+
+      // --- 1. TRY PARALLEL AI MODULAR MAPPING ---
+      try {
+        console.log(`[GENERATE-LATEX] Attempting parallel AI modular mapping for template ${templateId}...`);
+        const aiResult = await runModularAiMapping({
+          structured: modelToUse,
+          templateId: mapLegacyTemplateId(templateId),
+          templateMainTex,
+          userId: session.user.id,
+          userEmail: session.user.email,
+          projectId,
+          figureFiles: availableFigureNames,
+        });
+
+        if (aiResult && aiResult.files && aiResult.files.length > 0) {
+          fullLatex = aiResult.mainTex;
+          extractedComponents = {};
+          for (const f of aiResult.files) {
+            extractedComponents[f.path] = f.content;
+          }
+          aiModularSuccess = true;
+          console.log(`[GENERATE-LATEX] AI modular mapping SUCCEEDED with ${aiResult.files.length} files (${aiResult.model}).`);
+        }
+      } catch (aiErr: any) {
+        console.warn(`[GENERATE-LATEX] AI modular mapping error, falling back to deterministic assembler:`, aiErr?.message || aiErr);
+      }
+
+      // --- 2. DETERMINISTIC ASSEMBLER FALLBACK ---
+      if (!aiModularSuccess) {
+        console.log(`[GENERATE-LATEX] Assembling via ModularLatexAssembler for template ${templateId}...`);
+        const assembled = ModularLatexAssembler.assemble(modelToUse, mapLegacyTemplateId(templateId), templateMainTex);
+        fullLatex = assembled.mainTex;
+        extractedComponents = assembled.files;
+      }
     } else if (rawHtml) {
       console.log(`[GENERATE-LATEX] First-pass extraction required...`);
       const { DeepDocumentParser } = await import('@/lib/deep-parser');
@@ -246,12 +300,12 @@ export async function POST(req: Request) {
       usedOriginalTemplate = true;
     }
 
-    // --- REMAP FIGURE REFERENCES TO ACTUAL BINARY FILENAMES ---
-    // DeepDocumentParser stamps figure ids as `pdf_fig_<lineNumber>.png` and charts as
-    // `chart_pending_<N>.png`, while the real binaries uploaded from the client
-    // are named `rf_fig_<seq>.png` / `rf_chart_<seq>.png`.
-    // Remap each reference (in document/float order) to the matching binary.
-    if (extractedComponents && Object.keys(extractedComponents).length > 0) {
+    // --- REMAP FIGURE REFERENCES TO ACTUAL BINARY FILENAMES (Fallback & Heuristic Paths) ---
+    // In AI modular mapping, figure filenames are mapped directly from input C.
+    // For deterministic assembly, DeepDocumentParser stamps placeholder figure ids
+    // (e.g. `pdf_fig_<line>.png` or `chart_pending_<N>.png`).
+    // Remap with a persistent 1-to-1 Map to ensure consistent image paths across all files.
+    if (!aiModularSuccess && extractedComponents && Object.keys(extractedComponents).length > 0) {
       const numIn = (s: string) => parseInt((s.match(/(\d+)/) || ['', '0'])[1]) || 0;
       const binaryNamesSet = new Set<string>();
       for (const f of figureFiles) binaryNamesSet.add(f.name);
@@ -264,6 +318,12 @@ export async function POST(req: Request) {
           const assetsDir = path.join(projectDir, 'assets');
           if (fs.existsSync(assetsDir)) {
             for (const f of fs.readdirSync(assetsDir)) {
+              if (/\.(png|jpe?g|webp|gif|pdf|eps|svg|tiff?|bmp)$/i.test(f)) binaryNamesSet.add(f);
+            }
+          }
+          const figuresDir = path.join(projectDir, 'figures');
+          if (fs.existsSync(figuresDir)) {
+            for (const f of fs.readdirSync(figuresDir)) {
               if (/\.(png|jpe?g|webp|gif|pdf|eps|svg|tiff?|bmp)$/i.test(f)) binaryNamesSet.add(f);
             }
           }
@@ -293,7 +353,6 @@ export async function POST(req: Request) {
       } catch {}
 
       const binaryNames = Array.from(binaryNamesSet);
-      // Collect valid body figure/chart IDs from modelToUse
       const modelBodyFigIds: string[] = [];
       const modelBodyChartIds: string[] = [];
       if (modelToUse && Array.isArray(modelToUse.body)) {
@@ -319,28 +378,47 @@ export async function POST(req: Request) {
         .sort((a, b) => numIn(a) - numIn(b));
 
       if (figBins.length > 0 || chartBins.length > 0) {
+        // 1-to-1 Mapping to prevent counter drift across multiple files
+        const refToTargetMap = new Map<string, string>();
         let fi = 0, ci = 0;
         const incRe = /\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/g;
         const isChartRef = (r: string) => /chart_pending|rf_chart/i.test(r) || /chart/i.test(r);
+
+        const resolveTarget = (ref: string): string | null => {
+          const r = String(ref).trim();
+          const baseName = path.basename(r);
+          if (binaryNamesSet.has(r)) return r;
+          if (binaryNamesSet.has(baseName)) return baseName;
+          if (figBins.includes(r)) return r;
+          if (chartBins.includes(r)) return r;
+
+          if (refToTargetMap.has(r)) return refToTargetMap.get(r)!;
+          if (refToTargetMap.has(baseName)) return refToTargetMap.get(baseName)!;
+
+          const isChart = isChartRef(r);
+          const pool = (isChart && chartBins.length > 0) ? chartBins : figBins;
+          if (pool.length === 0) return null;
+
+          const idx = isChart && chartBins.length > 0 ? ci : fi;
+          const target = pool[idx % pool.length];
+          if (!target) return null;
+
+          if (isChart && chartBins.length > 0) ci++; else fi++;
+          refToTargetMap.set(r, target);
+          refToTargetMap.set(baseName, target);
+          return target;
+        };
+
+        const apply = (content: string) => content.replace(incRe, (m, ref) => {
+          const target = resolveTarget(ref);
+          if (!target) return m;
+          return m.replace(ref, target);
+        });
+
         const floatKeys = Object.keys(extractedComponents)
           .filter(k => /^(figures\/figure_\d+\.tex|figures\/figure_group_\d+\.tex)$/i.test(k))
           .sort((a, b) => numIn(a) - numIn(b));
-        const apply = (content: string) => content.replace(incRe, (m, ref) => {
-          const r = String(ref).trim();
-          const baseName = path.basename(r);
-          // If the reference is already a known specific file in binaryNamesSet or figBins/chartBins, keep it!
-          if (binaryNamesSet.has(r) || binaryNamesSet.has(baseName) || figBins.includes(r) || chartBins.includes(r)) {
-            return m;
-          }
-          const isChart = isChartRef(r);
-          const pool = (isChart && chartBins.length > 0) ? chartBins : figBins;
-          if (pool.length === 0) return m;
-          const idx = isChart && chartBins.length > 0 ? ci : fi;
-          const target = pool[idx % pool.length];
-          if (!target) return m;
-          if (isChart && chartBins.length > 0) ci++; else fi++;
-          return m.replace(ref, target);
-        });
+
         for (const k of floatKeys) extractedComponents[k] = apply(extractedComponents[k]);
         for (const k of Object.keys(extractedComponents)) {
           if (floatKeys.includes(k)) continue;
@@ -348,7 +426,7 @@ export async function POST(req: Request) {
           extractedComponents[k] = apply(extractedComponents[k]);
         }
         if (fullLatex) fullLatex = apply(fullLatex);
-        console.log(`[GENERATE-LATEX] Remapped figure references: ${fi} figure(s), ${ci} chart(s) -> binaries (figBins=${figBins.length}, chartBins=${chartBins.length}).`);
+        console.log(`[GENERATE-LATEX] Remapped figure references consistently: ${refToTargetMap.size} mapping(s) -> binaries.`);
       }
     }
 

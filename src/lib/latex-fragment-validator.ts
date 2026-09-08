@@ -142,17 +142,39 @@ function environmentPairsValid(latex: string): boolean {
 /** Every \includegraphics / \zimg filename must exist in the image set. */
 function imageTargetsExist(latex: string, imageFiles: string[]): boolean {
   if (imageFiles.length === 0) return true; // nothing to verify against
-  const normalized = imageFiles.map(f =>
-    String(f || '').toLowerCase().replace(/\.[a-z0-9]+$/i, '').replace(/\\/g, '/')
-  );
+  const cleanPath = (p: string) =>
+    String(p || '')
+      .toLowerCase()
+      .replace(/\\/g, '/')
+      .replace(/^\.\//, '')
+      .replace(/^(?:assets|figures|images)\//i, '')
+      .replace(/\.[a-z0-9]+$/i, '')
+      .trim();
+
+  const normalizedSet = new Set<string>();
+  for (const f of imageFiles) {
+    const raw = String(f || '').toLowerCase().replace(/\\/g, '/');
+    normalizedSet.add(raw);
+    normalizedSet.add(cleanPath(raw));
+    const base = raw.split('/').pop() || '';
+    normalizedSet.add(base);
+    normalizedSet.add(cleanPath(base));
+  }
+
   const refs: string[] = [];
   const imgRe = /\\(?:includegraphics|zimg)\s*(?:\[[^\]]*\])?\s*\{([^{}]+)\}/g;
   let m: RegExpExecArray | null;
   while ((m = imgRe.exec(latex)) !== null) {
-    refs.push(m[1].trim().toLowerCase().replace(/\.[a-z0-9]+$/i, '').replace(/^assets\//, ''));
+    const rawRef = m[1].trim();
+    refs.push(rawRef);
   }
   for (const ref of refs) {
-    if (ref && !ref.startsWith('__') && !normalized.includes(ref)) return false;
+    if (!ref || ref.startsWith('__')) continue;
+    const cleanRef = cleanPath(ref);
+    const baseRef = cleanPath(ref.split('/').pop() || '');
+    if (!normalizedSet.has(ref.toLowerCase()) && !normalizedSet.has(cleanRef) && !normalizedSet.has(baseRef)) {
+      return false;
+    }
   }
   return true;
 }

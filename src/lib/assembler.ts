@@ -931,14 +931,15 @@ export class LatexAssembler {
         
         // 🛡️ FORCED LEVEL-1: canonical academic section names always use \section
         const FORCED_L1 = new Set([
-          'abstract','introduction','background','related work','literature review',
-          'methodology','proposed method','proposed approach','proposed framework',
-          'experimental setup','experiments','results','results and discussion',
-          'discussion','conclusion','conclusions','acknowledgements','acknowledgments',
-          'references','bibliography','appendix','future work',
-          'system model','system overview','problem formulation',
-          'problem statement','performance evaluation','evaluation','simulation results',
-          'comparison','related works',
+          'abstract','introduction','background','related work','related works','literature review','literature survey',
+          'methodology','proposed method','proposed approach','proposed framework','proposed methodology','proposed system',
+          'system architecture','system model','system design','system overview','problem formulation','problem statement',
+          'experimental setup','experiments','experimental results','results','results and discussion',
+          'discussion','performance evaluation','evaluation','simulation results','comparative analysis','comparison',
+          'conclusion','conclusions','conclusions and future work','conclusions and future works','conclusion and future work',
+          'conclusion and future scope','conclusion and recommendations','summary and conclusion','concluding remarks',
+          'future work','future works','future scope','recommendations',
+          'acknowledgements','acknowledgments','references','bibliography','appendix',
           'declarations','ethics approval','ethical approval','ethics statement',
           'conflict of interest','conflicts of interest','competing interests',
           'funding','funding statement','funding information',
@@ -947,13 +948,14 @@ export class LatexAssembler {
           'supplementary material','supplementary materials','supplementary information',
           'limitations','study limitations','abbreviations',
           'consent to participate','consent for publication','informed consent',
-          // Universal literature survey variants
           'literature survey','literature review/survey','survey','literature review and survey',
           'existing literature','literature',
         ]);
         const normalizedFinal = finalText.toLowerCase().replace(/^(?:\d+[\s\.]+|[ivxlcdm]+[\s\.]+|[a-g][\s\.]+)+/i, '').trim();
+        const isCanonicalL1Check = FORCED_L1.has(normalizedFinal) ||
+          /^(?:conclusion|conclusions|concluding|future work|future scope|literature review|literature survey|related works?|system model|system architecture|materials and methods|results and discussion|performance evaluation|declarations|acknowledg|data availability)\b/i.test(normalizedFinal);
         let level = node.level || 1;
-        if (FORCED_L1.has(normalizedFinal)) level = 1;
+        if (isCanonicalL1Check) level = 1;
         
         const cmd = level === 1 ? 'section' : level === 2 ? 'subsection' : 'subsubsection';
         const unnumberedList = [
@@ -2258,7 +2260,24 @@ export class ModularLatexAssembler {
     let aiAlgoIdx = 0;
     let frontMatterDone = false; 
     const headerInputs = new Set<string>(); 
-    const FORCED_L1_ASSEMBLER = new Set(['introduction', 'related work', 'background', 'methodology', 'methods', 'results', 'discussion', 'conclusion', 'acknowledgements', 'references', 'abstract']);
+    const FORCED_L1_ASSEMBLER = new Set([
+      'abstract', 'introduction', 'background', 'related work', 'related works', 'literature review', 'literature survey',
+      'methodology', 'methods', 'materials and methods', 'proposed method', 'proposed methodology', 'proposed approach',
+      'proposed system', 'system architecture', 'system model', 'system design', 'system overview', 'problem formulation',
+      'problem statement', 'experimental setup', 'experiments', 'experimental results', 'results', 'results and discussion',
+      'discussion', 'performance evaluation', 'evaluation', 'simulation results', 'comparative analysis', 'comparison',
+      'conclusion', 'conclusions', 'conclusions and future work', 'conclusions and future works', 'conclusion and future work',
+      'conclusion and future scope', 'conclusion and recommendations', 'summary and conclusion', 'concluding remarks',
+      'future work', 'future works', 'future scope', 'recommendations',
+      'acknowledgements', 'acknowledgments', 'references', 'bibliography', 'appendix',
+      'declarations', 'conflict of interest', 'conflicts of interest', 'competing interests',
+      'funding', 'funding statement', 'data availability', 'data availability statement',
+      'author contributions', 'authors contributions', 'ethical approval', 'ethics statement'
+    ]);
+    const isCanonicalSectionL1 = (h: string): boolean => {
+      if (FORCED_L1_ASSEMBLER.has(h)) return true;
+      return /^(?:conclusion|conclusions|concluding|future work|future scope|literature review|literature survey|related works?|system model|system architecture|materials and methods|results and discussion|performance evaluation|declarations|acknowledg|data availability)\b/i.test(h);
+    };
 
     nodes.forEach((node: any, nodeIdx: number) => {
         const text = (node.text || "").trim();
@@ -2348,7 +2367,7 @@ export class ModularLatexAssembler {
               .replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '')
               .replace(/[:.\s]*$/, '')
               .trim();
-            const isLevel1 = (node.level === 1) || FORCED_L1_ASSEMBLER.has(normHeading);
+            const isLevel1 = (node.level === 1) || isCanonicalSectionL1(normHeading);
             if (isLevel1) {
                 flushSection();
                 currentSectionTitle = text || "section";

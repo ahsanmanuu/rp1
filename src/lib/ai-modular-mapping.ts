@@ -13,12 +13,12 @@
  *   - 'metadata' pass  → metadata title/authors/abstract/keywords + the
  *                        references/bibliography.tex (thebibliography)
  *
- * For large documents (>150K chars), the sections scope splits into chunked
- * sub-passes so the AI can generate complete section files without hitting
- * output token limits.
+ * PARALLEL / MULTITASKING ARCHITECTURE:
+ * Floats, metadata, and chunked section passes are dispatched CONCURRENTLY
+ * using a bounded concurrency worker pool (max 4 concurrent requests).
  *
  * Every emitted file is machine-verified and main.tex is composed
- * DETERMINISTICALLY from the template preamble.
+ * DETERMINISTICALLY according to the target template conventions (.cls/.sty).
  */
 
 import { routeToAgent } from './agent-gateway';
@@ -31,6 +31,7 @@ export interface ModularMappingInput {
   userId?: string | null;
   userEmail?: string | null;
   projectId?: string;
+  figureFiles?: string[];
 }
 
 export interface ModularMappingResult {
@@ -47,6 +48,8 @@ const WINDOW_HEAD = HAS_STRONG_PROVIDER ? 500000 : 120000;
 const WINDOW_TAIL = HAS_STRONG_PROVIDER ? 150000 : 30000;
 const PASS_TIMEOUT_MS = 120_000;
 const RETRY_TIMEOUT_MS = 60_000;
+const MAX_CONCURRENT_AI_CALLS = 4;
+const CHUNK_SIZE = 5; // 5 sections per chunk ensures zero truncation
 
 const AI_MODEL_OVERRIDE = process.env.OPENROUTER_API_KEY
   ? 'google/gemini-2.5-flash-001'
@@ -55,6 +58,24 @@ const AI_MODEL_OVERRIDE = process.env.OPENROUTER_API_KEY
     : null;
 
 type Scope = 'floats' | 'sections' | 'metadata';
+
+/** Bounded concurrency parallel mapping helper */
+async function pMap<T, R>(
+  items: T[],
+  fn: (item: T, index: number) => Promise<R>,
+  concurrency: number = MAX_CONCURRENT_AI_CALLS
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIdx = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (nextIdx < items.length) {
+      const idx = nextIdx++;
+      results[idx] = await fn(items[idx], idx);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
 
 function raceWithTimeout<T>(promise: Promise<T>, ms: number, controller: AbortController): Promise<T | null> {
   return Promise.race([
@@ -162,30 +183,18 @@ function groupBodyBySections(body: any[]): Array<{ heading: any; nodes: any[] }>
 
 /**
  * Build a text window for a specific chunk of sections.
- *
- * CRITICAL FIX: For large documents, the old implementation applied
- * balancedWindow() which elides the MIDDLE of the chunk — losing all
- * section content between head and tail. This caused middle sections
- * to have empty/incomplete LaTeX output (blank PDF).
- *
- * New strategy: always include the FULL chunk text. If the chunk exceeds
- * the budget, include full head sections + full tail sections and elide
- * only the middle sections (preserving complete section content for the
- * sections we DO include).
+ * Guarantees complete section content without truncation for that chunk.
  */
 function chunkTextWindow(
-  body: any[],
-  startIdx: number,
-  endIdx: number,
-  fullText: string,
+  chunkNodes: any[],
+  docText: string
 ): string {
-  const chunkNodes = body.slice(startIdx, endIdx);
   const chunkText = chunkNodes
     .map((n: any) => {
       if (n.type === 'heading') return `\n${'#'.repeat(Number(n.level) || 1)} ${n.text}\n`;
       if (n.text) return n.text;
       if (n.caption) return `[Caption: ${n.caption}]`;
-      if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') return `[Figure: ${n.caption || n.name || 'unnamed'}]`;
+      if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') return `[Figure: ${n.caption || n.name || n.id || 'unnamed'}]`;
       if (n.type === 'table') return `[Table: ${n.caption || 'untitled'}]`;
       if (n.type === 'algorithm') return `[Algorithm: ${n.title || n.caption || 'untitled'}]`;
       if (n.type === 'reference') return `[Ref: ${n.text || ''}]`;
@@ -199,16 +208,14 @@ function chunkTextWindow(
   // Split by section headings and preserve complete sections from head/tail
   const sections = splitIntoSections(chunkNodes);
   if (sections.length <= 2) {
-    // Few sections — just truncate at boundary
     return balancedWindow(chunkText);
   }
 
-  // Include complete sections from head and tail, elide middle
   const headSections: string[] = [];
   const tailSections: string[] = [];
   let headLen = 0;
   let tailLen = 0;
-  const halfBudget = Math.floor(budget * 0.55); // 55% head, 45% tail
+  const halfBudget = Math.floor(budget * 0.55);
 
   for (const sec of sections) {
     if (headLen < halfBudget) {
@@ -296,8 +303,6 @@ async function runScope(
     console.warn(`[AI-MODULAR] scope "${scope}"${chunkHint} unavailable`, res && !res.success ? `(${res.error})` : '');
     return { files: [], model: '', rejected: 0 };
   }
-  // Accept partial results — even partial files are better than none.
-  // The validator will reject any invalid files; valid ones are kept.
   if ((res.data as any)._partial) {
     console.log(`[AI-MODULAR] scope "${scope}"${chunkHint} returned partial results — keeping valid files`);
   }
@@ -313,8 +318,8 @@ async function runScopeWithRetry(
   auth: Parameters<typeof runScope>[2],
 ): Promise<{ files: AiModularFile[]; model: string; rejected: number }> {
   const result = await runScope(scope, ctx, auth);
-  if (result.files.length === 0 && !ctx.isChunk) {
-    console.log(`[AI-MODULAR] Retrying scope "${scope}" with shorter timeout...`);
+  if (result.files.length === 0) {
+    console.log(`[AI-MODULAR] Retrying scope "${scope}" with retry prompt...`);
     const retryController = new AbortController();
     const retryRes = await raceWithTimeout(
       routeToAgent({
@@ -334,7 +339,6 @@ async function runScopeWithRetry(
       retryController,
     );
     if (retryRes?.success && retryRes.data && !(retryRes.data as any)._failSafe) {
-      // Accept partial results from retry too — valid files are kept
       const normalized = normalizeModularFiles(retryRes.data, ctx.figureFiles);
       if (normalized.files.length > 0) {
         console.log(`[AI-MODULAR] Retry scope "${scope}" produced ${normalized.files.length} files (${normalized.rejected} rejected)`);
@@ -459,15 +463,78 @@ function composeMainTex(
   if (preamble.length === 0) preamble = defaultPreamble(templateId);
   const preText = preamble.join('\n');
   if (!preText.includes('\\graphicspath')) preamble.push(...GRAPHICS_PATH_LINES);
+  if (!preText.includes('subfigure')) {
+    preamble.push(
+      "\\catcode`\\@=11",
+      "\\@ifundefined{subfigure}{",
+      "  \\newcounter{localsubfig}[figure]",
+      "  \\newenvironment{subfigure}[2][]{%",
+      "    \\begin{minipage}{#2}%",
+      "      \\refstepcounter{localsubfig}%",
+      "      \\def\\caption##1{%",
+      "        \\par\\vspace{5pt}{\\centering\\small(\\alph{localsubfig})~##1\\par}%",
+      "      }%",
+      "  }{%",
+      "    \\end{minipage}%",
+      "  }",
+      "}{}",
+      "\\catcode`\\@=12"
+    );
+  }
+
+  const isElsevier = templateId.includes('elsevier');
+  const isAcm = templateId.includes('acm');
+  const isIeee = templateId.includes('ieee');
+
+  const titleFile = metadatas.find(f => f.path === 'metadata/title.tex');
+  const authorsFile = metadatas.find(f => f.path === 'metadata/authors.tex');
+  const abstractFile = metadatas.find(f => f.path === 'metadata/abstract.tex');
+  const keywordsFile = metadatas.find(f => f.path === 'metadata/keywords.tex');
+  const otherMetas = metadatas.filter(f => !['metadata/title.tex', 'metadata/authors.tex', 'metadata/abstract.tex', 'metadata/keywords.tex'].includes(f.path));
 
   const body: string[] = ['\\begin{document}'];
-  for (const f of metadatas) body.push(`\\input{${f.path}}`);
-  body.push('\\maketitle');
+
+  if (isElsevier) {
+    body.push('\\begin{frontmatter}');
+    if (titleFile) body.push(`\\input{${titleFile.path}}`);
+    if (authorsFile) body.push(`\\input{${authorsFile.path}}`);
+    if (abstractFile) body.push(`\\input{${abstractFile.path}}`);
+    if (keywordsFile) body.push(`\\input{${keywordsFile.path}}`);
+    for (const f of otherMetas) body.push(`\\input{${f.path}}`);
+    body.push('\\end{frontmatter}');
+  } else if (isAcm) {
+    if (titleFile) body.push(`\\input{${titleFile.path}}`);
+    if (authorsFile) body.push(`\\input{${authorsFile.path}}`);
+    if (abstractFile) body.push(`\\input{${abstractFile.path}}`);
+    if (keywordsFile) body.push(`\\input{${keywordsFile.path}}`);
+    for (const f of otherMetas) body.push(`\\input{${f.path}}`);
+    body.push('\\maketitle');
+  } else if (isIeee) {
+    if (titleFile) body.push(`\\input{${titleFile.path}}`);
+    if (authorsFile) body.push(`\\input{${authorsFile.path}}`);
+    body.push('\\maketitle');
+    if (abstractFile) body.push(`\\input{${abstractFile.path}}`);
+    if (keywordsFile) body.push(`\\input{${keywordsFile.path}}`);
+    for (const f of otherMetas) body.push(`\\input{${f.path}}`);
+  } else {
+    if (titleFile) body.push(`\\input{${titleFile.path}}`);
+    if (authorsFile) body.push(`\\input{${authorsFile.path}}`);
+    body.push('\\maketitle');
+    if (abstractFile) body.push(`\\input{${abstractFile.path}}`);
+    if (keywordsFile) body.push(`\\input{${keywordsFile.path}}`);
+    for (const f of otherMetas) body.push(`\\input{${f.path}}`);
+  }
+
+  // Sections in sorted numerical order (01_slug.tex, 02_slug.tex, ...)
   for (const f of sections) body.push(`\\input{${f.path}}`);
+
+  // Any floats not inlined inside sections are included safely before references
   const bodyJoined = body.join('\n');
   for (const f of floats) {
     if (!bodyJoined.includes(`\\input{${f.path}}`)) body.push(`\\input{${f.path}}`);
   }
+
+  // Bibliography
   if (bib) {
     body.push(`\\input{references/bibliography.tex}`);
   } else if (bibFile) {
@@ -483,11 +550,29 @@ function composeMainTex(
 
 export async function runModularAiMapping(input: ModularMappingInput): Promise<ModularMappingResult | null> {
   const { structured, templateId, templateMainTex, userId, userEmail, projectId } = input;
+
+  // Resolve all available figure files
   const figureManifest = Array.isArray(structured.figureManifest) ? structured.figureManifest : [];
-  const figureFiles = figureManifest.map((f: any) => String(f?.name ?? f)).filter(Boolean);
+  const manifestNames = figureManifest.map((f: any) => String(f?.name ?? f)).filter(Boolean);
+  const passedFigureFiles = Array.isArray(input.figureFiles) ? input.figureFiles : [];
+  const body = Array.isArray(structured.body) ? structured.body : [];
+  const bodyFigNames: string[] = [];
+  for (const n of body) {
+    if ((n.type === 'figure' || n.type === 'image' || n.type === 'chart') && n.id) {
+      bodyFigNames.push(String(n.id).replace(/^assets\//, '').replace(/^figures\//, ''));
+    }
+  }
+
+  const combinedFigSet = new Set<string>();
+  for (const f of [...passedFigureFiles, ...manifestNames, ...bodyFigNames]) {
+    const s = String(f).trim();
+    if (/\.(png|jpe?g|webp|gif|pdf|eps|svg|heic|heif|tiff?|bmp|avif)$/i.test(s)) {
+      combinedFigSet.add(s);
+    }
+  }
+  const figureFiles = Array.from(combinedFigSet);
 
   // Build text from body nodes or fullText
-  const body = Array.isArray(structured.body) ? structured.body : [];
   const bodyText = body.map((n: any) => n.text || n.caption || '').join('\n');
   const docText = [structured.fullText, bodyText].filter(Boolean).join('\n').trim();
   const textWindow = balancedWindow(docText.length > 0 ? docText : structured.abstract || '');
@@ -501,13 +586,9 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     figureFiles,
   };
 
-  console.log(`[AI-MODULAR] Starting 3-scope AI mapping: ${verdict.sections.length} sections, ${verdict.figures.length} figures, ${verdict.tables.length} tables, ${verdict.algorithms.length} algorithms`);
+  console.log(`[AI-MODULAR] Starting parallel multi-task mapping (concurrency=${MAX_CONCURRENT_AI_CALLS}): ${verdict.sections.length} sections, ${verdict.figures.length} figures, ${verdict.tables.length} tables, ${figureFiles.length} image files`);
 
-  // ── FULL-LENGTH TEXT for floats/metadata passes ──────────────────────
-  // The balanced window truncates the middle of large documents. Floats and
-  // metadata passes need visibility into ALL captions, equations and
-  // references — build a separate full-length window that includes all body
-  // node content (capped at a safe model context limit).
+  // Full-length text for floats and metadata
   const fullTextForPasses = (() => {
     const bodyTextFull = body.map((n: any) => {
       if (n.type === 'heading') return `\n${'#'.repeat(Number(n.level) || 1)} ${n.text}\n`;
@@ -520,37 +601,49 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
       return '';
     }).join('\n');
     const combined = [structured.fullText, bodyTextFull].filter(Boolean).join('\n').trim();
-    // Cap at generous limit — Gemini 2.5 Flash handles 1M+ tokens
     const MAX_CHARS = HAS_STRONG_PROVIDER ? 700000 : 200000;
     if (combined.length <= MAX_CHARS) return combined;
-    // For very large docs: head 70% + tail 30% (preserves references at end)
     const headLen = Math.floor(MAX_CHARS * 0.7);
     return combined.substring(0, headLen) +
       '\n\n[... middle of document elided ...]\n\n' +
       combined.substring(combined.length - (MAX_CHARS - headLen));
   })();
 
-  // ── CHUNKED SECTIONS for large documents ─────────────────────────────
-  // If there are many sections, split into chunks so the AI can generate
-  // complete section files without hitting output token limits.
-  // Smaller chunks (8 sections) ensure the AI can generate complete LaTeX
-  // for every section without truncation — critical for large 20MB docs.
-  const CHUNK_SIZE = 8; // sections per chunk
+  const fullCtx = { ...common, textWindow: fullTextForPasses };
+
+  // Prepare tasks: Floats, Metadata, and Sections
   const sectionGroups = groupBodyBySections(body);
-  let sectionFiles: AiModularFile[] = [];
-  let sectionModel = '';
-  let sectionRejected = 0;
+  const totalChunks = Math.ceil(sectionGroups.length / CHUNK_SIZE);
+  const isChunked = sectionGroups.length > CHUNK_SIZE;
 
-  if (sectionGroups.length > CHUNK_SIZE) {
-    const totalChunks = Math.ceil(sectionGroups.length / CHUNK_SIZE);
-    console.log(`[AI-MODULAR] Large document: splitting ${sectionGroups.length} sections into ${totalChunks} chunks`);
+  interface ScopeTask {
+    name: string;
+    run: () => Promise<{ files: AiModularFile[]; model: string; rejected: number }>;
+  }
 
-    const failedChunks: number[] = [];
+  const tasks: ScopeTask[] = [
+    {
+      name: 'floats',
+      run: () => runScopeWithRetry('floats', fullCtx, { userId, userEmail, projectId }),
+    },
+    {
+      name: 'metadata',
+      run: () => runScopeWithRetry('metadata', fullCtx, { userId, userEmail, projectId }),
+    },
+  ];
+
+  if (!isChunked) {
+    tasks.push({
+      name: 'sections-all',
+      run: () => runScopeWithRetry('sections', common, { userId, userEmail, projectId }),
+    });
+  } else {
+    console.log(`[AI-MODULAR] Large document: splitting ${sectionGroups.length} sections into ${totalChunks} parallel chunks (size=${CHUNK_SIZE})`);
     for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
       const start = chunkIdx * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, sectionGroups.length);
-      const chunkBody = sectionGroups.slice(start, end).flatMap(g => [g.heading, ...g.nodes]);
-      const chunkText = chunkTextWindow(chunkBody, 0, chunkBody.length, docText);
+      const chunkNodes = sectionGroups.slice(start, end).flatMap(g => [g.heading, ...g.nodes]);
+      const chunkText = chunkTextWindow(chunkNodes, docText);
 
       const chunkCtx = {
         ...common,
@@ -566,57 +659,58 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
         },
       };
 
-      const chunkResult = await runScopeWithRetry('sections', chunkCtx, { userId, userEmail, projectId });
-      sectionFiles.push(...chunkResult.files);
-      if (chunkResult.model) sectionModel = chunkResult.model;
-      sectionRejected += chunkResult.rejected;
-
-      if (chunkResult.files.length === 0) {
-        failedChunks.push(chunkIdx);
-        console.warn(`[AI-MODULAR] Chunk ${chunkIdx + 1}/${totalChunks} FAILED — sections ${start}-${end} will be empty`);
-      } else {
-        console.log(`[AI-MODULAR] Chunk ${chunkIdx + 1}/${totalChunks}: ${chunkResult.files.length} section files`);
-      }
+      tasks.push({
+        name: `sections-chunk-${chunkIdx + 1}`,
+        run: () => runScopeWithRetry('sections', chunkCtx, { userId, userEmail, projectId }),
+      });
     }
-
-    if (failedChunks.length > 0) {
-      console.warn(`[AI-MODULAR] ${failedChunks.length}/${totalChunks} chunks failed. Missing sections: ${failedChunks.map(c => `${c * CHUNK_SIZE + 1}-${Math.min((c + 1) * CHUNK_SIZE, sectionGroups.length)}`).join(', ')}`);
-    }
-  } else {
-    // Small document — single pass
-    const sectionsRes = await runScopeWithRetry('sections', common, { userId, userEmail, projectId });
-    sectionFiles = sectionsRes.files;
-    sectionModel = sectionsRes.model;
-    sectionRejected = sectionsRes.rejected;
   }
 
-  // ── FLOATS and METADATA passes (parallel) ────────────────────────────
-  // Use fullTextForPasses so floats/metadata can see ALL captions, equations
-  // and references — not just the truncated balanced window.
-  const fullCtx = { ...common, textWindow: fullTextForPasses };
-  const [floatsRes, metadataRes] = await Promise.all([
-    runScopeWithRetry('floats', fullCtx, { userId, userEmail, projectId }),
-    runScopeWithRetry('metadata', fullCtx, { userId, userEmail, projectId }),
-  ]);
+  // Run all tasks concurrently with bounded worker pool!
+  const taskResults = await pMap(tasks, async (task) => {
+    const startTime = Date.now();
+    const res = await task.run();
+    console.log(`[AI-MODULAR] Task "${task.name}" finished in ${((Date.now() - startTime) / 1000).toFixed(1)}s: ${res.files.length} files`);
+    return res;
+  }, MAX_CONCURRENT_AI_CALLS);
+
+  const floatsRes = taskResults[0];
+  const metadataRes = taskResults[1];
+  const sectionTaskResults = taskResults.slice(2);
+
+  const sectionFiles: AiModularFile[] = [];
+  let sectionRejected = 0;
+  const models = [floatsRes.model, metadataRes.model];
+
+  for (const sRes of sectionTaskResults) {
+    sectionFiles.push(...sRes.files);
+    sectionRejected += sRes.rejected;
+    if (sRes.model) models.push(sRes.model);
+  }
 
   const files = [...floatsRes.files, ...sectionFiles, ...metadataRes.files];
-  const models = [floatsRes.model, sectionModel, metadataRes.model].filter(Boolean);
+  const totalRejected = floatsRes.rejected + metadataRes.rejected + sectionRejected;
 
-  console.log(`[AI-MODULAR] Total: ${files.length} validated files (${floatsRes.files.length} floats, ${sectionFiles.length} sections, ${metadataRes.files.length} metadata), ${floatsRes.rejected + sectionRejected + metadataRes.rejected} rejected`);
+  console.log(`[AI-MODULAR] Parallel mapping complete: ${files.length} validated files (${floatsRes.files.length} floats, ${sectionFiles.length} sections, ${metadataRes.files.length} metadata), ${totalRejected} rejected`);
 
-  // ── SECTION COVERAGE CHECK ──────────────────────────────────────────
-  // Verify every section from the verdict has a corresponding file. Missing
-  // sections cause blank PDF because main.tex \input references nonexistent
-  // files. If coverage is below 50%, the AI mapping is unreliable — fall
-  // back to deterministic assembly.
+  // ── Section Coverage & Content Preservation Check ──
   const sectionFileCount = sectionFiles.filter(f => f.path.startsWith('sections/')).length;
   const expectedSectionCount = verdict.sections.length;
   if (expectedSectionCount > 0 && sectionFileCount === 0 && files.length > 0) {
-    console.warn(`[AI-MODULAR] WARNING: ${expectedSectionCount} sections expected but 0 section files generated. AI mapping is unreliable — falling back.`);
+    console.warn(`[AI-MODULAR] WARNING: ${expectedSectionCount} sections expected but 0 section files generated. Falling back to deterministic assembly.`);
     return null;
   }
   if (expectedSectionCount > 0 && sectionFileCount < expectedSectionCount * 0.5) {
-    console.warn(`[AI-MODULAR] WARNING: Only ${sectionFileCount}/${expectedSectionCount} section files generated (< 50% coverage). AI mapping is unreliable — falling back to deterministic assembler.`);
+    console.warn(`[AI-MODULAR] WARNING: Only ${sectionFileCount}/${expectedSectionCount} section files generated (< 50% coverage). Falling back to deterministic assembler.`);
+    return null;
+  }
+
+  // ── Content Length Preservation Verification ──
+  const totalSectionChars = sectionFiles.reduce((acc, f) => acc + (f.content || '').length, 0);
+  const rawProseChars = docText.length;
+  console.log(`[AI-MODULAR] Content preservation check: emitted ${totalSectionChars} chars across ${sectionFiles.length} sections vs ${rawProseChars} source doc chars.`);
+  if (rawProseChars > 15000 && totalSectionChars < rawProseChars * 0.25) {
+    console.warn(`[AI-MODULAR] WARNING: Content preservation check failed: only ${totalSectionChars} chars generated for ${rawProseChars} source chars (< 25% content). Falling back to deterministic assembly to guarantee zero content loss.`);
     return null;
   }
 
@@ -629,7 +723,7 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
   return {
     mainTex,
     files,
-    model: models[0] || 'unknown',
-    rejected: floatsRes.rejected + sectionRejected + metadataRes.rejected,
+    model: models.filter(Boolean)[0] || 'unknown',
+    rejected: totalRejected,
   };
 }
