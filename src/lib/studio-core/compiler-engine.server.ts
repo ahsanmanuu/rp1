@@ -22,6 +22,9 @@ function normalizePath(p: string): string {
   return (p || '').replace(/^\.\//, '').replace(/\\/g, '/').toLowerCase();
 }
 
+const FALLBACK_1X1_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+const FALLBACK_1X1_PNG = Buffer.from(FALLBACK_1X1_PNG_B64, 'base64');
+
 // ─────────────────────────────────────────────────────────────────────────────
 // UNIVERSAL CITATION RESOLUTION
 // Canonical numeric BibTeX style that ALWAYS emits \bibitem entries. Two variants:
@@ -635,6 +638,11 @@ export async function runHardenedPipeline(
   projectId: string | null,
   config: { profile: string, ghostMode: boolean } = { profile: 'generic', ghostMode: true }
 ): Promise<CompileResult> {
+  let activeFiles: FilePayload[] = [];
+  let monoFiles: FilePayload[] = [];
+  let pristineFiles: FilePayload[] = [];
+  let remoteFiles: FilePayload[] = [];
+
   try {
     const discovered = await hardenedDiscovery(projectId, files, mainFile);
     
@@ -1020,7 +1028,7 @@ export async function runHardenedPipeline(
         }
     });
 
-    let activeFiles = await optimizeAssets(finalNormalized);
+    activeFiles = await optimizeAssets(finalNormalized);
 
     // SAFETY: Ensure all file content values are strings (disk reads may return Buffers)
     activeFiles.forEach(f => { if (typeof f.content !== 'string') f.content = String(f.content || ''); });
@@ -1278,7 +1286,7 @@ export async function runHardenedPipeline(
             console.log(`[PIPELINE] Injected proprietary stub: ${stubName}`);
         }
     }
-    const pristineFiles = [...activeFiles];
+    pristineFiles = [...activeFiles];
     for (const [stubName, stubContent] of Object.entries(PROPRIETARY_STUBS)) {
         if (!pristineFiles.some(f => normalizePath(f.path) === stubName)) {
             pristineFiles.push({ path: stubName, content: stubContent });
@@ -1300,7 +1308,7 @@ export async function runHardenedPipeline(
     // ────────────────────────────────────────────────────────────────────────
     // NUCLEAR 31.0: MONOLITHIC COLLAPSE FOR ULTRA-LARGE PROJECTS
     const monolithContent = flattenProject(activeFiles, cleanMain);
-    const monoFiles: FilePayload[] = activeFiles.map(f => {
+    monoFiles = activeFiles.map(f => {
         const isBinary = isBinaryFile(f.path);
         if (isBinary) {
             return {
@@ -1331,7 +1339,7 @@ export async function runHardenedPipeline(
     // therefore revert `\zimg` back to plain `\includegraphics` so the real
     // image bytes (uploaded alongside the source) render directly in the PDF.
     // The LOCAL tectonic strategy below keeps the full ghost-mode path intact.
-    const remoteFiles: FilePayload[] = monoFiles.map(f => {
+    remoteFiles = monoFiles.map(f => {
         const ext = f.path.split('.').pop()?.toLowerCase() || '';
         if (useGhostMode && ext === 'tex') {
             return { ...f, content: revertZimgToIncludegraphics(f.content) };
@@ -1408,7 +1416,7 @@ export async function runHardenedPipeline(
                 .replace(/[\uFFFC-\uFFFE]/g, '');
             };
             activeFiles.forEach(f => {
-              if (f.path.endsWith('.tex') && typeof f.content === 'string') {
+              if ((f.path.endsWith('.tex') || f.path.endsWith('.sty') || f.path.endsWith('.cls') || f.path.endsWith('.bib') || f.path.endsWith('.bst')) && typeof f.content === 'string') {
                 f.content = stripInvalidUtf8(f.content);
               }
             });
@@ -1426,6 +1434,10 @@ export async function runHardenedPipeline(
                         const realContent = realBinaryCache?.[normalizePath(f.path)] ?? f.content;
                         const b64Data = realContent.startsWith('data:') ? (realContent.split(',')[1] || '') : realContent;
                         newBuffer = Buffer.from(b64Data, 'base64');
+                        if (newBuffer.length < 50) {
+                            // Fallback 1x1 transparent PNG if image data is missing or corrupt (<50 bytes)
+                            newBuffer = FALLBACK_1X1_PNG;
+                        }
                     }
 
                     // Write to primary relative path in compile temp dir
@@ -1779,6 +1791,7 @@ export async function runHardenedPipeline(
                 }
             } catch { /* ignore */ }
 
+            cleanupTempDir();
             return { pdfBase64: null, log: `Tectonic finished but no PDF was found.\n${logOutput}` };
         } },
         { name: 'YTOTECH_MONO_GHOST', fn: () => compileWithYtoTech(engine, monoFiles, cleanMain) },
@@ -1927,6 +1940,11 @@ export async function runHardenedPipeline(
 
   } catch (err: any) { 
     return { success: false, pdfBase64: null, log: `ENGINE_FATAL: ${err.message}`, errors: [], strategy: 'CRASH' }; 
+  } finally {
+    await PipelineGC.autoFree({
+      projectId,
+      buffers: [activeFiles, monoFiles, pristineFiles, remoteFiles]
+    });
   }
 }
 
@@ -1983,7 +2001,7 @@ export async function runDoc2LatexCompiler(
             const ext = (path.extname(name).toLowerCase().replace(/^\./, '') || 'png');
             const mime = ext === 'jpg' ? 'jpeg' : ext;
             const buffer = await fs.promises.readFile(path.join(uploadsDir, name));
-            if (!buffer || buffer.length === 0) continue;
+            if (!buffer || buffer.length < 50) continue;
             const content = `data:image/${mime};base64,${buffer.toString('base64')}`;
 
             for (const targetPath of [name, `assets/${name}`, `figures/${name}`]) {
@@ -2062,7 +2080,8 @@ export async function compileWithYtoTech(engine: string, files: FilePayload[], m
       
       if (isBinary) {
           const b64 = c.startsWith('data:') ? (c.split(',')[1] || '') : c;
-          return { path: f.path, file: b64, main: isMain };
+          const validB64 = (b64 && b64.length >= 50) ? b64 : FALLBACK_1X1_PNG_B64;
+          return { path: f.path, file: validB64, main: isMain };
       } else {
           const text = c.startsWith('data:') ? Buffer.from(c.split(',')[1] || '', 'base64').toString('utf8') : c;
           return { path: f.path, content: text, main: isMain };
@@ -2124,12 +2143,14 @@ export async function compileWithTexLive(files: FilePayload[], mainFile: string,
       }
 
       if (isBinary) {
-        // Best-effort image upload: previously binary files were fully skipped
-        // (leaving only placeholders in the PDF). Send the raw bytes as a file
-        // part so texonline writes them to disk at `finalName`; the
-        // `\includegraphics` reference (with \graphicspath) then resolves them.
-        const raw = c.startsWith('data:') ? Buffer.from(c.split(',')[1] || '', 'base64') : Buffer.from(c, 'base64');
-        fd.append('filecontents[]', raw, finalName);
+        // Best-effort image upload: send raw bytes as Blob part so texonline
+        // writes them to disk at `finalName`.
+        let raw = c.startsWith('data:') ? Buffer.from(c.split(',')[1] || '', 'base64') : Buffer.from(c, 'base64');
+        if (raw.length < 50) {
+          raw = FALLBACK_1X1_PNG;
+        }
+        const filePart = typeof Blob !== 'undefined' ? new Blob([raw], { type: 'application/octet-stream' }) : raw;
+        fd.append('filecontents[]', filePart, finalName);
         fd.append('filename[]', finalName);
         return;
       }

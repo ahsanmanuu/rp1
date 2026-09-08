@@ -561,9 +561,10 @@ function UploadContent() {
       // until template selection attaches them as multipart (Phase 2).
       if (clientExtract && uploadData?.projectId) {
         try {
-          const { saveLocalDocument } = await import('@/lib/local-project-store');
+          const { saveLocalDocument, deleteLocalDocument } = await import('@/lib/local-project-store');
           await saveLocalDocument({
             projectId: uploadData.projectId,
+            userId: session?.user?.id,
             fileName: targetFile.name,
             savedAt: Date.now(),
             envelope: {
@@ -573,6 +574,8 @@ function UploadContent() {
               figures: clientExtract.figures || [],
             },
           });
+          // Clean up staging entry to guarantee zero cross-contamination
+          await deleteLocalDocument('latest_upload');
           console.log(`[UPLOAD] Local extraction persisted for project ${uploadData.projectId} (${(clientExtract.figures || []).length} figure(s) on device)`);
         } catch (localErr: any) {
           console.warn("[UPLOAD] Failed to persist local document extraction:", localErr?.message || localErr);

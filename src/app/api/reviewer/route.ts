@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { routeToAgent } from '@/lib/agent-gateway';
 import { getClientGeoInfo } from '@/lib/clientGeo';
 import { matchJournals, rankJournals } from '@/lib/reviewer-utils';
+import { PipelineGC } from '@/lib/pipeline-gc';
 
 import { getServerSession } from "@/lib/auth-pb";
 export async function GET(req: NextRequest) {
@@ -182,8 +183,9 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  let body: any = null;
   try {
-    const body = await req.json();
+    body = await req.json();
 
     // Check if this is a direct pre-computed save action
     if (body.isSaveAction && body.review) {
@@ -317,6 +319,10 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error('[AI Reviewer API]', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
+  } finally {
+    if (body) {
+      PipelineGC.autoFree({ buffers: [body] });
+    }
   }
 }
 

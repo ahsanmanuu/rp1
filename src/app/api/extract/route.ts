@@ -6,6 +6,7 @@ import { buildExtractionPrompt, chunkText } from "@/lib/reviewer-utils";
 import { resolve } from "path";
 
 import { getServerSession } from "@/lib/auth-pb";
+import { PipelineGC } from "@/lib/pipeline-gc";
 // ════════════════════════════════════════════════════════════════════════════
 //  UNIVERSAL DOCUMENT TEXT EXTRACTION
 //  Supported: PDF, DOCX, DOC, TXT, TEX, MD, RTF, ODT, ODS, ODP, ODG, HTML
@@ -796,7 +797,7 @@ function resolveAbstract(
 // ════════════════════════════════════════════════════════════════════════════
 
 export async function POST(req: NextRequest) {
-  console.log("[EXTRACT] POST received");
+  let buffer: Buffer | null = null;
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -805,7 +806,7 @@ export async function POST(req: NextRequest) {
     }
     console.log("[EXTRACT] File:", file.name, "size:", file.size, "bytes");
 
-    const buffer = Buffer.from(await file.arrayBuffer());
+    buffer = Buffer.from(await file.arrayBuffer());
 
     // ── Step 1: Extract raw text ──────────────────────────────────────────
     let text = "";
@@ -944,5 +945,9 @@ export async function POST(req: NextRequest) {
       { error: error.message || "Extraction failed" },
       { status: 500 }
     );
+  } finally {
+    if (buffer) {
+      PipelineGC.autoFree({ buffers: [buffer] });
+    }
   }
 }

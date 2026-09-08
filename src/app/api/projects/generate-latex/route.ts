@@ -8,6 +8,7 @@ import { runModularAiMapping } from '@/lib/ai-modular-mapping';
 import { getTemplateById, mapLegacyTemplateId } from '@/lib/templates/registry';
 import { getServerSession } from "@/lib/auth-pb";
 import { calculateDocumentStats } from '@/lib/stats';
+import { PipelineGC } from '@/lib/pipeline-gc';
 
 export const maxDuration = 300;
 
@@ -21,6 +22,10 @@ export const maxDuration = 300;
  * Flow: structuredContent (DB) → assemble → persist files → return
  */
 export async function POST(req: Request) {
+  let projectId = '';
+  let templateId = '';
+  let figureFiles: { name: string; data: Buffer; contentType: string }[] = [];
+
   try {
     const session = await getServerSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -29,9 +34,6 @@ export async function POST(req: Request) {
     // Figures arrive ONLY for client-extracted DOC2LATEX projects; the Phase-1
     // figure manifest (stored in structured.json) names exactly which files may
     // be persisted — anything else is rejected.
-    let projectId = '';
-    let templateId = '';
-    let figureFiles: { name: string; data: Buffer; contentType: string }[] = [];
     const contentTypeHeader = req.headers.get('content-type') || '';
     if (contentTypeHeader.includes('multipart/form-data')) {
       const formData = await req.formData();
@@ -119,6 +121,58 @@ export async function POST(req: Request) {
       }
     };
 
+    // Build set of legitimate figure filenames for THIS project
+    const validCurrentFigureNames = new Set<string>();
+    for (const fig of figureFiles) {
+      const safeName = String(fig.name).replace(/[^a-zA-Z0-9._-]/g, '_');
+      validCurrentFigureNames.add(safeName);
+    }
+    if (Array.isArray(structured.figureManifest)) {
+      for (const f of structured.figureManifest) {
+        const name = typeof f === 'string' ? f : f?.name;
+        if (name) validCurrentFigureNames.add(String(name).replace(/[^a-zA-Z0-9._-]/g, '_'));
+      }
+    }
+
+    // --- PURGE STALE / ZOMBIE IMAGES FROM DISK & DB TO PREVENT CROSS-CONTAMINATION ---
+    if (figureFiles.length > 0 && fs.existsSync(projectDir)) {
+      const imgDirs = [projectDir, path.join(projectDir, 'assets'), path.join(projectDir, 'figures')];
+      for (const dir of imgDirs) {
+        if (!fs.existsSync(dir)) continue;
+        try {
+          const files = fs.readdirSync(dir);
+          for (const file of files) {
+            const ext = path.extname(file).toLowerCase();
+            const isImg = /\.(png|jpg|jpeg|gif|webp|pdf|svg|eps|tiff?|bmp)$/i.test(ext);
+            if (isImg && !validCurrentFigureNames.has(file)) {
+              console.log(`[GENERATE-LATEX] Pruning stale image from disk: ${file}`);
+              try { fs.unlinkSync(path.join(dir, file)); } catch {}
+            }
+          }
+        } catch {}
+      }
+
+      // Also clean stale image rows from DB projectFile
+      try {
+        const dbImages = await prisma.projectFile.findMany({
+          where: { projectId, fileType: 'image' },
+          select: { id: true, filename: true }
+        });
+        const staleIds = dbImages
+          .filter((row: { id: string; filename: string }) => {
+            const base = path.basename(row.filename);
+            return !validCurrentFigureNames.has(base) && !validCurrentFigureNames.has(row.filename);
+          })
+          .map((r: { id: string; filename: string }) => r.id);
+        if (staleIds.length > 0) {
+          console.log(`[GENERATE-LATEX] Pruning ${staleIds.length} stale image record(s) from DB`);
+          await prisma.projectFile.deleteMany({ where: { id: { in: staleIds } } });
+        }
+      } catch (dbPruneErr) {
+        console.warn('[GENERATE-LATEX] Failed to prune stale DB images:', dbPruneErr);
+      }
+    }
+
     // --- PERSIST CLIENT-CARRIED FIGURES (multipart) ---
     // For client-extracted DOC2LATEX projects the figure bytes never touched
     // the server at upload time — they are attached here. Only names declared
@@ -136,7 +190,12 @@ export async function POST(req: Request) {
         const safeName = String(fig.name).replace(/[^a-zA-Z0-9._-]/g, '_');
         const ext = path.extname(safeName).toLowerCase();
         const isImage = /\.(png|jpg|jpeg|gif|webp|pdf|svg|eps|tiff?|bmp|heic|heif|avif)$/i.test(ext);
-        if (!isImage) continue;
+        if (!isImage || !fig.data || fig.data.length < 50) {
+          if (!fig.data || fig.data.length < 50) {
+            console.warn(`[GENERATE-LATEX] Skipping empty/corrupt figure buffer for ${safeName} (${fig.data?.length || 0} bytes)`);
+          }
+          continue;
+        }
 
         try {
           fs.writeFileSync(path.join(projectDir, safeName), fig.data);
@@ -236,7 +295,11 @@ export async function POST(req: Request) {
           for (const d of checkDirs) {
             if (fs.existsSync(d)) {
               for (const f of fs.readdirSync(d)) {
-                if (/\.(png|jpe?g|webp|gif|pdf|eps|svg|tiff?|bmp)$/i.test(f)) availableFigureNamesSet.add(f);
+                if (/\.(png|jpe?g|webp|gif|pdf|eps|svg|tiff?|bmp)$/i.test(f)) {
+                  if (validCurrentFigureNames.size === 0 || validCurrentFigureNames.has(f)) {
+                    availableFigureNamesSet.add(f);
+                  }
+                }
               }
             }
           }
@@ -311,20 +374,16 @@ export async function POST(req: Request) {
       for (const f of figureFiles) binaryNamesSet.add(f.name);
       if (fs.existsSync(projectDir)) {
         try {
-          const rootFiles = fs.readdirSync(projectDir);
-          for (const f of rootFiles) {
-            if (/\.(png|jpe?g|webp|gif|pdf|eps|svg|tiff?|bmp)$/i.test(f)) binaryNamesSet.add(f);
-          }
-          const assetsDir = path.join(projectDir, 'assets');
-          if (fs.existsSync(assetsDir)) {
-            for (const f of fs.readdirSync(assetsDir)) {
-              if (/\.(png|jpe?g|webp|gif|pdf|eps|svg|tiff?|bmp)$/i.test(f)) binaryNamesSet.add(f);
-            }
-          }
-          const figuresDir = path.join(projectDir, 'figures');
-          if (fs.existsSync(figuresDir)) {
-            for (const f of fs.readdirSync(figuresDir)) {
-              if (/\.(png|jpe?g|webp|gif|pdf|eps|svg|tiff?|bmp)$/i.test(f)) binaryNamesSet.add(f);
+          const checkDirs = [projectDir, path.join(projectDir, 'assets'), path.join(projectDir, 'figures')];
+          for (const d of checkDirs) {
+            if (fs.existsSync(d)) {
+              for (const f of fs.readdirSync(d)) {
+                if (/\.(png|jpe?g|webp|gif|pdf|eps|svg|tiff?|bmp)$/i.test(f)) {
+                  if (validCurrentFigureNames.size === 0 || validCurrentFigureNames.has(f)) {
+                    binaryNamesSet.add(f);
+                  }
+                }
+              }
             }
           }
         } catch {}
@@ -348,7 +407,9 @@ export async function POST(req: Request) {
         });
         for (const row of dbImgFiles) {
           const base = path.basename(row.filename);
-          if (base) binaryNamesSet.add(base);
+          if (base && (validCurrentFigureNames.size === 0 || validCurrentFigureNames.has(base))) {
+            binaryNamesSet.add(base);
+          }
         }
       } catch {}
 
@@ -454,7 +515,7 @@ export async function POST(req: Request) {
           try { fs.rmSync(folderPath, { recursive: true, force: true }); } catch {}
         }
       }
-      // For figures and assets folders, only delete old .tex files, never delete image files!
+      // For figures and assets folders, delete old .tex files and any images not belonging to this document
       for (const imgFolder of ['figures', 'assets']) {
         const folderPath = path.join(projectDir, imgFolder);
         if (fs.existsSync(folderPath)) {
@@ -462,6 +523,8 @@ export async function POST(req: Request) {
             const files = fs.readdirSync(folderPath);
             for (const f of files) {
               if (f.endsWith('.tex') || f.endsWith('.aux') || f.endsWith('.log')) {
+                try { fs.unlinkSync(path.join(folderPath, f)); } catch {}
+              } else if (validCurrentFigureNames.size > 0 && !validCurrentFigureNames.has(f)) {
                 try { fs.unlinkSync(path.join(folderPath, f)); } catch {}
               }
             }
@@ -617,5 +680,10 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error('[GENERATE-LATEX] Critical error:', error.message);
     return NextResponse.json({ error: error.message || 'Error generating LaTeX' }, { status: 500 });
+  } finally {
+    await PipelineGC.autoFree({
+      projectId: projectId || undefined,
+      buffers: [figureFiles]
+    });
   }
 }

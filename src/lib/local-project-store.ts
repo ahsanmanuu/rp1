@@ -14,6 +14,7 @@
 
 export interface LocalDocumentRecord {
   projectId: string;
+  userId?: string;
   fileName: string;
   savedAt: number;
   envelope: {
@@ -48,63 +49,31 @@ export async function saveLocalDocument(record: LocalDocumentRecord): Promise<vo
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
     tx.objectStore(STORE).put(record);
-    // Also store under fixed 'latest_upload' key so extraction is never lost across re-routes
-    if (record.projectId !== 'latest_upload') {
-      tx.objectStore(STORE).put({ ...record, projectId: 'latest_upload' });
-    }
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error || new Error('Failed to save local document'));
   });
 }
 
-export async function getLocalDocument(projectId: string): Promise<LocalDocumentRecord | null> {
-  if (typeof indexedDB === 'undefined') return null;
+export async function getLocalDocument(projectId: string, userId?: string): Promise<LocalDocumentRecord | null> {
+  if (typeof indexedDB === 'undefined' || !projectId) return null;
   try {
     const db = await openDb();
-    const directDoc = await new Promise<LocalDocumentRecord | null>((resolve, reject) => {
+    const doc = await new Promise<LocalDocumentRecord | null>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly');
       const req = tx.objectStore(STORE).get(projectId);
       req.onsuccess = () => resolve((req.result as LocalDocumentRecord) || null);
       req.onerror = () => reject(req.error || new Error('Failed to read local document'));
     });
 
-    if (directDoc?.envelope?.figures && directDoc.envelope.figures.length > 0) {
-      return directDoc;
+    if (!doc) return null;
+
+    // Strict user isolation guard: if userId is provided and record has userId, enforce match
+    if (userId && doc.userId && doc.userId !== userId) {
+      console.warn(`[LOCAL-STORE] Security check failed: document ${projectId} belongs to user ${doc.userId}, requested by ${userId}`);
+      return null;
     }
 
-    // Fallback 1: Try 'latest_upload' key
-    const latestDoc = await new Promise<LocalDocumentRecord | null>((resolve) => {
-      try {
-        const tx = db.transaction(STORE, 'readonly');
-        const req = tx.objectStore(STORE).get('latest_upload');
-        req.onsuccess = () => resolve((req.result as LocalDocumentRecord) || null);
-        req.onerror = () => resolve(null);
-      } catch {
-        resolve(null);
-      }
-    });
-
-    if (latestDoc?.envelope?.figures && latestDoc.envelope.figures.length > 0) {
-      return latestDoc;
-    }
-
-    // Fallback 2: Scan all records and return the most recent one with figures
-    const allDocs = await new Promise<LocalDocumentRecord[]>((resolve) => {
-      try {
-        const tx = db.transaction(STORE, 'readonly');
-        const req = tx.objectStore(STORE).getAll();
-        req.onsuccess = () => resolve((req.result as LocalDocumentRecord[]) || []);
-        req.onerror = () => resolve([]);
-      } catch {
-        resolve([]);
-      }
-    });
-
-    const withFigs = allDocs
-      .filter(d => d && d.envelope && Array.isArray(d.envelope.figures) && d.envelope.figures.length > 0)
-      .sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
-
-    return withFigs[0] || directDoc || null;
+    return doc;
   } catch {
     return null;
   }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { PipelineGC } from "@/lib/pipeline-gc";
 
 // Initialize pdfjs worker
 if (typeof window === 'undefined') {
@@ -6,12 +7,13 @@ if (typeof window === 'undefined') {
 }
 
 export async function POST(req: NextRequest) {
+  let buffer: Buffer | null = null;
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File;
     if (!file) return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
 
-    const buffer = Buffer.from(await file.arrayBuffer());
+    buffer = Buffer.from(await file.arrayBuffer());
     const fileName = file.name.toLowerCase();
 
     // 1. Handle BibTeX (.bib)
@@ -54,5 +56,9 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("File parse error:", error);
     return NextResponse.json({ error: "Failed to parse file" }, { status: 500 });
+  } finally {
+    if (buffer) {
+      PipelineGC.autoFree({ buffers: [buffer] });
+    }
   }
 }

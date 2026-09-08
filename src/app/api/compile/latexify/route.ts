@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runLatexifyCompiler } from '@/lib/studio-core/compiler-engine.server';
+import { PipelineGC } from '@/lib/pipeline-gc';
 
 import { getServerSession } from "@/lib/auth-pb";
 export const maxDuration = 120;
@@ -23,8 +24,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Compiler unavailable', message: importErr.message }, { status: 503 });
   }
 
+  let projectId: string | null = null;
+  let files: any[] = [];
+
   try {
-    const { engine = 'pdflatex', files, mainFile = 'main.tex', projectId = null } = await req.json();
+    const body = await req.json();
+    const { engine = 'pdflatex', mainFile = 'main.tex' } = body;
+    files = body.files || [];
+    projectId = body.projectId || null;
 
     console.log(`[LATEXIFY] Request: ${session.user?.email} | Project: ${projectId}`);
 
@@ -46,5 +53,10 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error('[LATEXIFY_FAIL]', err);
     return NextResponse.json({ error: 'Latexify Compiler Error', message: err.message }, { status: 500 });
+  } finally {
+    await PipelineGC.autoFree({
+      projectId,
+      buffers: [files]
+    });
   }
 }

@@ -1625,7 +1625,17 @@ export class LatexAssembler {
       '\u208A': '\\textsubscript{+}',
       '\u208B': '\\textsubscript{-}',
       '\u2215': '/',
-      '\u2010': '-'
+      '\u2022': '\\textbullet{}',
+      '\u2010': '-',
+      '\u2011': '-',
+      '\u2012': '-',
+      '\u2013': '--',
+      '\u2014': '---',
+      '\u2026': '\\dots{}',
+      '\u2018': '`',
+      '\u2019': '\'',
+      '\u201C': '``',
+      '\u201D': '\'\''
     };
 
     for (const [char, cmd] of Object.entries(EXTENDED_GREEK)) {
@@ -1636,14 +1646,16 @@ export class LatexAssembler {
         // (which LaTeX reads as a missing-$ error). Self-contained commands
         // (\text..., \ensuremath) are emitted as-is.
         let replacement: string;
-        if (cmd.startsWith('\\textsuperscript') || cmd.startsWith('\\textsubscript') || cmd.startsWith('\\ensuremath')) {
+        if (cmd.startsWith('\\text') || cmd.startsWith('\\ensuremath') || cmd.startsWith('\\dots')) {
+          replacement = cmd;
+        } else if (/^[a-zA-Z0-9\s.,'"`/\-]+$/.test(cmd) && !/^(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega|pm|mp|le|ge|approx|infty|to|partial|nabla)$/.test(cmd)) {
           replacement = cmd;
         } else if (cmd.startsWith('^') || cmd.startsWith('_')) {
           replacement = `$${cmd}$`;
         } else if (cmd.startsWith('\\')) {
           replacement = `$\\${cmd.substring(1)}$`;
         } else {
-          replacement = `$${cmd}$`;
+          replacement = `$\\${cmd}$`;
         }
         symbolMap.set(id, replacement);
         text = text.replace(new RegExp(char, 'g'), id);
@@ -1775,7 +1787,13 @@ export class LatexAssembler {
     });
 
     // Final cleanup of any potential double-escaped math delimiters
-    return sanitized.replace(/\\\$\\textbackslash\s+/g, '$\\').replace(/\$\$+/g, '$');
+    let finalResult = sanitized.replace(/\\\$\\textbackslash\s+/g, '$\\');
+    // Balance math mode delimiters to prevent leaked math mode breaking subsequent environments (\bibitem, \section, etc.)
+    const dollarCount = (finalResult.match(/(?<!\\)\$/g) || []).length;
+    if (dollarCount % 2 !== 0) {
+      finalResult += '$';
+    }
+    return finalResult;
   }
 }
 
@@ -1921,6 +1939,16 @@ export class ModularLatexAssembler {
     }
     preamble.push(
       "",
+      "% --- UNIVERSAL METADATA FALLBACKS ---",
+      "\\providecommand{\\email}[1]{\\texttt{#1}}",
+      "\\providecommand{\\ead}[1]{\\texttt{#1}}",
+      "\\providecommand{\\corref}[1]{}",
+      "\\providecommand{\\cortext}[2]{}",
+      "\\providecommand{\\affiliation}[2][]{}",
+      "\\providecommand{\\institution}[1]{#1}",
+      "\\providecommand{\\city}[1]{#1}",
+      "\\providecommand{\\country}[1]{#1}",
+      "",
       "% --- UNIVERSAL SUBFIGURE FALLBACK ---",
       "\\catcode`\\@=11",
       "\\@ifundefined{subfigure}{",
@@ -2011,7 +2039,7 @@ export class ModularLatexAssembler {
           return `${name}$^{${id}${a.isCorresponding ? ",*" : ""}}$`;
       }
       if (isLncs) return `${name}${a.affiliationIds?.length ? `\\inst{${a.affiliationIds.join(',')}}` : ""}`;
-      if (isElsevier) return `\\author[aff1]{${name}}${email ? `\\email{${email}}` : ""}${a.isCorresponding ? "\\corref{cor1}" : ""}`;
+      if (isElsevier) return `\\author[aff1]{${name}}${email ? `\\ead{${email}}` : ""}${a.isCorresponding ? "\\corref{cor1}" : ""}`;
       if (isSciRep || authorStyle === 'nature') {
         const id = a.affiliationIds?.[0] || "1";
         return `\\author[${id}${a.isCorresponding ? ',*' : ''}]{${name}}${email ? `\\email{${email}}` : ""}`;
@@ -2030,7 +2058,8 @@ export class ModularLatexAssembler {
       metadataDeclarations.push(`\\input{metadata/authors.tex}`);
       files['metadata/authors.tex'] = `\\author{${authorLines.join(' \\and ')}}\n\\institute{${orgs[0] || "Institution"}}`;
     } else if (isElsevier) {
-      metadataDeclarations.push(`\\input{metadata/authors.tex}`);
+      // NOTE: for Elsevier, metadata/authors.tex is input inside \begin{frontmatter} in header,
+      // NOT in metadataDeclarations (preamble), to avoid "LaTeX Error: Missing \begin{document}"
       const elsLines = [...authorLines];
       elsLines.push(`\\affiliation[aff1]{organization={${orgs[0] || "Institution"}}, country={Country}}`);
       if ((doc.authors || []).some(a => a.isCorresponding)) elsLines.push("\\cortext[cor1]{Corresponding author}");

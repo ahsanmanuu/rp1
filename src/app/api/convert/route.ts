@@ -1,20 +1,23 @@
 import { NextResponse } from 'next/server';
 import mammoth from 'mammoth';
 import { transformHtmlToLatex } from '@/lib/converter';
+import { PipelineGC } from '@/lib/pipeline-gc';
 
 export async function POST(request: Request) {
+  let projectId = '';
+  let assets: { filename: string, buffer: Buffer }[] = [];
+
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const templateId = formData.get('templateId') as string;
-    const projectId = formData.get('projectId') as string;
+    projectId = (formData.get('projectId') as string) || '';
 
     if (!file) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     }
 
     const arrayBuffer = await file.arrayBuffer();
-    const assets: { filename: string, buffer: Buffer }[] = [];
     let imageCounter = 0;
 
     // Mammoth Conversion with Image Handler
@@ -155,5 +158,10 @@ export async function POST(request: Request) {
   } catch (err: any) {
     console.error('Conversion Error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
+  } finally {
+    await PipelineGC.autoFree({
+      projectId: projectId || undefined,
+      buffers: [assets]
+    });
   }
 }

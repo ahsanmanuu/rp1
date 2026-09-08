@@ -202,7 +202,8 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     const hydrateAndHealFigures = async (studioFs: StudioFS, projId: string, initialFiles: StudioFile[]): Promise<StudioFile[]> => {
       try {
         const { getLocalDocument } = await import('@/lib/local-project-store');
-        const localDoc = await getLocalDocument(projId);
+        const currentUserId = (session?.user as any)?.id;
+        const localDoc = await getLocalDocument(projId, currentUserId);
         const localFigures = (localDoc?.envelope?.figures || []).filter((f: any) => f && f.name && (f.dataUrl || f.content));
 
         // 1. Write all local figures from client IndexedDB into StudioFS
@@ -235,15 +236,15 @@ export default function DocIDE({ projectId }: { projectId: string }) {
           }
         }
 
-        let seqIdx = 0;
         for (const refName of referencedImages) {
           const lower = refName.toLowerCase();
           const hasAsset = existingPaths.has(lower) || existingPaths.has(`assets/${lower}`) || existingPaths.has(`figures/${lower}`);
           if (!hasAsset) {
+            // Strict matching: only match exact name or basename belonging to this manuscript
             const matchedFig = localFigures.find((f: any) => 
               String(f.name).toLowerCase() === lower || 
               String(f.name).toLowerCase().endsWith(lower)
-            ) || localFigures[seqIdx++] || localFigures[0];
+            );
 
             let dataUrl = matchedFig?.dataUrl || (matchedFig as any)?.content;
             if (!dataUrl || dataUrl.length < 200) {
@@ -440,7 +441,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                 if (!dataUrl || dataUrl.length < 200) {
                   try {
                     const { getLocalDocument } = await import('@/lib/local-project-store');
-                    const localDoc = await getLocalDocument(projectId);
+                    const localDoc = await getLocalDocument(projectId, (session?.user as any)?.id);
                     const figPool = [
                       ...(Array.isArray(localDoc?.envelope?.figures) ? localDoc.envelope.figures : []),
                       ...(Array.isArray((localDoc as any)?.figures) ? (localDoc as any).figures : [])
@@ -1332,7 +1333,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       // time.
       try {
         const { getLocalDocument } = await import('@/lib/local-project-store');
-        const localDoc = await getLocalDocument(projectId);
+        const localDoc = await getLocalDocument(projectId, (session?.user as any)?.id);
         const figs = localDoc?.envelope?.figures;
         if (Array.isArray(figs) && figs.length > 0) {
           const byLower = new Map<string, any>();

@@ -8,6 +8,7 @@ import { ModularLatexAssembler } from '@/lib/assembler';
 import { getTemplateById, mapLegacyTemplateId } from '@/lib/templates/registry';
 
 import { getServerSession } from "@/lib/auth-pb";
+import { PipelineGC } from '@/lib/pipeline-gc';
 interface StructuredContent {
   title?: string;
   authors?: any[];
@@ -62,11 +63,14 @@ function formatAuthorsForTemplate(templateId: string, authors: any[]): string {
 // --- LEGACY TEMPLATE WRAPPERS DEPRECATED IN FAVOR OF UNIVERSAL ASSEMBLER ---
 
 export async function POST(req: Request) {
+  let projectId = '';
   try {
     const session = await getServerSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { projectId, templateId } = await req.json();
+    const body = await req.json();
+    projectId = body?.projectId || '';
+    const templateId = body?.templateId || '';
 
     if (!projectId || !templateId) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
@@ -507,5 +511,9 @@ export async function POST(req: Request) {
     console.error('Stack Trace:', error.stack);
     console.error('-----------------------------');
     return NextResponse.json({ error: error.message || 'Error applying template', stack: error.stack }, { status: 500 });
+  } finally {
+    if (projectId) {
+      await PipelineGC.autoFree({ projectId });
+    }
   }
 }

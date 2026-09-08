@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { routeToAgent } from '@/lib/agent-gateway';
 import { getClientGeoInfo } from '@/lib/clientGeo';
+import { PipelineGC } from '@/lib/pipeline-gc';
 
 import { getServerSession } from "@/lib/auth-pb";
 export async function POST(req: NextRequest) {
   const session = await getServerSession();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  let body: any = null;
   try {
-    const { mode, code, errors, prompt, context, error } = await req.json();
+    body = await req.json();
+    const { mode, code, errors, prompt, context, error } = body || {};
     const geo = await getClientGeoInfo(req);
 
     const result = await routeToAgent({
@@ -42,5 +45,9 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error('[AI Fix]', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
+  } finally {
+    if (body) {
+      PipelineGC.autoFree({ buffers: [body] });
+    }
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from "@/lib/auth-pb";
+import { PipelineGC } from '@/lib/pipeline-gc';
 import { 
   runLatexifyCompiler, 
   runDoc2LatexCompiler, 
@@ -37,11 +38,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Compiler unavailable', message: importErr.message }, { status: 503 });
   }
 
+  let files: any[] = [];
+  let projectId: string | null = null;
+
   try {
     let engine = 'pdflatex';
-    let files: any[] = [];
     let mainFile = 'main.tex';
-    let projectId: string | null = null;
 
     const contentType = req.headers.get('content-type') || '';
     if (contentType.includes('multipart/form-data')) {
@@ -141,5 +143,10 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error('[LATEX_STUDIO_CRASH]', err);
     return NextResponse.json({ error: 'Critical Engine Failure', message: err.message }, { status: 500 });
+  } finally {
+    await PipelineGC.autoFree({
+      projectId,
+      buffers: [files]
+    });
   }
 }
