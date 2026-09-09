@@ -92,6 +92,20 @@ class PQueue {
 }
 const psQueue = new PQueue(3); // Max 3 concurrent powershell instances
 
+// Bounded concurrency helper for parallel tasks in Phase 1
+async function pMap<T, R>(items: T[], fn: (item: T, idx: number) => Promise<R>, concurrency = 4): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIdx = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (nextIdx < items.length) {
+      const idx = nextIdx++;
+      results[idx] = await fn(items[idx], idx);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 // ── TWO-PHASE UPLOAD (durable Postgres-backed) ──────────────────────────────
 // Render kills long requests (~300s) regardless of the client XHR timeout, so
 // the heavy pipeline (AdmZip + JSDOM math/charts + mammoth + sharp + AI +
@@ -741,7 +755,7 @@ async function runUploadProcessing(uploadId: string) {
             imageFiles: figureNames,
             templateId: templateId,
           }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 90000))
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 30000))
         ]);
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
@@ -1180,63 +1194,45 @@ async function runUploadProcessing(uploadId: string) {
         const markerToFinalName: Map<string, string> = new Map();
 
         let chartFileIdx = 1;
-        for (const pc of pendingCharts) {
-          // Heartbeat per chart: QuickChart conversion can take ~6s per chart
-          // and large documents carry dozens — without this the 600s staleness
-          // window could still trip and falsely declare the worker dead.
-          heartbeat(uploadId, `Processing chart ${chartFileIdx}/${pendingCharts.length}`, 50);
+        const chartTasks = pendingCharts.map((pc) => {
           const isTrueChart = pc.target.includes('charts/');
           const chartName = isTrueChart ? `rf_chart_${chartFileIdx++}.png` : `rf_fig_${figIdx++}.png`;
           markerToFinalName.set(pc.marker, chartName);
+          return { pc, chartName, isTrueChart };
+        });
 
+        const extractedChartResults = await pMap(chartTasks, async ({ pc, chartName, isTrueChart }, idx) => {
+          heartbeat(uploadId, `Processing chart ${idx + 1}/${chartTasks.length}`, 50);
           let chartImagePath = pc.imagePath;
           if (chartImagePath) {
             const resolvedPath = pc.target === 'vml'
               ? `word/${chartImagePath.replace(/^\.\.\//, '')}`.replace(/\/+/g, '/')
               : `word/${pc.target.replace(/charts\/[^/]+$/, '')}${chartImagePath.replace(/^\.\.\//, '')}`.replace(/\/+/g, '/');
             if (isTrueChart) {
-              // TRUE CHARTS: skip ZIP extraction — QuickChart generates far higher resolution
-              // from the OOXML chart data (3600x2400px @ 3x DPR vs 72-150 DPI screen captures).
               chartImagePath = null;
             } else {
-              // VML CHART FALLBACK: only embedded raster images available, no OOXML for QuickChart.
               try {
                 const imgEntry = zip.getEntry(resolvedPath);
                 if (imgEntry) {
                   const rawBuf = imgEntry.getData();
-                  let processedBuf: Buffer | null = null;
-                  
-                  try {
-                    if (rawBuf.length < 2000) {
-                      throw new Error("Image too small, likely a transparent VML spacer");
-                    }
-                    processedBuf = rawBuf;
-                    extractedImages.push({ name: chartName, buffer: processedBuf });
+                  if (rawBuf && rawBuf.length >= 2000) {
                     console.log(`[CHART] Extracted VML chart image: ${chartName} from ${resolvedPath}`);
-                  } catch {
-                    // ZIP Raster Sibling Search
-                    const dotIdx = resolvedPath.lastIndexOf('.');
-                    const baseWithoutExt = dotIdx !== -1 ? resolvedPath.substring(0, dotIdx) : resolvedPath;
-                    console.log(`[CHART] Failed to extract raw buffer. Searching for raster fallbacks in ZIP for: ${baseWithoutExt}`);
-                    
-                    for (const tryExt of ['.png', '.jpg', '.jpeg', '.PNG', '.JPG', '.JPEG']) {
-                      const fallbackEntry = zip.getEntry(baseWithoutExt + tryExt);
-                      if (fallbackEntry) {
-                        const fallBuf = fallbackEntry.getData();
-                        if (fallBuf.length >= 2000) {
-                          processedBuf = fallBuf;
-                          extractedImages.push({ name: chartName, buffer: processedBuf });
-                          console.log(`[CHART] Successfully recovered raster fallback from ZIP: ${baseWithoutExt + tryExt}`);
-                          break;
-                        }
+                    return { name: chartName, buffer: rawBuf };
+                  }
+                  // Sibling search
+                  const dotIdx = resolvedPath.lastIndexOf('.');
+                  const baseWithoutExt = dotIdx !== -1 ? resolvedPath.substring(0, dotIdx) : resolvedPath;
+                  for (const tryExt of ['.png', '.jpg', '.jpeg', '.PNG', '.JPG', '.JPEG']) {
+                    const fallbackEntry = zip.getEntry(baseWithoutExt + tryExt);
+                    if (fallbackEntry) {
+                      const fallBuf = fallbackEntry.getData();
+                      if (fallBuf && fallBuf.length >= 2000) {
+                        console.log(`[CHART] Successfully recovered raster fallback from ZIP: ${baseWithoutExt + tryExt}`);
+                        return { name: chartName, buffer: fallBuf };
                       }
                     }
-                    
-                    if (!processedBuf) {
-                      console.warn(`[CHART] No usable raster fallback in ZIP.`);
-                      chartImagePath = null;
-                    }
                   }
+                  chartImagePath = null;
                 } else { chartImagePath = null; }
               } catch { chartImagePath = null; }
             }
@@ -1251,15 +1247,19 @@ async function runUploadProcessing(uploadId: string) {
                 const xmlContent = xmlEntry.getData().toString('utf8');
                 const pngBuf = await generateChartImageFromXml(xmlContent);
                 if (pngBuf) {
-                  extractedImages.push({ name: chartName, buffer: pngBuf });
                   console.log(`[CHART] Successfully generated QuickChart PNG for ${chartName}`);
-                  continue;
+                  return { name: chartName, buffer: pngBuf };
                 }
               }
             }
-            
-            // Standard SVG placeholder if all fails
-            extractedImages.push({ name: chartName, buffer: getFallbackPngBuffer() });
+            return { name: chartName, buffer: getFallbackPngBuffer() };
+          }
+          return null;
+        }, 4);
+
+        for (const item of extractedChartResults) {
+          if (item && item.buffer) {
+            extractedImages.push(item);
           }
         }
 
@@ -1326,15 +1326,15 @@ async function runUploadProcessing(uploadId: string) {
       // process (surfacing as the "processing was lost" error).
       const stagingDir = path.join(PENDING_DIR, `${uploadId}_staging`);
       fs.mkdirSync(stagingDir, { recursive: true });
-      for (const img of extractedImages) {
-        if ((img as any).isStructural || !img.buffer) continue;
-        if (img.buffer.length === 0) continue;
+      await pMap(extractedImages, async (img) => {
+        if ((img as any).isStructural || !img.buffer) return;
+        if (img.buffer.length === 0) return;
         const stagedName = img.name.replace(/[^a-zA-Z0-9._-]/g, '_');
         const stagedPath = path.join(stagingDir, stagedName);
         await fs.promises.writeFile(stagedPath, img.buffer);
         (img as any).stagedPath = stagedPath;
         img.buffer = null; // release for GC
-      }
+      }, 5);
       progress(uploadId, 'Extracting text and figures', 48);
 
       console.log(`[TELEMETRY] Extraction complete. Final image count: ${extractedImages.length}`);
@@ -1921,11 +1921,15 @@ async function runUploadProcessing(uploadId: string) {
       let inserted = 0;
       let skippedRows = 0;
       let failedRows = 0;
-      for (const file of filesToCreate) {
+      const toInsert = filesToCreate.filter(file => {
         if (existingNames.has(file.filename)) {
           skippedRows++;
-          continue;
+          return false;
         }
+        return true;
+      });
+
+      await pMap(toInsert, async (file) => {
         try {
           await prisma.projectFile.create({ data: file });
           inserted++;
@@ -1936,7 +1940,7 @@ async function runUploadProcessing(uploadId: string) {
           // already persisted on disk and Phase 2 re-syncs from there.
           console.warn(`[UPLOAD] Skipped project_file row for ${file.filename} (non-fatal):`, createErr?.message || createErr);
         }
-      }
+      }, 5);
       console.log(`[TELEMETRY] DB persistence: ${inserted} inserted, ${skippedRows} already existed, ${failedRows} skipped.`);
     }
 

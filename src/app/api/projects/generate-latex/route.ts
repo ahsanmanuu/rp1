@@ -102,6 +102,20 @@ export async function POST(req: Request) {
       }
     }
 
+    // Bounded concurrency mapping helper for Phase 2 parallelization
+    async function pMap<T, R>(items: T[], fn: (item: T, idx: number) => Promise<R>, concurrency = 5): Promise<R[]> {
+      const results: R[] = new Array(items.length);
+      let nextIdx = 0;
+      const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+        while (nextIdx < items.length) {
+          const idx = nextIdx++;
+          results[idx] = await fn(items[idx], idx);
+        }
+      });
+      await Promise.all(workers);
+      return results;
+    }
+
     // Safe upsert helper for DB projectFile
     const safeFileUpsert = async (data: { projectId: string; filename: string; content: string; fileType: string; filePath: string }) => {
       try {
@@ -186,7 +200,7 @@ export async function POST(req: Request) {
       if (!fs.existsSync(assetsSubDir)) fs.mkdirSync(assetsSubDir, { recursive: true });
       if (!fs.existsSync(figuresSubDir)) fs.mkdirSync(figuresSubDir, { recursive: true });
 
-      for (const fig of figureFiles) {
+      await pMap(figureFiles, async (fig) => {
         const safeName = String(fig.name).replace(/[^a-zA-Z0-9._-]/g, '_');
         const ext = path.extname(safeName).toLowerCase();
         const isImage = /\.(png|jpg|jpeg|gif|webp|pdf|svg|eps|tiff?|bmp|heic|heif|avif)$/i.test(ext);
@@ -194,7 +208,7 @@ export async function POST(req: Request) {
           if (!fig.data || fig.data.length < 50) {
             console.warn(`[GENERATE-LATEX] Skipping empty/corrupt figure buffer for ${safeName} (${fig.data?.length || 0} bytes)`);
           }
-          continue;
+          return;
         }
 
         try {
@@ -205,31 +219,33 @@ export async function POST(req: Request) {
           const mime = ext === '.jpg' ? 'image/jpeg' : `image/${ext.replace(/^\./, '')}`;
           const b64 = `data:${mime};base64,${fig.data.toString('base64')}`;
 
-          await safeFileUpsert({
-            projectId,
-            filename: safeName,
-            content: b64,
-            fileType: 'image',
-            filePath: `/uploads/projects/${projectId}/${safeName}`
-          });
-          await safeFileUpsert({
-            projectId,
-            filename: `assets/${safeName}`,
-            content: b64,
-            fileType: 'image',
-            filePath: `/uploads/projects/${projectId}/assets/${safeName}`
-          });
-          await safeFileUpsert({
-            projectId,
-            filename: `figures/${safeName}`,
-            content: b64,
-            fileType: 'image',
-            filePath: `/uploads/projects/${projectId}/figures/${safeName}`
-          });
+          await Promise.all([
+            safeFileUpsert({
+              projectId,
+              filename: safeName,
+              content: b64,
+              fileType: 'image',
+              filePath: `/uploads/projects/${projectId}/${safeName}`
+            }),
+            safeFileUpsert({
+              projectId,
+              filename: `assets/${safeName}`,
+              content: b64,
+              fileType: 'image',
+              filePath: `/uploads/projects/${projectId}/assets/${safeName}`
+            }),
+            safeFileUpsert({
+              projectId,
+              filename: `figures/${safeName}`,
+              content: b64,
+              fileType: 'image',
+              filePath: `/uploads/projects/${projectId}/figures/${safeName}`
+            }),
+          ]);
         } catch (figErr: any) {
           console.warn('[GENERATE-LATEX] Failed to persist figure', safeName, figErr?.message || figErr);
         }
-      }
+      }, 4);
       console.log(`[GENERATE-LATEX] Persisted ${savedFigures} figure(s) to project root, assets, figures, and DB`);
     }
 
@@ -363,12 +379,11 @@ export async function POST(req: Request) {
       usedOriginalTemplate = true;
     }
 
-    // --- REMAP FIGURE REFERENCES TO ACTUAL BINARY FILENAMES (Fallback & Heuristic Paths) ---
-    // In AI modular mapping, figure filenames are mapped directly from input C.
-    // For deterministic assembly, DeepDocumentParser stamps placeholder figure ids
-    // (e.g. `pdf_fig_<line>.png` or `chart_pending_<N>.png`).
-    // Remap with a persistent 1-to-1 Map to ensure consistent image paths across all files.
-    if (!aiModularSuccess && extractedComponents && Object.keys(extractedComponents).length > 0) {
+    // --- REMAP FIGURE REFERENCES TO ACTUAL BINARY FILENAMES (Universal: AI Modular & Deterministic) ---
+    // Reconcile \includegraphics references with actual disk and DB binaries.
+    // Handles AI modular paths, deterministic paths, and missing extensions so the
+    // compiler always links to valid binaries.
+    if (extractedComponents && Object.keys(extractedComponents).length > 0) {
       const numIn = (s: string) => parseInt((s.match(/(\d+)/) || ['', '0'])[1]) || 0;
       const binaryNamesSet = new Set<string>();
       for (const f of figureFiles) binaryNamesSet.add(f.name);
@@ -438,7 +453,7 @@ export async function POST(req: Request) {
         .filter(n => /^(rf_chart_|chart_pending_)/i.test(n) || /chart/i.test(n))
         .sort((a, b) => numIn(a) - numIn(b));
 
-      if (figBins.length > 0 || chartBins.length > 0) {
+      if (figBins.length > 0 || chartBins.length > 0 || binaryNames.length > 0) {
         // 1-to-1 Mapping to prevent counter drift across multiple files
         const refToTargetMap = new Map<string, string>();
         let fi = 0, ci = 0;
@@ -453,11 +468,17 @@ export async function POST(req: Request) {
           if (figBins.includes(r)) return r;
           if (chartBins.includes(r)) return r;
 
+          // Check if adding common image extensions matches an existing binary
+          for (const ext of ['.png', '.jpg', '.jpeg', '.pdf', '.webp', '.eps', '.svg']) {
+            if (binaryNamesSet.has(`${r}${ext}`)) return `${r}${ext}`;
+            if (binaryNamesSet.has(`${baseName}${ext}`)) return `${baseName}${ext}`;
+          }
+
           if (refToTargetMap.has(r)) return refToTargetMap.get(r)!;
           if (refToTargetMap.has(baseName)) return refToTargetMap.get(baseName)!;
 
           const isChart = isChartRef(r);
-          const pool = (isChart && chartBins.length > 0) ? chartBins : figBins;
+          const pool = (isChart && chartBins.length > 0) ? chartBins : (figBins.length > 0 ? figBins : binaryNames);
           if (pool.length === 0) return null;
 
           const idx = isChart && chartBins.length > 0 ? ci : fi;
@@ -612,7 +633,7 @@ export async function POST(req: Request) {
         ]
       });
 
-      for (const [filename, content] of Object.entries(extractedComponents)) {
+      await pMap(Object.entries(extractedComponents), async ([filename, content]) => {
         await safeFileUpsert({
           projectId,
           filename,
@@ -620,7 +641,7 @@ export async function POST(req: Request) {
           fileType: filename.split('.').pop() || 'tex',
           filePath: `/uploads/projects/${projectId}/${filename.replace(/\\/g, '/')}`
         });
-      }
+      }, 6);
     }
 
     // Update project status

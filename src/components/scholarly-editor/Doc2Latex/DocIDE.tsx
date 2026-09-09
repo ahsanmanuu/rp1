@@ -1411,16 +1411,30 @@ export default function DocIDE({ projectId }: { projectId: string }) {
         console.warn('[DocIDE] Figure recovery skipped:', figErr);
       }
 
+      let totalBinaryBytesSent = 0;
+      const MAX_TOTAL_BINARY_BUDGET = 15 * 1024 * 1024; // 15MB budget for direct transmission
+      const MAX_SINGLE_IMAGE_SIZE = 3 * 1024 * 1024; // 3MB max per individual image
+
       for (let i = 0; i < payloadFiles.length; i++) {
         const f = payloadFiles[i];
         formData.append(`files[${i}][path]`, f.path);
-        // Only send full content for text/code/structural files.
-        // For binary image data URLs, the server reads the real image from disk via projectId;
-        // sending 100MB of base64 data URLs trips Cloudflare bot challenges (403/Turnstile).
         const isBin = /\.(png|jpe?g|webp|gif|pdf|eps|svg|tiff?|bmp|heic|heif|avif)$/i.test(f.path);
-        const sendContent = isBin && typeof f.content === 'string' && f.content.length > 500
-          ? ''
-          : f.content;
+        
+        let sendContent = f.content;
+        if (isBin && typeof f.content === 'string') {
+          const contentLen = f.content.length;
+          if (contentLen > 500) {
+            // Direct transmission within budget guarantees the compile server has real image bytes
+            // even across ephemeral disk wipes on cloud hosting (Render/containers).
+            if (contentLen <= MAX_SINGLE_IMAGE_SIZE && (totalBinaryBytesSent + contentLen) <= MAX_TOTAL_BINARY_BUDGET) {
+              sendContent = f.content;
+              totalBinaryBytesSent += contentLen;
+            } else {
+              // Oversized images fall back to server disk/DB recovery to avoid Cloudflare 413/bot challenges
+              sendContent = '';
+            }
+          }
+        }
         formData.append(`files[${i}][content]`, sendContent);
       }
 

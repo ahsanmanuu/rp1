@@ -25,6 +25,37 @@ function normalizePath(p: string): string {
 const FALLBACK_1X1_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 const FALLBACK_1X1_PNG = Buffer.from(FALLBACK_1X1_PNG_B64, 'base64');
 
+export const PLACEHOLDER_PNG_FINGERPRINTS = [
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
+];
+
+export function isPlaceholderContent(content: any): boolean {
+  if (!content) return true;
+  const str = typeof content === 'string' ? content.trim() : String(content).trim();
+  if (str.length < 50) return true;
+  for (const fp of PLACEHOLDER_PNG_FINGERPRINTS) {
+    if (str.includes(fp)) return true;
+  }
+  return false;
+}
+
+export function formatBinaryDataUrl(raw: string, ext: string): string {
+  if (!raw) return '';
+  if (raw.startsWith('data:')) return raw;
+  const cleanExt = (ext || 'png').toLowerCase().replace(/^\./, '');
+  const mime = cleanExt === 'jpg' ? 'jpeg'
+             : cleanExt === 'svg' ? 'svg+xml'
+             : cleanExt === 'pdf' ? 'pdf'
+             : cleanExt;
+  const clean = raw.trim();
+  if (/^[A-Za-z0-9+/=\r\n]+$/.test(clean) && clean.length >= 40) {
+    return `data:image/${mime};base64,${clean.replace(/[\r\n]/g, '')}`;
+  }
+  return `data:image/${mime};base64,${Buffer.from(clean).toString('base64')}`;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // UNIVERSAL CITATION RESOLUTION
 // Canonical numeric BibTeX style that ALWAYS emits \bibitem entries. Two variants:
@@ -1992,23 +2023,44 @@ export async function runDoc2LatexCompiler(
           const present = new Set<string>(
             (files as any[]).map((f) => String(f?.path || '').toLowerCase())
           );
-          const entries = await fs.promises.readdir(uploadsDir);
-          for (const name of entries) {
-            const lower = name.toLowerCase();
-            if (!/\.(png|jpe?g|gif|webp|svg|eps|bmp|tiff?|pdf|heic|heif|avif)$/i.test(name)) {
-              continue;
-            }
+          
+          // Recursive disk image collector (root, assets/, figures/, etc.)
+          const collectDiskImages = async (baseDir: string): Promise<Array<{ filename: string; buffer: Buffer; relPath: string }>> => {
+            const list: Array<{ filename: string; buffer: Buffer; relPath: string }> = [];
+            const recurse = async (curr: string, rel = '') => {
+              try {
+                const entries = await fs.promises.readdir(curr, { withFileTypes: true });
+                for (const e of entries) {
+                  const full = path.join(curr, e.name);
+                  const subRel = rel ? `${rel}/${e.name}` : e.name;
+                  if (e.isDirectory()) {
+                    await recurse(full, subRel);
+                  } else if (e.isFile() && /\.(png|jpe?g|gif|webp|svg|eps|bmp|tiff?|pdf|heic|heif|avif)$/i.test(e.name)) {
+                    const buf = await fs.promises.readFile(full);
+                    if (buf && buf.length >= 50) {
+                      list.push({ filename: e.name, buffer: buf, relPath: subRel.replace(/\\/g, '/') });
+                    }
+                  }
+                }
+              } catch {}
+            };
+            await recurse(baseDir);
+            return list;
+          };
+
+          const diskImages = await collectDiskImages(uploadsDir);
+          for (const item of diskImages) {
+            const name = item.filename;
             const ext = (path.extname(name).toLowerCase().replace(/^\./, '') || 'png');
             const mime = ext === 'jpg' ? 'jpeg' : ext;
-            const buffer = await fs.promises.readFile(path.join(uploadsDir, name));
-            if (!buffer || buffer.length < 50) continue;
-            const content = `data:image/${mime};base64,${buffer.toString('base64')}`;
+            const content = `data:image/${mime};base64,${item.buffer.toString('base64')}`;
 
-            for (const targetPath of [name, `assets/${name}`, `figures/${name}`]) {
+            const targets = Array.from(new Set([name, `assets/${name}`, `figures/${name}`, item.relPath]));
+            for (const targetPath of targets) {
               const targetLower = targetPath.toLowerCase();
               const existing = (files as any[]).find((f) => String(f?.path || '').toLowerCase() === targetLower);
               if (existing) {
-                if (!existing.content || String(existing.content).length < 200) {
+                if (!existing.content || isPlaceholderContent(existing.content) || String(existing.content).length < 200) {
                   existing.content = content;
                 }
               } else {
@@ -2038,19 +2090,17 @@ export async function runDoc2LatexCompiler(
             }
           });
           for (const row of dbFiles) {
-            if (!row.content || row.content.length < 200) continue;
+            if (!row.content || isPlaceholderContent(row.content)) continue;
             const cleanName = path.basename(row.filename);
             const ext = (path.extname(cleanName).toLowerCase().replace(/^\./, '') || 'png');
-            const mime = ext === 'jpg' ? 'jpeg' : ext;
-            const dataUrl = row.content.startsWith('data:')
-              ? row.content
-              : `data:image/${mime};base64,${row.content}`;
+            const dataUrl = formatBinaryDataUrl(row.content, ext);
             
-            for (const targetPath of [cleanName, `assets/${cleanName}`, `figures/${cleanName}`]) {
+            const targets = Array.from(new Set([cleanName, `assets/${cleanName}`, `figures/${cleanName}`, row.filename.replace(/\\/g, '/')]));
+            for (const targetPath of targets) {
               const lower = targetPath.toLowerCase();
               const existing = (files as any[]).find((f) => String(f?.path || '').toLowerCase() === lower);
               if (existing) {
-                if (!existing.content || String(existing.content).length < 200) {
+                if (!existing.content || isPlaceholderContent(existing.content) || String(existing.content).length < 200) {
                   existing.content = dataUrl;
                 }
               } else {
@@ -2535,13 +2585,24 @@ export async function hardenedDiscovery(projectId: string | null, files: FilePay
         const isBinary = /^(png|jpg|jpeg|webp|gif|pdf|eps|otf|ttf|woff|woff2|tfm|pfb|afm|heic|heif|tiff|tif|bmp|avif|svg)$/i.test(ext);
 
         let fileContent = dbFile.content || '';
-        if (isBinary && (!fileContent || fileContent.length < 200)) {
+        if (isBinary && (!fileContent || isPlaceholderContent(fileContent) || fileContent.length < 200)) {
           try {
-            const diskCandidate = path.join(projectDir, dbFile.filename);
-            if (fs.existsSync(diskCandidate) && fs.statSync(diskCandidate).isFile()) {
-              const buf = fs.readFileSync(diskCandidate);
-              const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
-              fileContent = `data:${mime};base64,${buf.toString('base64')}`;
+            const cleanBase = path.basename(dbFile.filename);
+            const candidates = [
+              path.join(projectDir, dbFile.filename),
+              path.join(projectDir, cleanBase),
+              path.join(projectDir, 'assets', cleanBase),
+              path.join(projectDir, 'figures', cleanBase),
+            ];
+            for (const diskCandidate of candidates) {
+              if (fs.existsSync(diskCandidate) && fs.statSync(diskCandidate).isFile()) {
+                const buf = fs.readFileSync(diskCandidate);
+                if (buf && buf.length >= 50) {
+                  const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+                  fileContent = `data:${mime};base64,${buf.toString('base64')}`;
+                  break;
+                }
+              }
             }
           } catch {}
         }
@@ -2550,9 +2611,9 @@ export async function hardenedDiscovery(projectId: string | null, files: FilePay
         const existingIdx = normalized.findIndex(f => normalizePath(f.path) === normPath);
         if (existingIdx !== -1) {
           // If session has a dummy/empty binary payload, upgrade it to real DB/disk binary content
-          if (isBinary && fileContent && fileContent.length > 200) {
+          if (isBinary && fileContent && fileContent.length > 50) {
             const currentContent = normalized[existingIdx].content;
-            if (!currentContent || currentContent.length < 200 || currentContent.includes('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=')) {
+            if (isPlaceholderContent(currentContent) || !currentContent || currentContent.length < 200) {
               normalized[existingIdx].content = fileContent;
             }
           }
@@ -2576,9 +2637,7 @@ export async function hardenedDiscovery(projectId: string | null, files: FilePay
           }
           normalized.push({
             path: dbFile.filename,
-            content: isBinary && !fileContent.startsWith('data:')
-              ? `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${Buffer.from(fileContent).toString('base64')}`
-              : fileContent
+            content: isBinary ? formatBinaryDataUrl(fileContent, ext) : fileContent
           });
           addedCount++;
         }
