@@ -100,6 +100,7 @@ export default function SecurityBlockOverlay() {
 
     // Defer initial checkBlock by 1.2s so critical page UI renders first
     const blockTimer = setTimeout(checkBlock, 1200);
+    const geoTimer = setTimeout(recordGeoLocation, 2000);
     const interval = setInterval(checkBlock, 300000); // Poll block check every 5m
     return () => {
       clearTimeout(blockTimer);

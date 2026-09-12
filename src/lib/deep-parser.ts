@@ -690,8 +690,7 @@ export class DeepDocumentParser {
         const alt = (img.getAttribute('alt') || img.getAttribute('title') || '').trim();
         const isDeco = decorativeImages.has(src.toLowerCase()) ||
           /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer|decoration|license|badge|cc[-_]by|creative\s*commons|copyright/i.test(src) ||
-          /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer|decoration|license|badge|cc[-_]by|creative\s*commons|copyright/i.test(alt) ||
-          DeepDocumentParser.isGenericAltText(alt);
+          /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer|decoration|license|badge|cc[-_]by|creative\s*commons|copyright/i.test(alt);
         if (src && !src.startsWith('data:') && !isDeco) {
           allImageSrcs.add(src);
         }
@@ -2028,19 +2027,37 @@ export class DeepDocumentParser {
 
   // ── CAPTION FINDER ───────────────────────────────────────────────────────────
   private static isTableCaptionProse(t: string): boolean {
-    // A genuine table caption does not begin running prose.
-    // "Table 1 summarizes the datasets used in our experiments..." is body text, not a caption.
-    const remainder = t.replace(/^\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]*\s*[:.–\-\s]*/i, '').trim().slice(0, 60);
-    return /\b(?:shows?|presents|illustrates|compares|depicts|displays|demonstrates|summarizes|lists|reports|plots|gives|provides|represents|outlines|describes|highlights|overviews|contains|yields|produces|indicates|details|tabulates)\b/i.test(remainder);
+    // A genuine table caption with separator ("Table 1: Datasets", "Table 1. Overview of...", "Table 1 - Stats")
+    // is a real caption even if it contains descriptive verbs like "summarizes" or "shows".
+    // Only text WITHOUT a punctuation separator that immediately uses a running verb is body prose ("Table 1 summarizes the results").
+    const trimmed = t.trim();
+    const hasDelim = /^\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]+\s*[:.–\-\—]/i.test(trimmed);
+    if (hasDelim) return false;
+
+    // No delimiter present: check if the first word immediately following the label is a verb
+    const noDelimMatch = trimmed.match(/^\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]+\s+([a-zA-Z]+)/i);
+    if (noDelimMatch) {
+      const firstWord = noDelimMatch[1].toLowerCase();
+      return /^(?:shows?|presents?|illustrates?|compares?|depicts?|displays?|demonstrates?|summarizes?|lists?|reports?|plots?|gives?|provides?|represents?|outlines?|describes?|highlights?|overviews?|contains?|yields?|produces?|indicates?|details?|tabulates?|is|are|was|were)$/.test(firstWord);
+    }
+    return false;
   }
 
   private static isFigureCaptionProse(t: string): boolean {
-    // A genuine figure caption does not begin running prose — "Figure 2 shows
-    // the performance comparison..." is a body sentence, not a caption. Without
-    // this guard, normal paragraphs that merely START with a figure label are
-    // consumed as captions and vanish from the document body.
-    const remainder = t.replace(/^\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo)\s*\d+(?:\.\d+)*\s*[.:.–\-\s]*/i, '').trim().slice(0, 60);
-    return /\b(?:shows?|presents|illustrates|compares|depicts|displays|demonstrates|summarizes|lists|reports|plots|gives|provides|represents|outlines|describes|highlights|overviews|contains|yields|produces|indicates|details|tabulates|is|are|was|were|uses?|used|show)\b/i.test(remainder);
+    // A genuine figure caption with separator ("Figure 1: Model architecture that depicts...", "Figure 2. Results where...")
+    // is a real caption even if it contains descriptive verbs.
+    // Only text WITHOUT a punctuation separator that immediately uses a running verb is body prose ("Figure 2 shows the results").
+    const trimmed = t.trim();
+    const hasDelim = /^\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo)\s*[\d.\-:A-Za-z]+\s*[:.–\-\—]/i.test(trimmed);
+    if (hasDelim) return false;
+
+    // No delimiter present: check if the first word immediately following the label is a verb
+    const noDelimMatch = trimmed.match(/^\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo)\s*[\d.\-:A-Za-z]+\s+([a-zA-Z]+)/i);
+    if (noDelimMatch) {
+      const firstWord = noDelimMatch[1].toLowerCase();
+      return /^(?:shows?|presents?|illustrates?|compares?|depicts?|displays?|demonstrates?|summarizes?|lists?|reports?|plots?|gives?|provides?|represents?|outlines?|describes?|highlights?|overviews?|contains?|yields?|produces?|indicates?|details?|tabulates?|is|are|was|were|uses?|used)$/.test(firstWord);
+    }
+    return false;
   }
 
   private static findCaption(

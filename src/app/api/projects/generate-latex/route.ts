@@ -148,6 +148,60 @@ export async function POST(req: Request) {
       }
     }
 
+    // --- REHYDRATE IMAGES FROM DB IF FIGUREFILES IS EMPTY (e.g. on Render container restarts) ---
+    if (figureFiles.length === 0) {
+      try {
+        const dbImages = await prisma.projectFile.findMany({
+          where: {
+            projectId,
+            OR: [
+              { fileType: 'image' },
+              { filename: { endsWith: '.png' } },
+              { filename: { endsWith: '.jpg' } },
+              { filename: { endsWith: '.jpeg' } },
+              { filename: { endsWith: '.webp' } },
+              { filename: { endsWith: '.pdf' } },
+              { filename: { endsWith: '.eps' } },
+              { filename: { endsWith: '.svg' } },
+            ]
+          }
+        });
+
+        if (dbImages && dbImages.length > 0) {
+          if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
+          const figuresSubDir = path.join(projectDir, 'figures');
+          if (!fs.existsSync(figuresSubDir)) fs.mkdirSync(figuresSubDir, { recursive: true });
+
+          for (const imgRec of dbImages) {
+            const baseName = path.basename(imgRec.filename);
+            if (!baseName || baseName.includes('fallback_figure')) continue;
+
+            validCurrentFigureNames.add(baseName);
+
+            let buf: Buffer | null = null;
+            if (imgRec.content && imgRec.content.startsWith('data:')) {
+              const commaIdx = imgRec.content.indexOf(',');
+              if (commaIdx !== -1) {
+                buf = Buffer.from(imgRec.content.slice(commaIdx + 1), 'base64');
+              }
+            } else if (imgRec.content && /^[A-Za-z0-9+/=]+$/.test(imgRec.content.trim()) && imgRec.content.length > 100) {
+              buf = Buffer.from(imgRec.content.trim(), 'base64');
+            }
+
+            if (buf && buf.length > 50) {
+              const rootPath = path.join(projectDir, baseName);
+              const figPath = path.join(figuresSubDir, baseName);
+              if (!fs.existsSync(rootPath)) fs.writeFileSync(rootPath, buf);
+              if (!fs.existsSync(figPath)) fs.writeFileSync(figPath, buf);
+            }
+          }
+          console.log(`[GENERATE-LATEX] Rehydrated ${dbImages.length} image records from DB to disk`);
+        }
+      } catch (rehydrateErr: any) {
+        console.warn('[GENERATE-LATEX] Failed to rehydrate images from DB:', rehydrateErr?.message || rehydrateErr);
+      }
+    }
+
     // --- PURGE STALE / ZOMBIE IMAGES FROM DISK & DB TO PREVENT CROSS-CONTAMINATION ---
     if (figureFiles.length > 0 && fs.existsSync(projectDir)) {
       const imgDirs = [projectDir, path.join(projectDir, 'assets'), path.join(projectDir, 'figures')];
@@ -191,13 +245,11 @@ export async function POST(req: Request) {
     // For client-extracted DOC2LATEX projects the figure bytes never touched
     // the server at upload time — they are attached here. Only names declared
     // in the Phase-1 figureManifest are accepted; they land in the project
-    // ROOT (the assembler/mapping conventions reference ./rf_fig_N.ext), assets/, and figures/.
+    // ROOT (the assembler/mapping conventions reference ./rf_fig_N.ext) and figures/.
     if (figureFiles.length > 0) {
       let savedFigures = 0;
       if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
-      const assetsSubDir = path.join(projectDir, 'assets');
       const figuresSubDir = path.join(projectDir, 'figures');
-      if (!fs.existsSync(assetsSubDir)) fs.mkdirSync(assetsSubDir, { recursive: true });
       if (!fs.existsSync(figuresSubDir)) fs.mkdirSync(figuresSubDir, { recursive: true });
 
       await pMap(figureFiles, async (fig) => {
@@ -213,7 +265,6 @@ export async function POST(req: Request) {
 
         try {
           fs.writeFileSync(path.join(projectDir, safeName), fig.data);
-          fs.writeFileSync(path.join(assetsSubDir, safeName), fig.data);
           fs.writeFileSync(path.join(figuresSubDir, safeName), fig.data);
           savedFigures++;
           const mime = ext === '.jpg' ? 'image/jpeg' : `image/${ext.replace(/^\./, '')}`;
@@ -229,13 +280,6 @@ export async function POST(req: Request) {
             }),
             safeFileUpsert({
               projectId,
-              filename: `assets/${safeName}`,
-              content: b64,
-              fileType: 'image',
-              filePath: `/uploads/projects/${projectId}/assets/${safeName}`
-            }),
-            safeFileUpsert({
-              projectId,
               filename: `figures/${safeName}`,
               content: b64,
               fileType: 'image',
@@ -246,7 +290,7 @@ export async function POST(req: Request) {
           console.warn('[GENERATE-LATEX] Failed to persist figure', safeName, figErr?.message || figErr);
         }
       }, 4);
-      console.log(`[GENERATE-LATEX] Persisted ${savedFigures} figure(s) to project root, assets, figures, and DB`);
+      console.log(`[GENERATE-LATEX] Persisted ${savedFigures} figure(s) to project root, figures, and DB`);
     }
 
     // --- ASSEMBLE MODULAR LATEX ---
@@ -278,8 +322,9 @@ export async function POST(req: Request) {
             const safeName = String(fig.name).replace(/[^a-zA-Z0-9._-]/g, '_');
             const isDeco = /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer/i.test(safeName);
             if (isDeco) continue;
-            const explicitCaption = (typeof fig.caption === 'string' && fig.caption.trim().length > 3)
-              ? fig.caption.trim()
+            const figAny = fig as any;
+            const explicitCaption = (typeof figAny.caption === 'string' && figAny.caption.trim().length > 3)
+              ? figAny.caption.trim()
               : (verifiedCaptions[captionIdx++] || '');
             // Only inject if there is a real caption from aiVerdict or manifest
             if (!explicitCaption) continue;
@@ -329,6 +374,9 @@ export async function POST(req: Request) {
             }
           }
         } catch {}
+      }
+      for (const f of validCurrentFigureNames) {
+        availableFigureNamesSet.add(f);
       }
       const availableFigureNames = Array.from(availableFigureNamesSet);
 

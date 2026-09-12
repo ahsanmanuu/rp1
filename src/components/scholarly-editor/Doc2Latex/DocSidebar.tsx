@@ -38,7 +38,7 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
     {
       name: 'TITLE & METADATA',
       files: files.filter(f => {
-        const m = /^metadata\/(?:title|authors|affiliations|abstract|keywords|acknowledgements|frontmatter|organizations)\.tex$/i.test(f.path);
+        const m = /^metadata\/.+\.(tex|json)$/i.test(f.path);
         if (m) categorizedPaths.add(f.path);
         return m;
       }),
@@ -54,7 +54,7 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
     {
       name: 'TABLES',
       files: files.filter(f => {
-        const m = /^floats\/tables\.tex$/i.test(f.path) || /^tables\/table_\d+\.tex$/i.test(f.path);
+        const m = /^(?:tables\/|floats\/tables?)/i.test(f.path) && f.path.endsWith('.tex');
         if (m) categorizedPaths.add(f.path);
         return m;
       }),
@@ -62,7 +62,7 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
     {
       name: 'FIGURES',
       files: files.filter(f => {
-        const m = /^floats\/figures\.tex$/i.test(f.path) || /^figures\/figure_\d+\.tex$/i.test(f.path);
+        const m = /^(?:figures\/|floats\/figures?)/i.test(f.path) && f.path.endsWith('.tex');
         if (m) categorizedPaths.add(f.path);
         return m;
       }),
@@ -70,7 +70,7 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
     {
       name: 'ALGORITHMS',
       files: files.filter(f => {
-        const m = /^floats\/algorithms\.tex$/i.test(f.path) || /^algorithms\/algo_\d+\.tex$/i.test(f.path);
+        const m = /^(?:algorithms\/|floats\/algorithms?)/i.test(f.path) && f.path.endsWith('.tex');
         if (m) categorizedPaths.add(f.path);
         return m;
       }),
@@ -78,7 +78,7 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
     {
       name: 'EQUATIONS',
       files: files.filter(f => {
-        const m = /^floats\/equations\.tex$/i.test(f.path) || /^equations\/eq_\d+\.tex$/i.test(f.path);
+        const m = /^(?:equations\/|floats\/equations?)/i.test(f.path) && f.path.endsWith('.tex');
         if (m) categorizedPaths.add(f.path);
         return m;
       }),
@@ -102,8 +102,12 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
     {
       name: 'IMAGE ASSETS',
       files: (() => {
-        const imageFiles = files.filter(f => /\.(png|jpg|jpeg|gif|svg|webp|eps|tiff?|bmp|heic|heif|avif)$/i.test(f.path));
+        const imageFiles = files.filter(f => 
+          /\.(png|jpg|jpeg|gif|svg|webp|eps|tiff?|bmp|heic|heif|avif)$/i.test(f.path) &&
+          !/fallback_figure\.png$/i.test(f.path)
+        );
         imageFiles.forEach(f => categorizedPaths.add(f.path));
+        files.filter(f => /fallback_figure\.png$/i.test(f.path)).forEach(f => categorizedPaths.add(f.path));
         
         const hasRfFigures = imageFiles.some(f => /^rf_fig_\d+/i.test(f.path) || /\/rf_fig_\d+/i.test(f.path));
         const seenBases = new Set<string>();

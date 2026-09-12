@@ -209,13 +209,14 @@ export default function DocIDE({ projectId }: { projectId: string }) {
         // 1. Write all local figures from client IndexedDB into StudioFS
         for (const fig of localFigures) {
           const rawName = String(fig.name).replace(/^\.\//, '');
+          if (/fallback_figure\.png$/i.test(rawName)) continue;
           const dataUrl = fig.dataUrl || (typeof (fig as any).content === 'string' && (fig as any).content.startsWith('data:') ? (fig as any).content : '');
           if (dataUrl && dataUrl.length > 200) {
             const baseName = rawName.split('/').pop() || rawName;
+            if (/fallback_figure\.png$/i.test(baseName)) continue;
             await studioFs.writeFile(projId, baseName, dataUrl);
-            await studioFs.writeFile(projId, `assets/${baseName}`, dataUrl);
             await studioFs.writeFile(projId, `figures/${baseName}`, dataUrl);
-            if (rawName !== baseName && !rawName.startsWith('assets/') && !rawName.startsWith('figures/')) {
+            if (rawName !== baseName && !rawName.startsWith('figures/') && !rawName.startsWith('assets/')) {
               await studioFs.writeFile(projId, rawName, dataUrl);
             }
           }
@@ -238,7 +239,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
 
         for (const refName of referencedImages) {
           const lower = refName.toLowerCase();
-          const hasAsset = existingPaths.has(lower) || existingPaths.has(`assets/${lower}`) || existingPaths.has(`figures/${lower}`);
+          const hasAsset = existingPaths.has(lower) || existingPaths.has(`figures/${lower}`);
           if (!hasAsset) {
             // Strict matching: only match exact name or basename belonging to this manuscript
             const matchedFig = localFigures.find((f: any) => 
@@ -266,17 +267,18 @@ export default function DocIDE({ projectId }: { projectId: string }) {
             }
             if (dataUrl && dataUrl.length >= 200) {
               await studioFs.writeFile(projId, refName, dataUrl);
-              await studioFs.writeFile(projId, `assets/${refName}`, dataUrl);
               await studioFs.writeFile(projId, `figures/${refName}`, dataUrl);
               existingPaths.add(lower);
-              existingPaths.add(`assets/${lower}`);
               existingPaths.add(`figures/${lower}`);
             }
           }
         }
 
-        // Clean up legacy aggregator float files from StudioFS so they don't clutter the IDE
-        for (const legacyPath of ['assets/figure.tex', 'assets/table.tex', 'assets/algorithm.tex', 'assets/equation.tex']) {
+        // Clean up legacy aggregator float files and synthesized fallback images from StudioFS
+        for (const legacyPath of [
+          'assets/figure.tex', 'assets/table.tex', 'assets/algorithm.tex', 'assets/equation.tex',
+          'fallback_figure.png', 'figures/fallback_figure.png', 'assets/fallback_figure.png'
+        ]) {
           if (existingPaths.has(legacyPath.toLowerCase())) {
             await studioFs.deleteFile(projId, legacyPath);
           }
@@ -284,20 +286,24 @@ export default function DocIDE({ projectId }: { projectId: string }) {
 
         currentFiles = await studioFs.listFiles(projId);
 
-        // 3. Self-heal: If image assets exist in StudioFS but no figures/figure_*.tex files exist,
-        // create component float files so they are referenced and editable in the studio.
-        const imageAssets = currentFiles.filter(f => /\.(png|jpg|jpeg|gif|webp|svg|eps)$/i.test(f.path) && f.path.startsWith('assets/'));
-        const hasFigureTex = currentFiles.some(f => /^figures\/figure_\d+\.tex$/i.test(f.path));
-        if (imageAssets.length > 0 && !hasFigureTex) {
-          let figIdx = 1;
-          for (const imgF of imageAssets) {
-            const baseName = imgF.path.split('/').pop() || imgF.path;
-            const figTexPath = `figures/figure_${figIdx}.tex`;
-            const figCode = `\\begin{figure}[!htbp]\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${baseName}}\n\\caption{Figure ${figIdx}}\n\\label{fig:${figIdx}}\n\\end{figure}\n`;
-            await studioFs.writeFile(projId, figTexPath, figCode);
-            figIdx++;
+        // 3. Self-heal: ONLY if NO figures are referenced in any .tex file AND no modular sections or float files exist,
+        // do we check if orphan images exist. If sections or floats already exist, NEVER synthesize dummy figures!
+        const hasModularComponents = currentFiles.some(f => /^(?:sections|floats|tables|figures|algorithms|equations)\//i.test(f.path) && f.path.endsWith('.tex'));
+        const hasReferencedFigures = referencedImages.size > 0;
+        const hasFigureTex = currentFiles.some(f => /^(?:figures\/figure_\d+|floats\/figures?.*)\.tex$/i.test(f.path));
+        if (!hasModularComponents && !hasReferencedFigures && !hasFigureTex) {
+          const imageAssets = currentFiles.filter(f => /\.(png|jpg|jpeg|gif|webp|svg|eps)$/i.test(f.path) && !/fallback_figure/i.test(f.path));
+          if (imageAssets.length > 0) {
+            let figIdx = 1;
+            for (const imgF of imageAssets) {
+              const baseName = imgF.path.split('/').pop() || imgF.path;
+              const figTexPath = `figures/figure_${figIdx}.tex`;
+              const figCode = `\\begin{figure}[!htbp]\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${baseName}}\n\\caption{Figure ${figIdx}}\n\\label{fig:${figIdx}}\n\\end{figure}\n`;
+              await studioFs.writeFile(projId, figTexPath, figCode);
+              figIdx++;
+            }
+            currentFiles = await studioFs.listFiles(projId);
           }
-          currentFiles = await studioFs.listFiles(projId);
         }
 
         return currentFiles;

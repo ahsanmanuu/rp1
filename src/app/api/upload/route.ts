@@ -691,7 +691,7 @@ async function runUploadProcessing(uploadId: string) {
     console.log("[TELEMETRY] Starting upload processing for:", file.name);
     let deepData: any = null;
     let mammothResult = { value: "" };
-    let groundTruth: { imageCount?: number; tableCount: number; equationCount: number } | null = null;
+    let groundTruth: { imageCount?: number; tableCount: number; equationCount: number; mathData?: Array<{ latex: string; isDisplay: boolean }> } | null = null;
 
     if (file.name.endsWith('.docx') && clientEnvelope) {
       // ════════════════════════════════════════════════════════════════════

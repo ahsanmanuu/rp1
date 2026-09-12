@@ -153,19 +153,19 @@ export function autoHealMissingImages(
         const synthName = hasExt ? ref : `${ref}.png`;
         const synthContent = `data:image/png;base64,${FALLBACK_100X100_PNG_B64}`;
         console.log(`[AUTO-HEAL] Referenced figure "${ref}" missing — synthesized 100x100 placeholder: ${synthName}`);
-        synthesized.push({ path: synthName, content: synthContent });
-        synthesized.push({ path: `figures/${synthName}`, content: synthContent });
-        synthesized.push({ path: `assets/${synthName}`, content: synthContent });
+        synthesized.push({ path: synthName, content: synthContent, _isSynthesized: true } as any);
+        synthesized.push({ path: `figures/${synthName}`, content: synthContent, _isSynthesized: true } as any);
+        synthesized.push({ path: `assets/${synthName}`, content: synthContent, _isSynthesized: true } as any);
       }
     }
   }
 
-  // Always ensure fallback_figure.png is present
+  // Always ensure fallback_figure.png is present in-memory for compiler resolution
   if (!existingFilePaths.has('fallback_figure.png')) {
     const fbContent = `data:image/png;base64,${FALLBACK_100X100_PNG_B64}`;
-    synthesized.push({ path: 'fallback_figure.png', content: fbContent });
-    synthesized.push({ path: 'figures/fallback_figure.png', content: fbContent });
-    synthesized.push({ path: 'assets/fallback_figure.png', content: fbContent });
+    synthesized.push({ path: 'fallback_figure.png', content: fbContent, _isSynthesized: true } as any);
+    synthesized.push({ path: 'figures/fallback_figure.png', content: fbContent, _isSynthesized: true } as any);
+    synthesized.push({ path: 'assets/fallback_figure.png', content: fbContent, _isSynthesized: true } as any);
   }
 
   return [...files, ...synthesized];
@@ -1545,7 +1545,19 @@ export async function runHardenedPipeline(
             const projectDir = path.join(process.cwd(), 'public', 'uploads', 'projects', projectId);
             const isWin = process.platform === 'win32';
             const tectonicBin = isWin ? 'tectonic.exe' : 'tectonic';
-            const tectonicPath = path.join(process.cwd(), 'bin', tectonicBin);
+            let tectonicPath = path.join(process.cwd(), 'bin', tectonicBin);
+
+            if (!fs.existsSync(tectonicPath)) {
+                // Check system PATH (e.g. /usr/bin/tectonic, /usr/local/bin/tectonic on Linux/Render)
+                try {
+                    const whichCmd = isWin ? 'where tectonic.exe' : 'which tectonic';
+                    const sysPath = require('child_process').execSync(whichCmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().split(/\r?\n/)[0];
+                    if (sysPath && fs.existsSync(sysPath)) {
+                        tectonicPath = sysPath;
+                        console.log(`[TECTONIC] Found system tectonic binary at: ${tectonicPath}`);
+                    }
+                } catch {}
+            }
 
             if (!fs.existsSync(tectonicPath)) {
                 return {
@@ -1553,6 +1565,11 @@ export async function runHardenedPipeline(
                     log: `Tectonic Local: ${tectonicBin} binary missing.`,
                     warning: `Local tectonic binary (bin/${tectonicBin}) is not installed — falling back to remote compilers.`
                 };
+            }
+
+            // Ensure execute permissions on Linux/Unix
+            if (!isWin) {
+                try { fs.chmodSync(tectonicPath, 0o755); } catch {}
             }
 
             const os = require('os');
@@ -1653,6 +1670,10 @@ export async function runHardenedPipeline(
                 (async () => {
                     try {
                         for (const f of activeFiles) {
+                            // Never pollute the project directory with synthetic fallback placeholders
+                            if (/fallback_figure\.png$/i.test(f.path) || (f as any)._isSynthesized) {
+                                continue;
+                            }
                             const isBinary = isBinaryFile(f.path);
                             const fullP = path.join(projectDir, f.path);
                             await fs.promises.mkdir(path.dirname(fullP), { recursive: true }).catch(() => {});
@@ -2375,11 +2396,10 @@ export async function compileWithTexLive(files: FilePayload[], mainFile: string,
       }
 
       // TeXLive.net sanitization:
-      // Packages, styles, classes, and bst files MUST NEVER have subdirectory prefixes.
-      // E.g., 'figures/elsarticle.sty' -> 'elsarticle.sty'
+      // TeXLive.net uses a flat CGI script that drops any files containing slashes in filename[].
+      // ALL package, support files, and binary images must have subdirectory prefixes stripped.
       const ext = (path.extname(finalName).toLowerCase().replace(/^\./, '') || '');
-      const isTexPackageOrSupport = ['sty', 'cls', 'bst', 'bib', 'tex'].includes(ext);
-      if (isTexPackageOrSupport && finalName.includes('/')) {
+      if (finalName.includes('/')) {
         const base = path.basename(finalName);
         // If root version already exists in sortedFiles or was already added, skip this duplicate
         if (seenFilenames.has(base.toLowerCase()) || sortedFiles.some(sf => normalizePath(sf.path) === base.toLowerCase())) {
@@ -2408,7 +2428,18 @@ export async function compileWithTexLive(files: FilePayload[], mainFile: string,
         return;
       }
       
-      const text = c.startsWith('data:') ? Buffer.from(c.split(',')[1] || '', 'base64').toString('utf8') : c;
+      let text = c.startsWith('data:') ? Buffer.from(c.split(',')[1] || '', 'base64').toString('utf8') : c;
+      if (ext === 'tex') {
+        // Rewrite \includegraphics with path prefixes to basename so flat CGI compiler finds them in root
+        text = text.replace(/\\includegraphics\s*(?:\[([^\]]*)\])?\s*\{([^}]+)\}/g, (match: string, opts: string, p: string) => {
+          const cleanP = p.trim();
+          if (cleanP.includes('/') && !cleanP.startsWith('http')) {
+            const baseP = path.basename(cleanP);
+            return opts !== undefined ? `\\includegraphics[${opts}]{${baseP}}` : `\\includegraphics{${baseP}}`;
+          }
+          return match;
+        });
+      }
       fd.append('filecontents[]', text);
       fd.append('filename[]', finalName);
     });

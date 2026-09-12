@@ -2052,20 +2052,25 @@ export class ModularLatexAssembler {
         return `\\IEEEauthorblockN{${name}}\n\\IEEEauthorblockA{${affil}\\\\${email ? `email: ${email}` : ""}}`;
       }
       if (authorStyle === 'science') {
-          const id = a.affiliationIds?.[0] || "1";
+          const id = a.affiliationIds && a.affiliationIds.length > 0 ? a.affiliationIds.join(',') : "1";
           return `${name}$^{${id}${a.isCorresponding ? "\\ast" : ""}}$`;
       }
       if (isNature) {
-          const id = a.affiliationIds?.[0] || "1";
+          const id = a.affiliationIds && a.affiliationIds.length > 0 ? a.affiliationIds.join(',') : "1";
           return `${name}$^{${id}${a.isCorresponding ? ",*" : ""}}$`;
       }
       if (isLncs) return `${name}${a.affiliationIds?.length ? `\\inst{${a.affiliationIds.join(',')}}` : ""}`;
-      if (isElsevier) return `\\author[aff1]{${name}}${email ? `\\ead{${email}}` : ""}${a.isCorresponding ? "\\corref{cor1}" : ""}`;
+      if (isElsevier) {
+        const affRefs = a.affiliationIds && a.affiliationIds.length > 0
+          ? a.affiliationIds.map(id => `aff${id}`).join(',')
+          : 'aff1';
+        return `\\author[${affRefs}]{${name}}${email ? `\\ead{${email}}` : ""}${a.isCorresponding ? "\\corref{cor1}" : ""}`;
+      }
       if (isSciRep || authorStyle === 'nature') {
-        const id = a.affiliationIds?.[0] || "1";
+        const id = a.affiliationIds && a.affiliationIds.length > 0 ? a.affiliationIds.join(',') : "1";
         return `\\author[${id}${a.isCorresponding ? ',*' : ''}]{${name}}${email ? `\\email{${email}}` : ""}`;
       }
-      const ids = a.affiliationIds?.join(',') || "1";
+      const ids = a.affiliationIds && a.affiliationIds.length > 0 ? a.affiliationIds.join(',') : "1";
       return `\\author[${ids}]{${name}}`;
     }).filter(line => line.trim().length > 0);
     files['metadata/authors.tex'] = authorLines.join('\n');
@@ -2077,12 +2082,18 @@ export class ModularLatexAssembler {
         files['metadata/authors.tex'] = `\\author{${authorLines.join(', ')}}\n`;
     } else if (isLncs) {
       metadataDeclarations.push(`\\input{metadata/authors.tex}`);
-      files['metadata/authors.tex'] = `\\author{${authorLines.join(' \\and ')}}\n\\institute{${orgs[0] || "Institution"}}`;
+      files['metadata/authors.tex'] = `\\author{${authorLines.join(' \\and ')}}\n\\institute{${orgs.length > 0 ? orgs.join(' \\and ') : "Institution"}}`;
     } else if (isElsevier) {
       // NOTE: for Elsevier, metadata/authors.tex is input inside \begin{frontmatter} in header,
       // NOT in metadataDeclarations (preamble), to avoid "LaTeX Error: Missing \begin{document}"
       const elsLines = [...authorLines];
-      elsLines.push(`\\affiliation[aff1]{organization={${orgs[0] || "Institution"}}, country={Country}}`);
+      if (orgs.length > 0) {
+        orgs.forEach((org, idx) => {
+          elsLines.push(`\\affiliation[aff${idx + 1}]{organization={${org}}, country={}}`);
+        });
+      } else {
+        elsLines.push(`\\affiliation[aff1]{organization={Institution}, country={}}`);
+      }
       if ((doc.authors || []).some(a => a.isCorresponding)) elsLines.push("\\cortext[cor1]{Corresponding author}");
       files['metadata/authors.tex'] = elsLines.join('\n');
     } else if (isAcm) {

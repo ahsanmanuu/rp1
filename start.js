@@ -195,6 +195,46 @@ async function ensurePocketBaseBinary() {
 }
 
 // ============================================================
+// Auto-download Tectonic binary if missing (Render deploy / VPS deploy)
+// ============================================================
+async function ensureTectonicBinary() {
+  const isWindows = process.platform === 'win32';
+  const binDir = path.resolve(process.cwd(), 'bin');
+  const tectonicBinary = path.join(binDir, isWindows ? 'tectonic.exe' : 'tectonic');
+  
+  if (fs.existsSync(tectonicBinary)) {
+    if (!isWindows) {
+      try { fs.chmodSync(tectonicBinary, 0o755); } catch {}
+    }
+    return tectonicBinary;
+  }
+
+  if (isWindows) {
+    return null;
+  }
+
+  log('Linux detected and bin/tectonic is missing. Downloading Tectonic binary...');
+  try {
+    fs.mkdirSync(binDir, { recursive: true });
+    const version = '0.15.0';
+    const tarUrl = `https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%40${version}/tectonic-${version}-x86_64-unknown-linux-gnu.tar.gz`;
+    const tmpTar = path.join(os.tmpdir(), `tectonic-${version}.tar.gz`);
+
+    const resp = await fetch(tarUrl);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    fs.writeFileSync(tmpTar, buffer);
+
+    execSync(`tar xzf "${tmpTar}" -C "${binDir}" && chmod +x "${tectonicBinary}" && rm -f "${tmpTar}"`, { stdio: 'inherit' });
+    log('Tectonic downloaded and installed successfully at bin/tectonic.');
+    return tectonicBinary;
+  } catch (err) {
+    log(`Failed to auto-download Tectonic binary: ${err.message}. Remote compilers will be used as fallback.`);
+    return null;
+  }
+}
+
+// ============================================================
 // Start PocketBase as a child process
 // ============================================================
 async function startPocketBase() {
@@ -546,7 +586,10 @@ launchNextJsServer().catch((err) => {
 (async () => {
   try {
     log('Initiating background PocketBase startup...');
-    await startPocketBase();
+    await Promise.all([
+      startPocketBase(),
+      ensureTectonicBinary().catch((err) => log('ensureTectonicBinary non-fatal warning:', err))
+    ]);
     const pbUrl = process.env.POCKETBASE_URL || 'http://127.0.0.1:8090';
     await waitForPocketBase(pbUrl, 5, 2000);
     try {

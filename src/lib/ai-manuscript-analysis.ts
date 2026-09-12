@@ -853,6 +853,12 @@ export function applyStructureCorrections(
   // ── Authors (with affiliations) ──────────────────────────────────────────
   if (verdict.authors && verdict.authors.length > 0) {
     const authors: AuthorInfo[] = [];
+    const orgList = (verdict.affiliations && verdict.affiliations.length > 0)
+      ? verdict.affiliations
+      : (deepData.organizations && deepData.organizations.length > 0)
+        ? deepData.organizations
+        : [];
+
     for (let idx = 0; idx < verdict.authors.length; idx++) {
       const a = verdict.authors[idx];
       const rawName = String(a?.name || '').trim();
@@ -877,20 +883,83 @@ export function applyStructureCorrections(
         }
       }
 
+      // If affIds is still empty, match against orgList
+      if ((!affIds || affIds.length === 0) && affs.length > 0 && orgList.length > 0) {
+        const matchedIds: string[] = [];
+        for (const affStr of affs) {
+          const lowerAff = affStr.toLowerCase();
+          const matchIdx = orgList.findIndex(org => {
+            const lowerOrg = org.toLowerCase();
+            return lowerOrg === lowerAff || lowerAff.includes(lowerOrg) || lowerOrg.includes(lowerAff);
+          });
+          if (matchIdx !== -1) {
+            const idStr = String(matchIdx + 1);
+            if (!matchedIds.includes(idStr)) matchedIds.push(idStr);
+          }
+        }
+        if (matchedIds.length > 0) {
+          affIds = matchedIds;
+        }
+      }
+
       authors.push({
         name,
         affiliation: affs.length > 0 ? affs.join('; ') : undefined,
         affiliationIds: affIds,
       });
     }
+
+    // ── Affiliations / organizations ─────────────────────────────────────────
+    if (verdict.affiliations && verdict.affiliations.length > 0) {
+      deepData.organizations = verdict.affiliations.slice(0, 20);
+      applied.push('affiliations');
+    } else if (!deepData.organizations || deepData.organizations.length === 0) {
+      const allUniqueAffs: string[] = [];
+      for (const a of authors) {
+        if (a.affiliation) {
+          const split = a.affiliation.split(';').map(s => s.trim()).filter(Boolean);
+          for (const s of split) {
+            if (!allUniqueAffs.some(u => u.toLowerCase() === s.toLowerCase())) {
+              allUniqueAffs.push(s);
+            }
+          }
+        }
+      }
+      if (allUniqueAffs.length > 0) {
+        deepData.organizations = allUniqueAffs.slice(0, 20);
+        applied.push('affiliations');
+      }
+    }
+
+    // Secondary pass: ensure all authors have affiliationIds matched to deepData.organizations
+    if (deepData.organizations && deepData.organizations.length > 0) {
+      for (const a of authors) {
+        if (!a.affiliationIds || a.affiliationIds.length === 0) {
+          const authorAffs = (a.affiliation || '').split(';').map(s => s.trim()).filter(Boolean);
+          const matchedIds: string[] = [];
+          for (const affStr of authorAffs) {
+            const lowerAff = affStr.toLowerCase();
+            const idx = deepData.organizations.findIndex(org => {
+              const lowerOrg = org.toLowerCase();
+              return lowerOrg === lowerAff || lowerAff.includes(lowerOrg) || lowerOrg.includes(lowerAff);
+            });
+            if (idx !== -1) {
+              const idStr = String(idx + 1);
+              if (!matchedIds.includes(idStr)) matchedIds.push(idStr);
+            }
+          }
+          if (matchedIds.length > 0) {
+            a.affiliationIds = matchedIds;
+          }
+        }
+      }
+    }
+
     if (authors.length > 0) {
       deepData.authors = authors;
       applied.push('authors');
     }
-  }
-
-  // ── Affiliations / organizations ─────────────────────────────────────────
-  if (verdict.affiliations && verdict.affiliations.length > 0) {
+  } else if (verdict.affiliations && verdict.affiliations.length > 0) {
     deepData.organizations = verdict.affiliations.slice(0, 20);
     applied.push('affiliations');
   }
