@@ -141,7 +141,13 @@ export default function AiCapWarning({ onStatusChange }: AiCapWarningProps) {
     }
   }, [onStatusChange]);
 
-  useEffect(() => { setMounted(true); fetchStatus(); }, [fetchStatus]);
+  useEffect(() => {
+    setMounted(true);
+    const timer = setTimeout(() => {
+      fetchStatus();
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [fetchStatus]);
 
   useEffect(() => {
     const handleCapTrigger = () => {

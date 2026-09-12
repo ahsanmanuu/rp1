@@ -7,6 +7,7 @@ import { auditRequest, type AuditEntry } from '@/lib/security/audit';
 
 const COOKIE_NAME = 'admin_session';
 const PB_URL = process.env.POCKETBASE_URL || 'http://127.0.0.1:8090';
+let adminRefreshPromise: Promise<string | null> | null = null;
 
 function base64UrlDecode(str: string): string {
   let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
@@ -150,12 +151,20 @@ export async function proxy(request: NextRequest) {
         const THIRTY_MINUTES = 30 * 60 * 1000;
         if (expTime - now < THIRTY_MINUTES) {
           try {
-            console.log(`[Proxy] Admin token is close to expiring, refreshing...`);
-            const pb = new PocketBase(PB_URL);
-            pb.authStore.save(token, null);
-            await pb.collection('_superusers').authRefresh();
-            if (pb.authStore.token) {
-              token = pb.authStore.token;
+            if (!adminRefreshPromise) {
+              console.log(`[Proxy] Admin token is close to expiring, refreshing...`);
+              adminRefreshPromise = (async () => {
+                const pb = new PocketBase(PB_URL);
+                pb.authStore.save(token, null);
+                await pb.collection('_superusers').authRefresh();
+                return pb.authStore.token || null;
+              })().finally(() => {
+                adminRefreshPromise = null;
+              });
+            }
+            const refreshed = await adminRefreshPromise;
+            if (refreshed) {
+              token = refreshed;
               console.log(`[Proxy] Admin token refreshed successfully.`);
             }
           } catch (refreshErr: any) {
@@ -229,7 +238,8 @@ export async function proxy(request: NextRequest) {
         });
       }
 
-      await audit(requestId, ip, method, pathname, 'allowed');
+      // Non-blocking fire-and-forget audit so crypto hashing doesn't delay responses
+      void audit(requestId, ip, method, pathname, 'allowed').catch(() => {});
       const res = NextResponse.next();
       applySecurityHeaders(res, requestId);
       res.headers.set('X-RateLimit-Limit', String(cfg.refillPerWindow));

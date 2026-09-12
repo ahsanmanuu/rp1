@@ -121,7 +121,7 @@ export default function InternetMonitor() {
           setStatus("offline");
           setIsVisible(true);
         } else {
-          console.warn("[InternetMonitor] Heartbeat failed but navigator.onLine=true — server may be restarting, not forcing offline");
+          // Server may be compiling (Next.js Fast Refresh) or restarting — do not spam console warnings when client is online
         }
       }
     };
@@ -282,6 +282,11 @@ export default function InternetMonitor() {
 
         return response;
       } catch (error: any) {
+        // Never hijack aborted requests — respect caller's AbortController and cancellation logic
+        if (error?.name === "AbortError" || (init?.signal && init.signal.aborted)) {
+          throw error;
+        }
+
         const errStr = String(error?.message || error || "");
         const isNetworkErr =
           error instanceof TypeError ||
@@ -289,8 +294,7 @@ export default function InternetMonitor() {
           errStr.includes("NetworkError") ||
           errStr.includes("ERR_NETWORK_IO_SUSPENDED") ||
           errStr.includes("ERR_NETWORK_CHANGED") ||
-          errStr.includes("ERR_INTERNET_DISCONNECTED") ||
-          error?.name === "AbortError";
+          errStr.includes("ERR_INTERNET_DISCONNECTED");
 
         if (isNetworkErr) {
           // If the network error happened during sleep/wake recovery or for a GET request, retry once after a short delay
@@ -311,8 +315,14 @@ export default function InternetMonitor() {
               }
               return retryResponse;
             } catch (retryErr) {
-              // Retry also failed — fall through to cache or safe 503 response
+              // Retry also failed — fall through
             }
+          }
+
+          // If online and not effectively offline, do NOT fake an offline response
+          // Allow caller's try/catch and retry loop to manage the transient error
+          if (navigator.onLine && !isEffectivelyOffline()) {
+            throw error;
           }
 
           // Check if cached GET data is available

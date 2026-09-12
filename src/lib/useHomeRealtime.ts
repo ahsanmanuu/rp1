@@ -161,21 +161,20 @@ export function useHomeRealtime(skip = false, pollIntervalMs = 30_000) {
     if (cache && Date.now() - cache.timestamp < CACHE_TTL_MS) {
       return cache.data;
     }
-    return INITIAL_DATA;
+    return FALLBACK_DATA;
   });
-  const [loading, setLoading] = useState(!cache);
+  const [loading, setLoading] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchAll = useCallback(async () => {
     try {
-      setLoading(true);
       const result = await fetchAllCollections();
       cache = { data: result, timestamp: Date.now() };
       setData(result);
     } catch (err) {
       console.error('[useHomeRealtime] Fetch error:', err);
       if (!cache || Date.now() - cache.timestamp > CACHE_TTL_MS) {
-        setData(INITIAL_DATA);
+        setData(FALLBACK_DATA);
       }
     } finally {
       setLoading(false);

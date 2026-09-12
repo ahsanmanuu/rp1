@@ -98,11 +98,11 @@ export default function SecurityBlockOverlay() {
       }
     };
 
-    // Defer geolocation logging by 4 seconds so critical page UI renders instantly
-    const geoTimer = setTimeout(recordGeoLocation, 4000);
-    checkBlock();
+    // Defer initial checkBlock by 1.2s so critical page UI renders first
+    const blockTimer = setTimeout(checkBlock, 1200);
     const interval = setInterval(checkBlock, 300000); // Poll block check every 5m
     return () => {
+      clearTimeout(blockTimer);
       clearTimeout(geoTimer);
       clearInterval(interval);
     };

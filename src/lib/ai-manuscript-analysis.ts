@@ -65,8 +65,8 @@ const FRONTMATTER_PASS_TIMEOUT_MS = 60000;
 const STRUCTURE_PASS_TIMEOUT_MS = 120000;
 
 // Extra budget for the scoped count re-verification pass (only fires when the
-// AI's count disagrees with the deterministic count by more than 1).
-const RECOUNT_PASS_TIMEOUT_MS = 30000;
+// AI's count disagrees with the deterministic count substantially).
+const RECOUNT_PASS_TIMEOUT_MS = 15000;
 
 // Races an AI pass against a deadline. When the deadline wins, the underlying
 // request is ABORTED (via AbortSignal) instead of being left to run as a
@@ -315,8 +315,8 @@ function countCitationsFromPlainText(text: string): number {
   const cleaned = cut
     .replace(/\[\s*\d+\.\d+\s*\]/gi, '')          // [1.0], [2.5]
     .replace(/\[(?:table|fig(?:ure)?|alg(?:orithm)?|eq(?:uation)?)\.?\s*\d+\]/gi, '') // [Table 1], [Fig. 1]
-    .replace(/\[\s*[a-z]\s*\]/gi, '')              // [n], [x], [i]
-    .replace(/\[\s*\d+(?:\.\d+)?\s*,\s*\d+(?:\.\d+)?\s*\]/gi, ''); // [0, 1]
+    .replace(/\[\s*0(?:\.\d+)?\s*,\s*\d+(?:\.\d+)?\s*\]/gi, '') // [0, 1]
+    .replace(/\[\s*-?\d+\.\d+\s*,\s*-?\d+\.\d+\s*\]/gi, ''); // [0.0, 1.0]
   const matches = cleaned.match(/\[\s*\d{1,3}(?:\s*[,;\u2013\-]\s*\d{1,3})*\s*\]/g) || [];
   const seen = new Set<number>();
   for (const m of matches) {
@@ -326,7 +326,20 @@ function countCitationsFromPlainText(text: string): number {
       if (!isNaN(n) && n > 0) seen.add(n);
     }
   }
-  return seen.size;
+
+  // Count parenthetical author-year citations: (Smith, 2020), (Vaswani et al., 2017; Devlin et al., 2019)
+  const seenParenthetical = new Set<string>();
+  const parenMatches = cleaned.match(/\(([A-Z][a-zA-Z\u00C0-\u017F]+(?: et al\.?)?(?:,\s*|\s+)(?:19|20)\d{2}(?:[a-z])?(?:;\s*[A-Z][a-zA-Z\u00C0-\u017F]+(?: et al\.?)?(?:,\s*|\s+)(?:19|20)\d{2}(?:[a-z])?)*)\)/g) || [];
+  for (const pm of parenMatches) {
+    const inner = pm.replace(/[()]/g, '');
+    const parts = inner.split(';').map(p => p.trim()).filter(Boolean);
+    for (const p of parts) {
+      const key = p.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (key) seenParenthetical.add(key);
+    }
+  }
+
+  return seen.size + seenParenthetical.size;
 }
 
 /** Normalized text used for containment verification against the document. */
@@ -449,11 +462,10 @@ function reconcileVerdict(
   const body = deepData.body || [];
   const countByType = (types: string[]): number => body.filter(n => types.includes(n.type)).length;
   const mathBlocks = (deepData.mathBlocks || []) as Array<{ latex?: string }>;
-  // AI may report at most det+3 above the parser's evidence — beyond that
-  // the number is treated as unreliable (hallucinated). Tighter than the old
-  // 2x+5 bound because the AI was inflating counts badly.
-  const bound = (det: number, ai: number): number =>
-    Math.min(Math.max(det, ai), det + 3);
+  // AI may report at most det+8 for equations and det+5 for other components above the parser's evidence
+  // to avoid under-counting when parser missed legitimate components while preventing wild hallucinations.
+  const bound = (det: number, ai: number, maxDelta = 5): number =>
+    Math.min(Math.max(det, ai), det + maxDelta);
 
   // Citations: deterministic shared counter is GROUND TRUTH (identical to
   // the client display). Always overrides the AI count.
@@ -471,7 +483,7 @@ function reconcileVerdict(
   const detBodyEq = countByType(['equation']);
   const detEquations = Math.max(detDisplayMath, detBodyEq);
   if (detEquations > 0) {
-    comps.equations = bound(detEquations, typeof comps.equations === 'number' ? comps.equations : 0);
+    comps.equations = bound(detEquations, typeof comps.equations === 'number' ? comps.equations : 0, 8);
   } else if (typeof comps.equations === 'number' && comps.equations > 0) {
     // Parser found zero equation evidence but AI reports some — the AI may
     // have detected equations in mid-document text the parser missed.
@@ -483,7 +495,7 @@ function reconcileVerdict(
 
   // Pseudocode: bounded max of (body algorithm nodes, AI count).
   const detPseudo = countByType(['algorithm']);
-  comps.pseudocode = bound(detPseudo, typeof comps.pseudocode === 'number' ? comps.pseudocode : 0);
+  comps.pseudocode = bound(detPseudo, typeof comps.pseudocode === 'number' ? comps.pseudocode : 0, 5);
 
   // Tables: the VERIFIED AI caption list is ground truth when it exists;
   // otherwise anchor on detected table body nodes.
@@ -491,7 +503,7 @@ function reconcileVerdict(
   if (verdict.tables !== undefined) {
     comps.tables = verdict.tables.length;
   } else if (detTables > 0) {
-    comps.tables = bound(detTables, typeof comps.tables === 'number' ? comps.tables : 0);
+    comps.tables = bound(detTables, typeof comps.tables === 'number' ? comps.tables : 0, 5);
   } else {
     comps.tables = detTables;
   }
@@ -507,9 +519,9 @@ function reconcileVerdict(
   if (verdict.figures !== undefined) {
     comps.figures = verdict.figures.length;
   } else {
-    comps.figures = bound(detFigures, typeof comps.figures === 'number' ? comps.figures : 0);
+    comps.figures = bound(detFigures, typeof comps.figures === 'number' ? comps.figures : 0, 5);
   }
-  comps.charts = bound(detCharts, typeof comps.charts === 'number' ? comps.charts : 0);
+  comps.charts = bound(detCharts, typeof comps.charts === 'number' ? comps.charts : 0, 5);
 
   if (Object.keys(comps).length > 0) verdict.components = comps;
   return verdict;
@@ -730,10 +742,10 @@ export async function analyzeManuscriptStructure(
     const detPseudo = (deepData.body || []).filter(n => n.type === 'algorithm').length;
     const compsNow = verdict.components || {};
     const recountTargets: string[] = [];
-    if (typeof compsNow.equations === 'number' && detEquations > 0 && compsNow.equations > detEquations + 5) {
+    if (typeof compsNow.equations === 'number' && detEquations > 0 && compsNow.equations > detEquations + 8 && (compsNow.equations - detEquations) / detEquations > 0.5) {
       recountTargets.push(`equations: parser found ${detEquations}, you reported ${compsNow.equations}`);
     }
-    if (typeof compsNow.pseudocode === 'number' && detPseudo > 0 && compsNow.pseudocode > detPseudo + 5) {
+    if (typeof compsNow.pseudocode === 'number' && detPseudo > 0 && compsNow.pseudocode > detPseudo + 8 && (compsNow.pseudocode - detPseudo) / detPseudo > 0.5) {
       recountTargets.push(`pseudocode/algorithms: parser found ${detPseudo}, you reported ${compsNow.pseudocode}`);
     }
     let finalVerdict = verdict;
@@ -782,7 +794,7 @@ export async function analyzeManuscriptStructure(
               // Clamp the AI's recount to a sane bound above the deterministic
               // count — a "verified" count that triples the parser's evidence
               // is a hallucination, not a correction.
-              const detBound = key === 'equations' ? detEquations + 5 : detPseudo + 5;
+              const detBound = key === 'equations' ? detEquations + 8 : detPseudo + 5;
               merged[key] = Math.min(Math.round(rc[key]), detBound);
             }
           }

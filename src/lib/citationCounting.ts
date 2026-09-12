@@ -85,7 +85,8 @@ export function countCitationsFromHtml(rawHtml: string): number {
     .replace(/\[\s*\d+\.\d+\s*\]/gi, '')          // [1.0], [2.5]
     .replace(/\[(?:table|fig(?:ure)?|alg(?:orithm)?|eq(?:uation)?)\.?\s*\d+\]/gi, '') // [Table 1], [Fig. 1]
     .replace(/\[\s*[a-z]\s*\]/gi, '')              // [n], [x], [i]
-    .replace(/\[\s*\d+(?:\.\d+)?\s*,\s*\d+(?:\.\d+)?\s*\]/gi, ''); // [0, 1]
+    .replace(/\[\s*0(?:\.\d+)?\s*,\s*\d+(?:\.\d+)?\s*\]/gi, '') // [0, 1]
+    .replace(/\[\s*-?\d+\.\d+\s*,\s*-?\d+\.\d+\s*\]/gi, ''); // [0.0, 1.0]
   const rawBracketMatches = cleanedHtml.match(/(?<![a-zA-Z0-9\]\)]\s*(?:interval|range|scale|domain|coordinates|matrix|vector|box|bounds|values|pixel|pixels|from|to|between|like|such\s+as|e\.g\.?|eg\.?|bracket|for\s+example|example)\s*(?:\[\s*\d{1,3}\s*\]\s*[,;\s]*)*)\[\s*\d{1,3}(?:\s*[,;\u2013\-]\s*\d{1,3})*\s*\]/gi) || [];
   const seen = new Set<number>();
   for (const m of rawBracketMatches) {

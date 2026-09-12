@@ -25,16 +25,22 @@ function normalizePath(p: string): string {
 const FALLBACK_1X1_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 const FALLBACK_1X1_PNG = Buffer.from(FALLBACK_1X1_PNG_B64, 'base64');
 
+// Valid 100x100 PNG (241 bytes) — prevents LaTeX graphics package division by 0 and aspect ratio crash
+const FALLBACK_100X100_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAIAAAD/gAIDAAAAuElEQVR4nO3QoRGAMAAAse6/WnUH6AgIBI4RKOpN7jJBxlybQ2Oufd0Pn2TJkpWTJUtWTpYsWTlZsmTlZMmSlZMlS1ZOlixZOVmyZOVkyZKVkyVLVk6WLFk5WbJk5WTJkpWTJUtWTpYsWTlZsmTlZMmSlZMlS1ZOlixZOVmyZOVkyZKVkyVLVk6WLFk5WbJk5WTJkpWTJUtWTpYsWTlZsmTlZMmSlZMlS1ZOlixZOVmyZOVk/c/i0AtqEJwK9dzsVwAAAABJRU5ErkJggg==';
+const FALLBACK_100X100_PNG = Buffer.from(FALLBACK_100X100_PNG_B64, 'base64');
+
 export const PLACEHOLDER_PNG_FINGERPRINTS = [
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
+  FALLBACK_100X100_PNG_B64,
 ];
 
 export function isPlaceholderContent(content: any): boolean {
   if (!content) return true;
   const str = typeof content === 'string' ? content.trim() : String(content).trim();
   if (str.length < 50) return true;
+  if (str.startsWith('data:image/') && str.length < 250) return true;
   for (const fp of PLACEHOLDER_PNG_FINGERPRINTS) {
     if (str.includes(fp)) return true;
   }
@@ -54,6 +60,115 @@ export function formatBinaryDataUrl(raw: string, ext: string): string {
     return `data:image/${mime};base64,${clean.replace(/[\r\n]/g, '')}`;
   }
   return `data:image/${mime};base64,${Buffer.from(clean).toString('base64')}`;
+}
+
+export function sanitizeLatexText(text: string): string {
+  if (!text || typeof text !== 'string') return text;
+  return text
+    // Unicode dashes & hyphens -> LaTeX ASCII dashes
+    .replace(/[\u2014\u2015]/g, '---') // Em-dash, horizontal bar
+    .replace(/\u2013/g, '--')          // En-dash
+    .replace(/[\u2010\u2011\u2012\u2212]/g, '-') // Hyphen, non-breaking hyphen, figure dash, minus sign
+    // Unicode quotes -> ASCII LaTeX quotes
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'") // Single quotes
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"') // Double quotes
+    // Ellipsis & spaces
+    .replace(/\u2026/g, '\\ldots{}')
+    .replace(/[\u00A0\u202F]/g, '~')   // Non-breaking spaces
+    .replace(/[\u200B\u200C\u200D\uFEFF]/g, '') // Zero-width spaces
+    // Strip control chars and invalid UTF-8 replacement chars
+    .replace(/[\uFFFD]/g, '')
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/[\uE000-\uF8FF]/g, '')
+    .replace(/[\uFFFC-\uFFFE]/g, '');
+}
+
+export function autoHealMissingImages(
+  files: FilePayload[],
+  projectDir?: string | null
+): FilePayload[] {
+  const incRe = /\\(?:includegraphics|zimg)\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/g;
+  const texFiles = files.filter(f => f.path.toLowerCase().endsWith('.tex') && typeof f.content === 'string');
+  const referenced = new Set<string>();
+
+  for (const tf of texFiles) {
+    let m: RegExpExecArray | null;
+    while ((m = incRe.exec(tf.content)) !== null) {
+      const raw = (m[1] || '').trim();
+      if (!raw || raw.startsWith('%') || raw.includes('\\')) continue;
+      const clean = raw.replace(/^["']|["']$/g, '').replace(/\\/g, '/');
+      const base = path.basename(clean);
+      if (base) referenced.add(base);
+    }
+  }
+
+  const existingFilePaths = new Set(files.map(f => normalizePath(f.path)));
+  const synthesized: FilePayload[] = [];
+
+  for (const ref of referenced) {
+    const ext = path.extname(ref).toLowerCase();
+    const hasExt = ext.length > 0;
+    const candidates = hasExt
+      ? [ref]
+      : [ref, `${ref}.png`, `${ref}.jpg`, `${ref}.jpeg`, `${ref}.pdf`];
+
+    const existsInPayload = candidates.some(c => {
+      const norm = normalizePath(c);
+      const match = files.find(f => {
+        const p = normalizePath(f.path);
+        return p === norm || p.endsWith('/' + norm);
+      });
+      return match && match.content && String(match.content).length >= 50;
+    });
+
+    if (!existsInPayload) {
+      let foundOnDisk = false;
+      if (projectDir && fs.existsSync(projectDir)) {
+        for (const c of candidates) {
+          const checkPaths = [
+            path.join(projectDir, c),
+            path.join(projectDir, 'figures', c),
+            path.join(projectDir, 'assets', c),
+            path.join(projectDir, 'images', c),
+          ];
+          for (const cp of checkPaths) {
+            try {
+              if (fs.existsSync(cp) && fs.statSync(cp).size >= 50) {
+                const buf = fs.readFileSync(cp);
+                const mime = c.endsWith('.jpg') || c.endsWith('.jpeg') ? 'image/jpeg' : 'image/png';
+                const dUrl = `data:${mime};base64,${buf.toString('base64')}`;
+                synthesized.push({ path: c, content: dUrl });
+                foundOnDisk = true;
+                break;
+              }
+            } catch {}
+          }
+          if (foundOnDisk) break;
+        }
+      }
+
+      if (!foundOnDisk) {
+        const synthName = hasExt ? ref : `${ref}.png`;
+        const synthContent = `data:image/png;base64,${FALLBACK_100X100_PNG_B64}`;
+        console.log(`[AUTO-HEAL] Referenced figure "${ref}" missing — synthesized 100x100 placeholder: ${synthName}`);
+        synthesized.push({ path: synthName, content: synthContent });
+        synthesized.push({ path: `figures/${synthName}`, content: synthContent });
+        synthesized.push({ path: `assets/${synthName}`, content: synthContent });
+      }
+    }
+  }
+
+  // Always ensure fallback_figure.png is present
+  if (!existingFilePaths.has('fallback_figure.png')) {
+    const fbContent = `data:image/png;base64,${FALLBACK_100X100_PNG_B64}`;
+    synthesized.push({ path: 'fallback_figure.png', content: fbContent });
+    synthesized.push({ path: 'figures/fallback_figure.png', content: fbContent });
+    synthesized.push({ path: 'assets/fallback_figure.png', content: fbContent });
+  }
+
+  return [...files, ...synthesized];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -506,9 +621,15 @@ function applyUniversalBibliographyFix(activeFiles: FilePayload[], cleanMain: st
           seenKeys.add(key);
           const body = bm[2] || '';
           const field = (name: string): string => {
-            const fm = body.match(new RegExp(`(?:^|[,\\s])${name}\\s*=\\s*[{"]((?:[^}"]|\\{[^}]*\\})*)[}"]`, 'i'));
-            if (!fm) return '';
-            return (fm[1] || '').replace(/\s+/g, ' ').trim();
+            // Match braced value: { ... } supporting up to 2 levels of nested braces
+            const braceRegex = new RegExp(`(?:^|,)\\s*${name}\\s*=\\s*\\{((?:[^{}]|\\{(?:[^{}]|\\{[^{}]*\\})*\\})*)\\}`, 'i');
+            const bmMatch = body.match(braceRegex);
+            if (bmMatch) return (bmMatch[1] || '').replace(/[{}]/g, '').replace(/\s+/g, ' ').trim();
+            // Fallback for quoted value: " ... "
+            const quoteRegex = new RegExp(`(?:^|,)\\s*${name}\\s*=\\s*"([^"]*)"`, 'i');
+            const qmMatch = body.match(quoteRegex);
+            if (qmMatch) return (qmMatch[1] || '').replace(/\s+/g, ' ').trim();
+            return '';
           };
           const author = field('author') || field('editor') || 'Anonymous';
           const title = field('title');
@@ -531,9 +652,10 @@ function applyUniversalBibliographyFix(activeFiles: FilePayload[], cleanMain: st
       }
       if (entries.length > 0) {
         const inlineBib = `\n\\begin{thebibliography}{99}\n${entries.join('\n')}\n\\end{thebibliography}\n`;
+        let bibReplaceCount = 0;
         mainObj.content = finalTex
           .replace(/\\bibliographystyle\s*\{[^}]*\}\s*\n?/gi, '')
-          .replace(/\\bibliography\s*\{[^}]*\}/gi, (mm, idx) => (idx === 0 ? inlineBib : ''));
+          .replace(/\\bibliography\s*\{[^}]*\}/gi, () => (++bibReplaceCount === 1 ? inlineBib : ''));
         console.log(`[BIBFIX] Inlined ${entries.length} bibliography entries as thebibliography (single-pass safe).`);
       }
     } catch (inlineErr) {
@@ -626,8 +748,9 @@ async function bibliographyHeadingPresent(pdfBase64: string): Promise<boolean> {
         const r = await inst.getText();
         const text = (typeof r === 'string') ? r : (r && r.text ? r.text : '');
         if (!text) return true;
-        // Bibliographies sit at the end of the document — inspect the tail.
-        const tail = text.slice(-3000);
+        // Bibliographies sit at the end of the document — inspect up to the last 60,000 characters
+        // so documents with extensive reference lists don't truncate the section header.
+        const tail = text.length > 60000 ? text.slice(-60000) : text;
         return /\b(references|bibliography|reference|works cited|references cited)\b/i.test(tail);
     } catch {
         return true; // conservative: avoid injecting a duplicate heading
@@ -1217,6 +1340,17 @@ export async function runHardenedPipeline(
         });
     }
 
+    // ── UNICODE & PUNCTUATION SANITIZATION ──────────────────────────────────
+    activeFiles.forEach(f => {
+        if ((f.path.endsWith('.tex') || f.path.endsWith('.bib')) && typeof f.content === 'string') {
+            f.content = sanitizeLatexText(f.content);
+        }
+    });
+
+    // ── AUTOMATIC FIGURE & GRAPHIC REFERENCE AUTO-HEALER ────────────────────
+    const projectUploadsDir = projectId ? path.join(process.cwd(), 'public', 'uploads', 'projects', projectId) : null;
+    activeFiles = autoHealMissingImages(activeFiles, projectUploadsDir);
+
     const realBinaryCache: Record<string, string> = {};
     activeFiles.forEach(f => {
         if (isBinaryFile(f.path)) {
@@ -1305,6 +1439,20 @@ export async function runHardenedPipeline(
             '\\NeedsTeXFormat{LaTeX2e}',
             '\\ProvidesPackage{totpages}[2024/01/01 v1.0 stub]',
             '\\providecommand{\\TotPages}{1}',
+            '\\endinput',
+        ].join('\n'),
+
+        'algorithm.sty': [
+            '\\NeedsTeXFormat{LaTeX2e}',
+            '\\ProvidesPackage{algorithm}[2009/08/24 v0.1 LaTeX2e algorithmic package clean utf8 stub]',
+            '\\RequirePackage{float}',
+            '\\RequirePackage{ifthen}',
+            '\\newcommand{\\ALG@name}{Algorithm}',
+            '\\newcommand{\\listalgorithmname}{List of \\ALG@name s}',
+            '\\floatstyle{ruled}',
+            '\\newfloat{algorithm}{htbp}{loa}',
+            '\\floatname{algorithm}{\\ALG@name}',
+            '\\newcommand{\\algorithmname}{\\ALG@name}',
             '\\endinput',
         ].join('\n'),
     };
@@ -1435,24 +1583,16 @@ export async function runHardenedPipeline(
 
             activeFiles.forEach(f => { if (typeof f.content !== 'string') f.content = String(f.content || ''); });
 
-            // ROBUST UTF-8 SANITIZATION: strip invalid bytes from .tex files
-            // before writing to disk to prevent "Invalid UTF-8 byte" TeX errors.
-            const stripInvalidUtf8 = (text: string): string => {
-              return text
-                .replace(/[\uFFFD]/g, '')
-                .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
-                .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
-                .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
-                .replace(/[\uE000-\uF8FF]/g, '')
-                .replace(/[\uFFFC-\uFFFE]/g, '');
-            };
+            // ROBUST UTF-8 & UNICODE SANITIZATION: strip invalid bytes from .tex files
+            // and map Unicode punctuation (dashes, quotes, hyphens) to LaTeX ASCII equivalents.
             activeFiles.forEach(f => {
               if ((f.path.endsWith('.tex') || f.path.endsWith('.sty') || f.path.endsWith('.cls') || f.path.endsWith('.bib') || f.path.endsWith('.bst')) && typeof f.content === 'string') {
-                f.content = stripInvalidUtf8(f.content);
+                f.content = sanitizeLatexText(f.content);
               }
             });
             console.log(`[TECTONIC] Writing ${activeFiles.length} files to temp dir: ${activeFiles.map(f => `${f.path}(${typeof f.content === 'string' && f.content.startsWith('data:') ? 'BIN:' + f.content.split(';')[0].split(':')[1] : (typeof f.content === 'string' ? f.content.length : 0) + 'b'})`).join(', ')}`);
             try {
+                // Parallel async file deployment to compileTempDir
                 await Promise.all(activeFiles.map(async (f) => {
                     const isBinary = isBinaryFile(f.path);
                     let newBuffer: Buffer;
@@ -1466,20 +1606,16 @@ export async function runHardenedPipeline(
                         const b64Data = realContent.startsWith('data:') ? (realContent.split(',')[1] || '') : realContent;
                         newBuffer = Buffer.from(b64Data, 'base64');
                         if (newBuffer.length < 50) {
-                            // Fallback 1x1 transparent PNG if image data is missing or corrupt (<50 bytes)
-                            newBuffer = FALLBACK_1X1_PNG;
+                            newBuffer = FALLBACK_100X100_PNG;
                         }
                     }
 
                     // Write to primary relative path in compile temp dir
                     const tempP = path.join(compileTempDir, f.path);
-                    if (!fs.existsSync(path.dirname(tempP))) {
-                        fs.mkdirSync(path.dirname(tempP), { recursive: true });
-                    }
-                    fs.writeFileSync(tempP, newBuffer);
+                    await fs.promises.mkdir(path.dirname(tempP), { recursive: true });
+                    await fs.promises.writeFile(tempP, newBuffer);
 
-                    // For binary image files: multi-location deployment so \includegraphics
-                    // succeeds whether looking in root, figures/, assets/, or images/
+                    // For binary image files: multi-location deployment in temp dir
                     if (isBinary) {
                         const baseName = path.basename(f.path);
                         const altLocations = [
@@ -1489,44 +1625,47 @@ export async function runHardenedPipeline(
                             path.join(compileTempDir, 'images', baseName)
                         ];
                         for (const altP of altLocations) {
-                            try {
-                                if (!fs.existsSync(path.dirname(altP))) fs.mkdirSync(path.dirname(altP), { recursive: true });
-                                if (!fs.existsSync(altP)) fs.writeFileSync(altP, newBuffer);
-                            } catch {}
-                        }
-                    }
-
-                    // Write to physical project uploads dir (catching locks gracefully)
-                    try {
-                        const fullP = path.join(projectDir, f.path);
-                        if (!fs.existsSync(path.dirname(fullP))) {
-                            fs.mkdirSync(path.dirname(fullP), { recursive: true });
-                        }
-                        if (fs.existsSync(fullP)) {
-                            const existingBuffer = fs.readFileSync(fullP);
-                            if (existingBuffer.equals(newBuffer)) return;
-                        }
-                        fs.writeFileSync(fullP, newBuffer);
-
-                        if (isBinary) {
-                            const baseName = path.basename(f.path);
-                            const projAlts = [
-                                path.join(projectDir, baseName),
-                                path.join(projectDir, 'figures', baseName),
-                                path.join(projectDir, 'assets', baseName),
-                                path.join(projectDir, 'images', baseName)
-                            ];
-                            for (const altP of projAlts) {
+                            if (altP !== tempP) {
                                 try {
-                                    if (!fs.existsSync(path.dirname(altP))) fs.mkdirSync(path.dirname(altP), { recursive: true });
-                                    if (!fs.existsSync(altP)) fs.writeFileSync(altP, newBuffer);
+                                    await fs.promises.mkdir(path.dirname(altP), { recursive: true });
+                                    await fs.promises.writeFile(altP, newBuffer);
                                 } catch {}
                             }
                         }
-                    } catch (pWriteErr) {
-                        console.warn(`[TECTONIC] Non-fatal project dir write warning:`, pWriteErr);
                     }
                 }));
+
+                // Parallel async fallback figure deployment in temp dir
+                const universalFbLocs = [
+                    path.join(compileTempDir, 'fallback_figure.png'),
+                    path.join(compileTempDir, 'figures', 'fallback_figure.png'),
+                    path.join(compileTempDir, 'assets', 'fallback_figure.png'),
+                    path.join(compileTempDir, 'images', 'fallback_figure.png')
+                ];
+                await Promise.all(universalFbLocs.map(async (fbP) => {
+                    try {
+                        await fs.promises.mkdir(path.dirname(fbP), { recursive: true });
+                        await fs.promises.writeFile(fbP, FALLBACK_100X100_PNG);
+                    } catch {}
+                }));
+
+                // Non-blocking asynchronous sync of files to physical project upload dir
+                (async () => {
+                    try {
+                        for (const f of activeFiles) {
+                            const isBinary = isBinaryFile(f.path);
+                            const fullP = path.join(projectDir, f.path);
+                            await fs.promises.mkdir(path.dirname(fullP), { recursive: true }).catch(() => {});
+                            const realContent = realBinaryCache?.[normalizePath(f.path)] ?? f.content;
+                            const buf = isBinary
+                                ? Buffer.from(realContent.startsWith('data:') ? (realContent.split(',')[1] || '') : realContent, 'base64')
+                                : Buffer.from(realContent || '', 'utf8');
+                            if (buf.length > 0) {
+                                await fs.promises.writeFile(fullP, buf).catch(() => {});
+                            }
+                        }
+                    } catch {}
+                })();
             } catch (writeErr: any) {
                 cleanupTempDir();
                 return { pdfBase64: null, log: `Tectonic Local Pre-compile Error: ${writeErr.message || writeErr}` };
@@ -1587,13 +1726,18 @@ export async function runHardenedPipeline(
             let compileResultObj: any = null;
             const maxTries = 3;
             let currentTry = 1;
+            let useOnlyCached = true;
             const generatedStubs: string[] = [];
 
             while (currentTimeout <= MAX_TIMEOUT && currentTry <= maxTries) {
                 try {
+                    const tectonicArgs = ['-c', 'minimal'];
+                    if (useOnlyCached) tectonicArgs.push('-C');
+                    tectonicArgs.push('-Z', 'continue-on-errors', '--synctex', mainRelative);
+
                     const { stdout, stderr } = await execFileAsync(
                         tectonicPath,
-                        ['-Z', 'continue-on-errors', '--synctex', mainRelative],
+                        tectonicArgs,
                         { cwd: compileTempDir, timeout: currentTimeout }
                     );
                     logOutput = (stdout || '') + (stderr || '');
@@ -1603,6 +1747,13 @@ export async function runHardenedPipeline(
                     
                     // ── NUCLEAR AUTO-HEALER: Multi-Error Recovery ──
                     let healed = false;
+
+                    // Cache miss detection: retry without -C online
+                    if (useOnlyCached && (logOutput.includes('local cache') || logOutput.includes('only-cached') || logOutput.includes('offline'))) {
+                        console.log(`[TECTONIC] Local bundle cache miss detected — retrying online without -C...`);
+                        useOnlyCached = false;
+                        healed = true;
+                    }
 
                     // Pattern 1: Missing .sty file
                     const missingPkgMatch = logOutput.match(/!\s+LaTeX\s+Error:\s+File\s+[`']([^']+\.sty)['`]\s+not\s+found/i);
@@ -1891,8 +2042,10 @@ export async function runHardenedPipeline(
 
                 // Self-correcting bibliography heading: if the rendered PDF has a
                 // bibliography but no visible "References"/"Bibliography" heading,
-                // inject one and recompile once. Idempotent — never duplicates.
-                if (!bibHeadingInjected && hasBibliography && finalPdf && !(await bibliographyHeadingPresent(finalPdf))) {
+                // inject one and recompile once. Skip if the source document already includes
+                // native bibliography environments (\begin{thebibliography}, \printbibliography, etc.)
+                const hasNativeHeading = /\\(?:begin\{thebibliography\}|section\*?\{References\}|section\*?\{Bibliography\}|chapter\*?\{Bibliography\}|printbibliography)/i.test(mainContent) || mainContent.includes(BIB_HEADING_MARKER);
+                if (!bibHeadingInjected && hasBibliography && !hasNativeHeading && finalPdf && !(await bibliographyHeadingPresent(finalPdf))) {
                     injectBibliographyHeading([activeFiles, monoFiles, pristineFiles], cleanMain);
                     bibHeadingInjected = true;
                     console.log(`[PIPELINE] Bibliography heading missing in PDF — injecting and recompiling (Tectonic pass 2)`);
@@ -2018,98 +2171,126 @@ export async function runDoc2LatexCompiler(
     // disk and inject them under their exact file name before compiling.
     if (projectId) {
       try {
-        const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'projects', projectId);
-        if (fs.existsSync(uploadsDir)) {
-          const present = new Set<string>(
-            (files as any[]).map((f) => String(f?.path || '').toLowerCase())
-          );
-          
-          // Recursive disk image collector (root, assets/, figures/, etc.)
-          const collectDiskImages = async (baseDir: string): Promise<Array<{ filename: string; buffer: Buffer; relPath: string }>> => {
-            const list: Array<{ filename: string; buffer: Buffer; relPath: string }> = [];
-            const recurse = async (curr: string, rel = '') => {
-              try {
-                const entries = await fs.promises.readdir(curr, { withFileTypes: true });
-                for (const e of entries) {
-                  const full = path.join(curr, e.name);
-                  const subRel = rel ? `${rel}/${e.name}` : e.name;
-                  if (e.isDirectory()) {
-                    await recurse(full, subRel);
-                  } else if (e.isFile() && /\.(png|jpe?g|gif|webp|svg|eps|bmp|tiff?|pdf|heic|heif|avif)$/i.test(e.name)) {
-                    const buf = await fs.promises.readFile(full);
-                    if (buf && buf.length >= 50) {
-                      list.push({ filename: e.name, buffer: buf, relPath: subRel.replace(/\\/g, '/') });
-                    }
-                  }
-                }
-              } catch {}
-            };
-            await recurse(baseDir);
-            return list;
-          };
-
-          const diskImages = await collectDiskImages(uploadsDir);
-          for (const item of diskImages) {
-            const name = item.filename;
-            const ext = (path.extname(name).toLowerCase().replace(/^\./, '') || 'png');
-            const mime = ext === 'jpg' ? 'jpeg' : ext;
-            const content = `data:image/${mime};base64,${item.buffer.toString('base64')}`;
-
-            const targets = Array.from(new Set([name, `assets/${name}`, `figures/${name}`, item.relPath]));
-            for (const targetPath of targets) {
-              const targetLower = targetPath.toLowerCase();
-              const existing = (files as any[]).find((f) => String(f?.path || '').toLowerCase() === targetLower);
-              if (existing) {
-                if (!existing.content || isPlaceholderContent(existing.content) || String(existing.content).length < 200) {
-                  existing.content = content;
-                }
-              } else {
-                (files as any[]).push({ path: targetPath, content });
-                present.add(targetLower);
-              }
-            }
+        // Fast-path check: scan .tex files for image references
+        const texFiles = (files as any[]).filter(f => typeof f?.path === 'string' && f.path.toLowerCase().endsWith('.tex') && typeof f?.content === 'string');
+        const referencedImages = new Set<string>();
+        const incRegex = /\\(?:includegraphics|zimg)\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/g;
+        for (const tf of texFiles) {
+          let m: RegExpExecArray | null;
+          while ((m = incRegex.exec(tf.content)) !== null) {
+            const raw = (m[1] || '').trim();
+            if (!raw || raw.startsWith('%') || raw.includes('\\')) continue;
+            const clean = raw.replace(/^["']|["']$/g, '').replace(/\\/g, '/');
+            const base = path.basename(clean);
+            if (base) referencedImages.add(base.toLowerCase());
           }
         }
 
-        // DB Fallback: Recover from prisma.projectFile (critical for Render ephemeral instances)
-        try {
-          const { prisma } = await import('@/lib/prisma');
-          const dbFiles = await prisma.projectFile.findMany({
-            where: {
-              projectId,
-              OR: [
-                { fileType: 'image' },
-                { filename: { endsWith: '.png' } },
-                { filename: { endsWith: '.jpg' } },
-                { filename: { endsWith: '.jpeg' } },
-                { filename: { endsWith: '.webp' } },
-                { filename: { endsWith: '.pdf' } },
-                { filename: { endsWith: '.eps' } },
-                { filename: { endsWith: '.svg' } },
-              ]
-            }
-          });
-          for (const row of dbFiles) {
-            if (!row.content || isPlaceholderContent(row.content)) continue;
-            const cleanName = path.basename(row.filename);
-            const ext = (path.extname(cleanName).toLowerCase().replace(/^\./, '') || 'png');
-            const dataUrl = formatBinaryDataUrl(row.content, ext);
-            
-            const targets = Array.from(new Set([cleanName, `assets/${cleanName}`, `figures/${cleanName}`, row.filename.replace(/\\/g, '/')]));
-            for (const targetPath of targets) {
-              const lower = targetPath.toLowerCase();
-              const existing = (files as any[]).find((f) => String(f?.path || '').toLowerCase() === lower);
-              if (existing) {
-                if (!existing.content || isPlaceholderContent(existing.content) || String(existing.content).length < 200) {
-                  existing.content = dataUrl;
+        // Determine if any referenced image is missing or invalid in files
+        const presentValidImages = new Set<string>();
+        for (const f of (files as any[])) {
+          const base = path.basename(f?.path || '').toLowerCase();
+          const content = String(f?.content || '');
+          if (content.length >= 50 && !isPlaceholderContent(content)) {
+            presentValidImages.add(base);
+          }
+        }
+
+        const missingImageBases = Array.from(referencedImages).filter(img => !presentValidImages.has(img));
+
+        // Only scan disk or database if there are missing image references
+        if (missingImageBases.length > 0) {
+          const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'projects', projectId);
+          if (fs.existsSync(uploadsDir)) {
+            const collectDiskImages = async (baseDir: string): Promise<Array<{ filename: string; buffer: Buffer; relPath: string }>> => {
+              const list: Array<{ filename: string; buffer: Buffer; relPath: string }> = [];
+              const recurse = async (curr: string, rel = '') => {
+                try {
+                  const entries = await fs.promises.readdir(curr, { withFileTypes: true });
+                  for (const e of entries) {
+                    const full = path.join(curr, e.name);
+                    const subRel = rel ? `${rel}/${e.name}` : e.name;
+                    if (e.isDirectory()) {
+                      await recurse(full, subRel);
+                    } else if (e.isFile() && /\.(png|jpe?g|gif|webp|svg|eps|bmp|tiff?|pdf|heic|heif|avif)$/i.test(e.name)) {
+                      const buf = await fs.promises.readFile(full);
+                      if (buf && buf.length >= 50) {
+                        list.push({ filename: e.name, buffer: buf, relPath: subRel.replace(/\\/g, '/') });
+                      }
+                    }
+                  }
+                } catch {}
+              };
+              await recurse(baseDir);
+              return list;
+            };
+
+            const diskImages = await collectDiskImages(uploadsDir);
+            for (const item of diskImages) {
+              const name = item.filename;
+              const ext = (path.extname(name).toLowerCase().replace(/^\./, '') || 'png');
+              const mime = ext === 'jpg' ? 'jpeg' : ext;
+              const content = `data:image/${mime};base64,${item.buffer.toString('base64')}`;
+
+              const targets = Array.from(new Set([name, `assets/${name}`, `figures/${name}`, item.relPath]));
+              for (const targetPath of targets) {
+                const targetLower = targetPath.toLowerCase();
+                const existing = (files as any[]).find((f) => String(f?.path || '').toLowerCase() === targetLower);
+                if (existing) {
+                  if (!existing.content || isPlaceholderContent(existing.content) || String(existing.content).length < 200) {
+                    existing.content = content;
+                  }
+                } else {
+                  (files as any[]).push({ path: targetPath, content });
                 }
-              } else {
-                (files as any[]).push({ path: targetPath, content: dataUrl });
               }
+              presentValidImages.add(name.toLowerCase());
             }
           }
-        } catch (dbErr) {
-          console.warn('[DOC2LATEX] DB figure recovery fallback:', dbErr);
+
+          // Check if still missing before querying DB
+          const stillMissing = missingImageBases.filter(img => !presentValidImages.has(img));
+          if (stillMissing.length > 0) {
+            try {
+              const { prisma } = await import('@/lib/prisma');
+              const dbFiles = await prisma.projectFile.findMany({
+                where: {
+                  projectId,
+                  OR: [
+                    { fileType: 'image' },
+                    { filename: { endsWith: '.png' } },
+                    { filename: { endsWith: '.jpg' } },
+                    { filename: { endsWith: '.jpeg' } },
+                    { filename: { endsWith: '.webp' } },
+                    { filename: { endsWith: '.pdf' } },
+                    { filename: { endsWith: '.eps' } },
+                    { filename: { endsWith: '.svg' } },
+                  ]
+                }
+              });
+              for (const row of dbFiles) {
+                if (!row.content || isPlaceholderContent(row.content)) continue;
+                const cleanName = path.basename(row.filename);
+                const ext = (path.extname(cleanName).toLowerCase().replace(/^\./, '') || 'png');
+                const dataUrl = formatBinaryDataUrl(row.content, ext);
+                
+                const targets = Array.from(new Set([cleanName, `assets/${cleanName}`, `figures/${cleanName}`, row.filename.replace(/\\/g, '/')]));
+                for (const targetPath of targets) {
+                  const lower = targetPath.toLowerCase();
+                  const existing = (files as any[]).find((f) => String(f?.path || '').toLowerCase() === lower);
+                  if (existing) {
+                    if (!existing.content || isPlaceholderContent(existing.content) || String(existing.content).length < 200) {
+                      existing.content = dataUrl;
+                    }
+                  } else {
+                    (files as any[]).push({ path: targetPath, content: dataUrl });
+                  }
+                }
+              }
+            } catch (dbErr) {
+              console.warn('[DOC2LATEX] DB figure recovery fallback:', dbErr);
+            }
+          }
         }
       } catch (recoverErr: any) {
         console.warn('[DOC2LATEX] Figure recovery skipped:', recoverErr?.message || recoverErr);
@@ -2130,7 +2311,7 @@ export async function compileWithYtoTech(engine: string, files: FilePayload[], m
       
       if (isBinary) {
           const b64 = c.startsWith('data:') ? (c.split(',')[1] || '') : c;
-          const validB64 = (b64 && b64.length >= 50) ? b64 : FALLBACK_1X1_PNG_B64;
+          const validB64 = (b64 && b64.length >= 50) ? b64 : FALLBACK_100X100_PNG_B64;
           return { path: f.path, file: validB64, main: isMain };
       } else {
           const text = c.startsWith('data:') ? Buffer.from(c.split(',')[1] || '', 'base64').toString('utf8') : c;
@@ -2179,11 +2360,12 @@ export async function compileWithTexLive(files: FilePayload[], mainFile: string,
     const normMain = normalizePath(mainFile);
     const sortedFiles = [...files].sort((a,b) => (normalizePath(a.path) === normMain ? -1 : normalizePath(b.path) === normMain ? 1 : 0));
     
+    const seenFilenames = new Set<string>();
     sortedFiles.forEach(f => {
       const isBinary = isBinaryFile(f.path);
       const c = f.content;
       
-      const originalPath = f.path;
+      const originalPath = (f.path || '').replace(/\\/g, '/').replace(/^\.\//, '');
       const isMain = normalizePath(originalPath) === normMain;
       let finalName = originalPath;
       if (isMain) {
@@ -2192,12 +2374,33 @@ export async function compileWithTexLive(files: FilePayload[], mainFile: string,
           finalName = 'original_document.tex';
       }
 
+      // TeXLive.net sanitization:
+      // Packages, styles, classes, and bst files MUST NEVER have subdirectory prefixes.
+      // E.g., 'figures/elsarticle.sty' -> 'elsarticle.sty'
+      const ext = (path.extname(finalName).toLowerCase().replace(/^\./, '') || '');
+      const isTexPackageOrSupport = ['sty', 'cls', 'bst', 'bib', 'tex'].includes(ext);
+      if (isTexPackageOrSupport && finalName.includes('/')) {
+        const base = path.basename(finalName);
+        // If root version already exists in sortedFiles or was already added, skip this duplicate
+        if (seenFilenames.has(base.toLowerCase()) || sortedFiles.some(sf => normalizePath(sf.path) === base.toLowerCase())) {
+          return;
+        }
+        finalName = base;
+      }
+
+      // Deduplicate filenames sent in filename[]
+      const lowerName = finalName.toLowerCase();
+      if (seenFilenames.has(lowerName)) {
+        return;
+      }
+      seenFilenames.add(lowerName);
+
       if (isBinary) {
         // Best-effort image upload: send raw bytes as Blob part so texonline
         // writes them to disk at `finalName`.
         let raw = c.startsWith('data:') ? Buffer.from(c.split(',')[1] || '', 'base64') : Buffer.from(c, 'base64');
         if (raw.length < 50) {
-          raw = FALLBACK_1X1_PNG;
+          raw = FALLBACK_100X100_PNG;
         }
         const filePart = typeof Blob !== 'undefined' ? new Blob([raw], { type: 'application/octet-stream' }) : raw;
         fd.append('filecontents[]', filePart, finalName);

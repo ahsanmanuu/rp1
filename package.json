@@ -9,10 +9,10 @@
   "scripts": {
     "dev": "node dev.js",
     "dev:next": "next dev -p 3000 --webpack",
-    "build": "node scripts/fix-prisma-exports.js && next build --webpack",
+    "build": "node scripts/patch-react-dom.js && node scripts/fix-prisma-exports.js && next build --webpack",
     "start": "node start.js",
     "lint": "eslint",
-    "postinstall": "node -e \"console.log('Postinstall completed.')\"",
+    "postinstall": "node scripts/patch-react-dom.js",
     "test:golden": "node scratch/golden-all.cjs"
   },
   "dependencies": {

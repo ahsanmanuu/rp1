@@ -582,28 +582,47 @@ function UploadContent() {
         }
       }
 
-      // Step 2: Fetch project data and await the templates promise together (with auto-retry & self-healing fallback)
+      // Step 2: Fetch project data and await the templates promise (with auto-retry & self-healing fallback)
       let projRes: Response | null = null;
       let templateData: any = null;
+      try {
+        templateData = await templatesPromise.catch(() => ({ templates: [] }));
+      } catch {
+        templateData = { templates: [] };
+      }
+
       let syncAttempts = 0;
-      const maxSyncAttempts = 3;
+      const maxSyncAttempts = 5;
 
       if (uploadData?.projectId) {
         while (syncAttempts < maxSyncAttempts) {
           syncAttempts++;
           try {
             const projectFetchController = new AbortController();
-            const projectFetchTimeout = setTimeout(() => projectFetchController.abort(), 30000);
-            const results = await Promise.all([
-              authFetch(`/api/projects/${uploadData.projectId}`, { cache: 'no-store', signal: projectFetchController.signal }),
-              templatesPromise,
-            ]).finally(() => clearTimeout(projectFetchTimeout));
-            projRes = results[0];
-            templateData = results[1];
-            if (projRes && projRes.ok) break;
-          } catch {
+            const projectFetchTimeout = setTimeout(() => projectFetchController.abort(), 90000);
+            try {
+              projRes = await authFetch(`/api/projects/${uploadData.projectId}`, { 
+                cache: 'no-store', 
+                signal: projectFetchController.signal 
+              });
+            } finally {
+              clearTimeout(projectFetchTimeout);
+            }
+
+            if (projRes && projRes.ok) {
+              break;
+            }
+
+            // If non-200 (e.g. transient 503 or 404 while database finishes writing), wait and retry
             if (syncAttempts < maxSyncAttempts) {
-              await new Promise(r => setTimeout(r, 1000 * syncAttempts));
+              console.warn(`[UPLOAD] Project sync attempt ${syncAttempts} returned status ${projRes?.status}. Retrying in ${1.5 * syncAttempts}s...`);
+              await new Promise(r => setTimeout(r, 1500 * syncAttempts));
+              continue;
+            }
+          } catch (fetchErr: any) {
+            console.warn(`[UPLOAD] Project sync attempt ${syncAttempts} error:`, fetchErr?.message || fetchErr);
+            if (syncAttempts < maxSyncAttempts) {
+              await new Promise(r => setTimeout(r, 1500 * syncAttempts));
               continue;
             }
           }
@@ -618,7 +637,14 @@ function UploadContent() {
           } else {
             try {
               const data = await projRes.json();
-              if (data?.error) errorMsg = String(data.error);
+              if (data?.error) {
+                const rawErr = String(data.error);
+                errorMsg = rawErr === 'offline'
+                  ? "Connection was temporarily interrupted while synchronizing document data. Please retry."
+                  : (data.message ? `${rawErr}: ${data.message}` : rawErr);
+              } else if (data?.message) {
+                errorMsg = String(data.message);
+              }
             } catch { /* response was not JSON */ }
           }
         }

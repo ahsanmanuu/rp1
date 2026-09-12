@@ -1342,6 +1342,8 @@ Template ID: ${templateId} (${templateConventions.style})
 7. Labels: \\label{sec:<slug>} for sections, and floats use \\label{fig:N} / \\label{tab:N} / \\label{alg:N} only for entries obtained from the verified structure (never invent labels).
 8. JSON output ONLY: \\{"files\\": [ {"path": "...", "content": "..."} ]} — no markdown fences, no commentary before or after. Paths are relative to the project root. Backslashes and quotes in JSON must be escaped exactly.
 9. RESPONSE BUDGET: copy headings/captions/references verbatim but NEVER add explanatory prose, padding, or commentary inside the LaTeX files (no HTML comments, no "%% TODO" notes, no filler). Emit ALL available body text for every section — never omit content to save tokens.
+10. FRONTMATTER EXCLUSION: NEVER emit author names, affiliations, designations (e.g., "Deputy Librarian", "Assistant Professor", "Professor"), email addresses, or publisher names (e.g., "MDPI", "Springer", "Elsevier", "IEEE", "ACM") in section body content. Frontmatter belongs exclusively to the metadata files.
+11. FIGURE PURITY: Only emit \\includegraphics for figures that have verified captions in input B. Never create figure floats or \\includegraphics calls for decorative images, icons, banners, or logos.
 
 Document title (for context only): "${documentTitle}"`;
 
@@ -1360,7 +1362,8 @@ ${commonInputs()}
 4. Citations: convert every bracketed citation marker [N] to \\cite{refN}. Include citations inline in the paragraph text exactly where they appear in the source.
 5. Floats: when a verified figure/table/algorithm caption from input B occurs inside this section, insert the float where it belongs as a single INPUT line: \\input{floats/figures/N.tex}, \\input{floats/tables/N.tex} or \\input{floats/algorithms/N.tex} (N = 1-based index from the verified list). Never inline the float environment itself in section files.
 6. The "References"/"Bibliography" heading in the sections array is NOT a section file — skip it (the bibliography file is generated separately). Same for "Acknowledgements" only if input B lists it as a section: emit it as a normal section file.
-7. Never split a paragraph mid-sentence, never duplicate text, never emit empty files. Every section file MUST contain substantial content — at minimum the section heading and all available body text for that section.`;
+7. Never split a paragraph mid-sentence, never duplicate text, never emit empty files. Every section file MUST contain substantial content — at minimum the section heading and all available body text for that section.
+8. Frontmatter Suppression: Never emit author names, affiliations, designations (e.g. 'Deputy Librarian', 'Assistant Professor'), or publisher names ('MDPI', 'Springer', etc.) in any section body paragraph. Completely omit them from section files.`;
 
     }
 
@@ -1375,7 +1378,8 @@ ${commonInputs()}
    - figures: "floats/figures/N.tex"   charts: "floats/figures/N.tex" too, using the chart image file
    - tables: "floats/tables/N.tex"
    - algorithms: "floats/algorithms/N.tex"
-2. figures/charts: \\begin{figure}[${templateConventions.floatPlacement === 'table*/figure* for wide content, [!ht] otherwise' ? '!ht' : templateConventions.floatPlacement}]\\centering\\includegraphics[width=0.9\\linewidth]{<EXACT image filename from input C, in order>}\\caption{<VERBATIM caption from input B>}\\label{fig:N}\\end{figure}
+2. figures/charts: ONLY generate float files for figures with VERIFIED captions in input B. Use: \\begin{figure}[${templateConventions.floatPlacement === 'table*/figure* for wide content, [!ht] otherwise' ? '!ht' : templateConventions.floatPlacement}]\\centering\\includegraphics[width=0.9\\linewidth]{<EXACT image filename from input C, in order>}\\caption{<VERBATIM caption from input B>}\\label{fig:N}\\end{figure}
+   Never create floats for uncaptioned decorative images, logos, or banners.
 3. tables: reconstruct the rows/columns ACCURATELY from input A's evidence. Use tabularx (column spec chosen to fit the table, \\hline between rows, \\multicolumn for merged cells, wrap in \\adjustbox{max width=\\linewidth} when the table is wide). Preserve ALL data rows — never truncate. Caption VERBATIM from input B; \\label{tab:N}.
 4. algorithms: use \\begin{algorithm}[${templateConventions.floatPlacement === '[!ht]' ? '!ht' : 'htbp'}]\\caption{<VERBATIM title from input B>}\\begin{algorithmic}[1]\\State ...\\For{...}...\\EndFor\\Return ...\\end{algorithmic}\\end{algorithm}. Reconstruct the pseudocode steps faithfully from input A — keep every step, never truncate.
 5. COUNT INTEGRITY: the verified structure in input B declares the exact component counts (components.figures, components.charts, components.tables, components.pseudocode). Emit EXACTLY that many files per type — never more, never fewer. Index N starts at 1 and increments in document order.

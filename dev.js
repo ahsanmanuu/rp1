@@ -81,6 +81,11 @@ async function startPocketBase() {
 function startNext() {
   if (shuttingDown) return;
 
+  // Ensure React DOM development diffing null checks are patched
+  try {
+    execSync('node scripts/patch-react-dom.js', { stdio: 'inherit' });
+  } catch {}
+
   // Make sure nothing stale is holding port 3000
   freePort(3000);
 

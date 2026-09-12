@@ -299,7 +299,9 @@ async function fallbackZipImageExtraction(
 
     try {
       const rawBytes = await entry.async('uint8array');
-      if (rawBytes.length < 100) continue; // Skip tiny placeholders
+      if (rawBytes.length < 2048) continue; // Skip tiny placeholders, bullets, spacers (<2KB)
+      const isDeco = /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer/i.test(basename);
+      if (isDeco) continue;
 
       const ext = extFromFilename(target);
       // Skip EMF/WMF — they cannot be displayed as raster images

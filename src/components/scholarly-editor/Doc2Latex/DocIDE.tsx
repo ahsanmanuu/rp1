@@ -264,16 +264,14 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                 }
               } catch {}
             }
-            if (!dataUrl || dataUrl.length < 200) {
-              const ext = refName.split('.').pop() || 'png';
-              dataUrl = `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=`;
+            if (dataUrl && dataUrl.length >= 200) {
+              await studioFs.writeFile(projId, refName, dataUrl);
+              await studioFs.writeFile(projId, `assets/${refName}`, dataUrl);
+              await studioFs.writeFile(projId, `figures/${refName}`, dataUrl);
+              existingPaths.add(lower);
+              existingPaths.add(`assets/${lower}`);
+              existingPaths.add(`figures/${lower}`);
             }
-            await studioFs.writeFile(projId, refName, dataUrl);
-            await studioFs.writeFile(projId, `assets/${refName}`, dataUrl);
-            await studioFs.writeFile(projId, `figures/${refName}`, dataUrl);
-            existingPaths.add(lower);
-            existingPaths.add(`assets/${lower}`);
-            existingPaths.add(`figures/${lower}`);
           }
         }
 

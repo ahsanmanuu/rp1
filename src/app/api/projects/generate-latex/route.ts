@@ -270,17 +270,26 @@ export async function POST(req: Request) {
         }
         const hasAnyFiguresInModel = modelToUse.body.some((n: any) => n.type === 'figure' || n.type === 'image' || n.type === 'figure-group' || n.type === 'chart');
         if (!hasAnyFiguresInModel) {
-          let figAutoSeq = (modelToUse.stats?.imageCount || 0) + 1;
+          const verifiedCaptions: string[] = (modelToUse.aiVerdict?.figures || [])
+            .map((f: any) => typeof f === 'string' ? f : f?.caption || '')
+            .filter((c: string) => c.trim().length > 0);
+          let captionIdx = 0;
           for (const fig of figureFiles) {
             const safeName = String(fig.name).replace(/[^a-zA-Z0-9._-]/g, '_');
             const isDeco = /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer/i.test(safeName);
             if (isDeco) continue;
+            const explicitCaption = (typeof fig.caption === 'string' && fig.caption.trim().length > 3)
+              ? fig.caption.trim()
+              : (verifiedCaptions[captionIdx++] || '');
+            // Only inject if there is a real caption from aiVerdict or manifest
+            if (!explicitCaption) continue;
+
             if (!existingFigIds.has(safeName.toLowerCase()) && !existingFigIds.has(String(fig.name).toLowerCase())) {
               const isChart = /rf_chart_|chart_pending_/i.test(safeName);
               modelToUse.body.push({
                 type: isChart ? 'chart' : 'figure',
                 id: safeName,
-                caption: isChart ? `Chart ${figAutoSeq++}` : `Figure ${figAutoSeq++}`
+                caption: explicitCaption
               });
               existingFigIds.add(safeName.toLowerCase());
             }

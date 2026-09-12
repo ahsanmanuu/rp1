@@ -61,8 +61,6 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${outfit.variable} ${jetbrains.variable} ${newsreader.variable}`} suppressHydrationWarning>
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <script dangerouslySetInnerHTML={{ __html: `
           (function(){
             var lastReload = 0;
@@ -81,6 +79,9 @@ export default function RootLayout({
                         (e.reason ? (typeof e.reason === 'string' ? e.reason : (e.reason.message || '') + ' ' + (e.reason.stack || '')) : '') + ' ' +
                         (e.target ? (e.target.src || e.target.href || e.target.outerHTML || '') : '') + ' ' +
                         (typeof e.toString === 'function' ? e.toString() : '');
+                  if (typeof e === 'object') {
+                    try { msg += ' ' + JSON.stringify(e); } catch(_) {}
+                  }
                 }
               } catch(err) { msg = ''; }
               var str = String(msg || '').toLowerCase();
@@ -95,7 +96,12 @@ export default function RootLayout({
                      str.indexOf('script.js') !== -1 ||
                      str.indexOf('content.ts') !== -1 ||
                      str.indexOf('bhk') !== -1 ||
+                     str.indexOf('buyhatke') !== -1 ||
                      str.indexOf('unpaywall') !== -1 ||
+                     str.indexOf('showoacolor') !== -1 ||
+                     str.indexOf('widget sdk') !== -1 ||
+                     str.indexOf('merchantid') !== -1 ||
+                     str.indexOf('denying load of') !== -1 ||
                      str.indexOf('mutationobserver') !== -1 ||
                      str.indexOf('parameter 1 is not of type') !== -1 ||
                      str.indexOf("not of type 'node'") !== -1 ||
@@ -109,15 +115,22 @@ export default function RootLayout({
                      str.indexOf('editorworkermain') !== -1 ||
                      str.indexOf('failed to load worker script') !== -1 ||
                      str.indexOf('failed to fetch dynamically imported module') !== -1 ||
-                     str.indexOf('web_accessible_resources') !== -1;
+                     str.indexOf('web_accessible_resources') !== -1 ||
+                     str.indexOf('net::err_failed') !== -1 ||
+                     str.indexOf('result: false') !== -1 ||
+                     str.indexOf('result:false') !== -1;
             }
             if (typeof window !== 'undefined') {
               if (window.MutationObserver && window.MutationObserver.prototype) {
                 var _origObserve = window.MutationObserver.prototype.observe;
                 window.MutationObserver.prototype.observe = function(target, options) {
-                  if (!target || (typeof Node !== 'undefined' && !(target instanceof Node)) || typeof target.nodeType !== 'number') {
-                    return;
-                  }
+                  if (!target) return;
+                  var isNode = false;
+                  try {
+                    isNode = (typeof Node !== 'undefined' && target instanceof Node) ||
+                             (target && typeof target.nodeType === 'number' && typeof target.nodeName === 'string');
+                  } catch(_) {}
+                  if (!isNode) return;
                   try {
                     return _origObserve.apply(this, arguments);
                   } catch (err) {
@@ -125,24 +138,85 @@ export default function RootLayout({
                   }
                 };
               }
-              if (typeof console !== 'undefined') {
-                var _origConsoleError = console.error;
-                var _origConsoleWarn = console.warn;
-                console.error = function() {
-                  var args = Array.prototype.slice.call(arguments);
-                  for (var i = 0; i < args.length; i++) {
-                    if (isExtensionError(args[i])) return;
-                  }
-                  return _origConsoleError.apply(console, arguments);
+
+              // Block unwanted third-party extension scripts from injecting broken resources
+              if (typeof Node !== 'undefined' && Node.prototype) {
+                var _origAppendChild = Node.prototype.appendChild;
+                var _origInsertBefore = Node.prototype.insertBefore;
+
+                function isBlockedExtNode(node) {
+                  if (!node) return false;
+                  try {
+                    var tag = (node.nodeName || node.tagName || '').toUpperCase();
+                    if (tag === 'SCRIPT' || tag === 'LINK' || tag === 'IFRAME') {
+                      var src = (node.src || node.href || '') + '';
+                      var lower = src.toLowerCase();
+                      if (lower.indexOf('ojplmecpdpgccookcobabopnaifgidhf') !== -1 ||
+                          lower.indexOf('couponcollection') !== -1 ||
+                          lower.indexOf('affiliatecashback') !== -1 ||
+                          lower.indexOf('invalid/') !== -1 ||
+                          (lower.indexOf('chrome-extension://') === 0 && lower.indexOf('/assets/coupon') !== -1)) {
+                        return true;
+                      }
+                    }
+                  } catch(_) {}
+                  return false;
+                }
+
+                Node.prototype.appendChild = function(node) {
+                  if (isBlockedExtNode(node)) return node;
+                  return _origAppendChild.apply(this, arguments);
                 };
-                console.warn = function() {
-                  var args = Array.prototype.slice.call(arguments);
-                  for (var i = 0; i < args.length; i++) {
-                    if (isExtensionError(args[i])) return;
-                  }
-                  return _origConsoleWarn.apply(console, arguments);
+
+                Node.prototype.insertBefore = function(node, ref) {
+                  if (isBlockedExtNode(node)) return node;
+                  return _origInsertBefore.apply(this, arguments);
                 };
               }
+
+              if (typeof HTMLScriptElement !== 'undefined' && HTMLScriptElement.prototype) {
+                var srcDesc = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
+                if (srcDesc && srcDesc.set) {
+                  var _origScriptSrcSet = srcDesc.set;
+                  Object.defineProperty(HTMLScriptElement.prototype, 'src', {
+                    set: function(val) {
+                      var lower = String(val || '').toLowerCase();
+                      if (lower.indexOf('ojplmecpdpgccookcobabopnaifgidhf') !== -1 ||
+                          lower.indexOf('couponcollection') !== -1 ||
+                          lower.indexOf('affiliatecashback') !== -1 ||
+                          lower.indexOf('invalid/') !== -1) {
+                        return;
+                      }
+                      return _origScriptSrcSet.call(this, val);
+                    },
+                    get: srcDesc.get,
+                    configurable: true,
+                    enumerable: true
+                  });
+                }
+              }
+
+              if (typeof console !== 'undefined') {
+                var methods = ['error', 'warn', 'log', 'info', 'debug'];
+                for (var m = 0; m < methods.length; m++) {
+                  (function(method) {
+                    var orig = console[method];
+                    if (!orig) return;
+                    console[method] = function() {
+                      var callStack = '';
+                      try { callStack = (new Error().stack || '').toLowerCase(); } catch(_) {}
+                      if (callStack && isExtensionError(callStack)) return;
+
+                      var args = Array.prototype.slice.call(arguments);
+                      for (var i = 0; i < args.length; i++) {
+                        if (isExtensionError(args[i])) return;
+                      }
+                      return orig.apply(console, arguments);
+                    };
+                  })(methods[m]);
+                }
+              }
+
               if (window.fetch) {
                 var _origFetch = window.fetch;
                 window.fetch = function(input, init) {
@@ -218,23 +292,25 @@ export default function RootLayout({
 
             window.addEventListener('unhandledrejection', function(e) {
               if (isExtensionError(e.reason) || isExtensionError(e)) {
-                e.preventDefault();
+                if (e.preventDefault) e.preventDefault();
                 if (e.stopImmediatePropagation) e.stopImmediatePropagation();
                 return;
               }
               if (isChunkError(e.reason)) {
-                e.preventDefault();
+                if (e.preventDefault) e.preventDefault();
                 var msg = (e.reason && (e.reason.message || e.reason)) || '';
                 var url = extractChunkUrl(typeof msg === 'string' ? msg : '');
                 if (url) { retryResource(url, 'SCRIPT', 0); return; }
               }
               if (typeof ErrorEvent !== 'undefined' && e.reason instanceof ErrorEvent) {
-                e.preventDefault();
-                e.stopImmediatePropagation();
+                if (e.preventDefault) e.preventDefault();
+                if (e.stopImmediatePropagation) e.stopImmediatePropagation();
               }
-            });
+            }, true);
           })();
         `}} />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body className="antialiased font-body" suppressHydrationWarning>
         <NextAuthProvider>

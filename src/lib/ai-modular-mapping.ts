@@ -142,14 +142,25 @@ function buildVerdictCompact(doc: Record<string, any>): Record<string, any> {
     references: references.length,
   };
 
+  const authors = Array.isArray(ai.authors) && ai.authors.length > 0
+    ? ai.authors
+    : Array.isArray(doc.authors)
+      ? doc.authors.map((a: any) => ({ name: typeof a === 'string' ? a : a?.name, affiliations: [] }))
+      : [];
+  const affiliations = ai.affiliations || doc.organizations || [];
+  const authorNames = authors.map((a: any) => typeof a === 'string' ? a : a?.name).filter(Boolean);
+  const frontmatterExclusions = [
+    ...authorNames,
+    ...(Array.isArray(affiliations) ? affiliations : []),
+    'MDPI', 'Springer', 'Elsevier', 'IEEE', 'ACM', 'Wiley',
+    'Deputy Librarian', 'Assistant Professor', 'Associate Professor', 'Professor'
+  ];
+
   return {
     title: ai.title?.text || doc.title || null,
-    authors: Array.isArray(ai.authors) && ai.authors.length > 0
-      ? ai.authors
-      : Array.isArray(doc.authors)
-        ? doc.authors.map((a: any) => ({ name: typeof a === 'string' ? a : a?.name, affiliations: [] }))
-        : [],
-    affiliations: ai.affiliations || doc.organizations || [],
+    authors,
+    affiliations,
+    frontmatterExclusions,
     abstract: ai.abstract?.text || doc.abstract || null,
     keywords: ai.keywords || doc.keywords || [],
     sections,
@@ -167,6 +178,17 @@ function groupBodyBySections(body: any[]): Array<{ heading: any; nodes: any[] }>
   let current: { heading: any; nodes: any[] } | null = null;
 
   for (const node of body) {
+    // Skip frontmatter nodes from section grouping
+    if (node.componentRole === 'frontmatter' || node.componentRole === 'author' || node.componentRole === 'affiliation' || node.componentRole === 'organization') {
+      continue;
+    }
+    if (node.type === 'paragraph') {
+      const pText = (node.text || '').trim();
+      if (/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|mr\.|ms\.|mrs\.|md)\b/i.test(pText) ||
+          (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley)\b/i.test(pText) && pText.length < 60)) {
+        continue;
+      }
+    }
     if (node.type === 'heading' && node.text) {
       if (current) groups.push(current);
       current = { heading: node, nodes: [] };
@@ -424,6 +446,7 @@ function composeMainTex(
   templateId: string,
   templateMainTex: string | undefined,
   files: AiModularFile[],
+  verdict?: Record<string, any>,
 ): string {
   const metadatas = files.filter((f) => f.path.startsWith('metadata/') && f.path.endsWith('.tex'));
   const isReferencesSection = (f: AiModularFile) => {
@@ -440,8 +463,38 @@ function composeMainTex(
   const bibFile = files.find((f) => f.path === 'references/references.bib' || f.path === 'references.bib');
   const existingFloats = new Set(floats.map((f) => f.path));
 
-  for (const f of sections) {
+  const authorNames = ((verdict?.authors || []) as any[])
+    .map((a: any) => typeof a === 'string' ? a : a?.name)
+    .filter(Boolean)
+    .map((name: string) => name.toLowerCase().replace(/^(?:dr|prof|professor|mr|ms|mrs|md)\.?\s*/i, '').trim());
+  const affiliations = ((verdict?.affiliations || []) as any[])
+    .map((aff: any) => String(aff || '').toLowerCase().trim())
+    .filter(Boolean);
+
+  for (let sIdx = 0; sIdx < sections.length; sIdx++) {
+    const f = sections[sIdx];
     f.content = stripFloatInputsToExisting(f.content, existingFloats);
+    // Boundary-safe frontmatter filter: removes leaked metadata lines from section files
+    f.content = f.content
+      .split('\n')
+      .filter((line) => {
+        const l = line.trim();
+        if (!l) return true;
+        if (/^(?:mdpi|springer|elsevier|ieee|acm|wiley)\.?$/i.test(l)) return false;
+        if (/^(?:\\noindent\s*)?(?:deputy librarian|assistant professor|associate professor|visiting professor|lecturer|dean|principal)\b/i.test(l) && l.length < 150) return false;
+        if (/^(?:\\noindent\s*)?(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\s+[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,4}\.?$/i.test(l)) return false;
+
+        // In the first section, also strip standalone author and affiliation lines that do not end with a sentence period
+        if (sIdx === 0) {
+          const cleanLine = l.replace(/^\\noindent\s*/, '').replace(/[.,;:]*$/, '').toLowerCase().trim();
+          if (cleanLine.length > 3 && cleanLine.length < 120 && !l.endsWith('.')) {
+            if (authorNames.some((a: string) => a.length > 3 && (cleanLine === a || cleanLine.includes(a)))) return false;
+            if (affiliations.some((aff: string) => aff.length > 5 && (cleanLine === aff || aff.includes(cleanLine) || cleanLine.includes(aff)))) return false;
+          }
+        }
+        return true;
+      })
+      .join('\n');
   }
 
   let preamble: string[] = [];
@@ -628,7 +681,12 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     },
     {
       name: 'metadata',
-      run: () => runScopeWithRetry('metadata', fullCtx, { userId, userEmail, projectId }),
+      run: () => {
+        // Metadata only needs front matter (title, authors, abstract, keywords)
+        // Trim textWindow to first 8,000 chars to minimize tokens and prevent timeouts
+        const metaWindow = (fullTextForPasses || '').substring(0, 8000);
+        return runScopeWithRetry('metadata', { ...fullCtx, textWindow: metaWindow }, { userId, userEmail, projectId });
+      },
     },
   ];
 
@@ -719,7 +777,7 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     return null;
   }
 
-  const mainTex = composeMainTex(templateId, templateMainTex, files);
+  const mainTex = composeMainTex(templateId, templateMainTex, files, verdict);
   return {
     mainTex,
     files,

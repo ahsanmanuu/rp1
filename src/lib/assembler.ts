@@ -422,6 +422,7 @@ export class LatexAssembler {
       if (isAffiliationLine(probe)) return true;
       if (/^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(probe)) return true;
       if (/^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(probe)) return true;
+      if (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley|plos|biorxiv|medrxiv|arxiv|frontiers|nature)\b/i.test(probe) && probe.length < 60) return true;
       return false;
     };
 
@@ -461,6 +462,19 @@ export class LatexAssembler {
       if (currentSectionNodes.length === 0) return;
       const dedupedNodes: any[] = [];
       for (const n of currentSectionNodes) {
+          if (n.componentRole === 'frontmatter' || n.componentRole === 'author' || n.componentRole === 'affiliation' || n.componentRole === 'organization' || n.componentRole === 'title') {
+            continue;
+          }
+          if (n.type === 'paragraph') {
+            const pText = (n.text || '').trim();
+            const pNorm = normalize(pText);
+            const pProbe = frontMatterProbe(pText);
+            if (isAcademicPreambleOrAuthor(pProbe, pNorm) ||
+                (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley)\b/i.test(pText) && pText.length < 60) ||
+                (pNorm.length > 5 && normalizedTitle && (pNorm === normalizedTitle || normalizedTitle.includes(pNorm)))) {
+              continue;
+            }
+          }
           if (n.type === 'equation' && dedupedNodes.length > 0) {
               const last = dedupedNodes[dedupedNodes.length - 1];
               if (last.type === 'equation' && last.latex === n.latex) continue;
@@ -520,9 +534,16 @@ export class LatexAssembler {
         if (!norm && node.type !== 'figure' && node.type !== 'table' && node.type !== 'algorithm' && node.type !== 'equation' && node.type !== 'list' && node.type !== 'figure-group' && node.type !== 'chart') return;
 
         // Strip metadata duplicate content from front matter
-        if (nodeIdx < 20) {
+        if (node.componentRole === 'frontmatter' || node.componentRole === 'author' || node.componentRole === 'affiliation' || node.componentRole === 'organization' || node.componentRole === 'title') {
+          return;
+        }
+
+        if (nodeIdx < 25) {
             if (norm === normalizedTitle || (normalizedTitle.length > 10 && norm.includes(normalizedTitle)) || (norm.length > 5 && normalizedTitle.includes(norm))) return;
             if (matchesAnyAuthor(norm)) return;
+            const probe = frontMatterProbe(text);
+            if (isAcademicPreambleOrAuthor(probe, norm)) return;
+            if (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley)\b/i.test(text) && text.length < 60) return;
             if (node.type === 'heading') {
                 const cleanLower = text.toLowerCase().replace(/[:.\-\s]*$/, '').trim();
                 if (cleanLower.includes('keywords') || cleanLower.includes('index terms')) return;
@@ -2214,6 +2235,7 @@ export class ModularLatexAssembler {
       if (isAffiliationLine(probe)) return true;
       if (/^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(probe)) return true;
       if (/^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(probe)) return true;
+      if (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley|plos|biorxiv|medrxiv|arxiv|frontiers|nature)\b/i.test(probe) && probe.length < 60) return true;
       return false;
     };
     const frontMatterProbe = (t: string): string => t
@@ -2229,6 +2251,19 @@ export class ModularLatexAssembler {
       if (currentSectionNodes.length === 0) return;
       const dedupedNodes: any[] = [];
         for (const n of currentSectionNodes) {
+            if (n.componentRole === 'frontmatter' || n.componentRole === 'author' || n.componentRole === 'affiliation' || n.componentRole === 'organization' || n.componentRole === 'title') {
+              continue;
+            }
+            if (n.type === 'paragraph') {
+              const pText = (n.text || '').trim();
+              const pNorm = normalize(pText);
+              const pProbe = frontMatterProbe(pText);
+              if (isAcademicPreambleOrAuthor(pProbe, pNorm) ||
+                  (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley)\b/i.test(pText) && pText.length < 60) ||
+                  (pNorm.length > 5 && normalizedTitle && (pNorm === normalizedTitle || normalizedTitle.includes(pNorm)))) {
+                continue;
+              }
+            }
             if (n.type === 'equation') {
                 const windowSize = 5;
                 const startIdx = Math.max(0, dedupedNodes.length - windowSize);
@@ -2347,6 +2382,15 @@ export class ModularLatexAssembler {
                 node = { ...node, type: 'equation', latex: typeof eqEntry === 'string' ? eqEntry : (eqEntry.latex || eqEntry.tex || ''), label: eqEntry?.label || '' };
             }
             }
+        }
+
+        if (node.componentRole === 'frontmatter' || node.componentRole === 'author' || node.componentRole === 'affiliation' || node.componentRole === 'organization' || node.componentRole === 'title') {
+          return;
+        }
+        if (nodeIdx < 25) {
+            const probe = frontMatterProbe(text);
+            if (isAcademicPreambleOrAuthor(probe, norm)) return;
+            if (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley)\b/i.test(text) && text.length < 60) return;
         }
 
         if (isMetadataMatch && !isStructural) return;

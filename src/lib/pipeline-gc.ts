@@ -22,6 +22,7 @@ export class PipelineGC {
     '.toc', '.lof', '.lot', '.blg', '.bbl', '.bcf', '.run.xml',
     '.idx', '.ilg', '.ind', '.nav', '.snm', '.vrb', '.thm'
   ];
+  private static lastFlushTempTime = 0;
 
   /**
    * Cleans all intermediate LaTeX files from a project directory.
@@ -87,12 +88,18 @@ export class PipelineGC {
    * Sweeps os.tmpdir() for orphaned pipeline temp directories.
    * Only deletes directories older than maxAgeMs (default: 2 minutes)
    * to avoid interfering with actively running concurrent jobs.
+   * Throttled to execute at most once every 3 minutes.
    */
   static async flushTempDirs(maxAgeMs: number = 120_000): Promise<{ purged: number; errors: string[] }> {
+    const now = Date.now();
+    if (now - this.lastFlushTempTime < 180_000) {
+      return { purged: 0, errors: [] };
+    }
+    this.lastFlushTempTime = now;
+
     const tmpDir = os.tmpdir();
     let purged = 0;
     const errors: string[] = [];
-    const now = Date.now();
 
     try {
       const entries = await fs.promises.readdir(tmpDir, { withFileTypes: true });
@@ -163,9 +170,9 @@ export class PipelineGC {
         }
       }
 
-      // 2. Flush intermediate residue files for the project
+      // 2. Flush intermediate residue files for the project (background non-blocking)
       if (options.projectId) {
-        await this.flushResidue(options.projectId).catch(() => {});
+        this.flushResidue(options.projectId).catch(() => {});
       }
 
       // 3. Sanitize in-memory buffers

@@ -28,10 +28,12 @@ export function Heartbeat() {
       }).catch(() => {});
     };
 
-    ping();
+    // Defer initial ping so it doesn't compete with page hydration and critical route fetches
+    const initialTimer = setTimeout(ping, 2500);
     intervalRef.current = setInterval(ping, 120000);
 
     return () => {
+      clearTimeout(initialTimer);
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;

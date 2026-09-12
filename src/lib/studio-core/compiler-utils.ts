@@ -133,7 +133,11 @@ ${_B}ifdefined${_B}NuclearTrackerV30${_B}else
                               ${_B}IfFileExists{../figures/#1}{%
                                 ${_B}zimgRender{../figures/#1}{#2}{#3}%
                               }{%
-                                ${_B}csname includegraphics${_B}endcsname[#2]{#1}%
+                                ${_B}IfFileExists{fallback_figure.png}{%
+                                  ${_B}zimgRender{fallback_figure.png}{#2}{#3}%
+                                }{%
+                                  ${_B}fbox{${_B}parbox[c][3cm][c]{0.8${_B}linewidth}{${_B}centering [Figure: ${_B}detokenize{#1}]}}%
+                                }%
                               }%
                             }%
                           }%

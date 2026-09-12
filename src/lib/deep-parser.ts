@@ -11,7 +11,7 @@ export interface AuthorInfo {
 
 export type ComponentRole =
   | 'title' | 'author' | 'affiliation' | 'abstract' | 'keywords'
-  | 'contribution' | 'organization'
+  | 'contribution' | 'organization' | 'frontmatter'
   | 'section' | 'subsection' | 'subsubsection'
   | 'paragraph' | 'equation' | 'figure' | 'figure-group' | 'chart'
   | 'table' | 'algorithm' | 'list'
@@ -93,6 +93,8 @@ function isFrontMatterNoise(text: string): boolean {
   if (DESIGNATION_RE.test(probe) || EMAIL_PREFIX_RE.test(probe)) return true;
   if (/\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy|campus)\b/i.test(probe)) return true;
   if (/\b(?:librarian|professor|scholar|fellow|lecturer|assistant|associate|researcher)\b/i.test(probe) && probe.length < 80) return true;
+  // Publisher names / repository headers that appear as standalone noise
+  if (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley|plos|biorxiv|medrxiv|arxiv|nature\s+publishing\s+group|frontiers\s+in)\b/i.test(probe) && probe.length < 60) return true;
   // Figure/Table/Algorithm caption lines are captions, never sections.
   if (/^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(probe) && probe.length < 120) return true;
   return false;
@@ -1414,7 +1416,15 @@ export class DeepDocumentParser {
                     // "1.1 Dr. Mohammad Aadil Khan: Deputy Librarian, ..." is front
                     // matter metadata, not a numbered sub-heading.
                     if (isFrontMatterNoise(embeddedHeading) || /^[^:.]{1,12}$/.test(embeddedHeading)) {
-                      result.body.push({ type: 'paragraph', text });
+                      const sepIdx = text.indexOf(embeddedHeading);
+                      const afterHeading = sepIdx !== -1
+                        ? text.substring(sepIdx + embeddedHeading.length).replace(/^\s*[:.]+\s*/, '').trim()
+                        : '';
+                      if (afterHeading && !isFrontMatterNoise(afterHeading)) {
+                        result.body.push({ type: 'paragraph', text: afterHeading });
+                      } else {
+                        result.body.push({ type: 'paragraph', text, componentRole: 'frontmatter' });
+                      }
                     } else {
                     // Emit the short heading as a level-2 subsection
                     result.body.push({ type: 'heading', level: 2, text: embeddedHeading });
@@ -1431,7 +1441,11 @@ export class DeepDocumentParser {
                   } else {
                     let cleanText = text.trim();
                     if (isFrontMatterNoise(cleanText) || /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(cleanText)) {
-                      result.body.push({ type: 'paragraph', text: withCitations });
+                      if (hasSeenFirstSectionOrAbstract && cleanText.length > 100) {
+                        result.body.push({ type: 'paragraph', text: withCitations });
+                      } else {
+                        result.body.push({ type: 'paragraph', text: withCitations, componentRole: 'frontmatter' });
+                      }
                     } else {
                       let level = this.detectHeading(entry.elements[0], text, manifest) || 2;
                       // First heading in the document is always a main section —
@@ -1455,7 +1469,14 @@ export class DeepDocumentParser {
                     }
                   }
               } else {
-                  result.body.push({ type: 'paragraph', text: withCitations });
+                  const isNoise = (!hasSeenFirstSectionOrAbstract || i < 25) &&
+                    (isFrontMatterNoise(text) || /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(text.trim()) ||
+                     (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley)\b/i.test(text.trim()) && text.trim().length < 60));
+                  if (isNoise) {
+                    result.body.push({ type: 'paragraph', text: withCitations, componentRole: 'frontmatter' });
+                  } else {
+                    result.body.push({ type: 'paragraph', text: withCitations });
+                  }
                   
                   // UNIVERSAL IMAGE RESCUE: If this paragraph contains any <img> elements
                   // (e.g. inline Mammoth output or prose followed by an image), emit each image

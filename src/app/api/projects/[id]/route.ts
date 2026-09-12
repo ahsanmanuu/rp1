@@ -540,11 +540,13 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
               contentToWrite = Buffer.from(contentToWrite, 'base64');
             }
 
-            const targetPaths = [
+            const targetPaths = isImageExt ? [
               path.join(projectDir, file.filename),
               path.join(projectDir, baseName),
               path.join(projectDir, 'assets', baseName),
               path.join(projectDir, 'figures', baseName),
+            ] : [
+              path.join(projectDir, file.filename)
             ];
             for (const destPath of targetPaths) {
               const destDir = path.dirname(destPath);

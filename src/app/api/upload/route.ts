@@ -482,6 +482,93 @@ function ommlToLatex(mathNode: Element, isDisplay: boolean): string {
   return isDisplay ? `\\begin{equation}\n${rawLatex}\n\\end{equation}` : `$${rawLatex}$`;
 }
 
+// Ground truth extraction directly from word/document.xml
+function extractDocxXmlGroundTruth(zip: any): { tableCount: number; equationCount: number; mathData: Array<{ latex: string; isDisplay: boolean }> } | null {
+  try {
+    const docEntry = zip.getEntry('word/document.xml');
+    if (!docEntry) return null;
+    const xml = docEntry.getData().toString('utf8');
+    if (!xml) return null;
+
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM(xml, { contentType: 'application/xml' });
+    const doc = dom.window.document;
+
+    // 1. Tables Ground Truth (Semantic + Positional Law)
+    const allTbls = Array.from(doc.getElementsByTagName('w:tbl'));
+    const validTables = allTbls.filter((tbl: any, idx: number) => {
+      const text = (tbl.textContent || "").toLowerCase();
+      const rows = tbl.getElementsByTagName('w:tr').length;
+      const cells = tbl.getElementsByTagName('w:tc').length;
+      const isGrid = (rows >= 1 && cells >= 2);
+      const hasEmailContext = (text.includes('@') && /\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/i.test(text));
+      const isMetadata = hasEmailContext || text.includes('affiliation') || text.includes('institution') || text.includes('orcid');
+      const isEarly = idx === 0 && text.length < 200 && rows < 3;
+      return isGrid && !isMetadata && !isEarly;
+    }).length;
+
+    // 2. Display Equations Ground Truth
+    const mathParaNodes = Array.from(doc.getElementsByTagName('m:oMathPara'));
+    const mathNodes = Array.from(doc.getElementsByTagName('m:oMath'));
+    const allMathNodes = [...mathParaNodes, ...mathNodes];
+    const mathData: { latex: string; isDisplay: boolean }[] = [];
+
+    allMathNodes.forEach((node: any) => {
+      const rawMathText = (node.textContent || '').trim();
+      const headingLikeMath =
+        rawMathText.length > 0 && (
+          /^\s*(?:section|chapter|appendix|part|abstract|keywords|references)\s+\d/i.test(rawMathText) ||
+          /^\s*\d+(?:\.\d+)*\.\s+[A-Z][a-z]+(?:\s+[a-z]+){2,}/.test(rawMathText)
+        );
+      if (headingLikeMath) return;
+
+      let parent: any = node.parentNode;
+      let isNested = false;
+      let isDisplay = String(node.tagName || "").toLowerCase().includes('omathpara');
+
+      while (parent) {
+        const pTag = String(parent.tagName || "").toLowerCase();
+        if (pTag === 'm:omath' || pTag === 'm:omathpara') {
+          isNested = true;
+          if (pTag === 'm:omathpara') isDisplay = true;
+          break;
+        }
+        const cleanPTag = pTag.replace(/^w:/, '');
+        if (cleanPTag === 'p') {
+          const pText = (parent.textContent || '').trim();
+          const mathText = (node.textContent || '').trim();
+          const nonMathText = pText.replace(mathText, '').trim();
+          if (nonMathText.length === 0 || /^\s*[\(\d\.\-\s\)]+\s*$/.test(nonMathText)) {
+            const isParamAssign = /^[A-Za-z]{1,5}\s*=\s*-?[\d.,]+\s*$/i.test(mathText) ||
+              (mathText.length < 25 && /^[A-Za-z][A-Za-z0-9_]*\s*=\s*-?[\d.,]+(?:\s*[×x*]\s*[\d.]+)?\s*$/i.test(mathText));
+            if (!isParamAssign) {
+              isDisplay = true;
+            }
+          }
+        }
+        parent = parent.parentNode;
+      }
+      if (isNested) return;
+
+      const mathLatex = ommlToLatex(node, isDisplay);
+      if (!mathLatex) return;
+      mathData.push({ latex: mathLatex, isDisplay });
+    });
+
+    const finalEquationCount = mathData.filter(m => m.isDisplay).length;
+    try { dom.window.close(); } catch {}
+
+    return {
+      tableCount: Math.max(0, validTables),
+      equationCount: finalEquationCount,
+      mathData
+    };
+  } catch (err) {
+    console.warn('[UPLOAD] extractDocxXmlGroundTruth failed:', err);
+    return null;
+  }
+}
+
 export const maxDuration = 300;
 export const runtime = "nodejs";
 
@@ -616,45 +703,26 @@ async function runUploadProcessing(uploadId: string) {
       progress(uploadId, 'Parsing extracted document', 30);
 
       // Server-side image extraction from buffer to guarantee DB & disk persistence on Render
-      if (buffer) {
-        try {
-          const AdmZipModule = (await import('adm-zip')).default;
-          const zip = new AdmZipModule(buffer);
-          const zipEntries = zip.getEntries();
-          const mediaEntries = zipEntries.filter((e: any) => e.entryName.startsWith('word/media/') && !e.isDirectory);
-          let serverFigIdx = 1;
-          for (const entry of mediaEntries) {
-            const entryBuf = entry.getData();
-            if (entryBuf.length < 100) continue;
-            const ext = path.extname(entry.entryName).replace(/^\./, '').toLowerCase() || 'png';
-            if (ext === 'emf' || ext === 'wmf') continue;
-            const name = `rf_fig_${serverFigIdx++}.${ext === 'jpeg' ? 'jpg' : ext}`;
-            extractedImages.push({
-              name,
-              buffer: entryBuf,
-              isStructural: false
-            });
-          }
-          console.log(`[UPLOAD] Server-side extracted ${extractedImages.length} images from DOCX buffer.`);
-        } catch (zipErr) {
-          console.warn('[UPLOAD] Server-side DOCX image extraction fallback failed:', zipErr);
-        }
-      }
-
+      const clientExtractedNames = new Set<string>();
       if (Array.isArray(clientEnvelope.figures)) {
         for (const fig of clientEnvelope.figures) {
           if (fig && fig.name && typeof fig.dataUrl === 'string' && fig.dataUrl.startsWith('data:')) {
             try {
               const b64 = fig.dataUrl.split(',')[1] || '';
               const buf = Buffer.from(b64, 'base64');
-              if (buf.length > 50) {
-                const existing = extractedImages.find(img => img.name === fig.name);
-                if (!existing) {
-                  extractedImages.push({
-                    name: fig.name,
-                    buffer: buf,
-                    isStructural: false
-                  });
+              if (buf.length > 2048) {
+                const safeName = String(fig.name).replace(/[^a-zA-Z0-9._-]/g, '_');
+                const isDeco = /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer/i.test(safeName);
+                if (!isDeco) {
+                  const existing = extractedImages.find(img => img.name === safeName);
+                  if (!existing) {
+                    extractedImages.push({
+                      name: safeName,
+                      buffer: buf,
+                      isStructural: false
+                    });
+                    clientExtractedNames.add(safeName.toLowerCase());
+                  }
                 }
               }
             } catch {}
@@ -662,11 +730,47 @@ async function runUploadProcessing(uploadId: string) {
         }
       }
 
+      let clientZip: any = null;
+      if (buffer) {
+        try {
+          const AdmZipModule = (await import('adm-zip')).default;
+          clientZip = new AdmZipModule(buffer);
+          const zipEntries = clientZip.getEntries();
+          const mediaEntries = zipEntries.filter((e: any) => e.entryName.startsWith('word/media/') && !e.isDirectory);
+          let serverFigIdx = 1;
+          for (const entry of mediaEntries) {
+            const entryBuf = entry.getData();
+            if (entryBuf.length < 2048) continue; // Skip tiny decorative images/spacers (<2KB)
+            const ext = path.extname(entry.entryName).replace(/^\./, '').toLowerCase() || 'png';
+            if (ext === 'emf' || ext === 'wmf') continue;
+            const entryBase = path.basename(entry.entryName, path.extname(entry.entryName)).toLowerCase();
+            const isDeco = /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer/i.test(entryBase);
+            if (isDeco) continue;
+
+            const name = `rf_fig_${serverFigIdx++}.${ext === 'jpeg' ? 'jpg' : ext}`;
+            if (!clientExtractedNames.has(name.toLowerCase())) {
+              extractedImages.push({
+                name,
+                buffer: entryBuf,
+                isStructural: false
+              });
+            }
+          }
+          console.log(`[UPLOAD] Server-side extracted ${extractedImages.length} images from DOCX buffer.`);
+        } catch (zipErr) {
+          console.warn('[UPLOAD] Server-side DOCX image extraction fallback failed:', zipErr);
+        }
+      }
+
       const html = String(clientEnvelope.html || '');
       const text = String(clientEnvelope.text || '');
       const referencesText = String(clientEnvelope.referencesText || '');
       const figureManifest: any[] = Array.isArray(clientEnvelope.figures)
-        ? clientEnvelope.figures.filter((f: any) => f && f.name)
+        ? clientEnvelope.figures.filter((f: any) => {
+            if (!f || !f.name) return false;
+            const safe = String(f.name).toLowerCase();
+            return !/logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer/i.test(safe);
+          })
         : [];
       const figureNames = figureManifest.map((f: any) => String(f.name)).filter(Boolean);
 
@@ -677,9 +781,18 @@ async function runUploadProcessing(uploadId: string) {
       mammothResult = { value: html };
       finalXml = '';
 
+      // XML Ground Truth Extraction on client-extracted DOCX path
+      let clientMathData: Array<{ latex: string; isDisplay: boolean }> = [];
+      if (clientZip) {
+        groundTruth = extractDocxXmlGroundTruth(clientZip);
+        if (groundTruth?.mathData) {
+          clientMathData = groundTruth.mathData;
+        }
+      }
+
       if (html.trim()) {
         console.log("[TELEMETRY] Step 2: Deep Structural Analysis (envelope HTML)");
-        deepData = DeepDocumentParser.parse(html, [], file.name || 'Document.docx', null, '');
+        deepData = DeepDocumentParser.parse(html, clientMathData, file.name || 'Document.docx', groundTruth, '');
       } else {
         deepData = {
           title: file.name,
@@ -689,12 +802,13 @@ async function runUploadProcessing(uploadId: string) {
           contribution: "",
           body: [{ type: 'paragraph', text }],
           references: [],
+          mathBlocks: clientMathData,
           stats: {
             wordCount: text.split(/\s+/).length,
             charCount: text.length,
             imageCount: 0,
-            tableCount: 0,
-            equationCount: 0,
+            tableCount: groundTruth?.tableCount ?? 0,
+            equationCount: groundTruth?.equationCount ?? 0,
             referenceCount: 0,
             citationCount: 0,
             pseudocodeCount: 0,
@@ -702,12 +816,21 @@ async function runUploadProcessing(uploadId: string) {
         };
       }
 
+      if (groundTruth) {
+        if (typeof groundTruth.tableCount === 'number' && groundTruth.tableCount > 0) {
+          deepData.stats.tableCount = groundTruth.tableCount;
+        }
+        if (typeof groundTruth.equationCount === 'number' && groundTruth.equationCount > 0) {
+          deepData.stats.equationCount = groundTruth.equationCount;
+        }
+      }
+
       // The figure manifest is authoritative for what the AI may reason about
       // (figures live on the client device until Phase 2 attaches them).
       (deepData as any).figureManifest = figureManifest;
 
       // Figure Reconciliation from clientEnvelope:
-      // Guarantee every figure declared in client figureManifest exists as a body node
+      // Guarantee only figures with legitimate captions or explicit references exist as body nodes
       if (figureNames.length > 0 && Array.isArray(deepData.body)) {
         const presentFigIds = new Set<string>();
         for (const n of deepData.body) {
@@ -716,24 +839,36 @@ async function runUploadProcessing(uploadId: string) {
             for (const img of n.images) if (img.src) presentFigIds.add(String(img.src).toLowerCase());
           }
         }
-        let figAutoIdx = 1;
-        for (const fName of figureNames) {
-          if (!presentFigIds.has(fName.toLowerCase())) {
+        for (const fig of figureManifest) {
+          const fName = String(fig?.name || '').trim();
+          if (!fName || presentFigIds.has(fName.toLowerCase())) continue;
+          const isDeco = /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer/i.test(fName);
+          if (isDeco) continue;
+
+          // Only inject if the figure has a verified caption from client extraction
+          // or is explicitly referenced in the HTML/text
+          const caption = typeof fig.caption === 'string' ? fig.caption.trim() : '';
+          const hasRealCaption = caption.length > 3 && !/^figure\s*\d+$/i.test(caption);
+          const isReferencedInText = new RegExp(`\\b(?:fig(?:ure)?\\.?|chart)\\s*\\d+`, 'i').test(html) &&
+            html.toLowerCase().includes(fName.toLowerCase());
+
+          if (hasRealCaption || isReferencedInText) {
             const isChart = /rf_chart_|chart_pending_/i.test(fName);
             deepData.body.push({
               type: isChart ? 'chart' : 'figure',
               id: fName,
-              caption: isChart ? `Chart ${figAutoIdx++}` : `Figure ${figAutoIdx++}`
+              caption: caption || (isChart ? 'Chart' : 'Figure')
             });
             presentFigIds.add(fName.toLowerCase());
           }
         }
       }
 
-      if (figureNames.length > 0) {
-        if (!deepData.stats) deepData.stats = {} as any;
-        deepData.stats.imageCount = Math.max(deepData.stats.imageCount || 0, figureNames.length);
-      }
+      // Stats imageCount must reflect real figure/image body nodes (never inflated by decorative media)
+      const realFiguresCount = (deepData.body || []).filter((n: any) => n.type === 'figure' || n.type === 'image' || n.type === 'figure-group' || n.type === 'chart').length;
+      if (!deepData.stats) deepData.stats = {} as any;
+      deepData.stats.imageCount = realFiguresCount;
+
       if (referencesText && (!deepData.references || deepData.references.length === 0)) {
         deepData.references = referencesText
           .split('\n')
@@ -777,6 +912,16 @@ async function runUploadProcessing(uploadId: string) {
       }
 
       progress(uploadId, 'Analyzing document structure', 65);
+
+      // XML GROUND-TRUTH OVERRIDE: the DOCX XML table/equation counts are exact
+      if (groundTruth) {
+        if (typeof groundTruth.tableCount === 'number' && groundTruth.tableCount > 0) {
+          deepData.stats.tableCount = groundTruth.tableCount;
+        }
+        if (typeof groundTruth.equationCount === 'number' && groundTruth.equationCount > 0) {
+          deepData.stats.equationCount = groundTruth.equationCount;
+        }
+      }
 
       // Choose default template based on filename (for metadata only, not assembly)
       if (file.name.toUpperCase().includes('IEEE')) templateId = 'article_ieee';
