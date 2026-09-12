@@ -51,7 +51,7 @@ class PackageRegistry {
 }
 
 /** Convert a section title to a clean filename slug, truncated at word boundaries. */
-function slugifySectionTitle(title: string, maxLen = 40): string {
+export function slugifySectionTitle(title: string, maxLen = 40): string {
   const raw = title.toLowerCase()
     .replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '')   // strip leading numbering
     .replace(/[^\w\s]/g, ' ')                                          // punctuation → space

@@ -141,6 +141,7 @@ const backgroundRunning = new Set<string>();
 // directly via this Map. Disk fallback at tmp/uploads-pending/{uploadId}.bin
 // covers the case where GC collected the Map entry before the worker read it.
 const pendingBuffers = new Map<string, Buffer>();
+const pendingFigureBlobs = new Map<string, Array<{ name: string; buffer: Buffer }>>();
 
 // Status writes are serialized PER UPLOAD so fire-and-forget progress/heartbeat
 // writes can never land AFTER the terminal done/error write and clobber it back
@@ -704,6 +705,36 @@ async function runUploadProcessing(uploadId: string) {
 
       // Server-side image extraction from buffer to guarantee DB & disk persistence on Render
       const clientExtractedNames = new Set<string>();
+
+      // 1. First priority: figures directly sent as figureBlobs from browser
+      const stagedBlobs = pendingFigureBlobs.get(uploadId) || [];
+      const figStagingDir = path.join(PENDING_DIR, `${uploadId}_figures`);
+      if (stagedBlobs.length === 0 && fs.existsSync(figStagingDir)) {
+        try {
+          const diskFigFiles = fs.readdirSync(figStagingDir);
+          for (const df of diskFigFiles) {
+            const b = fs.readFileSync(path.join(figStagingDir, df));
+            stagedBlobs.push({ name: df, buffer: b });
+          }
+        } catch {}
+      }
+
+      if (stagedBlobs.length > 0) {
+        console.log(`[UPLOAD] Loaded ${stagedBlobs.length} client-carried figure blobs directly from upload request.`);
+        for (const item of stagedBlobs) {
+          const safeName = item.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          if (!clientExtractedNames.has(safeName.toLowerCase())) {
+            extractedImages.push({
+              name: safeName,
+              buffer: item.buffer,
+              isStructural: false
+            });
+            clientExtractedNames.add(safeName.toLowerCase());
+          }
+        }
+      }
+
+      // 2. DataURL fallback from clientEnvelope if present
       if (Array.isArray(clientEnvelope.figures)) {
         for (const fig of clientEnvelope.figures) {
           if (fig && fig.name && typeof fig.dataUrl === 'string' && fig.dataUrl.startsWith('data:')) {
@@ -713,16 +744,13 @@ async function runUploadProcessing(uploadId: string) {
               if (buf.length > 2048) {
                 const safeName = String(fig.name).replace(/[^a-zA-Z0-9._-]/g, '_');
                 const isDeco = /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer/i.test(safeName);
-                if (!isDeco) {
-                  const existing = extractedImages.find(img => img.name === safeName);
-                  if (!existing) {
-                    extractedImages.push({
-                      name: safeName,
-                      buffer: buf,
-                      isStructural: false
-                    });
-                    clientExtractedNames.add(safeName.toLowerCase());
-                  }
+                if (!isDeco && !clientExtractedNames.has(safeName.toLowerCase())) {
+                  extractedImages.push({
+                    name: safeName,
+                    buffer: buf,
+                    isStructural: false
+                  });
+                  clientExtractedNames.add(safeName.toLowerCase());
                 }
               }
             } catch {}
@@ -730,6 +758,7 @@ async function runUploadProcessing(uploadId: string) {
         }
       }
 
+      // 3. Extract media from DOCX buffer with dual aliasing (both rf_fig_N and imageN)
       let clientZip: any = null;
       if (buffer) {
         try {
@@ -748,12 +777,26 @@ async function runUploadProcessing(uploadId: string) {
             if (isDeco) continue;
 
             const name = `rf_fig_${serverFigIdx++}.${ext === 'jpeg' ? 'jpg' : ext}`;
+            const origZipName = path.basename(entry.entryName);
+
+            // Add rf_fig_N.ext
             if (!clientExtractedNames.has(name.toLowerCase())) {
               extractedImages.push({
                 name,
                 buffer: entryBuf,
                 isStructural: false
               });
+              clientExtractedNames.add(name.toLowerCase());
+            }
+
+            // Also add original media name (e.g. image1.png) as alias so any reference succeeds!
+            if (!clientExtractedNames.has(origZipName.toLowerCase())) {
+              extractedImages.push({
+                name: origZipName,
+                buffer: entryBuf,
+                isStructural: false
+              });
+              clientExtractedNames.add(origZipName.toLowerCase());
             }
           }
           console.log(`[UPLOAD] Server-side extracted ${extractedImages.length} images from DOCX buffer.`);
@@ -1985,9 +2028,13 @@ async function runUploadProcessing(uploadId: string) {
     try {
       const projDir = path.join(process.cwd(), 'public', 'uploads', 'projects', project.id);
       if (!fs.existsSync(projDir)) fs.mkdirSync(projDir, { recursive: true });
+      if (buffer && buffer.length > 0) {
+        await fs.promises.writeFile(path.join(projDir, 'source.docx'), buffer);
+        console.log(`[UPLOAD] Persisted source.docx (${buffer.length} bytes) to ${projDir}`);
+      }
       await fs.promises.writeFile(path.join(projDir, 'source_document.json'), structuredJson, 'utf-8');
     } catch (saveErr) {
-      console.warn('[UPLOAD] Could not persist source_document.json to disk:', saveErr);
+      console.warn('[UPLOAD] Could not persist source_document.json or source.docx to disk:', saveErr);
     }
 
     // --- BATCH PERSISTENCE ENGINE (Phase 1: Images only, no modular components) ---
@@ -1997,16 +2044,21 @@ async function runUploadProcessing(uploadId: string) {
     // These are needed by Phase 2 (generate-latex) for assembly.
     if (extractedImages.length > 0) {
       const dir = path.join(process.cwd(), 'public', 'uploads', 'projects', project.id);
+      const figuresDir = path.join(dir, 'figures');
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      if (!fs.existsSync(figuresDir)) fs.mkdirSync(figuresDir, { recursive: true });
 
       await Promise.all(extractedImages.map(async (img) => {
         const fullPath = path.join(dir, img.name);
+        const figSubPath = path.join(figuresDir, img.name);
         const parentDir = path.dirname(fullPath);
         if (!fs.existsSync(parentDir)) fs.mkdirSync(parentDir, { recursive: true });
         if ((img as any).stagedPath) {
           await fs.promises.copyFile((img as any).stagedPath, fullPath);
+          await fs.promises.copyFile((img as any).stagedPath, figSubPath).catch(() => {});
         } else if (img.buffer) {
-          return fs.promises.writeFile(fullPath, img.buffer);
+          await fs.promises.writeFile(fullPath, img.buffer);
+          await fs.promises.writeFile(figSubPath, img.buffer).catch(() => {});
         }
       }));
       heartbeat(uploadId, 'Saving project data', 88);
@@ -2036,6 +2088,15 @@ async function runUploadProcessing(uploadId: string) {
           fileType,
           content
         });
+        if (!isTex) {
+          filesToCreate.push({
+            projectId: project.id,
+            filename: `figures/${img.name}`,
+            filePath: `/uploads/projects/${project.id}/figures/${img.name.replace(/\\/g, '/')}`,
+            fileType: 'image',
+            content
+          });
+        }
       }
     }
 
@@ -2225,6 +2286,33 @@ export async function POST(req: Request) {
         fs.writeFileSync(path.join(PENDING_DIR, `${uploadId}.bin`), buffer);
       } catch (diskErr) {
         console.warn('[UPLOAD] Disk staging failed (in-memory Map still available):', diskErr);
+      }
+    }
+
+    // Stage client figureBlobs if provided
+    const rawFigureBlobs = formData.getAll('figureBlobs') as File[];
+    if (rawFigureBlobs && rawFigureBlobs.length > 0) {
+      const stagedList: Array<{ name: string; buffer: Buffer }> = [];
+      const figStagingDir = path.join(PENDING_DIR, `${uploadId}_figures`);
+      for (const fBlob of rawFigureBlobs) {
+        if (fBlob && typeof fBlob.arrayBuffer === 'function') {
+          try {
+            const ab = await fBlob.arrayBuffer();
+            if (ab && ab.byteLength > 0) {
+              const b = Buffer.from(ab);
+              const safeName = (fBlob.name || 'image.png').replace(/[^a-zA-Z0-9._-]/g, '_');
+              stagedList.push({ name: safeName, buffer: b });
+              try {
+                if (!fs.existsSync(figStagingDir)) fs.mkdirSync(figStagingDir, { recursive: true });
+                fs.writeFileSync(path.join(figStagingDir, safeName), b);
+              } catch {}
+            }
+          } catch {}
+        }
+      }
+      if (stagedList.length > 0) {
+        pendingFigureBlobs.set(uploadId, stagedList);
+        console.log(`[UPLOAD] Staged ${stagedList.length} client-carried figure blobs for background worker.`);
       }
     }
 

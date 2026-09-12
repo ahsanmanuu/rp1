@@ -148,36 +148,79 @@ export async function POST(req: Request) {
       }
     }
 
-    // --- REHYDRATE IMAGES FROM DB IF FIGUREFILES IS EMPTY (e.g. on Render container restarts) ---
-    if (figureFiles.length === 0) {
+    // ── FALLBACK EXTRACTION FROM source.docx ──
+    const sourceDocxPath = path.join(projectDir, 'source.docx');
+    if (fs.existsSync(sourceDocxPath)) {
       try {
-        const dbImages = await prisma.projectFile.findMany({
-          where: {
-            projectId,
-            OR: [
-              { fileType: 'image' },
-              { filename: { endsWith: '.png' } },
-              { filename: { endsWith: '.jpg' } },
-              { filename: { endsWith: '.jpeg' } },
-              { filename: { endsWith: '.webp' } },
-              { filename: { endsWith: '.pdf' } },
-              { filename: { endsWith: '.eps' } },
-              { filename: { endsWith: '.svg' } },
-            ]
-          }
-        });
+        const AdmZipModule = (await import('adm-zip')).default;
+        const zip = new AdmZipModule(sourceDocxPath);
+        const zipEntries = zip.getEntries();
+        const mediaEntries = zipEntries.filter((e: any) => e.entryName.startsWith('word/media/') && !e.isDirectory);
+        const figuresSubDir = path.join(projectDir, 'figures');
+        if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
+        if (!fs.existsSync(figuresSubDir)) fs.mkdirSync(figuresSubDir, { recursive: true });
 
-        if (dbImages && dbImages.length > 0) {
-          if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
-          const figuresSubDir = path.join(projectDir, 'figures');
-          if (!fs.existsSync(figuresSubDir)) fs.mkdirSync(figuresSubDir, { recursive: true });
+        let figSeq = 1;
+        for (const entry of mediaEntries) {
+          const entryBuf = entry.getData();
+          if (entryBuf.length < 2048) continue;
+          const ext = path.extname(entry.entryName).replace(/^\./, '').toLowerCase() || 'png';
+          if (ext === 'emf' || ext === 'wmf') continue;
+          const origName = path.basename(entry.entryName);
+          const rfName = `rf_fig_${figSeq++}.${ext === 'jpeg' ? 'jpg' : ext}`;
 
-          for (const imgRec of dbImages) {
-            const baseName = path.basename(imgRec.filename);
-            if (!baseName || baseName.includes('fallback_figure')) continue;
+          validCurrentFigureNames.add(origName);
+          validCurrentFigureNames.add(rfName);
 
-            validCurrentFigureNames.add(baseName);
+          const origRoot = path.join(projectDir, origName);
+          const origFig = path.join(figuresSubDir, origName);
+          const rfRoot = path.join(projectDir, rfName);
+          const rfFig = path.join(figuresSubDir, rfName);
 
+          if (!fs.existsSync(origRoot)) fs.writeFileSync(origRoot, entryBuf);
+          if (!fs.existsSync(origFig)) fs.writeFileSync(origFig, entryBuf);
+          if (!fs.existsSync(rfRoot)) fs.writeFileSync(rfRoot, entryBuf);
+          if (!fs.existsSync(rfFig)) fs.writeFileSync(rfFig, entryBuf);
+        }
+        console.log(`[GENERATE-LATEX] Unpacked ${mediaEntries.length} media files from source.docx as robust fallback.`);
+      } catch (docxErr) {
+        console.warn('[GENERATE-LATEX] Could not unpack source.docx fallback:', docxErr);
+      }
+    }
+
+    // --- REHYDRATE IMAGES FROM DB (e.g. on Render container restarts) ---
+    try {
+      const dbImages = await prisma.projectFile.findMany({
+        where: {
+          projectId,
+          OR: [
+            { fileType: 'image' },
+            { filename: { endsWith: '.png' } },
+            { filename: { endsWith: '.jpg' } },
+            { filename: { endsWith: '.jpeg' } },
+            { filename: { endsWith: '.webp' } },
+            { filename: { endsWith: '.pdf' } },
+            { filename: { endsWith: '.eps' } },
+            { filename: { endsWith: '.svg' } },
+          ]
+        }
+      });
+
+      if (dbImages && dbImages.length > 0) {
+        if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
+        const figuresSubDir = path.join(projectDir, 'figures');
+        if (!fs.existsSync(figuresSubDir)) fs.mkdirSync(figuresSubDir, { recursive: true });
+
+        for (const imgRec of dbImages) {
+          const baseName = path.basename(imgRec.filename);
+          if (!baseName || baseName.includes('fallback_figure')) continue;
+
+          validCurrentFigureNames.add(baseName);
+
+          const rootPath = path.join(projectDir, baseName);
+          const figPath = path.join(figuresSubDir, baseName);
+
+          if (!fs.existsSync(rootPath) || !fs.existsSync(figPath)) {
             let buf: Buffer | null = null;
             if (imgRec.content && imgRec.content.startsWith('data:')) {
               const commaIdx = imgRec.content.indexOf(',');
@@ -189,21 +232,19 @@ export async function POST(req: Request) {
             }
 
             if (buf && buf.length > 50) {
-              const rootPath = path.join(projectDir, baseName);
-              const figPath = path.join(figuresSubDir, baseName);
               if (!fs.existsSync(rootPath)) fs.writeFileSync(rootPath, buf);
               if (!fs.existsSync(figPath)) fs.writeFileSync(figPath, buf);
             }
           }
-          console.log(`[GENERATE-LATEX] Rehydrated ${dbImages.length} image records from DB to disk`);
         }
-      } catch (rehydrateErr: any) {
-        console.warn('[GENERATE-LATEX] Failed to rehydrate images from DB:', rehydrateErr?.message || rehydrateErr);
+        console.log(`[GENERATE-LATEX] Rehydrated missing image records from DB to disk`);
       }
+    } catch (rehydrateErr: any) {
+      console.warn('[GENERATE-LATEX] Failed to rehydrate images from DB:', rehydrateErr?.message || rehydrateErr);
     }
 
     // --- PURGE STALE / ZOMBIE IMAGES FROM DISK & DB TO PREVENT CROSS-CONTAMINATION ---
-    if (figureFiles.length > 0 && fs.existsSync(projectDir)) {
+    if (validCurrentFigureNames.size > 0 && fs.existsSync(projectDir)) {
       const imgDirs = [projectDir, path.join(projectDir, 'assets'), path.join(projectDir, 'figures')];
       for (const dir of imgDirs) {
         if (!fs.existsSync(dir)) continue;
@@ -212,7 +253,10 @@ export async function POST(req: Request) {
           for (const file of files) {
             const ext = path.extname(file).toLowerCase();
             const isImg = /\.(png|jpg|jpeg|gif|webp|pdf|svg|eps|tiff?|bmp)$/i.test(ext);
-            if (isImg && !validCurrentFigureNames.has(file)) {
+            if (isImg) {
+              if (validCurrentFigureNames.has(file) || /^rf_fig_\d+/i.test(file) || /^image\d+/i.test(file)) {
+                continue;
+              }
               console.log(`[GENERATE-LATEX] Pruning stale image from disk: ${file}`);
               try { fs.unlinkSync(path.join(dir, file)); } catch {}
             }
@@ -229,7 +273,7 @@ export async function POST(req: Request) {
         const staleIds = dbImages
           .filter((row: { id: string; filename: string }) => {
             const base = path.basename(row.filename);
-            return !validCurrentFigureNames.has(base) && !validCurrentFigureNames.has(row.filename);
+            return !validCurrentFigureNames.has(base) && !validCurrentFigureNames.has(row.filename) && !/^rf_fig_\d+/i.test(base) && !/^image\d+/i.test(base);
           })
           .map((r: { id: string; filename: string }) => r.id);
         if (staleIds.length > 0) {

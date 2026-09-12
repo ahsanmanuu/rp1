@@ -696,27 +696,29 @@ export class DeepDocumentParser {
         }
       }
 
+      const normFigId = (s: string) => String(s || '').replace(/\\/g, '/').replace(/^.*[\/\\]/, '').toLowerCase();
       const presentFigureIds = new Set<string>();
       for (const n of result.body) {
         if (n.type === 'figure' || n.type === 'chart' || n.type === 'image') {
-          if (n.id) presentFigureIds.add(String(n.id).toLowerCase());
+          if (n.id) presentFigureIds.add(normFigId(n.id));
         } else if (n.type === 'figure-group' && Array.isArray((n as any).images)) {
           for (const img of (n as any).images) {
-            if (img.src) presentFigureIds.add(String(img.src).toLowerCase());
+            if (img.src) presentFigureIds.add(normFigId(img.src));
           }
         }
       }
 
       let autoFigIdx = 1;
       for (const src of allImageSrcs) {
-        if (!presentFigureIds.has(src.toLowerCase()) && !decorativeImages.has(src.toLowerCase())) {
+        const normSrc = normFigId(src);
+        if (!presentFigureIds.has(normSrc) && !decorativeImages.has(normSrc)) {
           const isChart = /rf_chart_|chart_pending_/i.test(src);
           result.body.push({
             type: isChart ? 'chart' : 'figure',
             id: src,
             caption: isChart ? `Chart ${autoFigIdx++}` : `Figure ${autoFigIdx++}`
           } as any);
-          presentFigureIds.add(src.toLowerCase());
+          presentFigureIds.add(normSrc);
         }
       }
     } catch (reconcileErr) {
@@ -954,23 +956,29 @@ export class DeepDocumentParser {
       }
       else if (
           tagName === 'p' &&
-          /^(?:Fig(?:ure)?|Chart|Diagram|Photo|Image)\.?\s*[\d.]+\s*[:.\-–—]\s*\S/i.test(f.text.trim()) &&
+          /^(?:Fig(?:ure)?|Chart|Diagram|Photo|Image|Table|Tab\b\.?|Algorithm|Alg\.?)\.?\s*[\dIVX\.\-A-Za-z]*\s*[:.\-–—]\s*\S/i.test(f.text.trim()) &&
           !DeepDocumentParser.isFigureCaptionProse(f.text.trim()) &&
-          f.wordCount < 30
+          !DeepDocumentParser.isTableCaptionProse(f.text.trim()) &&
+          f.wordCount < 60
       ) {
-          nextRole = 'figure';
+          nextRole = 'paragraph';
       }
       else if (ALGO_LABEL_PATTERN.test(f.text) && f.text.length < 150) {
           nextRole = 'algorithm';
       }
-      else if (!f.text.includes('\t') && !f.text.includes('|') && (tagName.startsWith('h') || this.detectHeading(el, f.text, manifest) !== null || (tagName === 'p' && f.wordCount <= 12 && f.wordCount >= 1 && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 && !f.text.endsWith('.') && f.text.length < 120 && f.text.length > 2))) {
+      else if (!f.text.includes('\t') && !f.text.includes('|') &&
+        !(/^\s*(?:Fig(?:ure)?|Chart|Diagram|Photo|Image|Table|Tab\b\.?|Algorithm|Alg\.?)\.?\s*[\dIVX\.\-A-Za-z]*\s*[:.\-–—]/i.test(f.text.trim()) && !DeepDocumentParser.isFigureCaptionProse(f.text.trim()) && !DeepDocumentParser.isTableCaptionProse(f.text.trim())) &&
+        (tagName.startsWith('h') || this.detectHeading(el, f.text, manifest) !== null || (tagName === 'p' && f.wordCount <= 12 && f.wordCount >= 1 && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 && !f.text.endsWith('.') && f.text.length < 120 && f.text.length > 2))) {
           const detectedLvl = this.detectHeading(el, f.text, manifest);
           const isNumberedHeading = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(f.text);
-          const isStandardSectionName = /^(?:[\d\.]+\s*)?(?:introduction|related work|background|methodology|conclusion|abstract|acknowledgments|references|overview|implementation|proposed|experimental|results|discussion|system)/i.test(f.text);
+          const isStandardSectionName = /^(?:[\d\.]+\s*)?(?:introduction|related work|literature review|background|methodology|conclusion|abstract|acknowledgments|references|overview|implementation|proposed|experimental|results|discussion|system|materials and methods)/i.test(f.text);
+          const isCaptionText = /^\s*(?:Fig(?:ure)?|Chart|Diagram|Photo|Image|Table|Tab\b\.?|Algorithm|Alg\.?)\.?\s*[\dIVX\.\-A-Za-z]*\s*[:.\-–—]/i.test(f.text.trim()) &&
+            !DeepDocumentParser.isFigureCaptionProse(f.text.trim()) &&
+            !DeepDocumentParser.isTableCaptionProse(f.text.trim());
           const isAuthorAffilText = isFrontMatterNoise(f.text) ||
             /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(f.text.trim()) ||
             /\b(?:librarian|deputy librarian|assistant professor|associate professor|lecturer|department|dept|university|institute)\b/i.test(f.text);
-          const isSectionHeading = !isAuthorAffilText && (
+          const isSectionHeading = !isCaptionText && !isAuthorAffilText && (
             detectedLvl !== null ||
             isNumberedHeading ||
             isStandardSectionName ||
@@ -978,29 +986,30 @@ export class DeepDocumentParser {
             (tagName === 'p' && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 && (foundAbstract || isNumberedHeading || isStandardSectionName))
           );
 
+          const isAlreadyTitleStarted = currentRole === 'title' || manifest.some(m => m.role === 'title');
+          const looksLikeAuthor = ((f.wordCount >= 2 && f.wordCount <= 30 &&
+            (f.text.includes(',') || f.text.includes(';') || /\b(and|&)\b/i.test(f.text) || /\d/.test(f.text) || /#/.test(f.text) ||
+             /orcid/i.test(f.text) ||
+             /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\s+[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){0,3}$/i.test(f.text) ||
+             /^[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,3}$/.test(f.text)) &&
+            (f.capRatio > 0.15 || /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+/.test(f.text)) &&
+            !AFFIL_KEYWORDS.test(f.text) &&
+            !STOPWORDS.has(f.text.split(' ')[0].toLowerCase()) &&
+            !/(?:←|:=|<-|Require:|Input:|Output:|Ensure:)/i.test(f.text) &&
+            !/^(?:\d+:\s*\w)/.test(f.text)) ||
+            (f.wordCount === 1 && /^[A-Z][a-z]{2,}$/.test(f.text.trim()) && isAlreadyTitleStarted));
+
+          const isLocationAffil = isAlreadyTitleStarted && !foundAbstract &&
+            (/(?:\b\d{5,6}\b|\b(?:India|USA|UK|China|Japan|Germany|France|Australia|Canada|Brazil|Korea|Italy|Spain|Netherlands|Switzerland|Singapore|Malaysia|Iran|Egypt|Pakistan|Indonesia|Thailand|Turkey|Russia|Mexico|Colombia|Nigeria|Kenya|Ethiopia|South\s+Africa)\b)/i.test(f.text) || /orcid/i.test(f.text)) &&
+            f.wordCount < 15 && f.text.length < 200;
+          const isAffilOrDesignation = EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil ||
+            /\b(?:librarian|professor|assistant|associate|lecturer|department|dept|polytechnic|university|institute|college|faculty)\b/i.test(f.text);
+          const startsWithDrOrProf = /^(?:dr\.|prof\.|professor)\b/i.test(f.text.trim());
+
           if (isSectionHeading) {
               nextRole = 'section';
-          } else if (!foundAbstract && i < 20 && f.text.length > 10 && f.text.length < 500
+          } else if (!foundAbstract && f.text.length > 5 && f.text.length < 500
               && !/ieee|journal|transactions|vol\.|no\.|arxiv|preprint|copyright|issn/i.test(f.text)) {
-              const isAlreadyTitleStarted = currentRole === 'title' || manifest.some(m => m.role === 'title');
-              const looksLikeAuthor = ((f.wordCount >= 2 && f.wordCount <= 30 &&
-                (f.text.includes(',') || f.text.includes(';') || /\b(and|&)\b/i.test(f.text) || /\d/.test(f.text) || /#/.test(f.text) ||
-                 /orcid/i.test(f.text) ||
-                 /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\s+[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){0,3}$/i.test(f.text) ||
-                 /^[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,3}$/.test(f.text)) &&
-                (f.capRatio > 0.15 || /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+/.test(f.text)) &&
-                !AFFIL_KEYWORDS.test(f.text) &&
-                !STOPWORDS.has(f.text.split(' ')[0].toLowerCase()) &&
-                !/(?:←|:=|<-|Require:|Input:|Output:|Ensure:)/i.test(f.text) &&
-                !/^(?:\d+:\s*\w)/.test(f.text)) ||
-                (f.wordCount === 1 && /^[A-Z][a-z]{2,}$/.test(f.text.trim()) && isAlreadyTitleStarted));
-
-              const isLocationAffil = isAlreadyTitleStarted && !foundAbstract &&
-                (/(?:\b\d{5,6}\b|\b(?:India|USA|UK|China|Japan|Germany|France|Australia|Canada|Brazil|Korea|Italy|Spain|Netherlands|Switzerland|Singapore|Malaysia|Iran|Egypt|Pakistan|Indonesia|Thailand|Turkey|Russia|Mexico|Colombia|Nigeria|Kenya|Ethiopia|South\s+Africa)\b)/i.test(f.text) || /orcid/i.test(f.text)) &&
-                f.wordCount < 15 && f.text.length < 200;
-              const isAffilOrDesignation = EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil ||
-                /\b(?:librarian|professor|assistant|associate|lecturer|department|dept|polytechnic|university|institute|college|faculty)\b/i.test(f.text);
-              const startsWithDrOrProf = /^(?:dr\.|prof\.|professor)\b/i.test(f.text.trim());
 
               if ((isAffilOrDesignation || EMAIL_RE.test(f.text)) && isAlreadyTitleStarted) {
                   if (startsWithDrOrProf && !AFFIL_KEYWORDS.test(f.text)) {
@@ -1029,24 +1038,30 @@ export class DeepDocumentParser {
               } else {
                   if (startsWithDrOrProf || looksLikeAuthor) {
                       nextRole = 'author';
-                  } else if (isAffilOrDesignation) {
-                      nextRole = 'affiliation';
-                  } else if (!foundAbstract && i < 20 && f.text.length < 150) {
+                  } else if (isAffilOrDesignation || isLocationAffil) {
                       nextRole = 'affiliation';
                   } else {
-                      nextRole = 'section';
+                      nextRole = 'paragraph';
                   }
               }
           } else {
-              nextRole = 'section';
+              if (isCaptionText) {
+                  nextRole = 'paragraph';
+              } else if (isAuthorAffilText || looksLikeAuthor) {
+                  nextRole = 'author';
+              } else if (isAffilOrDesignation || isLocationAffil) {
+                  nextRole = 'affiliation';
+              } else {
+                  nextRole = 'paragraph';
+              }
           }
       }
       else if (tagName === 'ul' || tagName === 'ol') {
           nextRole = 'list';
       }
-      else if (!foundAbstract && i < 20 && f.text.length > 10 && f.text.length < 500
+      else if (!foundAbstract && f.text.length > 10 && f.text.length < 500
           && !/ieee|journal|transactions|vol\.|no\.|arxiv|preprint|copyright|issn/i.test(f.text)
-          && !/^(?:introduction|related work|background|methodology|conclusion|abstract|acknowledgments|references|overview)/i.test(f.text)) {
+          && !/^(?:introduction|related work|literature review|background|methodology|conclusion|abstract|acknowledgments|references|overview)/i.test(f.text)) {
           const isAlreadyTitleStarted = currentRole === 'title' || manifest.some(m => m.role === 'title');
           const looksLikeAuthor = ((f.wordCount >= 2 && f.wordCount <= 30 &&
             (f.text.includes(',') || f.text.includes(';') || /\b(and|&)\b/i.test(f.text) || /\d/.test(f.text) || /#/.test(f.text) ||
@@ -1087,13 +1102,15 @@ export class DeepDocumentParser {
               } else if (f.text.length < 200 && f.wordCount < 25 && !foundAbstract && !/^(?:abstract|introduction|related work)/i.test(f.text)) {
                   nextRole = 'title';
               } else {
-                  nextRole = 'section';
+                  nextRole = 'paragraph';
               }
           } else {
               if (startsWithDrOrProf || looksLikeAuthor) {
                   nextRole = 'author';
               } else if (EMAIL_RE.test(f.text) || AFFIL_KEYWORDS.test(f.text) || isLocationAffil) {
                   nextRole = 'affiliation';
+              } else {
+                  nextRole = 'paragraph';
               }
           }
       }
@@ -1439,29 +1456,42 @@ export class DeepDocumentParser {
                     }
                   } else {
                     let cleanText = text.trim();
-                    if (isFrontMatterNoise(cleanText) || /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(cleanText)) {
+                    const isAuthorNameMatch = (result.authors || []).some((a: any) => {
+                      const aname = String(a.name || '').toLowerCase().replace(/[^a-z]/g, '');
+                      const cname = cleanText.toLowerCase().replace(/[^a-z]/g, '');
+                      return aname.length > 4 && (cname === aname || (cname.includes(aname) && cname.length < aname.length + 5));
+                    });
+                    if (isAuthorNameMatch || isFrontMatterNoise(cleanText) || /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(cleanText)) {
                       if (hasSeenFirstSectionOrAbstract && cleanText.length > 100) {
                         result.body.push({ type: 'paragraph', text: withCitations });
                       } else {
                         result.body.push({ type: 'paragraph', text: withCitations, componentRole: 'frontmatter' });
                       }
+                      continue;
                     } else {
                       let level = this.detectHeading(entry.elements[0], text, manifest) || 2;
-                      // First heading in the document is always a main section —
-                      // a leading "X.Y" numbered prefix does not make it a subsection.
-                      if (lastHeadingLevel === 0 && level > 1) level = 1;
                       const numericPrefix = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\d+)(?:\.\d+)*\.?[.:\s)]+\s*/i;
                       const alphaRomanPrefix = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:[a-zA-Z](?:\.\d+)+|[ivxlcdm]{2,}|[a-zA-Z]|[ivxlcdm])\.?[.:)]+\s+/i;
                       const prefixMatchText = cleanText.match(numericPrefix) ||
                           (alphaRomanPrefix.test(cleanText) ? cleanText.match(alphaRomanPrefix) : null);
                       if (prefixMatchText) {
                           const withoutNumber = cleanText.slice(prefixMatchText[0].length).trim();
-                          if (withoutNumber && this.detectHeading(entry.elements[0], withoutNumber, manifest)) {
-                              cleanText = withoutNumber;
-                          } else {
-                              const numPart = prefixMatchText[0].match(/\d+(?:\.\d+)*/)?.[0];
-                              level = Math.min(3, numPart ? numPart.split('.').length : 1);
+                          const numPart = prefixMatchText[0].match(/\d+(?:\.\d+)*/)?.[0];
+                          if (numPart) {
+                              level = Math.min(3, numPart.split('.').length);
                           }
+                          if (withoutNumber && withoutNumber.length > 2) {
+                              cleanText = withoutNumber;
+                          }
+                      } else {
+                          const normClean = cleanText.toLowerCase().replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-z][.\s]+)+\s*/i, '').replace(/[.\s:]+$/, '').trim();
+                          if (DeepDocumentParser.FORCED_LEVEL1.has(normClean)) {
+                              level = 1;
+                          }
+                      }
+                      // First heading in the document is always a main section
+                      if (lastHeadingLevel === 0 && level > 1 && /^(?:1(?:\.0)?\b|introduction|background|overview)/i.test(cleanText)) {
+                          level = 1;
                       }
                       result.body.push({ type: 'heading', level, text: cleanText || text });
                       lastHeadingLevel = level;
@@ -2118,112 +2148,86 @@ export class DeepDocumentParser {
 
     let next = blockEl.nextElementSibling || el.nextElementSibling;
     let prev = blockEl.previousElementSibling || el.previousElementSibling;
+    // In scholarly papers, table captions appear ABOVE the table (prev); figure captions appear BELOW (next).
+    const checkPrevFirst = type === 'table';
+
     for (let i = 0; i < 35; i++) {
-      if (next && !processed.has(next)) {
-        const t = next.textContent?.trim() || '';
-        // Captions are single logical lines — multi-line element text (e.g. a whole table) is never a caption
+      const inspectCandidate = (candidate: Element | null, isForward: boolean): string | null => {
+        if (!candidate || processed.has(candidate)) return null;
+        const t = candidate.textContent?.trim() || '';
         const isTableProse = type === 'table' && this.isTableCaptionProse(t);
         const isFigureProse = type === 'figure' && this.isFigureCaptionProse(t);
         if (rx.test(t) && !t.includes('\n') && !isTableProse && !isFigureProse) {
-          // If this caption's label ordinal matches the media element that directly follows it,
-          // the caption belongs to THAT media (above-caption convention), not the current one.
           const capOrdinal = captionOrdinal(t);
-          const farEl = farSibling(next, 1);
+          const farEl = farSibling(candidate, isForward ? 1 : -1);
           const farPos = farEl ? typePositions.get(farEl) : undefined;
           const belongsToFar = capOrdinal !== null && farPos !== undefined && capOrdinal === farPos;
           if (!belongsToFar) {
-            processed.add(next);
-            // Return full caption text — e.g. "Figure 1: Architecture of proposed framework"
-            // Strip only leading whitespace/colon after the label prefix
+            processed.add(candidate);
             const prefixMatch = t.match(rx);
             const cleanPrefix = prefixMatch ? prefixMatch[0].replace(/[:.–\-\s]+$/, '').trim() : '';
             let afterPrefix = prefixMatch ? t.slice(prefixMatch[0].length).replace(/^[:.–\-\s]*/, '').trim() : '';
-            
-            // DUAL PARAGRAPH MERGE (FORWARD SENSE):
+
+            // DUAL PARAGRAPH MERGE:
             if (afterPrefix.length < 5) {
-              let nextSib = next.nextElementSibling;
-              while (nextSib && !nextSib.textContent?.trim() && !['table', 'img', 'figure'].includes(nextSib.tagName.toLowerCase())) {
-                nextSib = nextSib.nextElementSibling;
+              let sibCont = isForward ? candidate.nextElementSibling : candidate.nextElementSibling;
+              while (sibCont && sibCont !== el && !sibCont.textContent?.trim() && !['table', 'img', 'figure'].includes(sibCont.tagName.toLowerCase())) {
+                sibCont = sibCont.nextElementSibling;
               }
-              if (nextSib && !processed.has(nextSib) && ['p', 'div'].includes(nextSib.tagName.toLowerCase())) {
-                const sibText = nextSib.textContent?.trim() || '';
-                // The merged continuation must READ like a caption: short, no
-                // running-prose verbs — otherwise a bare "Figure 1" would
-                // swallow the entire following paragraph into the caption.
-                if (sibText.length > 0 && sibText.length < 300 && !rx.test(sibText) && !/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i.test(sibText) && !this.FORCED_LEVEL1.has(sibText.toLowerCase()) && !this.isFigureCaptionProse(sibText) && sibText.split(/\s+/).length <= 20) {
-                  processed.add(nextSib);
+              if (sibCont && sibCont !== el && !processed.has(sibCont) && ['p', 'div'].includes(sibCont.tagName.toLowerCase())) {
+                const sibText = sibCont.textContent?.trim() || '';
+                if (sibText.length > 0 && sibText.length < 600 && !rx.test(sibText) && !/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i.test(sibText) && !this.FORCED_LEVEL1.has(sibText.toLowerCase()) && !this.isFigureCaptionProse(sibText) && !this.isTableCaptionProse(sibText) && sibText.split(/\s+/).length <= 60) {
+                  processed.add(sibCont);
                   afterPrefix = sibText;
                 }
               }
             }
-            
+
             return this.cleanCaption(afterPrefix.length > 0 ? `${cleanPrefix}: ${afterPrefix}` : cleanPrefix);
           }
         }
-        // Stop scanning forward if we hit a heading, table, another image, or substantial prose paragraph
-        if (next) {
-          const tag = next.tagName.toLowerCase();
-          if (/^h[1-6]$/.test(tag) || tag === 'table' || (tag === 'img' && next !== el) || next.querySelector('img, table, h1, h2, h3, h4, h5, h6')) {
+        return null;
+      };
+
+      if (checkPrevFirst) {
+        const found = inspectCandidate(prev, false);
+        if (found) return found;
+        const foundNext = inspectCandidate(next, true);
+        if (foundNext) return foundNext;
+      } else {
+        const found = inspectCandidate(next, true);
+        if (found) return found;
+        const foundPrev = inspectCandidate(prev, false);
+        if (foundPrev) return foundPrev;
+      }
+
+      // Boundary stopping checks
+      if (next) {
+        const tag = next.tagName.toLowerCase();
+        if (/^h[1-6]$/.test(tag) || tag === 'table' || (tag === 'img' && next !== el) || next.querySelector('img, table, h1, h2, h3, h4, h5, h6')) {
+          next = null;
+        } else if (tag === 'p' || tag === 'div') {
+          const textVal = next.textContent?.trim() || '';
+          const isMatchingCaption = rx.test(textVal);
+          if ((textVal.length > 500 && !isMatchingCaption) || (textVal.length > 250 && !isMatchingCaption && !textVal.includes('   '))) {
             next = null;
-          } else if (tag === 'p' || tag === 'div') {
-            const textVal = next.textContent?.trim() || '';
-            if (textVal.length > 200 || (textVal.length > 80 && !rx.test(textVal) && !textVal.includes('   '))) {
-              next = null;
-            }
           }
         }
       }
-      
-      if (prev && !processed.has(prev)) {
-        const t = prev.textContent?.trim() || '';
-        // Captions are single logical lines — multi-line element text (e.g. a whole table) is never a caption
-        const isTableProse = type === 'table' && this.isTableCaptionProse(t);
-        const isFigureProse = type === 'figure' && this.isFigureCaptionProse(t);
-        if (rx.test(t) && !t.includes('\n') && !isTableProse && !isFigureProse) {
-          // If this caption's label ordinal matches the media element that directly precedes it,
-          // the caption belongs to THAT media (below-caption convention), not the current one.
-          const capOrdinal = captionOrdinal(t);
-          const farEl = farSibling(prev, -1);
-          const farPos = farEl ? typePositions.get(farEl) : undefined;
-          const belongsToFar = capOrdinal !== null && farPos !== undefined && capOrdinal === farPos;
-          if (!belongsToFar) {
-            processed.add(prev);
-            const prefixMatch = t.match(rx);
-            const cleanPrefix = prefixMatch ? prefixMatch[0].replace(/[:.–\-\s]+$/, '').trim() : '';
-            let afterPrefix = prefixMatch ? t.slice(prefixMatch[0].length).replace(/^[:.–\-\s]*/, '').trim() : '';
-            
-            // DUAL PARAGRAPH MERGE (BACKWARD SENSE):
-            if (afterPrefix.length < 5) {
-              let descSib = prev.nextElementSibling;
-              while (descSib && descSib !== el) {
-                if (!processed.has(descSib) && ['p', 'div'].includes(descSib.tagName.toLowerCase())) {
-                  const sibText = descSib.textContent?.trim() || '';
-                  if (sibText.length > 0 && sibText.length < 300 && !rx.test(sibText) && !/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i.test(sibText) && !this.FORCED_LEVEL1.has(sibText.toLowerCase()) && !this.isFigureCaptionProse(sibText) && sibText.split(/\s+/).length <= 20) {
-                    processed.add(descSib);
-                    afterPrefix = sibText;
-                    break;
-                  }
-                }
-                descSib = descSib.nextElementSibling;
-              }
-            }
-            
-            return this.cleanCaption(afterPrefix.length > 0 ? `${cleanPrefix}: ${afterPrefix}` : cleanPrefix);
-          }
-        }
-        // Stop scanning backward if we hit a heading, table, another image, or substantial prose paragraph
-        if (prev) {
-          const tag = prev.tagName.toLowerCase();
-          if (/^h[1-6]$/.test(tag) || tag === 'table' || (tag === 'img' && prev !== el) || prev.querySelector('img, table, h1, h2, h3, h4, h5, h6')) {
+
+      if (prev) {
+        const tag = prev.tagName.toLowerCase();
+        if (/^h[1-6]$/.test(tag) || tag === 'table' || (tag === 'img' && prev !== el) || prev.querySelector('img, table, h1, h2, h3, h4, h5, h6')) {
+          prev = null;
+        } else if (tag === 'p' || tag === 'div') {
+          const textVal = prev.textContent?.trim() || '';
+          const isMatchingCaption = rx.test(textVal);
+          if ((textVal.length > 500 && !isMatchingCaption) || (textVal.length > 250 && !isMatchingCaption && !textVal.includes('   '))) {
             prev = null;
-          } else if (tag === 'p' || tag === 'div') {
-            const textVal = prev.textContent?.trim() || '';
-            if (textVal.length > 200 || (textVal.length > 80 && !rx.test(textVal) && !textVal.includes('   '))) {
-              prev = null;
-            }
           }
         }
       }
+
       next = next?.nextElementSibling || null;
       prev = prev?.previousElementSibling || null;
     }

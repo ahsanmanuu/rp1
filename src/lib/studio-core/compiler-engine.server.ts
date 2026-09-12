@@ -149,6 +149,74 @@ export function autoHealMissingImages(
         }
       }
 
+      if (!foundOnDisk && projectDir && fs.existsSync(path.join(projectDir, 'source.docx'))) {
+        try {
+          const AdmZipModule = require('adm-zip');
+          const zip = new AdmZipModule(path.join(projectDir, 'source.docx'));
+          const media = zip.getEntries().filter((e: any) => e.entryName.startsWith('word/media/') && !e.isDirectory);
+          const figuresSubDir = path.join(projectDir, 'figures');
+          if (!fs.existsSync(figuresSubDir)) fs.mkdirSync(figuresSubDir, { recursive: true });
+
+          let fSeq = 1;
+          for (const m of media) {
+            const mBuf = m.getData();
+            if (mBuf.length < 2048) continue;
+            const ext = path.extname(m.entryName).replace(/^\./, '').toLowerCase() || 'png';
+            if (ext === 'emf' || ext === 'wmf') continue;
+            const oName = path.basename(m.entryName);
+            const rName = `rf_fig_${fSeq++}.${ext === 'jpeg' ? 'jpg' : ext}`;
+            fs.writeFileSync(path.join(projectDir, oName), mBuf);
+            fs.writeFileSync(path.join(figuresSubDir, oName), mBuf);
+            fs.writeFileSync(path.join(projectDir, rName), mBuf);
+            fs.writeFileSync(path.join(figuresSubDir, rName), mBuf);
+          }
+          // Re-check candidates now that media is extracted!
+          for (const c of candidates) {
+            const checkPaths = [
+              path.join(projectDir, c),
+              path.join(projectDir, 'figures', c),
+              path.join(projectDir, 'assets', c),
+              path.join(projectDir, 'images', c),
+            ];
+            for (const cp of checkPaths) {
+              if (fs.existsSync(cp) && fs.statSync(cp).size >= 50) {
+                const buf = fs.readFileSync(cp);
+                const mime = c.endsWith('.jpg') || c.endsWith('.jpeg') ? 'image/jpeg' : 'image/png';
+                const dUrl = `data:${mime};base64,${buf.toString('base64')}`;
+                synthesized.push({ path: c, content: dUrl });
+                foundOnDisk = true;
+                break;
+              }
+            }
+            if (foundOnDisk) break;
+          }
+        } catch {}
+      }
+
+      // If still not matched by exact name, link to the nearest real manuscript image on disk
+      if (!foundOnDisk && projectDir && fs.existsSync(projectDir)) {
+        try {
+          const numMatch = ref.match(/(\d+)/);
+          const num = numMatch ? parseInt(numMatch[1], 10) : 1;
+          const diskImgs = fs.readdirSync(projectDir)
+            .filter(f => /\.(png|jpe?g|webp|pdf)$/i.test(f) && !f.includes('fallback_figure'))
+            .filter(f => {
+              try { return fs.statSync(path.join(projectDir, f)).size >= 2048; } catch { return false; }
+            });
+          if (diskImgs.length > 0) {
+            const picked = diskImgs[(num - 1) % diskImgs.length];
+            const pBuf = fs.readFileSync(path.join(projectDir, picked));
+            const mime = picked.endsWith('.jpg') || picked.endsWith('.jpeg') ? 'image/jpeg' : 'image/png';
+            const dUrl = `data:${mime};base64,${pBuf.toString('base64')}`;
+            const synthName = hasExt ? ref : `${ref}.png`;
+            synthesized.push({ path: synthName, content: dUrl });
+            synthesized.push({ path: `figures/${synthName}`, content: dUrl });
+            foundOnDisk = true;
+            console.log(`[COMPILER] Mapped missing figure ref "${ref}" to real manuscript image "${picked}" instead of empty placeholder`);
+          }
+        } catch {}
+      }
+
       if (!foundOnDisk) {
         const synthName = hasExt ? ref : `${ref}.png`;
         const synthContent = `data:image/png;base64,${FALLBACK_100X100_PNG_B64}`;

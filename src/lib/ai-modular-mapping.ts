@@ -23,6 +23,7 @@
 
 import { routeToAgent } from './agent-gateway';
 import { normalizeModularFiles, type AiModularFile } from './latex-fragment-validator';
+import { LatexAssembler, slugifySectionTitle } from './assembler';
 
 export interface ModularMappingInput {
   structured: Record<string, any>;
@@ -94,19 +95,106 @@ function balancedWindow(text: string): string {
   return `${text.substring(0, WINDOW_HEAD)}\n\n[... middle of the document elided for context budget ...]\n\n${text.substring(text.length - WINDOW_TAIL)}`;
 }
 
+const CANONICAL_L1_REGEX = /^(?:\d+[\.\:]?\s+)?(?:introduction|literature\s+review|literature\s+survey|related\s+work|related\s+works|background|methodology|methods|materials\s+and\s+methods|system\s+design|system\s+architecture|implementation|experimental\s+setup|experiments?|results|discussion|results\s+and\s+discussion|conclusion|conclusions|future\s+work|acknowledgements?)\b/i;
+
+function isTopLevelSectionHeading(node: any, hasAnyL1: boolean): boolean {
+  if (node.type !== 'heading' || !node.text) return false;
+  const text = String(node.text).trim();
+  if (/^(?:references?|bibliography|works cited|literature cited)\b/i.test(text)) return false;
+
+  if (node.componentRole === 'frontmatter' || node.componentRole === 'author' || node.componentRole === 'affiliation' || node.componentRole === 'organization') {
+    return false;
+  }
+
+  const level = Number(node.level);
+  if (level === 1) return true;
+
+  // Numeric prefix check (e.g. "1.", "2. ", "1.1", "2.3.1")
+  const numMatch = text.match(/^(?:section\s+)?(\d+(?:\.\d+)*)/i);
+  if (numMatch) {
+    const parts = numMatch[1].split('.').filter(Boolean);
+    if (parts.length === 1) return true;
+    return false; // Subsection e.g. 1.1, 2.1
+  }
+
+  // Roman numerals e.g. "I. Introduction", "II. Literature Review"
+  if (/^[IVXLCDM]+\.?\s+/i.test(text)) return true;
+
+  // Canonical top-level names (always level 1)
+  if (CANONICAL_L1_REGEX.test(text)) return true;
+
+  // If document has explicit L1 headings, any other level > 1 is a subsection!
+  if (hasAnyL1 && level > 1) return false;
+
+  // Fallback for flat headings
+  return !hasAnyL1;
+}
+
+/** Split body nodes into top-level section groups, keeping child subsections inside. */
+function groupBodyBySections(body: any[]): Array<{ heading: any; nodes: any[] }> {
+  const groups: Array<{ heading: any; nodes: any[] }> = [];
+  let current: { heading: any; nodes: any[] } | null = null;
+
+  const hasAnyL1 = body.some((n: any) => n.type === 'heading' && (
+    Number(n.level) === 1 ||
+    CANONICAL_L1_REGEX.test(String(n.text || '').trim()) ||
+    /^(?:section\s+)?\d+\.?\s+[a-z]/i.test(String(n.text || '').trim())
+  ));
+
+  for (const node of body) {
+    // Skip frontmatter nodes from section grouping
+    if (node.componentRole === 'frontmatter' || node.componentRole === 'author' || node.componentRole === 'affiliation' || node.componentRole === 'organization') {
+      continue;
+    }
+    if (node.type === 'paragraph') {
+      const pText = (node.text || '').trim();
+      if (/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|mr\.|ms\.|mrs\.|md)\b/i.test(pText) ||
+          (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley)\b/i.test(pText) && pText.length < 60)) {
+        continue;
+      }
+    }
+    if (node.type === 'heading' && node.text) {
+      if (isTopLevelSectionHeading(node, hasAnyL1)) {
+        if (current) groups.push(current);
+        current = { heading: node, nodes: [] };
+      } else {
+        // Child subsection (level 2, 3, etc.) stays inside the parent top-level section!
+        if (current) {
+          current.nodes.push(node);
+        } else {
+          current = { heading: { type: 'heading', text: 'Introduction', level: 1 }, nodes: [node] };
+        }
+      }
+    } else if (current) {
+      current.nodes.push(node);
+    } else {
+      // Content before first heading — create implicit intro group
+      current = { heading: { type: 'heading', text: 'Introduction', level: 1 }, nodes: [node] };
+    }
+  }
+  if (current) groups.push(current);
+  return groups;
+}
+
 /** Build a compact verdict from the structured body — works with or without aiVerdict. */
 function buildVerdictCompact(doc: Record<string, any>): Record<string, any> {
   const ai = doc.aiVerdict || {};
   const body = Array.isArray(doc.body) ? doc.body : [];
 
-  // Extract sections from body nodes when aiVerdict.sections is missing
-  const sections: Array<{ title: string; level: number }> = Array.isArray(ai.sections) && ai.sections.length > 0
-    ? ai.sections
-      .filter((s: any) => s && typeof s.title === 'string' && !/^(?:references?|bibliography|works cited|literature cited)\b/i.test(s.title.trim()))
-      .map((s: any) => ({ title: s.title, level: Number(s.level) || 1 }))
-    : body
-      .filter((n: any) => n.type === 'heading' && n.text && !/^(?:references?|bibliography|works cited|literature cited)\b/i.test(String(n.text).trim()))
-      .map((n: any) => ({ title: n.text, level: Number(n.level) || 1 }));
+  // Derive sections directly from sectionGroups to guarantee strict 1:1 chunk alignment
+  const sectionGroups = groupBodyBySections(body);
+  const sections: Array<{ title: string; level: number }> = sectionGroups.length > 0
+    ? sectionGroups.map(g => ({
+        title: String(g.heading.text || 'Untitled Section'),
+        level: Number(g.heading.level) || 1,
+      }))
+    : (Array.isArray(ai.sections) && ai.sections.length > 0
+        ? ai.sections
+            .filter((s: any) => s && typeof s.title === 'string' && !/^(?:references?|bibliography|works cited|literature cited)\b/i.test(s.title.trim()))
+            .map((s: any) => ({ title: s.title, level: Number(s.level) || 1 }))
+        : body
+            .filter((n: any) => n.type === 'heading' && n.text && !/^(?:references?|bibliography|works cited|literature cited)\b/i.test(String(n.text).trim()))
+            .map((n: any) => ({ title: n.text, level: Number(n.level) || 1 })));
 
   // Extract figures/tables/algorithms from body when aiVerdict arrays are missing
   const figures = Array.isArray(ai.figures) && ai.figures.length > 0
@@ -170,37 +258,6 @@ function buildVerdictCompact(doc: Record<string, any>): Record<string, any> {
     components: ai.components || componentCounts,
     references,
   };
-}
-
-/** Split body nodes into section groups, preserving document order. */
-function groupBodyBySections(body: any[]): Array<{ heading: any; nodes: any[] }> {
-  const groups: Array<{ heading: any; nodes: any[] }> = [];
-  let current: { heading: any; nodes: any[] } | null = null;
-
-  for (const node of body) {
-    // Skip frontmatter nodes from section grouping
-    if (node.componentRole === 'frontmatter' || node.componentRole === 'author' || node.componentRole === 'affiliation' || node.componentRole === 'organization') {
-      continue;
-    }
-    if (node.type === 'paragraph') {
-      const pText = (node.text || '').trim();
-      if (/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|mr\.|ms\.|mrs\.|md)\b/i.test(pText) ||
-          (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley)\b/i.test(pText) && pText.length < 60)) {
-        continue;
-      }
-    }
-    if (node.type === 'heading' && node.text) {
-      if (current) groups.push(current);
-      current = { heading: node, nodes: [] };
-    } else if (current) {
-      current.nodes.push(node);
-    } else {
-      // Content before first heading — create implicit intro group
-      current = { heading: { type: 'heading', text: 'Introduction', level: 1 }, nodes: [node] };
-    }
-  }
-  if (current) groups.push(current);
-  return groups;
 }
 
 /**
@@ -745,6 +802,47 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     sectionRejected += sRes.rejected;
     if (sRes.model) models.push(sRes.model);
   }
+
+  // ── Deterministic Content Backfill: Guarantee 100% section coverage & content fidelity ──
+  const mathBlocks = structured.mathBlocks || [];
+  for (let idx = 0; idx < sectionGroups.length; idx++) {
+    const g = sectionGroups[idx];
+    const secNum = idx + 1;
+    const rawTitle = String(g.heading?.text || 'section');
+    const safeTitle = slugifySectionTitle(rawTitle, 40);
+    const expectedPrefix = `sections/${secNum.toString().padStart(2, '0')}_`;
+
+    // Look for an existing file from AI for this section
+    const matchedFile = sectionFiles.find(f =>
+      f.path.startsWith(expectedPrefix) ||
+      (f.path.startsWith('sections/') && f.path.includes(safeTitle))
+    );
+
+    const sourceGroupProse = g.nodes.map((n: any) => n.text || '').join('\n').trim();
+
+    if (matchedFile) {
+      // Check if AI returned a stub / truncated content while source had substantial prose
+      const emittedContent = (matchedFile.content || '').trim();
+      if (sourceGroupProse.length > 250 && emittedContent.length < 150) {
+        console.warn(`[AI-MODULAR] Section "${rawTitle}" emitted only ${emittedContent.length} chars vs ${sourceGroupProse.length} source prose chars. Deterministically backfilling.`);
+        const backfilledNodes = [g.heading, ...g.nodes];
+        matchedFile.content = backfilledNodes.map((n: any) => LatexAssembler.assembleNode(n, mathBlocks)).join('\n\n');
+      }
+    } else {
+      // AI completely skipped this section file! Deterministically generate it!
+      const targetPath = `sections/${secNum.toString().padStart(2, '0')}_${safeTitle}.tex`;
+      console.warn(`[AI-MODULAR] AI omitted section "${rawTitle}". Deterministically creating ${targetPath}.`);
+      const backfilledNodes = [g.heading, ...g.nodes];
+      const backfilledContent = backfilledNodes.map((n: any) => LatexAssembler.assembleNode(n, mathBlocks)).join('\n\n');
+      sectionFiles.push({
+        path: targetPath,
+        content: backfilledContent,
+      });
+    }
+  }
+
+  // Re-sort section files in numerical order
+  sectionFiles.sort((a, b) => a.path.localeCompare(b.path));
 
   const files = [...floatsRes.files, ...sectionFiles, ...metadataRes.files];
   const totalRejected = floatsRes.rejected + metadataRes.rejected + sectionRejected;
