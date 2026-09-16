@@ -23,7 +23,7 @@
 
 import { routeToAgent } from './agent-gateway';
 import { normalizeModularFiles, type AiModularFile } from './latex-fragment-validator';
-import { LatexAssembler, slugifySectionTitle } from './assembler';
+import { LatexAssembler, ModularLatexAssembler, slugifySectionTitle } from './assembler';
 
 export interface ModularMappingInput {
   structured: Record<string, any>;
@@ -271,6 +271,7 @@ function chunkTextWindow(
   const chunkText = chunkNodes
     .map((n: any) => {
       if (n.type === 'heading') return `\n${'#'.repeat(Number(n.level) || 1)} ${n.text}\n`;
+      if (n.type === 'equation') return `\n[Equation: ${n.latex || n.text || ''}]\n`;
       if (n.text) return n.text;
       if (n.caption) return `[Caption: ${n.caption}]`;
       if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') return `[Figure: ${n.caption || n.name || n.id || 'unnamed'}]`;
@@ -328,6 +329,7 @@ function splitIntoSections(nodes: any[]): string[] {
     }
     let text = '';
     if (node.type === 'heading') text = `\n${'#'.repeat(Number(node.level) || 1)} ${node.text}\n`;
+    else if (node.type === 'equation') text = `\n[Equation: ${node.latex || node.text || ''}]\n`;
     else if (node.text) text = node.text;
     else if (node.caption) text = `[Caption: ${node.caption}]`;
     else if (node.type === 'figure' || node.type === 'image' || node.type === 'chart') text = `[Figure: ${node.caption || node.name || 'unnamed'}]`;
@@ -437,13 +439,14 @@ const GRAPHICS_PATH_LINES = [
 
 function defaultPreamble(templateId: string): string[] {
   let docClass = '\\documentclass{article}';
+  const isStandardArticle = !templateId.includes('ieee') && !templateId.includes('acm') && !templateId.includes('elsevier') && !templateId.includes('lncs') && !templateId.includes('springer') && !templateId.includes('scirep');
   if (templateId.includes('ieee')) docClass = '\\documentclass[journal]{IEEEtran}';
   else if (templateId.includes('acm')) docClass = '\\documentclass[nonacm,sigconf]{acmart}';
   else if (templateId.includes('elsevier')) docClass = '\\documentclass[preprint,12pt]{elsarticle}';
   else if (templateId.includes('lncs') || templateId.includes('springer')) docClass = '\\documentclass{llncs}';
   else if (templateId.includes('scirep')) docClass = '\\documentclass[10pt]{wlscirep}';
 
-  return [
+  const pkgs = [
     '\\nonstopmode',
     docClass,
     '\\usepackage{iftex}',
@@ -475,6 +478,11 @@ function defaultPreamble(templateId: string): string[] {
     '\\usepackage{parskip}',
     '\\usepackage{placeins}',
     '\\usepackage{microtype}',
+  ];
+  if (isStandardArticle) {
+    pkgs.push('\\usepackage{authblk}');
+  }
+  pkgs.push(
     '\\usepackage[colorlinks=true,allcolors=blue]{hyperref}',
     '\\DeclareUnicodeCharacter{200B}{}',
     '\\DeclareUnicodeCharacter{202F}{ }',
@@ -488,8 +496,9 @@ function defaultPreamble(templateId: string): string[] {
     '\\DeclareUnicodeCharacter{2013}{--}',
     '\\DeclareUnicodeCharacter{2014}{---}',
     '\\DeclareUnicodeCharacter{2212}{-}',
-    ...GRAPHICS_PATH_LINES,
-  ];
+    ...GRAPHICS_PATH_LINES
+  );
+  return pkgs;
 }
 
 function stripFloatInputsToExisting(content: string, existingFloats: Set<string>): string {
@@ -602,6 +611,13 @@ function composeMainTex(
   const keywordsFile = metadatas.find(f => f.path === 'metadata/keywords.tex');
   const otherMetas = metadatas.filter(f => !['metadata/title.tex', 'metadata/authors.tex', 'metadata/abstract.tex', 'metadata/keywords.tex'].includes(f.path));
 
+  // Non-Elsevier templates declare title & author in preamble BEFORE \begin{document}
+  if (!isElsevier) {
+    if (titleFile) preamble.push(`\\input{${titleFile.path}}`);
+    if (authorsFile) preamble.push(`\\input{${authorsFile.path}}`);
+    if (!preText.includes('\\date')) preamble.push('\\date{}');
+  }
+
   const body: string[] = ['\\begin{document}'];
 
   if (isElsevier) {
@@ -613,22 +629,18 @@ function composeMainTex(
     for (const f of otherMetas) body.push(`\\input{${f.path}}`);
     body.push('\\end{frontmatter}');
   } else if (isAcm) {
-    if (titleFile) body.push(`\\input{${titleFile.path}}`);
-    if (authorsFile) body.push(`\\input{${authorsFile.path}}`);
+    // In ACM (acmart), abstract and metadata precede \maketitle
     if (abstractFile) body.push(`\\input{${abstractFile.path}}`);
     if (keywordsFile) body.push(`\\input{${keywordsFile.path}}`);
     for (const f of otherMetas) body.push(`\\input{${f.path}}`);
     body.push('\\maketitle');
   } else if (isIeee) {
-    if (titleFile) body.push(`\\input{${titleFile.path}}`);
-    if (authorsFile) body.push(`\\input{${authorsFile.path}}`);
     body.push('\\maketitle');
     if (abstractFile) body.push(`\\input{${abstractFile.path}}`);
     if (keywordsFile) body.push(`\\input{${keywordsFile.path}}`);
     for (const f of otherMetas) body.push(`\\input{${f.path}}`);
   } else {
-    if (titleFile) body.push(`\\input{${titleFile.path}}`);
-    if (authorsFile) body.push(`\\input{${authorsFile.path}}`);
+    // Standard article & LNCS
     body.push('\\maketitle');
     if (abstractFile) body.push(`\\input{${abstractFile.path}}`);
     if (keywordsFile) body.push(`\\input{${keywordsFile.path}}`);
@@ -702,6 +714,7 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
   const fullTextForPasses = (() => {
     const bodyTextFull = body.map((n: any) => {
       if (n.type === 'heading') return `\n${'#'.repeat(Number(n.level) || 1)} ${n.text}\n`;
+      if (n.type === 'equation') return `\n[Equation: ${n.latex || n.text || ''}]\n`;
       if (n.text) return n.text;
       if (n.caption) return `[Caption: ${n.caption}]`;
       if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') return `[Figure: ${n.caption || n.name || ''}]`;
@@ -847,7 +860,27 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
   const files = [...floatsRes.files, ...sectionFiles, ...metadataRes.files];
   const totalRejected = floatsRes.rejected + metadataRes.rejected + sectionRejected;
 
-  console.log(`[AI-MODULAR] Parallel mapping complete: ${files.length} validated files (${floatsRes.files.length} floats, ${sectionFiles.length} sections, ${metadataRes.files.length} metadata), ${totalRejected} rejected`);
+  // ── Fail-Safe Metadata Backfill ──
+  const hasTitle = files.some(f => f.path === 'metadata/title.tex');
+  const hasAuthors = files.some(f => f.path === 'metadata/authors.tex');
+  if (!hasTitle || !hasAuthors) {
+    console.warn(`[AI-MODULAR] Missing title or authors file from AI metadata pass. Backfilling deterministically.`);
+    const det = ModularLatexAssembler.assemble(structured as any, templateId, templateMainTex);
+    if (!hasTitle && det.files['metadata/title.tex']) {
+      files.push({ path: 'metadata/title.tex', content: det.files['metadata/title.tex'] });
+    }
+    if (!hasAuthors && det.files['metadata/authors.tex']) {
+      files.push({ path: 'metadata/authors.tex', content: det.files['metadata/authors.tex'] });
+    }
+    if (!files.some(f => f.path === 'metadata/abstract.tex') && det.files['metadata/abstract.tex']) {
+      files.push({ path: 'metadata/abstract.tex', content: det.files['metadata/abstract.tex'] });
+    }
+    if (!files.some(f => f.path === 'metadata/keywords.tex') && det.files['metadata/keywords.tex']) {
+      files.push({ path: 'metadata/keywords.tex', content: det.files['metadata/keywords.tex'] });
+    }
+  }
+
+  console.log(`[AI-MODULAR] Parallel mapping complete: ${files.length} validated files (${floatsRes.files.length} floats, ${sectionFiles.length} sections, ${files.filter(f => f.path.startsWith('metadata/')).length} metadata), ${totalRejected} rejected`);
 
   // ── Section Coverage & Content Preservation Check ──
   const sectionFileCount = sectionFiles.filter(f => f.path.startsWith('sections/')).length;

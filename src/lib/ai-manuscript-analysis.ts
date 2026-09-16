@@ -2,7 +2,7 @@ import { routeToAgent } from './agent-gateway';
 import { countCitationsFromHtml } from './citationCounting';
 import { validateAiLatexFragments } from './latex-fragment-validator';
 import type { AiLatexFragments } from './latex-fragment-validator';
-import type { StructuredDocument, AuthorInfo } from './deep-parser';
+import { DeepDocumentParser, type StructuredDocument, type AuthorInfo } from './deep-parser';
 import { createHash } from 'crypto';
 
 /**
@@ -1239,9 +1239,14 @@ export function applyStructureCorrections(
 
     let fixed = 0;
     const unused = new Set(texts.map((_, i) => i));
+    const isPlaceholder = (c: string): boolean =>
+      !c ||
+      /^(?:table|figure|chart|image)\s*(?:\(\s*\d+\s*rows?\s*×\s*\d+\s*cols?\s*\))?$/i.test(c.trim()) ||
+      /^(?:data table|figure|table)$/i.test(c.trim());
+
     for (const n of nodes) {
       const current = String((n as any)[textKey] || '').replace(/\s+/g, ' ').trim();
-      if (!current) continue;
+      if (isPlaceholder(current)) continue;
       const curNorm = normCap(current);
       let bestIdx = -1;
       let bestScore = 0;
@@ -1258,18 +1263,16 @@ export function applyStructureCorrections(
         fixed++;
       }
     }
-    // Sequential fallback ONLY when counts align exactly (1 caption per node).
-    if (texts.length === nodes.length) {
-      for (const n of nodes) {
-        if (fixed >= nodes.length) break;
-        const current = String((n as any)[textKey] || '').replace(/\s+/g, ' ').trim();
-        if (current) continue;
-        const next = [...unused].sort((a, b) => a - b)[0];
-        if (next === undefined) break;
-        (n as any)[textKey] = texts[next];
-        unused.delete(next);
-        fixed++;
-      }
+    // Sequential fallback for uncaptioned or placeholder nodes
+    for (const n of nodes) {
+      if (unused.size === 0) break;
+      const current = String((n as any)[textKey] || '').replace(/\s+/g, ' ').trim();
+      if (!isPlaceholder(current)) continue;
+      const next = [...unused].sort((a, b) => a - b)[0];
+      if (next === undefined) break;
+      (n as any)[textKey] = texts[next];
+      unused.delete(next);
+      fixed++;
     }
     if (fixed > 0) applied.push(label);
   };
@@ -1302,6 +1305,9 @@ export function applyStructureCorrections(
     applyCount('citations', 'citationCount', 'citations');
     applyCount('references', 'referenceCount', 'references');
   }
+
+  // Synchronize derived doc.tables and doc.algorithms from updated doc.body
+  DeepDocumentParser.syncDerivedCollections(deepData);
 
   (deepData as any).aiStructure = {
     model,

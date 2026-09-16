@@ -334,7 +334,7 @@ export class LatexAssembler {
     } else if (isIeee) {
       preamble.push(`\\author{\n${authorLines.join('\n\\and\n')}\n}`);
     } else {
-      preamble.push(authorLines.join(' \\and '));
+      preamble.push(authorLines.join('\n'));
       // UNIVERSAL: Filter noise-only orgs (email-only, "Email:" prefix, etc.)
       const EMAIL_NOISE_RE = /[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}/;
       const cleanOrgsLA = orgs.filter(o => {
@@ -574,9 +574,10 @@ export class LatexAssembler {
                   .replace(/[:.\s]*$/, '')
                   .trim();
                 const isRealSectionHeading = FORCED_L1_ASSEMBLER.has(normHeading) ||
-                  /^(?:introduction|related work|literature review|background|methodology|methods|overview|problem formulation|system model|materials and methods|experimental)\b/i.test(normHeading) ||
-                  (/^(?:1|i)\.?\s+[A-Za-z]/i.test(text) && !isAcademicPreambleOrAuthor(probe, norm)) ||
-                  (node.level === 1 && probe.length >= 3 && !isAcademicPreambleOrAuthor(probe, norm) && !/^\d+\.\s*(?:dr|prof|professor|mr|ms|mrs|md)/i.test(text));
+                  /^(?:introduction|related work|literature review|background|methodology|methods|overview|problem formulation|system model|materials and methods|experimental|preliminaries|proposed|results|discussion|conclusion)\b/i.test(normHeading) ||
+                  (/^\d+(?:\.\d+)*\.?\s+[A-Za-z]/i.test(text) && !isAcademicPreambleOrAuthor(probe, norm)) ||
+                  (/^[ivxlcdm]+\.?\s+[A-Za-z]/i.test(text) && !isAcademicPreambleOrAuthor(probe, norm)) ||
+                  ((node.level ?? 1) <= 2 && probe.length >= 3 && !isAcademicPreambleOrAuthor(probe, norm) && !/^\d+\.\s*(?:dr|prof|professor|mr|ms|mrs|md)/i.test(text));
 
                 if (isRealSectionHeading) {
                     frontMatterDone = true;
@@ -585,8 +586,28 @@ export class LatexAssembler {
                     return;
                 }
                 return;
+            } else if (node.type === 'paragraph') {
+                const probe = frontMatterProbe(text);
+                const isPreamble = isAcademicPreambleOrAuthor(probe, norm);
+                const isCaption = /^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(probe) && probe.length < 120;
+                if (isPreamble || isCaption) {
+                    return;
+                }
+                // Genuine manuscript paragraph appearing before a formal heading:
+                // start the Introduction rather than dropping manuscript text!
+                if (probe.length >= 20 || (text && text.trim().length >= 20)) {
+                    frontMatterDone = true;
+                    currentSectionTitle = "Introduction";
+                    currentSectionNodes = [{ type: 'heading', level: 1, text: 'Introduction' } as any];
+                } else {
+                    return;
+                }
+            } else if (['equation', 'figure', 'image', 'figure-group', 'table', 'algorithm', 'chart'].includes(node.type)) {
+                // Equations, tables, figures, algorithms appearing before a heading are genuine content
+                frontMatterDone = true;
+                currentSectionTitle = "Introduction";
+                currentSectionNodes = [{ type: 'heading', level: 1, text: 'Introduction' } as any];
             } else {
-                // Ignore preamble/author paragraphs before the first section heading
                 return;
             }
         }
@@ -1013,9 +1034,10 @@ export class LatexAssembler {
              return `\n\\begin{equation}\n${LatexAssembler.escapeText(content, mathBlocks)}\n\\label{eq:${label}}\n\\end{equation}\n`;
         }
 
-        // 3. CAPTION-ONLY PARAGRAPH (Rescue missed table/figure titles)
-        if (/^(?:Table|Figure|Fig\.|Algorithm)\s+\d+[:.\s-]/i.test(text) && text.length < 120 && !text.includes('\n')) {
-             return `\n\\begin{center}\\small\\textit{${LatexAssembler.escapeText(text, mathBlocks)}}\\end{center}\n`;
+        // 3. CAPTION-ONLY PARAGRAPH: Tables and figures carry their own native \caption{}.
+        // Suppress standalone caption lines to avoid duplicate rendered captions in the PDF.
+        if (/^(?:Table|Figure|Fig\.|Algorithm)\s+\d+[:.\s-]/i.test(text) && text.length < 140 && !text.includes('\n')) {
+             return "";
         }
 
         const mathMatch = text.match(/MATHBLOCKX(\d+)XMARKER/i);
@@ -2419,9 +2441,10 @@ export class ModularLatexAssembler {
                   .replace(/[:.\s]*$/, '')
                   .trim();
                 const isRealSectionHeading = FORCED_L1_ASSEMBLER.has(normHeading) ||
-                  /^(?:introduction|related work|literature review|background|methodology|methods|overview|problem formulation|system model|materials and methods|experimental)\b/i.test(normHeading) ||
-                  (/^(?:1|i)\.?\s+[A-Za-z]/i.test(text) && !isAcademicPreambleOrAuthor(probe, norm)) ||
-                  (node.level === 1 && probe.length >= 3 && !isAcademicPreambleOrAuthor(probe, norm) && !/^\d+\.\s*(?:dr|prof|professor|mr|ms|mrs|md)/i.test(text));
+                  /^(?:introduction|related work|literature review|background|methodology|methods|overview|problem formulation|system model|materials and methods|experimental|preliminaries|proposed|results|discussion|conclusion)\b/i.test(normHeading) ||
+                  (/^\d+(?:\.\d+)*\.?\s+[A-Za-z]/i.test(text) && !isAcademicPreambleOrAuthor(probe, norm)) ||
+                  (/^[ivxlcdm]+\.?\s+[A-Za-z]/i.test(text) && !isAcademicPreambleOrAuthor(probe, norm)) ||
+                  ((node.level ?? 1) <= 2 && probe.length >= 3 && !isAcademicPreambleOrAuthor(probe, norm) && !/^\d+\.\s*(?:dr|prof|professor|mr|ms|mrs|md)/i.test(text));
 
                 if (isRealSectionHeading) {
                     frontMatterDone = true;
@@ -2430,11 +2453,27 @@ export class ModularLatexAssembler {
                     return;
                 }
                 return;
+            } else if (node.type === 'paragraph') {
+                const probe = frontMatterProbe(text);
+                const isPreamble = isAcademicPreambleOrAuthor(probe, norm);
+                const isCaption = /^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(probe) && probe.length < 120;
+                if (isPreamble || isCaption) {
+                    return;
+                }
+                // Genuine manuscript paragraph appearing before a formal heading:
+                // start the Introduction rather than dropping manuscript text!
+                if (probe.length >= 20 || (text && text.trim().length >= 20)) {
+                    frontMatterDone = true;
+                    currentSectionTitle = "Introduction";
+                    currentSectionNodes = [{ type: 'heading', level: 1, text: 'Introduction' } as any];
+                } else {
+                    return;
+                }
             } else if (['equation', 'figure', 'image', 'figure-group', 'table', 'algorithm', 'chart'].includes(node.type)) {
                 // Equations, tables, figures, algorithms appearing before a heading are genuine content
                 frontMatterDone = true;
-                currentSectionTitle = "main";
-                currentSectionNodes = [];
+                currentSectionTitle = "Introduction";
+                currentSectionNodes = [{ type: 'heading', level: 1, text: 'Introduction' } as any];
             } else {
                 return;
             }

@@ -764,19 +764,7 @@ export class DeepDocumentParser {
       }
     }
 
-    result.algorithms = result.body.filter(n => n.type === 'algorithm').map(n => ({
-      title: n.title || 'Algorithm', content: (n.items || []).join('\n')
-    }));
-
-    result.tables = result.body.filter(n => n.type === 'table').map((n: any) => {
-      const dims = n.html ? this.tableHtmlDimensions(n.html) : { rowCount: 0, colCount: 0 };
-      return {
-        caption: n.caption || 'Table',
-        id: n.id || '',
-        rowCount: dims.rowCount,
-        colCount: dims.colCount
-      };
-    });
+    DeepDocumentParser.syncDerivedCollections(result);
 
     return result;
   }
@@ -987,7 +975,7 @@ export class DeepDocumentParser {
           );
 
           const isAlreadyTitleStarted = currentRole === 'title' || manifest.some(m => m.role === 'title');
-          const looksLikeAuthor = ((f.wordCount >= 2 && f.wordCount <= 30 &&
+          const looksLikeAuthor = ((f.wordCount >= 2 && f.wordCount <= 50 &&
             (f.text.includes(',') || f.text.includes(';') || /\b(and|&)\b/i.test(f.text) || /\d/.test(f.text) || /#/.test(f.text) ||
              /orcid/i.test(f.text) ||
              /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\s+[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){0,3}$/i.test(f.text) ||
@@ -1063,7 +1051,7 @@ export class DeepDocumentParser {
           && !/ieee|journal|transactions|vol\.|no\.|arxiv|preprint|copyright|issn/i.test(f.text)
           && !/^(?:introduction|related work|literature review|background|methodology|conclusion|abstract|acknowledgments|references|overview)/i.test(f.text)) {
           const isAlreadyTitleStarted = currentRole === 'title' || manifest.some(m => m.role === 'title');
-          const looksLikeAuthor = ((f.wordCount >= 2 && f.wordCount <= 30 &&
+          const looksLikeAuthor = ((f.wordCount >= 2 && f.wordCount <= 50 &&
             (f.text.includes(',') || f.text.includes(';') || /\b(and|&)\b/i.test(f.text) || /\d/.test(f.text) || /#/.test(f.text) ||
              /orcid/i.test(f.text) ||
              /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\s+[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){0,3}$/i.test(f.text) ||
@@ -1561,6 +1549,39 @@ export class DeepDocumentParser {
                   }
               }
 
+              // Scan preceding and succeeding siblings or previous body node for table caption
+              if (!tableCaption) {
+                let prevSib = tableEl.previousElementSibling;
+                for (let h = 0; h < 5 && prevSib; h++, prevSib = prevSib.previousElementSibling) {
+                  const pText = (prevSib.textContent || '').trim();
+                  if (/^\s*(?:Table|Tab\b\.?)\s*[\dIVX\.\-A-Za-z]+[:.\-–—\s]/i.test(pText) && !this.isTableCaptionProse(pText)) {
+                    tableCaption = pText;
+                    consumedCaptions.add(prevSib);
+                    break;
+                  }
+                }
+              }
+
+              if (!tableCaption && result.body.length > 0) {
+                const lastNode = result.body[result.body.length - 1];
+                if (lastNode && lastNode.type === 'paragraph' && /^\s*(?:Table|Tab\b\.?)\s*[\dIVX\.\-A-Za-z]+[:.\-–—\s]/i.test(lastNode.text || '') && !this.isTableCaptionProse(lastNode.text || '')) {
+                  tableCaption = (lastNode.text || '').trim();
+                  result.body.pop();
+                }
+              }
+
+              if (!tableCaption) {
+                let nextSib = tableEl.nextElementSibling;
+                for (let h = 0; h < 5 && nextSib; h++, nextSib = nextSib.nextElementSibling) {
+                  const nText = (nextSib.textContent || '').trim();
+                  if (/^\s*(?:Table|Tab\b\.?)\s*[\dIVX\.\-A-Za-z]+[:.\-–—\s]/i.test(nText) && !this.isTableCaptionProse(nText)) {
+                    tableCaption = nText;
+                    consumedCaptions.add(nextSib);
+                    break;
+                  }
+                }
+              }
+
               // Standard HTML <table> vs Plain-text table elements
               let tableHtml = '';
               if (isNativeTable) {
@@ -1603,6 +1624,24 @@ export class DeepDocumentParser {
                                   consumedCaptions.add(sib);
                                   break;
                               }
+                          }
+                      }
+                      if (!figCaption) {
+                          let sib = el0.previousElementSibling;
+                          for (let h = 0; h < 5 && sib; h++, sib = sib.previousElementSibling) {
+                              const t = sib.textContent?.trim() || '';
+                              if (/^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\.?\s*[\d.]+/i.test(t) && !this.isFigureCaptionProse(t)) {
+                                  figCaption = t;
+                                  consumedCaptions.add(sib);
+                                  break;
+                              }
+                          }
+                      }
+                      if (!figCaption && result.body.length > 0) {
+                          const lastNode = result.body[result.body.length - 1];
+                          if (lastNode && lastNode.type === 'paragraph' && /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\.?\s*[\d.]+/i.test(lastNode.text || '') && !this.isFigureCaptionProse(lastNode.text || '')) {
+                              figCaption = (lastNode.text || '').trim();
+                              result.body.pop();
                           }
                       }
                   result.stats.chartCount++;
@@ -1697,6 +1736,24 @@ export class DeepDocumentParser {
                           }
                       }
                   }
+                  if (!figCaption) {
+                      let sib = el0.previousElementSibling;
+                      for (let h = 0; h < 5 && sib; h++, sib = sib.previousElementSibling) {
+                          const t = sib.textContent?.trim() || '';
+                          if (/^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\.?\s*[\d.]+/i.test(t) && !this.isFigureCaptionProse(t)) {
+                              figCaption = t;
+                              consumedCaptions.add(sib);
+                              break;
+                          }
+                      }
+                  }
+                  if (!figCaption && result.body.length > 0) {
+                      const lastNode = result.body[result.body.length - 1];
+                      if (lastNode && lastNode.type === 'paragraph' && /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\.?\s*[\d.]+/i.test(lastNode.text || '') && !this.isFigureCaptionProse(lastNode.text || '')) {
+                          figCaption = (lastNode.text || '').trim();
+                          result.body.pop();
+                      }
+                  }
 
                   // FALSE-POSITIVE GUARD: an image with NO caption
                   // is almost always decorative (university logo, header banner, footer icon, bullet graphic, background, watermark, license badge).
@@ -1778,7 +1835,16 @@ export class DeepDocumentParser {
               if (looksLikeHeadingMath) {
                 result.body.push({ type: 'heading', level: 1, text: cleanResolved });
               } else {
-                result.body.push({ type: 'equation', latex: text });
+                let formula = text;
+                const mbMatch = text.match(/MATHBLOCKX(\d+)XMARKER/i);
+                if (mbMatch) {
+                  const mb = _mathBlocks[parseInt(mbMatch[1])];
+                  if (mb) {
+                    const raw = typeof mb === 'string' ? mb : (mb?.latex || mb?.tex || '');
+                    if (raw) formula = raw;
+                  }
+                }
+                result.body.push({ type: 'equation', text: formula, latex: formula });
               }
           }
           else if (entry.role === 'algorithm') {
@@ -2247,7 +2313,7 @@ export class DeepDocumentParser {
            /^(?:logo|icon|banner|header|footer|decoration|watermark|bullet|divider|spacer|signature|qrcode)$/i.test(lower);
   }
 
-  private static tableHtmlDimensions(html: string): { rowCount: number; colCount: number } {
+  public static tableHtmlDimensions(html: string): { rowCount: number; colCount: number } {
     let rowCount = 0;
     let colCount = 0;
     const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
@@ -2258,6 +2324,22 @@ export class DeepDocumentParser {
       colCount = Math.max(colCount, cellMatches.length);
     }
     return { rowCount, colCount };
+  }
+
+  public static syncDerivedCollections(doc: StructuredDocument): void {
+    if (!doc || !Array.isArray(doc.body)) return;
+    doc.algorithms = doc.body.filter(n => n.type === 'algorithm').map(n => ({
+      title: n.title || 'Algorithm', content: (n.items || []).join('\n')
+    }));
+    doc.tables = doc.body.filter(n => n.type === 'table').map((n: any) => {
+      const dims = n.html ? DeepDocumentParser.tableHtmlDimensions(n.html) : { rowCount: 0, colCount: 0 };
+      return {
+        caption: n.caption || 'Table',
+        id: n.id || '',
+        rowCount: dims.rowCount,
+        colCount: dims.colCount
+      };
+    });
   }
 
   private static convertPlainTextTableToHtml(elements: Element[]): string {

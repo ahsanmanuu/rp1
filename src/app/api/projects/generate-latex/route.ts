@@ -443,8 +443,38 @@ export async function POST(req: Request) {
           for (const f of aiResult.files) {
             extractedComponents[f.path] = f.content;
           }
+
+          // Hybrid fallback: Merge missing or truncated metadata/section files from deterministic assembly
+          try {
+            const assembled = ModularLatexAssembler.assemble(modelToUse, mapLegacyTemplateId(templateId), templateMainTex);
+            for (const [filePath, content] of Object.entries(assembled.files)) {
+              if (!extractedComponents[filePath]) {
+                extractedComponents[filePath] = content;
+              } else if (
+                filePath.startsWith('sections/') &&
+                (extractedComponents[filePath].trim().length < 50 || extractedComponents[filePath].split(/\s+/).length < 15) &&
+                content.trim().length > 100
+              ) {
+                // Section was empty or truncated in AI pass; restore full content from deterministic pass
+                extractedComponents[filePath] = content;
+              }
+            }
+            // Fail-safe: ensure title & author inputs exist in mainTex for non-Elsevier templates
+            const mappedTpl = mapLegacyTemplateId(templateId);
+            if (!mappedTpl.includes('elsevier')) {
+              if (!fullLatex.includes('metadata/title.tex') && extractedComponents['metadata/title.tex']) {
+                fullLatex = fullLatex.replace(/\\begin\{document\}/, '\\input{metadata/title.tex}\n\\begin{document}');
+              }
+              if (!fullLatex.includes('metadata/authors.tex') && extractedComponents['metadata/authors.tex']) {
+                fullLatex = fullLatex.replace(/\\begin\{document\}/, '\\input{metadata/authors.tex}\n\\begin{document}');
+              }
+            }
+          } catch (hybridErr: any) {
+            console.warn('[GENERATE-LATEX] Non-critical hybrid fallback merge notice:', hybridErr?.message || hybridErr);
+          }
+
           aiModularSuccess = true;
-          console.log(`[GENERATE-LATEX] AI modular mapping SUCCEEDED with ${aiResult.files.length} files (${aiResult.model}).`);
+          console.log(`[GENERATE-LATEX] AI modular mapping SUCCEEDED with ${Object.keys(extractedComponents).length} files (${aiResult.model}).`);
         }
       } catch (aiErr: any) {
         console.warn(`[GENERATE-LATEX] AI modular mapping error, falling back to deterministic assembler:`, aiErr?.message || aiErr);

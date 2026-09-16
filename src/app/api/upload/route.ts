@@ -827,6 +827,14 @@ async function runUploadProcessing(uploadId: string) {
       // XML Ground Truth Extraction on client-extracted DOCX path
       let clientMathData: Array<{ latex: string; isDisplay: boolean }> = [];
       if (clientZip) {
+        try {
+          const docEntry = clientZip.getEntry('word/document.xml');
+          if (docEntry) {
+            finalXml = docEntry.getData().toString('utf8');
+          }
+        } catch (xmlErr) {
+          console.warn('[UPLOAD] Reading word/document.xml from clientZip failed:', xmlErr);
+        }
         groundTruth = extractDocxXmlGroundTruth(clientZip);
         if (groundTruth?.mathData) {
           clientMathData = groundTruth.mathData;
@@ -835,7 +843,7 @@ async function runUploadProcessing(uploadId: string) {
 
       if (html.trim()) {
         console.log("[TELEMETRY] Step 2: Deep Structural Analysis (envelope HTML)");
-        deepData = DeepDocumentParser.parse(html, clientMathData, file.name || 'Document.docx', groundTruth, '');
+        deepData = DeepDocumentParser.parse(html, clientMathData, file.name || 'Document.docx', groundTruth, finalXml);
       } else {
         deepData = {
           title: file.name,
@@ -937,6 +945,7 @@ async function runUploadProcessing(uploadId: string) {
         ]);
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
+          DeepDocumentParser.syncDerivedCollections(deepData);
           if (aiRes.aiLatex) (deepData as any).aiLatex = aiRes.aiLatex;
           (deepData as any).aiVerdict = aiRes.verdict;
           (deepData as any).aiModel = aiRes.model;
@@ -1563,6 +1572,7 @@ async function runUploadProcessing(uploadId: string) {
         ]);
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
+          DeepDocumentParser.syncDerivedCollections(deepData);
           if (aiRes.aiLatex) (deepData as any).aiLatex = aiRes.aiLatex;
           (deepData as any).aiVerdict = aiRes.verdict;
           (deepData as any).aiModel = aiRes.model;
