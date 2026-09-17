@@ -84,12 +84,63 @@ function stripFrontMatterPrefix(text: string): string {
     .trim();
 }
 
+const CANONICAL_SECTION_WHITELIST = [
+  'literature review',
+  'literature survey',
+  'review of literature',
+  'survey of literature',
+  'related work',
+  'related works',
+  'prior work',
+  'prior works',
+  'state of the art',
+  'background',
+  'introduction',
+  'overview',
+  'methodology',
+  'methods',
+  'materials and methods',
+  'experimental design',
+  'experimental setup',
+  'experiments and results',
+  'experiments',
+  'results',
+  'discussion',
+  'results and discussion',
+  'evaluation',
+  'implementation',
+  'system architecture',
+  'system design',
+  'proposed method',
+  'proposed system',
+  'proposed architecture',
+  'conclusion',
+  'conclusions',
+  'conclusion and future work',
+  'conclusions and future work',
+  'future work',
+  'future scope',
+  'acknowledgments',
+  'acknowledgements',
+  'references',
+  'bibliography'
+];
+
 function isFrontMatterNoise(text: string): boolean {
   const t = String(text || '').replace(/\s+/g, ' ').trim();
   if (!t || t.length < 2) return false;
   if (EMAIL_RE.test(t)) return true;
   const probe = stripFrontMatterPrefix(t);
   if (!probe) return true;
+
+  // Canonical section whitelist: standard academic section titles must NEVER be classified as noise
+  const lowerProbe = probe.toLowerCase();
+  for (const canon of CANONICAL_SECTION_WHITELIST) {
+    if (lowerProbe === canon || lowerProbe.startsWith(canon + ' ') || lowerProbe.startsWith(canon + ':') || lowerProbe.startsWith(canon + ' -') || lowerProbe.startsWith(canon + '–')) {
+      return false;
+    }
+  }
+
   if (DESIGNATION_RE.test(probe) || EMAIL_PREFIX_RE.test(probe)) return true;
   if (/\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy|campus)\b/i.test(probe)) return true;
   if (/\b(?:librarian|professor|scholar|fellow|lecturer|assistant|associate|researcher)\b/i.test(probe) && probe.length < 80) return true;
@@ -848,8 +899,9 @@ export class DeepDocumentParser {
       // UNIVERSAL: Normalize away template style annotations before header matching,
       // e.g. "REFERENCES <10 point, Bold>" (often HTML-escaped as &lt;10 point, Bold&gt;)
       const refHeaderText = lower.replace(/&lt;[\s\S]*?&gt;/gi, ' ').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      const isLitReviewNotRef = /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:literature\s+review|literature\s+survey|review\s+of\s+literature|survey\s+of\s+literature)\b/i.test(refHeaderText);
       const isRefGuideline = /\b(?:within|content|main|guideline|style|how to|instruction|write|cite|citation|guidance|prepare)\b/i.test(refHeaderText);
-      const isRefHeader = !isRefGuideline && (
+      const isRefHeader = !isLitReviewNotRef && !isRefGuideline && (
         /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:references?|bibliography|works\s+cited|literature\s+cited|references\s*(?:and|&)\s*notes|reference\s+list)(?:\s*[:.\-–—]|\s*<[^>]*>)*$/i.test(refHeaderText) ||
         ((tagName.startsWith('h') || el.querySelector('strong, b') !== null) && /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:references?|bibliography|works\s+cited|literature\s+cited)\b/i.test(refHeaderText)) ||
         (refHeaderText.length < 60 && /^(?:[\dIVXLCDM\.\s]+)?(?:references?|bibliography|works\s+cited|literature\s+cited)(?:\s*(?:and|&|source|notes|material|cited|list|section|chapter)\b.*|[.:\s]*(?:[\d.]{1,4})?)$/i.test(refHeaderText))
@@ -959,13 +1011,15 @@ export class DeepDocumentParser {
         (tagName.startsWith('h') || this.detectHeading(el, f.text, manifest) !== null || (tagName === 'p' && f.wordCount <= 12 && f.wordCount >= 1 && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 && !f.text.endsWith('.') && f.text.length < 120 && f.text.length > 2))) {
           const detectedLvl = this.detectHeading(el, f.text, manifest);
           const isNumberedHeading = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(f.text);
-          const isStandardSectionName = /^(?:[\d\.]+\s*)?(?:introduction|related work|literature review|background|methodology|conclusion|abstract|acknowledgments|references|overview|implementation|proposed|experimental|results|discussion|system|materials and methods)/i.test(f.text);
+          const isStandardSectionName = /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:introduction|related\s+work|related\s+works|literature\s+review|literature\s+survey|review\s+of\s+literature|survey\s+of\s+literature|background|methodology|methods|materials\s+and\s+methods|conclusion|conclusions|abstract|acknowledgments|acknowledgements|references|bibliography|overview|implementation|proposed|experimental|experiments|results|discussion|system)/i.test(f.text);
           const isCaptionText = /^\s*(?:Fig(?:ure)?|Chart|Diagram|Photo|Image|Table|Tab\b\.?|Algorithm|Alg\.?)\.?\s*[\dIVX\.\-A-Za-z]*\s*[:.\-–—]/i.test(f.text.trim()) &&
             !DeepDocumentParser.isFigureCaptionProse(f.text.trim()) &&
             !DeepDocumentParser.isTableCaptionProse(f.text.trim());
-          const isAuthorAffilText = isFrontMatterNoise(f.text) ||
+          const isAuthorAffilText = !isStandardSectionName && (
+            isFrontMatterNoise(f.text) ||
             /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(f.text.trim()) ||
-            /\b(?:librarian|deputy librarian|assistant professor|associate professor|lecturer|department|dept|university|institute)\b/i.test(f.text);
+            /\b(?:librarian|deputy librarian|assistant professor|associate professor|lecturer|department|dept|university|institute)\b/i.test(f.text)
+          );
           const isSectionHeading = !isCaptionText && !isAuthorAffilText && (
             detectedLvl !== null ||
             isNumberedHeading ||
@@ -1147,6 +1201,15 @@ export class DeepDocumentParser {
       // 2. Perform the flush check
       if (nextRole === 'section' || nextRole === 'equation' || nextRole === 'table' || nextRole === 'figure' || nextRole === 'algorithm') {
           flush(i);
+          if (nextRole === 'table') {
+            const innerTables = Array.from(el.querySelectorAll('table'));
+            if (innerTables.length > 1) {
+              for (const tbl of innerTables) {
+                manifest.push({ role: 'table', startIdx: i, endIdx: i, elements: [tbl] });
+              }
+              continue;
+            }
+          }
           manifest.push({ role: nextRole, startIdx: i, endIdx: i, elements: [el] });
           continue;
       }
@@ -1186,22 +1249,27 @@ export class DeepDocumentParser {
           }
       }
 
+      const consumedCaptionTexts = new Set<string>();
+
       // Pre-pass: discover and consume all captions for tables and figures
       for (let i = 0; i < manifest.length; i++) {
           const entry = manifest[i];
           if (entry.role === 'table') {
-              entry.caption = this.findCaption(entry.elements[0], consumedCaptions, 'table', tablePositions);
+              entry.caption = this.findCaption(entry.elements[0], consumedCaptions, 'table', tablePositions, consumedCaptionTexts);
+              if (entry.caption) consumedCaptionTexts.add(entry.caption.trim());
           } else if (entry.role === 'figure') {
               const el0 = entry.elements[0];
               const textContent = el0.textContent || '';
               const chartMatch = textContent.match(/CHARTIMGX(chart_pending_\d+)XEND/);
               if (chartMatch) {
-                  entry.caption = this.findCaption(el0, consumedCaptions, 'figure', figurePositions);
+                  entry.caption = this.findCaption(el0, consumedCaptions, 'figure', figurePositions, consumedCaptionTexts);
+                  if (entry.caption) consumedCaptionTexts.add(entry.caption.trim());
               } else {
                   const imgs: Element[] = Array.from(el0.querySelectorAll('img'));
                   if (imgs.length === 0 && el0.tagName.toLowerCase() === 'img') imgs.push(el0);
                   if (imgs.length > 0) {
-                      entry.caption = this.findCaption(el0, consumedCaptions, 'figure', figurePositions);
+                      entry.caption = this.findCaption(el0, consumedCaptions, 'figure', figurePositions, consumedCaptionTexts);
+                      if (entry.caption) consumedCaptionTexts.add(entry.caption.trim());
                   }
               }
           }
@@ -1220,11 +1288,19 @@ export class DeepDocumentParser {
           const entry = manifest[i];
           
           // Filter out already consumed elements (like captions)
-          entry.elements = entry.elements.filter((el: Element) => !consumedCaptions.has(el));
+          entry.elements = entry.elements.filter((el: Element) => !consumedCaptions.has(el) && !Array.from(consumedCaptions).some(c => c === el || c.contains(el) || el.contains(c)));
           if (entry.elements.length === 0) continue;
 
           const text = entry.elements.map((e: Element) => e.textContent || '').join('\n').trim();
           if (!text && entry.role !== 'table' && entry.role !== 'figure') continue;
+
+          // If this is a paragraph whose text was consumed as a caption, skip it
+          if (entry.role === 'paragraph') {
+            const cleanP = text.replace(/\s+/g, ' ').trim();
+            if (consumedCaptionTexts.has(cleanP) || Array.from(consumedCaptionTexts).some(ct => ct && (cleanP === ct || (cleanP.startsWith(ct) && cleanP.length < ct.length + 20)))) {
+              continue;
+            }
+          }
 
           if (entry.role === 'title') {
               result.title = text
@@ -1946,6 +2022,19 @@ export class DeepDocumentParser {
       }
       result.abstract = result.abstract.replace(/^[\s:.\-–—−\u2013\u2014]+/, '').trim();
       result.keywords = result.keywords.map(k => k.replace(/^[\s:.\-–—−\u2013\u2014]+/, '').trim()).filter(Boolean);
+
+      // Post-pass cleanup: remove any paragraphs from result.body that duplicate consumed captions
+      if (consumedCaptionTexts.size > 0) {
+        result.body = result.body.filter(node => {
+          if (node.type !== 'paragraph' || !node.text) return true;
+          const pText = node.text.trim();
+          if (consumedCaptionTexts.has(pText)) return false;
+          for (const ct of consumedCaptionTexts) {
+            if (ct && (pText === ct || (pText.startsWith(ct) && pText.length < ct.length + 20))) return false;
+          }
+          return true;
+        });
+      }
   }
 
   private static isNewReferenceStart(line: string, isFirst: boolean): boolean {
@@ -2160,14 +2249,17 @@ export class DeepDocumentParser {
     el: Element,
     processed: Set<Element>,
     type: 'figure' | 'table',
-    typePositions: Map<Element, number>
+    typePositions: Map<Element, number>,
+    consumedTexts?: Set<string>
   ): string {
     // 1. Direct structured inner check (e.g. child <caption> tag generated by parser)
     if (type === 'table') {
       const internalCap = el.querySelector('caption');
       if (internalCap && !processed.has(internalCap)) {
         processed.add(internalCap);
-        return this.cleanCaption(internalCap.textContent?.trim() || '');
+        const cap = this.cleanCaption(internalCap.textContent?.trim() || '');
+        if (consumedTexts && cap) consumedTexts.add(cap);
+        return cap;
       }
     }
 
@@ -2220,16 +2312,18 @@ export class DeepDocumentParser {
     for (let i = 0; i < 35; i++) {
       const inspectCandidate = (candidate: Element | null, isForward: boolean): string | null => {
         if (!candidate || processed.has(candidate)) return null;
-        const t = candidate.textContent?.trim() || '';
+        const rawT = candidate.textContent || '';
+        const t = rawT.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
         const isTableProse = type === 'table' && this.isTableCaptionProse(t);
         const isFigureProse = type === 'figure' && this.isFigureCaptionProse(t);
-        if (rx.test(t) && !t.includes('\n') && !isTableProse && !isFigureProse) {
+        if (rx.test(t) && t.length <= 500 && !isTableProse && !isFigureProse) {
           const capOrdinal = captionOrdinal(t);
           const farEl = farSibling(candidate, isForward ? 1 : -1);
           const farPos = farEl ? typePositions.get(farEl) : undefined;
           const belongsToFar = capOrdinal !== null && farPos !== undefined && capOrdinal === farPos;
           if (!belongsToFar) {
             processed.add(candidate);
+            if (consumedTexts) consumedTexts.add(t);
             const prefixMatch = t.match(rx);
             const cleanPrefix = prefixMatch ? prefixMatch[0].replace(/[:.–\-\s]+$/, '').trim() : '';
             let afterPrefix = prefixMatch ? t.slice(prefixMatch[0].length).replace(/^[:.–\-\s]*/, '').trim() : '';
@@ -2241,15 +2335,19 @@ export class DeepDocumentParser {
                 sibCont = sibCont.nextElementSibling;
               }
               if (sibCont && sibCont !== el && !processed.has(sibCont) && ['p', 'div'].includes(sibCont.tagName.toLowerCase())) {
-                const sibText = sibCont.textContent?.trim() || '';
+                const sibRaw = sibCont.textContent || '';
+                const sibText = sibRaw.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
                 if (sibText.length > 0 && sibText.length < 600 && !rx.test(sibText) && !/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i.test(sibText) && !this.FORCED_LEVEL1.has(sibText.toLowerCase()) && !this.isFigureCaptionProse(sibText) && !this.isTableCaptionProse(sibText) && sibText.split(/\s+/).length <= 60) {
                   processed.add(sibCont);
+                  if (consumedTexts) consumedTexts.add(sibText);
                   afterPrefix = sibText;
                 }
               }
             }
 
-            return this.cleanCaption(afterPrefix.length > 0 ? `${cleanPrefix}: ${afterPrefix}` : cleanPrefix);
+            const cleanCap = this.cleanCaption(afterPrefix.length > 0 ? `${cleanPrefix}: ${afterPrefix}` : cleanPrefix);
+            if (consumedTexts) consumedTexts.add(cleanCap);
+            return cleanCap;
           }
         }
         return null;

@@ -416,16 +416,6 @@ export class LatexAssembler {
     const isAffiliationLine = (probe: string): boolean =>
       /\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy)\b/i.test(probe) ||
       (/\b(?:librarian|professor|scholar|fellow|lecturer|assistant|associate|researcher)\b/i.test(probe) && probe.length < 80);
-    const isAcademicPreambleOrAuthor = (probe: string, normText: string): boolean => {
-      if (matchesAnyAuthor(normText)) return true;
-      if (isDesignationLine(probe)) return true;
-      if (isAffiliationLine(probe)) return true;
-      if (/^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(probe)) return true;
-      if (/^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(probe)) return true;
-      if (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley|plos|biorxiv|medrxiv|arxiv|frontiers|nature)\b/i.test(probe) && probe.length < 60) return true;
-      return false;
-    };
-
     // Canonical section names — same set as FORCED_L1 in assembleNode
     const FORCED_L1_ASSEMBLER = new Set([
       'abstract','introduction','background','related work','literature review',
@@ -440,6 +430,30 @@ export class LatexAssembler {
       'literature survey','literature review/survey','survey','literature review and survey',
       'existing literature','literature',
     ]);
+
+    const isCanonicalSectionTitle = (p: string, n: string): boolean => {
+      const cleanP = p.toLowerCase().replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '').replace(/[:.\s]*$/, '').trim();
+      const cleanN = n.toLowerCase().replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '').replace(/[:.\s]*$/, '').trim();
+      if (FORCED_L1_ASSEMBLER.has(cleanP) || FORCED_L1_ASSEMBLER.has(cleanN)) return true;
+      for (const canon of FORCED_L1_ASSEMBLER) {
+        if ((cleanP.startsWith(canon + ' ') || cleanP.startsWith(canon + ':') || cleanP.startsWith(canon + ' -')) ||
+            (cleanN.startsWith(canon + ' ') || cleanN.startsWith(canon + ':') || cleanN.startsWith(canon + ' -'))) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const isAcademicPreambleOrAuthor = (probe: string, normText: string): boolean => {
+      if (isCanonicalSectionTitle(probe, normText)) return false;
+      if (matchesAnyAuthor(normText)) return true;
+      if (isDesignationLine(probe)) return true;
+      if (isAffiliationLine(probe)) return true;
+      if (/^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(probe)) return true;
+      if (/^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(probe)) return true;
+      if (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley|plos|biorxiv|medrxiv|arxiv|frontiers|nature)\b/i.test(probe) && probe.length < 60) return true;
+      return false;
+    };
 
     // Two-column detection: based on template ID or native preamble content
     const isTwoColumn = isIeee || isAcm || (
@@ -510,7 +524,15 @@ export class LatexAssembler {
         currentSectionNodes = [];
         return;
       }
-      const sectionContent = dedupedNodes.map(n => LatexAssembler.assembleNode(n, mathBlocks)).join("\n\n");
+      const sectionContent = dedupedNodes.map((n, idx) => {
+        const assembled = LatexAssembler.assembleNode(n, mathBlocks);
+        if (!assembled) return '';
+        // If consecutive structural float nodes (e.g. table after table, or table after figure), insert spacer and FloatBarrier
+        if (idx > 0 && ['table', 'figure', 'figure-group', 'chart'].includes(n.type) && ['table', 'figure', 'figure-group', 'chart'].includes(dedupedNodes[idx - 1]?.type)) {
+          return `\\vspace{1em}\n\\FloatBarrier\n${assembled}`;
+        }
+        return assembled;
+      }).filter(Boolean).join("\n\n");
       const safeTitle = slugifySectionTitle(currentSectionTitle, 40);
       // UNIQUE FILE NAME GUARD: never overwrite a previous flush with the same slug.
       let fileName = `sections/${sectionIdx.toString().padStart(2, '0')}_${safeTitle}.tex`;
@@ -1080,7 +1102,7 @@ export class LatexAssembler {
         const twoCol = (node as any).twoColumn === true;
         const figEnv = twoCol ? 'figure*' : 'figure';
         const placement = twoCol ? '[htbp]' : '[H]';
-        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${fileId}}\n\\end{${figEnv}}\n`;
+        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${fileId}}\n\\end{${figEnv}}\n\\FloatBarrier\n`;
       }
       case 'figure': {
         const rawId = String(node.id || 'figure').replace(/\\/g, '/');
@@ -1094,7 +1116,7 @@ export class LatexAssembler {
         const twoCol = (node as any).twoColumn === true;
         const figEnv = twoCol ? 'figure*' : 'figure';
         const placement = twoCol ? '[htbp]' : '[H]';
-        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${fileId}}\n\\caption{${caption}}\n\\label{${label}}\n\\end{${figEnv}}\n`;
+        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${fileId}}\n\\caption{${caption}}\n\\label{${label}}\n\\end{${figEnv}}\n\\FloatBarrier\n`;
       }
       case 'chart': {
         const rawId = String(node.id || 'chart').replace(/\\/g, '/');
@@ -1108,7 +1130,7 @@ export class LatexAssembler {
         const twoCol = (node as any).twoColumn === true;
         const figEnv = twoCol ? 'figure*' : 'figure';
         const placement = twoCol ? '[htbp]' : '[H]';
-        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${fileId}}\n\\caption{${caption}}\n\\label{${label}}\n\\end{${figEnv}}\n`;
+        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${fileId}}\n\\caption{${caption}}\n\\label{${label}}\n\\end{${figEnv}}\n\\FloatBarrier\n`;
       }
       case 'figure-group':
         return LatexAssembler.assembleFigureGroup(node, mathBlocks);
@@ -1331,7 +1353,7 @@ export class LatexAssembler {
     const widthParam = twoColWide ? '{\\textwidth}' : '{\\linewidth}';
     const activeSpec = fullSpec;
 
-    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n\\caption{${caption}}\n\\label{${labelKey}}\n\\renewcommand{\\arraystretch}{1.3}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}\n\\end{${tableEnv}}\n`;
+    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n\\caption{${caption}}\n\\label{${labelKey}}\n\\renewcommand{\\arraystretch}{1.3}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}\n\\end{${tableEnv}}\n\\FloatBarrier\n`;
   }
 
 
@@ -1434,7 +1456,7 @@ export class LatexAssembler {
       subfigures.join('\n\\hfill\n'),
       capLine,
       `\\label{fig:group_${labelSuffix}}`,
-      `\\end{${figEnv}}\n`,
+      `\\end{${figEnv}}\n\\FloatBarrier\n`,
     ].filter(Boolean).join('\n');
   }
 

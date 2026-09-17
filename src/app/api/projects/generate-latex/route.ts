@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { autoHealLatex } from '@/lib/latex';
 import { ModularLatexAssembler } from '@/lib/assembler';
+import { DeepDocumentParser } from '@/lib/deep-parser';
 import { runModularAiMapping } from '@/lib/ai-modular-mapping';
 import { getTemplateById, mapLegacyTemplateId } from '@/lib/templates/registry';
 import { getServerSession } from "@/lib/auth-pb";
@@ -424,6 +425,9 @@ export async function POST(req: Request) {
       }
       const availableFigureNames = Array.from(availableFigureNamesSet);
 
+      // Ensure derived collections are synchronized on modelToUse before mapping & assembly
+      DeepDocumentParser.syncDerivedCollections(modelToUse);
+
       // --- 1. TRY PARALLEL AI MODULAR MAPPING ---
       try {
         console.log(`[GENERATE-LATEX] Attempting parallel AI modular mapping for template ${templateId}...`);
@@ -446,6 +450,53 @@ export async function POST(req: Request) {
 
           // Hybrid fallback: Merge missing or truncated metadata/section files from deterministic assembly
           try {
+            const rescueMissingFloats = (aiContent: string, detContent: string): string => {
+              if (!detContent || !aiContent) return aiContent;
+              const floatRegex = /\\begin\{(figure\*?|table\*?)\}(?:\[[^\]]*\])?[\s\S]*?\\end\{\1\}(?:\s*\\FloatBarrier)?/g;
+              let match: RegExpExecArray | null;
+              let result = aiContent;
+
+              while ((match = floatRegex.exec(detContent)) !== null) {
+                const floatBlock = match[0].trim();
+                
+                // 1. Check if already present in AI content
+                const imgMatch = floatBlock.match(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/);
+                const imgFile = imgMatch ? imgMatch[1].trim() : null;
+                if (imgFile && result.includes(imgFile)) continue;
+
+                const labelMatch = floatBlock.match(/\\label\{([^}]+)\}/);
+                const label = labelMatch ? labelMatch[1].trim() : null;
+                if (label && result.includes(`\\label{${label}}`)) continue;
+
+                // 2. Find best inline placement right after referencing paragraph
+                let insertIdx = -1;
+                const capMatch = floatBlock.match(/\\caption\{([^}]+)\}/);
+                const caption = capMatch ? capMatch[1].trim() : '';
+                const numMatch = (caption + ' ' + (label || '') + ' ' + (imgFile || '')).match(/(?:figure|fig\.?|table|tab\.?|image)[_:\s.-]*(\d+|[IVXLCDM]+)/i);
+                
+                if (numMatch) {
+                  const num = numMatch[1];
+                  const isFig = /(?:fig|image)/i.test(numMatch[0]);
+                  const mentionRegex = isFig
+                    ? new RegExp(`\\b(?:figure|fig\\.?)\\s*~?\\s*${num}\\b`, 'i')
+                    : new RegExp(`\\b(?:table|tab\\.?)\\s*~?\\s*${num}\\b`, 'i');
+                  const m = result.match(mentionRegex);
+                  if (m && m.index !== undefined) {
+                    const nextPara = result.indexOf('\n\n', m.index);
+                    insertIdx = nextPara !== -1 ? nextPara + 2 : result.length;
+                  }
+                }
+
+                if (insertIdx !== -1) {
+                  result = result.slice(0, insertIdx) + `\n${floatBlock}\n\n` + result.slice(insertIdx);
+                } else {
+                  result = `${result.trim()}\n\n${floatBlock}\n`;
+                }
+              }
+
+              return result;
+            };
+
             const assembled = ModularLatexAssembler.assemble(modelToUse, mapLegacyTemplateId(templateId), templateMainTex);
             for (const [filePath, content] of Object.entries(assembled.files)) {
               if (!extractedComponents[filePath]) {
@@ -457,8 +508,33 @@ export async function POST(req: Request) {
               ) {
                 // Section was empty or truncated in AI pass; restore full content from deterministic pass
                 extractedComponents[filePath] = content;
+              } else if (filePath.startsWith('sections/')) {
+                // Section was populated by AI; rescue any figures/tables dropped from deterministic pass
+                extractedComponents[filePath] = rescueMissingFloats(extractedComponents[filePath], content);
               }
             }
+
+            // Ensure all section files in extractedComponents are \input'd in fullLatex
+            const sectionFiles = Object.keys(extractedComponents)
+              .filter(p => p.startsWith('sections/') && p.endsWith('.tex'))
+              .sort();
+            for (const sFile of sectionFiles) {
+              if (!fullLatex.includes(`\\input{${sFile}}`)) {
+                const lastInputMatch = Array.from(fullLatex.matchAll(/\\input\{sections\/[^}]+\}/g)).pop();
+                if (lastInputMatch && lastInputMatch.index !== undefined) {
+                  const insPoint = lastInputMatch.index + lastInputMatch[0].length;
+                  fullLatex = fullLatex.slice(0, insPoint) + `\n\\input{${sFile}}` + fullLatex.slice(insPoint);
+                } else {
+                  const bibInput = fullLatex.indexOf('\\input{references/bibliography.tex}');
+                  if (bibInput !== -1) {
+                    fullLatex = fullLatex.slice(0, bibInput) + `\\input{${sFile}}\n` + fullLatex.slice(bibInput);
+                  } else {
+                    fullLatex = fullLatex.replace(/\\end\{document\}/, `\\input{${sFile}}\n\\end{document}`);
+                  }
+                }
+              }
+            }
+
             // Fail-safe: ensure title & author inputs exist in mainTex for non-Elsevier templates
             const mappedTpl = mapLegacyTemplateId(templateId);
             if (!mappedTpl.includes('elsevier')) {

@@ -95,7 +95,7 @@ function balancedWindow(text: string): string {
   return `${text.substring(0, WINDOW_HEAD)}\n\n[... middle of the document elided for context budget ...]\n\n${text.substring(text.length - WINDOW_TAIL)}`;
 }
 
-const CANONICAL_L1_REGEX = /^(?:\d+[\.\:]?\s+)?(?:introduction|literature\s+review|literature\s+survey|related\s+work|related\s+works|background|methodology|methods|materials\s+and\s+methods|system\s+design|system\s+architecture|implementation|experimental\s+setup|experiments?|results|discussion|results\s+and\s+discussion|conclusion|conclusions|future\s+work|acknowledgements?)\b/i;
+const CANONICAL_L1_REGEX = /^(?:(?:\d+|[ivxlcdm]+)[\.:]?\s+)?(?:introduction|literature\s+review|literature\s+survey|review\s+of\s+literature|survey\s+of\s+literature|related\s+work|related\s+works|background|methodology|methods|materials\s+and\s+methods|system\s+design|system\s+architecture|implementation|experimental\s+setup|experiments?|results|discussion|results\s+and\s+discussion|conclusion|conclusions|future\s+work|acknowledgements?)\b/i;
 
 function isTopLevelSectionHeading(node: any, hasAnyL1: boolean): boolean {
   if (node.type !== 'heading' || !node.text) return false;

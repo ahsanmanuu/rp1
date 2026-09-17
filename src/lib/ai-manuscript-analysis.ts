@@ -351,6 +351,48 @@ function normText(s: string): string {
     .trim();
 }
 
+const CANONICAL_SECTION_WHITELIST = [
+  'literature review',
+  'literature survey',
+  'review of literature',
+  'survey of literature',
+  'related work',
+  'related works',
+  'prior work',
+  'prior works',
+  'state of the art',
+  'background',
+  'introduction',
+  'overview',
+  'methodology',
+  'methods',
+  'materials and methods',
+  'experimental design',
+  'experimental setup',
+  'experiments and results',
+  'experiments',
+  'results',
+  'discussion',
+  'results and discussion',
+  'evaluation',
+  'implementation',
+  'system architecture',
+  'system design',
+  'proposed method',
+  'proposed system',
+  'proposed architecture',
+  'conclusion',
+  'conclusions',
+  'conclusion and future work',
+  'conclusions and future work',
+  'future work',
+  'future scope',
+  'acknowledgments',
+  'acknowledgements',
+  'references',
+  'bibliography'
+];
+
 // ── UNIVERSAL FRONT-MATTER / AUTHOR-LINE NOISE GUARD ─────────────────────────
 // Author names, designations, emails and affiliations must never appear in the
 // AI "sections" verdict (or the parser's section skeleton sent to the AI).
@@ -366,7 +408,16 @@ function isFrontMatterNoiseSection(title: string): boolean {
     .replace(/[\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070*†‡\d]+$/g, '')
     .trim();
   if (!probe) return true;
-  if (/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of|head of department|researcher|research scholar|phd scholar|scholar|librarian|bibliographer|fellow|senior research fellow|technical assistant|mr\.|ms\.|mrs\.|md)\b/i.test(probe)) return true;
+
+  // Canonical section whitelist: standard academic section titles must NEVER be classified as noise
+  const lowerProbe = probe.toLowerCase();
+  for (const canon of CANONICAL_SECTION_WHITELIST) {
+    if (lowerProbe === canon || lowerProbe.startsWith(canon + ' ') || lowerProbe.startsWith(canon + ':') || lowerProbe.startsWith(canon + ' -') || lowerProbe.startsWith(canon + '–')) {
+      return false;
+    }
+  }
+
+  if (/^(?:dr\.?|prof\.?|professor|deputy librarian|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of|head of department|researcher|research scholar|phd scholar|scholar|librarian|bibliographer|fellow|senior research fellow|technical assistant|mr\.?|ms\.?|mrs\.?|md)(?:\b|\s)/i.test(probe)) return true;
   if (/^(?:email|e-mail|mail|phone|tel|orcid|corresponding author)\b/i.test(probe)) return true;
   if (/\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy)\b/i.test(probe.toLowerCase())) return true;
   if (/^(?:librarian|deputy librarian|professor|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of department|phd scholar|research scholar|senior research fellow|technical assistant)(?:,|\s+at\b|\s+in\b|\s*\(|\s*$)/i.test(probe.trim())) return true;
@@ -407,7 +458,21 @@ function reconcileVerdict(
       if (isAuthorOrAffilNoise(t)) return false;
       if (inText(t)) return true;
       // Allow numbering-stripped match (e.g. "1. Introduction" -> "introduction")
-      return inText(t.replace(/^[\d\s.\-–—:()[\]ivxlcdm]+/i, ''));
+      const stripped = t.replace(/^[\d\s.\-–—:()[\]ivxlcdm]+/i, '').trim();
+      if (stripped && inText(stripped)) return true;
+      // Also check canonical name match against haystack
+      const lowerT = (stripped || t).toLowerCase();
+      for (const canon of CANONICAL_SECTION_WHITELIST) {
+        if ((lowerT === canon || lowerT.startsWith(canon + ' ') || lowerT.startsWith(canon + ':') || lowerT.startsWith(canon + ' -')) && haystack.includes(canon)) {
+          return true;
+        }
+      }
+      // Check if parser's deepData.body already has this heading
+      const normT = normText(stripped || t);
+      if (normT.length >= 3 && (deepData.body || []).some(n => n.type === 'heading' && normText(n.text || '').includes(normT))) {
+        return true;
+      }
+      return false;
     });
     // Keep the FILTERED list even when it becomes empty — falling back to the
     // unfiltered list resurrects author-name/affiliation headings as sections.
@@ -1241,10 +1306,33 @@ export function applyStructureCorrections(
     const unused = new Set(texts.map((_, i) => i));
     const isPlaceholder = (c: string): boolean =>
       !c ||
-      /^(?:table|figure|chart|image)\s*(?:\(\s*\d+\s*rows?\s*×\s*\d+\s*cols?\s*\))?$/i.test(c.trim()) ||
-      /^(?:data table|figure|table)$/i.test(c.trim());
+      /^(?:table|figure|chart|image)\s*(?:\(\s*\d+\s*rows?\s*[×x,]\s*\d+\s*cols?\s*\))?$/i.test(c.trim()) ||
+      /^(?:data table|figure|table|chart|image|untitled)\.?$/i.test(c.trim()) ||
+      /^(?:table|figure|chart)\s*\d+$/i.test(c.trim());
 
+    // Pass 1: match nodes by ordinal label (e.g. "Table 1" or "Table 1:" matches AI's "Table 1: Title")
     for (const n of nodes) {
+      if (unused.size === 0) break;
+      const current = String((n as any)[textKey] || '').replace(/\s+/g, ' ').trim();
+      const ordMatch = current.match(/^(?:table|tab\.?|figure|fig\.?|chart|algorithm|alg\.?)\s*(\d+|[ivxlcdm]+)/i);
+      if (ordMatch) {
+        const ord = ordMatch[1].toLowerCase();
+        for (const i of unused) {
+          const aiText = texts[i];
+          const aiOrdMatch = aiText.match(/^(?:table|tab\.?|figure|fig\.?|chart|algorithm|alg\.?)\s*(\d+|[ivxlcdm]+)/i);
+          if (aiOrdMatch && aiOrdMatch[1].toLowerCase() === ord) {
+            (n as any)[textKey] = aiText;
+            unused.delete(i);
+            fixed++;
+            break;
+          }
+        }
+      }
+    }
+
+    // Pass 2: 3-gram similarity matching for non-placeholder captions
+    for (const n of nodes) {
+      if (unused.size === 0) break;
       const current = String((n as any)[textKey] || '').replace(/\s+/g, ' ').trim();
       if (isPlaceholder(current)) continue;
       const curNorm = normCap(current);
@@ -1263,7 +1351,8 @@ export function applyStructureCorrections(
         fixed++;
       }
     }
-    // Sequential fallback for uncaptioned or placeholder nodes
+
+    // Pass 3: Sequential fallback for uncaptioned or placeholder nodes
     for (const n of nodes) {
       if (unused.size === 0) break;
       const current = String((n as any)[textKey] || '').replace(/\s+/g, ' ').trim();
