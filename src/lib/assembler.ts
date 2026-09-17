@@ -410,11 +410,11 @@ export class LatexAssembler {
       });
     };
     const isDesignationLine = (probe: string): boolean =>
-      /^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of|head of department|researcher|research scholar|phd scholar|scholar|librarian|bibliographer|fellow|senior research fellow|technical assistant|mr\.|ms\.|mrs\.|md)\b/i.test(probe) ||
-      /\b(?:librarian|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|phd scholar|research scholar)\b/i.test(probe) ||
-      /^(?:email|e-mail|mail|phone|tel|orcid|corresponding author)\b/i.test(probe);
+      (/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of|head of department|researcher|research scholar|phd scholar|scholar|librarian|bibliographer|fellow|senior research fellow|technical assistant|mr\.|ms\.|mrs\.|md)\b/i.test(probe) && probe.length < 80) ||
+      (/\b(?:librarian|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|phd scholar|research scholar)\b/i.test(probe) && probe.length < 80) ||
+      (/^(?:email|e-mail|mail|phone|tel|orcid|corresponding author)\b/i.test(probe) && probe.length < 100);
     const isAffiliationLine = (probe: string): boolean =>
-      /\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy)\b/i.test(probe) ||
+      (/\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy)\b/i.test(probe) && probe.length < 100) ||
       (/\b(?:librarian|professor|scholar|fellow|lecturer|assistant|associate|researcher)\b/i.test(probe) && probe.length < 80);
     // Canonical section names — same set as FORCED_L1 in assembleNode
     const FORCED_L1_ASSEMBLER = new Set([
@@ -450,7 +450,7 @@ export class LatexAssembler {
       if (isDesignationLine(probe)) return true;
       if (isAffiliationLine(probe)) return true;
       if (/^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(probe)) return true;
-      if (/^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(probe)) return true;
+      if (/^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(probe) && probe.length < 80) return true;
       if (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley|plos|biorxiv|medrxiv|arxiv|frontiers|nature)\b/i.test(probe) && probe.length < 60) return true;
       return false;
     };
@@ -667,7 +667,7 @@ export class LatexAssembler {
         }
 
         // Propagate two-column flag to all structural nodes (universal, no template bias)
-        if (isTwoColumn && (node.type === 'table' || node.type === 'figure' || node.type === 'image' || node.type === 'figure-group' || node.type === 'algorithm')) {
+        if (isTwoColumn && (node.type === 'table' || node.type === 'figure' || node.type === 'image' || node.type === 'figure-group' || node.type === 'algorithm' || node.type === 'chart')) {
             node = { ...node, twoColumn: true };
         }
         
@@ -1274,25 +1274,23 @@ export class LatexAssembler {
     });
 
     // Column spec: X for long text, c for short
-    let spec = colMaxLen.map(len => len > 15 ? '>{\\raggedright\\arraybackslash}X' : 'c').join('|');
-    // Force at least one wrapping column if table is wide or has X
-    if (totalGridCols > 4 || spec.includes('X')) {
-      if (!spec.includes('X')) {
-        let maxLenIdx = 0;
-        let maxLen = -1;
-        for (let idx = 0; idx < colMaxLen.length; idx++) {
-          if (colMaxLen[idx] > maxLen) {
-            maxLen = colMaxLen[idx];
-            maxLenIdx = idx;
-          }
+    const specsList = colMaxLen.map(len => len > 15 ? '>{\\raggedright\\arraybackslash}X' : 'c');
+    // ALWAYS ensure at least one X column in tabularx tables so \linewidth constraint is enforced
+    if (!specsList.includes('>{\\raggedright\\arraybackslash}X')) {
+      let maxLenIdx = 0;
+      let maxLen = -1;
+      for (let idx = 0; idx < colMaxLen.length; idx++) {
+        if (colMaxLen[idx] > maxLen) {
+          maxLen = colMaxLen[idx];
+          maxLenIdx = idx;
         }
-        const specsList = colMaxLen.map(() => 'c');
-        specsList[maxLenIdx] = '>{\\raggedright\\arraybackslash}X';
-        spec = specsList.join('|');
       }
-    } else {
-      spec = spec.replace('c', '>{\\raggedright\\arraybackslash}X');
+      if (maxLen <= 0 && colMaxLen.length > 1) {
+        maxLenIdx = 1;
+      }
+      specsList[maxLenIdx] = '>{\\raggedright\\arraybackslash}X';
     }
+    const spec = specsList.join('|');
     const fullSpec = `|${spec}|`;
 
     // Build table rows
@@ -1346,14 +1344,20 @@ export class LatexAssembler {
     const labelKey = `tab:${caption.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20)}`;
 
     // Force tabularx line-wrapping for all multi-column or text-bearing tables to prevent right-margin overflow
-    const twoColWide = (node as any).twoColumn === true && (totalGridCols > 2 || colMaxLen.some(l => l > 30));
+    const isTwoColMode = (node as any).twoColumn === true;
+    const twoColWide = isTwoColMode && (totalGridCols > 2 || colMaxLen.some(l => l > 30));
     const tableEnv = twoColWide ? 'table*' : 'table';
-    const tablePlacement = twoColWide ? '[htbp]' : ((node as any).twoColumn ? '[htbp]' : '[H]');
+    const tablePlacement = twoColWide ? '[htbp]' : (isTwoColMode ? '[htbp]' : '[H]');
     const tabularEnv = 'tabularx';
     const widthParam = twoColWide ? '{\\textwidth}' : '{\\linewidth}';
     const activeSpec = fullSpec;
 
-    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n\\caption{${caption}}\n\\label{${labelKey}}\n\\renewcommand{\\arraystretch}{1.3}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}\n\\end{${tableEnv}}\n\\FloatBarrier\n`;
+    // In two-column mode, reduce padding and font size for tables with multiple columns to prevent margin overflow
+    const colSepCmd = (isTwoColMode && totalGridCols >= 4) ? '\\setlength{\\tabcolsep}{3pt}\n' : (totalGridCols >= 6 ? '\\setlength{\\tabcolsep}{4pt}\n' : '');
+    const fontSizeCmd = (isTwoColMode && totalGridCols >= 5) ? '{\\footnotesize\n' : ((isTwoColMode && totalGridCols >= 4) ? '{\\small\n' : (totalGridCols >= 7 ? '{\\small\n' : ''));
+    const fontSizeEnd = fontSizeCmd ? '\n}' : '';
+
+    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n\\caption{${caption}}\n\\label{${labelKey}}\n${colSepCmd}${fontSizeCmd}\\renewcommand{\\arraystretch}{1.2}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}${fontSizeEnd}\n\\end{${tableEnv}}\n\\FloatBarrier\n`;
   }
 
 
@@ -1926,6 +1930,17 @@ export class ModularLatexAssembler {
     const isSciRep = templateId.includes('scirep') || tpl?.assetFolder === 'scirep';
     const isNature = tpl?.assetFolder === 'nature';
 
+    const isTwoColumn = isIeee || isAcm || (
+      typeof (tpl as any)?.templateMainTex === 'string' && (
+        /\btwocolumn\b/i.test((tpl as any).templateMainTex) ||
+        /\bsigconf\b/i.test((tpl as any).templateMainTex) ||
+        /\bIEEEtran\b/.test((tpl as any).templateMainTex) ||
+        /\breprint\b/i.test((tpl as any).templateMainTex)
+      )
+    ) || (
+      nativePreamble.some(p => /\btwocolumn\b/i.test(p) || /\bsigconf\b/i.test(p) || /\bIEEEtran\b/.test(p) || /\breprint\b/i.test(p))
+    );
+
     // --- DEDUPLICATED PACKAGE MANAGEMENT ---
     const pkgReg = new PackageRegistry(nativePreamble);
     const preamble: string[] = ["\\nonstopmode"];
@@ -2277,19 +2292,51 @@ export class ModularLatexAssembler {
           (withoutHonorific.length > 5 && (normText.includes(aWithoutHonorific) || aWithoutHonorific.includes(withoutHonorific)));
       });
     };
+    const FORCED_L1_ASSEMBLER = new Set([
+      'abstract', 'introduction', 'background', 'related work', 'related works', 'literature review', 'literature survey',
+      'methodology', 'methods', 'materials and methods', 'proposed method', 'proposed methodology', 'proposed approach',
+      'proposed system', 'system architecture', 'system model', 'system design', 'system overview', 'problem formulation',
+      'problem statement', 'experimental setup', 'experiments', 'experimental results', 'results', 'results and discussion',
+      'discussion', 'performance evaluation', 'evaluation', 'simulation results', 'comparative analysis', 'comparison',
+      'conclusion', 'conclusions', 'conclusions and future work', 'conclusions and future works', 'conclusion and future work',
+      'conclusion and future scope', 'conclusion and recommendations', 'summary and conclusion', 'concluding remarks',
+      'future work', 'future works', 'future scope', 'recommendations',
+      'acknowledgements', 'acknowledgments', 'references', 'bibliography', 'appendix',
+      'declarations', 'conflict of interest', 'conflicts of interest', 'competing interests',
+      'funding', 'funding statement', 'data availability', 'data availability statement',
+      'author contributions', 'authors contributions', 'ethical approval', 'ethics statement',
+      'literature review/survey', 'survey', 'literature review and survey', 'existing literature', 'literature'
+    ]);
+    const isCanonicalSectionL1 = (h: string): boolean => {
+      if (FORCED_L1_ASSEMBLER.has(h)) return true;
+      return /^(?:conclusion|conclusions|concluding|future work|future scope|literature review|literature survey|related works?|system model|system architecture|materials and methods|results and discussion|performance evaluation|declarations|acknowledg|data availability)\b/i.test(h);
+    };
+    const isCanonicalSectionTitle = (p: string, n: string): boolean => {
+      const cleanP = p.toLowerCase().replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '').replace(/[:.\s]*$/, '').trim();
+      const cleanN = n.toLowerCase().replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '').replace(/[:.\s]*$/, '').trim();
+      if (isCanonicalSectionL1(cleanP) || isCanonicalSectionL1(cleanN)) return true;
+      for (const canon of FORCED_L1_ASSEMBLER) {
+        if ((cleanP.startsWith(canon + ' ') || cleanP.startsWith(canon + ':') || cleanP.startsWith(canon + ' -')) ||
+            (cleanN.startsWith(canon + ' ') || cleanN.startsWith(canon + ':') || cleanN.startsWith(canon + ' -'))) {
+          return true;
+        }
+      }
+      return false;
+    };
     const isDesignationLine = (probe: string): boolean =>
-      /^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of|head of department|researcher|research scholar|phd scholar|scholar|librarian|bibliographer|fellow|senior research fellow|technical assistant|mr\.|ms\.|mrs\.|md)\b/i.test(probe) ||
-      /\b(?:librarian|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|phd scholar|research scholar)\b/i.test(probe) ||
-      /^(?:email|e-mail|mail|phone|tel|orcid|corresponding author)\b/i.test(probe);
+      (/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of|head of department|researcher|research scholar|phd scholar|scholar|librarian|bibliographer|fellow|senior research fellow|technical assistant|mr\.|ms\.|mrs\.|md)\b/i.test(probe) && probe.length < 80) ||
+      (/\b(?:librarian|deputy librarian|assistant professor|associate professor|lecturer|dean|principal|phd scholar|research scholar)\b/i.test(probe) && probe.length < 80) ||
+      (/^(?:email|e-mail|mail|phone|tel|orcid|corresponding author)\b/i.test(probe) && probe.length < 100);
     const isAffiliationLine = (probe: string): boolean =>
-      /\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy)\b/i.test(probe) ||
+      (/\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy)\b/i.test(probe) && probe.length < 100) ||
       (/\b(?:librarian|professor|scholar|fellow|lecturer|assistant|associate|researcher)\b/i.test(probe) && probe.length < 80);
     const isAcademicPreambleOrAuthor = (probe: string, normText: string): boolean => {
+      if (isCanonicalSectionTitle(probe, normText)) return false;
       if (matchesAnyAuthor(normText)) return true;
       if (isDesignationLine(probe)) return true;
       if (isAffiliationLine(probe)) return true;
       if (/^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(probe)) return true;
-      if (/^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(probe)) return true;
+      if (/^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(probe) && probe.length < 80) return true;
       if (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley|plos|biorxiv|medrxiv|arxiv|frontiers|nature)\b/i.test(probe) && probe.length < 60) return true;
       return false;
     };
@@ -2313,8 +2360,12 @@ export class ModularLatexAssembler {
               const pText = (n.text || '').trim();
               const pNorm = normalize(pText);
               const pProbe = frontMatterProbe(pText);
-              if (isAcademicPreambleOrAuthor(pProbe, pNorm) ||
-                  (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley)\b/i.test(pText) && pText.length < 60) ||
+              // Only filter preamble/author duplicates if in the initial front-matter section
+              const isInitialSection = sectionIdx === 1 && /^(?:introduction|section|)$/i.test(currentSectionTitle.trim());
+              if (isInitialSection && isAcademicPreambleOrAuthor(pProbe, pNorm)) {
+                continue;
+              }
+              if ((/\b(?:mdpi|springer|elsevier|ieee|acm|wiley)\b/i.test(pText) && pText.length < 60) ||
                   (pNorm.length > 5 && normalizedTitle && (pNorm === normalizedTitle || normalizedTitle.includes(pNorm)))) {
                 continue;
               }
@@ -2379,24 +2430,7 @@ export class ModularLatexAssembler {
     let aiAlgoIdx = 0;
     let frontMatterDone = false; 
     const headerInputs = new Set<string>(); 
-    const FORCED_L1_ASSEMBLER = new Set([
-      'abstract', 'introduction', 'background', 'related work', 'related works', 'literature review', 'literature survey',
-      'methodology', 'methods', 'materials and methods', 'proposed method', 'proposed methodology', 'proposed approach',
-      'proposed system', 'system architecture', 'system model', 'system design', 'system overview', 'problem formulation',
-      'problem statement', 'experimental setup', 'experiments', 'experimental results', 'results', 'results and discussion',
-      'discussion', 'performance evaluation', 'evaluation', 'simulation results', 'comparative analysis', 'comparison',
-      'conclusion', 'conclusions', 'conclusions and future work', 'conclusions and future works', 'conclusion and future work',
-      'conclusion and future scope', 'conclusion and recommendations', 'summary and conclusion', 'concluding remarks',
-      'future work', 'future works', 'future scope', 'recommendations',
-      'acknowledgements', 'acknowledgments', 'references', 'bibliography', 'appendix',
-      'declarations', 'conflict of interest', 'conflicts of interest', 'competing interests',
-      'funding', 'funding statement', 'data availability', 'data availability statement',
-      'author contributions', 'authors contributions', 'ethical approval', 'ethics statement'
-    ]);
-    const isCanonicalSectionL1 = (h: string): boolean => {
-      if (FORCED_L1_ASSEMBLER.has(h)) return true;
-      return /^(?:conclusion|conclusions|concluding|future work|future scope|literature review|literature survey|related works?|system model|system architecture|materials and methods|results and discussion|performance evaluation|declarations|acknowledg|data availability)\b/i.test(h);
-    };
+    // (FORCED_L1_ASSEMBLER and isCanonicalSectionL1 are declared above before isAcademicPreambleOrAuthor)
 
     nodes.forEach((node: any, nodeIdx: number) => {
         const text = (node.text || "").trim();
@@ -2519,9 +2553,19 @@ export class ModularLatexAssembler {
             }
         }
         
-        // Propagate two-column flag to table/figure nodes so assembler can choose table* vs table, figure* vs figure
-        if (node.type === 'table' || node.type === 'figure-group' || node.type === 'algorithm') {
-            node.twoColumn = isIeee || isAcm;
+        // Auto-caption unnamed figures/images/charts with sequential numbering (BEFORE push)
+        if ((node.type === 'figure' || node.type === 'image') && !node.caption) {
+            figureCounter++;
+            node = { ...node, caption: `Figure ${figureCounter}` };
+        }
+        if (node.type === 'chart' && !node.caption) {
+            figureCounter++;
+            node = { ...node, caption: `Figure ${figureCounter}` };
+        }
+
+        // Propagate two-column flag to all structural nodes so assembler can choose table* vs table, figure* vs figure
+        if (isTwoColumn && (node.type === 'table' || node.type === 'figure' || node.type === 'image' || node.type === 'figure-group' || node.type === 'algorithm' || node.type === 'chart')) {
+            node = { ...node, twoColumn: true };
         }
 
         // AI component fragment override: validated structure-latex fragments
@@ -2544,16 +2588,10 @@ export class ModularLatexAssembler {
                 aiFigureIdx++;
                 frag = aiFragments.figures?.find((f: any) => f.index === aiFigureIdx)?.latex;
             }
-            if (frag) node._aiLatex = frag;
+            if (frag) node = { ...node, _aiLatex: frag };
         }
 
         currentSectionNodes.push(node);
-
-        // Auto-caption unnamed charts with sequential numbering
-        if (node.type === 'chart' && !node.caption) {
-            figureCounter++;
-            node = { ...node, caption: `Figure ${figureCounter}` };
-        }
 
         // Save individual components to dedicated folders (grouped for UI)
         if (node.type === 'table') {

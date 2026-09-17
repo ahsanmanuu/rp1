@@ -1,4 +1,33 @@
 import { JSDOM } from "jsdom";
+import sharp from "sharp";
+
+async function svgToPngBuffer(svgBuffer: Buffer): Promise<Buffer> {
+  try {
+    return await sharp(svgBuffer, { density: 150 }).png({ compressionLevel: 7 }).toBuffer();
+  } catch (err: any) {
+    console.warn("[CHART_PARSER] sharp failed to convert SVG to PNG, generating blank PNG fallback:", err?.message);
+    try {
+      return await sharp({
+        create: {
+          width: 800,
+          height: 500,
+          channels: 4,
+          background: { r: 250, g: 250, b: 250, alpha: 1 }
+        }
+      }).png().toBuffer();
+    } catch {
+      // 1x1 transparent PNG fallback if sharp create fails
+      return Buffer.from([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+        0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00,
+        0x0a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+        0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82
+      ]);
+    }
+  }
+}
 
 /**
  * Extracts data from OOXML chart files (word/charts/chartX.xml) and 
@@ -194,17 +223,19 @@ export async function generateChartImageFromXml(xml: string): Promise<Buffer | n
       console.warn("[CHART_PARSER] QuickChart API failed, falling back to SVG placeholder:", fetchErr.message);
     }
 
-    // Fallback: render extracted data as a visible SVG table
-    return generateFallbackSvg(title, labels, datasets);
+    // Fallback: render extracted data as a visible SVG table, then convert to genuine PNG
+    const fallbackSvg = generateFallbackSvg(title, labels, datasets);
+    return await svgToPngBuffer(fallbackSvg);
 
   } catch (err: any) {
     console.error("[CHART_PARSER] Failed to generate chart:", err.message);
-    // Return a minimal visible fallback SVG
-    return Buffer.from(
+    // Return a minimal visible fallback PNG
+    const minimalSvg = Buffer.from(
       `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200">` +
       `<rect width="400" height="200" fill="#f8f8f8" rx="8"/>` +
       `<text x="200" y="100" text-anchor="middle" font-size="16" fill="#666">Chart could not be extracted</text>` +
       `</svg>`
     );
+    return await svgToPngBuffer(minimalSvg);
   }
 }
