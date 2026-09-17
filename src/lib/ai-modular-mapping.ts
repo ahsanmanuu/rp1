@@ -148,7 +148,7 @@ function groupBodyBySections(body: any[]): Array<{ heading: any; nodes: any[] }>
     }
     if (node.type === 'paragraph') {
       const pText = (node.text || '').trim();
-      if (/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|mr\.|ms\.|mrs\.|md)\b/i.test(pText) ||
+      if ((/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|mr\.|ms\.|mrs\.|md)\b/i.test(pText) && pText.length < 100 && pText.split(/\s+/).length < 15) ||
           (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley)\b/i.test(pText) && pText.length < 60)) {
         continue;
       }
@@ -547,8 +547,8 @@ function composeMainTex(
         const l = line.trim();
         if (!l) return true;
         if (/^(?:mdpi|springer|elsevier|ieee|acm|wiley)\.?$/i.test(l)) return false;
-        if (/^(?:\\noindent\s*)?(?:deputy librarian|assistant professor|associate professor|visiting professor|lecturer|dean|principal)\b/i.test(l) && l.length < 150) return false;
-        if (/^(?:\\noindent\s*)?(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\s+[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,4}\.?$/i.test(l)) return false;
+        if (/^(?:\\noindent\s*)?(?:deputy librarian|assistant professor|associate professor|visiting professor|lecturer|dean|principal)\b/i.test(l) && l.length < 150 && !l.endsWith('.')) return false;
+        if (/^(?:\\noindent\s*)?(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\s+[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,4}\.?$/i.test(l) && l.length < 80 && !l.endsWith('.')) return false;
 
         // In the first section, also strip standalone author and affiliation lines that do not end with a sentence period
         if (sIdx === 0) {
@@ -635,9 +635,17 @@ function composeMainTex(
     for (const f of otherMetas) body.push(`\\input{${f.path}}`);
     body.push('\\maketitle');
   } else if (isIeee) {
+    // In IEEE (IEEEtran), two-column abstract & index terms must be declared in \IEEEtitleabstractindextext BEFORE \maketitle
+    if (abstractFile || keywordsFile) {
+      body.push('\\IEEEtitleabstractindextext{%');
+      if (abstractFile) body.push(`  \\input{${abstractFile.path}}`);
+      if (keywordsFile) body.push(`  \\input{${keywordsFile.path}}`);
+      body.push('}');
+    }
     body.push('\\maketitle');
-    if (abstractFile) body.push(`\\input{${abstractFile.path}}`);
-    if (keywordsFile) body.push(`\\input{${keywordsFile.path}}`);
+    if (abstractFile || keywordsFile) {
+      body.push('\\IEEEdisplaynontitleabstractindextext');
+    }
     for (const f of otherMetas) body.push(`\\input{${f.path}}`);
   } else {
     // Standard article & LNCS
@@ -660,7 +668,9 @@ function composeMainTex(
   if (bib) {
     body.push(`\\input{references/bibliography.tex}`);
   } else if (bibFile) {
-    body.push(`\\bibliographystyle{plain}`);
+    const bstMatch = templateMainTex?.match(/\\bibliographystyle\{([^}]+)\}/);
+    const bstStyle = bstMatch ? bstMatch[1] : (isIeee ? 'IEEEtran' : isAcm ? 'ACM-Reference-Format' : 'plain');
+    body.push(`\\bibliographystyle{${bstStyle}}`);
     body.push(`\\bibliography{references/references}`);
   }
   body.push('\\end{document}');

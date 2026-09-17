@@ -148,6 +148,15 @@ export async function POST(req: Request) {
         if (name) validCurrentFigureNames.add(String(name).replace(/[^a-zA-Z0-9._-]/g, '_'));
       }
     }
+    if (Array.isArray(structured.body)) {
+      for (const node of structured.body) {
+        if ((node.type === 'figure' || node.type === 'image' || node.type === 'chart') && (node.id || node.name)) {
+          const rawId = String(node.id || node.name).replace(/^assets\//, '').replace(/^figures\//, '');
+          const safeName = path.basename(rawId).replace(/[^a-zA-Z0-9._-]/g, '_');
+          if (safeName) validCurrentFigureNames.add(safeName);
+        }
+      }
+    }
 
     // ── FALLBACK EXTRACTION FROM source.docx ──
     const sourceDocxPath = path.join(projectDir, 'source.docx');
@@ -211,6 +220,8 @@ export async function POST(req: Request) {
         if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
         const figuresSubDir = path.join(projectDir, 'figures');
         if (!fs.existsSync(figuresSubDir)) fs.mkdirSync(figuresSubDir, { recursive: true });
+        const assetsSubDir = path.join(projectDir, 'assets');
+        if (!fs.existsSync(assetsSubDir)) fs.mkdirSync(assetsSubDir, { recursive: true });
 
         for (const imgRec of dbImages) {
           const baseName = path.basename(imgRec.filename);
@@ -220,6 +231,7 @@ export async function POST(req: Request) {
 
           const rootPath = path.join(projectDir, baseName);
           const figPath = path.join(figuresSubDir, baseName);
+          const assetPath = path.join(assetsSubDir, baseName);
 
           if (!fs.existsSync(rootPath) || !fs.existsSync(figPath)) {
             let buf: Buffer | null = null;
@@ -235,6 +247,7 @@ export async function POST(req: Request) {
             if (buf && buf.length > 50) {
               if (!fs.existsSync(rootPath)) fs.writeFileSync(rootPath, buf);
               if (!fs.existsSync(figPath)) fs.writeFileSync(figPath, buf);
+              if (!fs.existsSync(assetPath)) fs.writeFileSync(assetPath, buf);
             }
           }
         }
@@ -255,7 +268,14 @@ export async function POST(req: Request) {
             const ext = path.extname(file).toLowerCase();
             const isImg = /\.(png|jpg|jpeg|gif|webp|pdf|svg|eps|tiff?|bmp)$/i.test(ext);
             if (isImg) {
-              if (validCurrentFigureNames.has(file) || /^rf_fig_\d+/i.test(file) || /^image\d+/i.test(file)) {
+              if (
+                validCurrentFigureNames.has(file) ||
+                /^rf_fig_\d+/i.test(file) ||
+                /^rf_chart_\d+/i.test(file) ||
+                /^chart_pending_/i.test(file) ||
+                /^chart\d+/i.test(file) ||
+                /^image\d+/i.test(file)
+              ) {
                 continue;
               }
               console.log(`[GENERATE-LATEX] Pruning stale image from disk: ${file}`);
@@ -274,7 +294,13 @@ export async function POST(req: Request) {
         const staleIds = dbImages
           .filter((row: { id: string; filename: string }) => {
             const base = path.basename(row.filename);
-            return !validCurrentFigureNames.has(base) && !validCurrentFigureNames.has(row.filename) && !/^rf_fig_\d+/i.test(base) && !/^image\d+/i.test(base);
+            return !validCurrentFigureNames.has(base) &&
+              !validCurrentFigureNames.has(row.filename) &&
+              !/^rf_fig_\d+/i.test(base) &&
+              !/^rf_chart_\d+/i.test(base) &&
+              !/^chart_pending_/i.test(base) &&
+              !/^chart\d+/i.test(base) &&
+              !/^image\d+/i.test(base);
           })
           .map((r: { id: string; filename: string }) => r.id);
         if (staleIds.length > 0) {

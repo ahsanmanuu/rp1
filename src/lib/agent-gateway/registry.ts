@@ -1250,7 +1250,7 @@ register({
         return {
           style: 'IEEE two-column',
           title: '\\title{<exact title>}',
-          authors: '\\author{<Author Name>\\thanks{<affiliation>} \\and <Author2>\\thanks{<affiliation2>}}',
+          authors: '\\author{\\IEEEauthorblockN{<Author1>}\\IEEEauthorblockA{<Affiliation1>\\\\email: <email1>} \\and \\IEEEauthorblockN{<Author2>}\\IEEEauthorblockA{<Affiliation2>\\\\email: <email2>}}',
           abstract: '\\begin{abstract}\\end{abstract}',
           keywords: '\\begin{IEEEkeywords}\\end{IEEEkeywords}',
           floatPlacement: 'table*/figure* for wide content, [!ht] otherwise',
@@ -1258,7 +1258,7 @@ register({
       }
       if (templateId.includes('acm')) {
         return {
-          style: 'ACM single-column (\acmConference placeholder)',
+          style: 'ACM single-column (\\acmConference placeholder)',
           title: '\\title{<exact title>}',
           authors: '\\author{<Name>}\\affiliation{<institution>}\\email{<email if present>}',
           abstract: '\\begin{abstract}\\end{abstract}',
@@ -1379,6 +1379,7 @@ ${commonInputs()}
    - tables: "floats/tables/N.tex"
    - algorithms: "floats/algorithms/N.tex"
 2. figures/charts: ONLY generate float files for figures with VERIFIED captions in input B. Use: \\begin{figure}[${templateConventions.floatPlacement === 'table*/figure* for wide content, [!ht] otherwise' ? '!ht' : templateConventions.floatPlacement}]\\centering\\includegraphics[width=0.9\\linewidth]{<EXACT image filename from input C, in order>}\\caption{<VERBATIM caption from input B>}\\label{fig:N}\\end{figure}
+   In two-column layouts (IEEE, ACM sigconf), for wide figures, multi-panel charts, or wide tables (>= 4 columns), use \\begin{figure*} / \\begin{table*} to span both columns without overflow or clipping.
    Never create floats for uncaptioned decorative images, logos, or banners.
 3. tables: reconstruct the rows/columns ACCURATELY from input A's evidence. Use tabularx (column spec chosen to fit the table, \\hline between rows, \\multicolumn for merged cells, wrap in \\adjustbox{max width=\\linewidth} when the table is wide). Preserve ALL data rows — never truncate. Caption VERBATIM from input B; \\label{tab:N}.
 4. algorithms: use \\begin{algorithm}[${templateConventions.floatPlacement === '[!ht]' ? '!ht' : 'htbp'}]\\caption{<VERBATIM title from input B>}\\begin{algorithmic}[1]\\State ...\\For{...}...\\EndFor\\Return ...\\end{algorithmic}\\end{algorithm}. Reconstruct the pseudocode steps faithfully from input A — keep every step, never truncate.

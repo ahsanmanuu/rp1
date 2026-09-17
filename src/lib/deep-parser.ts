@@ -141,13 +141,13 @@ function isFrontMatterNoise(text: string): boolean {
     }
   }
 
-  if (DESIGNATION_RE.test(probe) || EMAIL_PREFIX_RE.test(probe)) return true;
-  if (/\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy|campus)\b/i.test(probe)) return true;
-  if (/\b(?:librarian|professor|scholar|fellow|lecturer|assistant|associate|researcher)\b/i.test(probe) && probe.length < 80) return true;
+  if ((DESIGNATION_RE.test(probe) || EMAIL_PREFIX_RE.test(probe)) && probe.length < 80 && probe.split(/\s+/).length < 10) return true;
+  if (/\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy|campus)\b/i.test(probe) && probe.length < 140 && probe.split(/\s+/).length < 25) return true;
+  if (/\b(?:librarian|professor|scholar|fellow|lecturer|assistant|associate|researcher)\b/i.test(probe) && probe.length < 80 && probe.split(/\s+/).length < 15) return true;
   // Publisher names / repository headers that appear as standalone noise
   if (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley|plos|biorxiv|medrxiv|arxiv|nature\s+publishing\s+group|frontiers\s+in)\b/i.test(probe) && probe.length < 60) return true;
   // Figure/Table/Algorithm caption lines are captions, never sections.
-  if (/^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*\d/i.test(probe) && probe.length < 120) return true;
+  if (/^(?:figure|fig\.?|table|tab\.?|algorithm|alg\.?|chart|image|photo|diagram|graph)\s*(?:[\dIVXLCDM]+|\([a-zA-Z0-9]+\)|[:.\-–—])/i.test(probe) && probe.length < 120) return true;
   return false;
 }
 
@@ -983,7 +983,7 @@ export class DeepDocumentParser {
       }
       else if (el.querySelector('img')) {
           const cleanText = f.text.replace(/CHARTIMGX\w+XEND/g, '').trim();
-          const looksLikeCaption = /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\s*[\d.]+[:.\s]/i.test(cleanText);
+          const looksLikeCaption = /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram|Graph)\s*(?:(?:\(|\b)(?:[\dIVXLCDM]+(?:\.[\dIVXLCDM]+)*|[a-zA-Z])(?:\)|\b))?[:.\-–—\s]/i.test(cleanText);
           const isShort = f.wordCount < 12 && cleanText.length < 100;
           const hasProseStart = /^(?:The |We |This |Our |An? |In |As |However |Therefore |Thus |Hence |While |When |For |These |Those |Such |It |They |Figure \d+ shows|Fig\. \d+ shows|Table \d+ (?:shows|lists|presents))/i.test(cleanText);
           if (looksLikeCaption || isShort) {
@@ -996,7 +996,7 @@ export class DeepDocumentParser {
       }
       else if (
           tagName === 'p' &&
-          /^(?:Fig(?:ure)?|Chart|Diagram|Photo|Image|Table|Tab\b\.?|Algorithm|Alg\.?)\.?\s*[\dIVX\.\-A-Za-z]*\s*[:.\-–—]\s*\S/i.test(f.text.trim()) &&
+          /^(?:Fig(?:ure)?|Chart|Diagram|Photo|Image|Table|Tab\b\.?|Algorithm|Alg\.?|Graph)\.?\s*(?:(?:\(|\b)(?:[\dIVXLCDM]+(?:\.[\dIVXLCDM]+)*|[a-zA-Z])(?:\)|\b))?[:.\-–—\s]\s*\S/i.test(f.text.trim()) &&
           !DeepDocumentParser.isFigureCaptionProse(f.text.trim()) &&
           !DeepDocumentParser.isTableCaptionProse(f.text.trim()) &&
           f.wordCount < 60
@@ -1007,12 +1007,12 @@ export class DeepDocumentParser {
           nextRole = 'algorithm';
       }
       else if (!f.text.includes('\t') && !f.text.includes('|') &&
-        !(/^\s*(?:Fig(?:ure)?|Chart|Diagram|Photo|Image|Table|Tab\b\.?|Algorithm|Alg\.?)\.?\s*[\dIVX\.\-A-Za-z]*\s*[:.\-–—]/i.test(f.text.trim()) && !DeepDocumentParser.isFigureCaptionProse(f.text.trim()) && !DeepDocumentParser.isTableCaptionProse(f.text.trim())) &&
+        !(/^\s*(?:Fig(?:ure)?|Chart|Diagram|Photo|Image|Table|Tab\b\.?|Algorithm|Alg\.?|Graph)\.?\s*(?:(?:\(|\b)(?:[\dIVXLCDM]+(?:\.[\dIVXLCDM]+)*|[a-zA-Z])(?:\)|\b))?[:.\-–—\s]/i.test(f.text.trim()) && !DeepDocumentParser.isFigureCaptionProse(f.text.trim()) && !DeepDocumentParser.isTableCaptionProse(f.text.trim())) &&
         (tagName.startsWith('h') || this.detectHeading(el, f.text, manifest) !== null || (tagName === 'p' && f.wordCount <= 12 && f.wordCount >= 1 && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 && !f.text.endsWith('.') && f.text.length < 120 && f.text.length > 2))) {
           const detectedLvl = this.detectHeading(el, f.text, manifest);
           const isNumberedHeading = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(f.text);
           const isStandardSectionName = /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:introduction|related\s+work|related\s+works|literature\s+review|literature\s+survey|review\s+of\s+literature|survey\s+of\s+literature|background|methodology|methods|materials\s+and\s+methods|conclusion|conclusions|abstract|acknowledgments|acknowledgements|references|bibliography|overview|implementation|proposed|experimental|experiments|results|discussion|system)/i.test(f.text);
-          const isCaptionText = /^\s*(?:Fig(?:ure)?|Chart|Diagram|Photo|Image|Table|Tab\b\.?|Algorithm|Alg\.?)\.?\s*[\dIVX\.\-A-Za-z]*\s*[:.\-–—]/i.test(f.text.trim()) &&
+          const isCaptionText = /^\s*(?:Fig(?:ure)?|Chart|Diagram|Photo|Image|Table|Tab\b\.?|Algorithm|Alg\.?|Graph)\.?\s*(?:(?:\(|\b)(?:[\dIVXLCDM]+(?:\.[\dIVXLCDM]+)*|[a-zA-Z])(?:\)|\b))?[:.\-–—\s]/i.test(f.text.trim()) &&
             !DeepDocumentParser.isFigureCaptionProse(f.text.trim()) &&
             !DeepDocumentParser.isTableCaptionProse(f.text.trim());
           const isAuthorAffilText = !isStandardSectionName && (
@@ -1525,7 +1525,11 @@ export class DeepDocumentParser {
                       const cname = cleanText.toLowerCase().replace(/[^a-z]/g, '');
                       return aname.length > 4 && (cname === aname || (cname.includes(aname) && cname.length < aname.length + 5));
                     });
-                    if (isAuthorNameMatch || isFrontMatterNoise(cleanText) || /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(cleanText)) {
+                    const isCanonicalSec = CANONICAL_SECTION_WHITELIST.some(c => {
+                      const low = cleanText.toLowerCase();
+                      return low === c || low.includes(c) || low.startsWith(c + ' ');
+                    });
+                    if (!isCanonicalSec && (isAuthorNameMatch || isFrontMatterNoise(cleanText) || (/^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(cleanText) && cleanText.length < 80))) {
                       if (hasSeenFirstSectionOrAbstract && cleanText.length > 100) {
                         result.body.push({ type: 'paragraph', text: withCitations });
                       } else {
@@ -1562,8 +1566,8 @@ export class DeepDocumentParser {
                     }
                   }
               } else {
-                  const isNoise = (!hasSeenFirstSectionOrAbstract || i < 25) &&
-                    (isFrontMatterNoise(text) || /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(text.trim()) ||
+                  const isNoise = !hasSeenFirstSectionOrAbstract &&
+                    (isFrontMatterNoise(text) || (/^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(text.trim()) && text.trim().length < 80) ||
                      (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley)\b/i.test(text.trim()) && text.trim().length < 60));
                   if (isNoise) {
                     result.body.push({ type: 'paragraph', text: withCitations, componentRole: 'frontmatter' });
@@ -1626,11 +1630,19 @@ export class DeepDocumentParser {
               }
 
               // Scan preceding and succeeding siblings or previous body node for table caption
+              const isTableCapText = (text: string) =>
+                /^\s*(?:Table|Tab\b\.?)\s*(?:(?:\(|\b)(?:[\dIVXLCDM]+(?:\.[\dIVXLCDM]+)*|[a-zA-Z])(?:\)|\b))?(?:\s*[:.\-–—\s]|\s*$)\s*\S/i.test(text) &&
+                !this.isTableCaptionProse(text);
+
+              const tableBlock = (tableEl.parentElement && ['div', 'p', 'section'].includes(tableEl.parentElement.tagName.toLowerCase()))
+                ? tableEl.parentElement
+                : tableEl;
+
               if (!tableCaption) {
-                let prevSib = tableEl.previousElementSibling;
-                for (let h = 0; h < 5 && prevSib; h++, prevSib = prevSib.previousElementSibling) {
+                let prevSib = tableEl.previousElementSibling || tableBlock.previousElementSibling;
+                for (let h = 0; h < 6 && prevSib; h++, prevSib = prevSib.previousElementSibling) {
                   const pText = (prevSib.textContent || '').trim();
-                  if (/^\s*(?:Table|Tab\b\.?)\s*[\dIVX\.\-A-Za-z]+[:.\-–—\s]/i.test(pText) && !this.isTableCaptionProse(pText)) {
+                  if (isTableCapText(pText)) {
                     tableCaption = pText;
                     consumedCaptions.add(prevSib);
                     break;
@@ -1640,17 +1652,17 @@ export class DeepDocumentParser {
 
               if (!tableCaption && result.body.length > 0) {
                 const lastNode = result.body[result.body.length - 1];
-                if (lastNode && lastNode.type === 'paragraph' && /^\s*(?:Table|Tab\b\.?)\s*[\dIVX\.\-A-Za-z]+[:.\-–—\s]/i.test(lastNode.text || '') && !this.isTableCaptionProse(lastNode.text || '')) {
+                if (lastNode && lastNode.type === 'paragraph' && isTableCapText(lastNode.text || '')) {
                   tableCaption = (lastNode.text || '').trim();
                   result.body.pop();
                 }
               }
 
               if (!tableCaption) {
-                let nextSib = tableEl.nextElementSibling;
-                for (let h = 0; h < 5 && nextSib; h++, nextSib = nextSib.nextElementSibling) {
+                let nextSib = tableEl.nextElementSibling || tableBlock.nextElementSibling;
+                for (let h = 0; h < 6 && nextSib; h++, nextSib = nextSib.nextElementSibling) {
                   const nText = (nextSib.textContent || '').trim();
-                  if (/^\s*(?:Table|Tab\b\.?)\s*[\dIVX\.\-A-Za-z]+[:.\-–—\s]/i.test(nText) && !this.isTableCaptionProse(nText)) {
+                  if (isTableCapText(nText)) {
                     tableCaption = nText;
                     consumedCaptions.add(nextSib);
                     break;
@@ -1798,14 +1810,22 @@ export class DeepDocumentParser {
                   let figCaption = entry.caption;
                   const rawAlt = (img.getAttribute('alt') || img.getAttribute('title') || '').trim();
                   const isAltDeco = !rawAlt || /logo|icon|header|banner|footer|decoration|watermark|bullet|spacer|signature|qrcode|license|badge|cc[-_]by|creative\s*commons/i.test(rawAlt) || this.isGenericAltText(rawAlt);
-                  if (!figCaption && !isAltDeco && /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\b/i.test(rawAlt)) {
+                  const isFigCapText = (text: string) =>
+                    /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram|Graph)\.?\s*(?:(?:\(|\b)(?:[\dIVXLCDM]+(?:\.[\dIVXLCDM]+)*|[a-zA-Z])(?:\)|\b))?(?:\s*[:.\-–—\s]|\s*$)\s*\S/i.test(text) &&
+                    !this.isFigureCaptionProse(text);
+
+                  const imgBlock = (el0.parentElement && ['p', 'div', 'span', 'figure'].includes(el0.parentElement.tagName.toLowerCase()))
+                    ? el0.parentElement
+                    : el0;
+
+                  if (!figCaption && !isAltDeco && isFigCapText(rawAlt)) {
                       figCaption = rawAlt;
                   }
                   if (!figCaption) {
-                      let sib = el0.nextElementSibling;
-                      for (let h = 0; h < 5 && sib; h++, sib = sib.nextElementSibling) {
+                      let sib = el0.nextElementSibling || imgBlock.nextElementSibling;
+                      for (let h = 0; h < 6 && sib; h++, sib = sib.nextElementSibling) {
                           const t = sib.textContent?.trim() || '';
-                          if (/^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\.?\s*[\d.]+/i.test(t) && !this.isFigureCaptionProse(t)) {
+                          if (isFigCapText(t)) {
                               figCaption = t;
                               consumedCaptions.add(sib);
                               break;
@@ -1813,10 +1833,10 @@ export class DeepDocumentParser {
                       }
                   }
                   if (!figCaption) {
-                      let sib = el0.previousElementSibling;
-                      for (let h = 0; h < 5 && sib; h++, sib = sib.previousElementSibling) {
+                      let sib = el0.previousElementSibling || imgBlock.previousElementSibling;
+                      for (let h = 0; h < 6 && sib; h++, sib = sib.previousElementSibling) {
                           const t = sib.textContent?.trim() || '';
-                          if (/^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\.?\s*[\d.]+/i.test(t) && !this.isFigureCaptionProse(t)) {
+                          if (isFigCapText(t)) {
                               figCaption = t;
                               consumedCaptions.add(sib);
                               break;
@@ -1825,7 +1845,7 @@ export class DeepDocumentParser {
                   }
                   if (!figCaption && result.body.length > 0) {
                       const lastNode = result.body[result.body.length - 1];
-                      if (lastNode && lastNode.type === 'paragraph' && /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\.?\s*[\d.]+/i.test(lastNode.text || '') && !this.isFigureCaptionProse(lastNode.text || '')) {
+                      if (lastNode && lastNode.type === 'paragraph' && isFigCapText(lastNode.text || '')) {
                           figCaption = (lastNode.text || '').trim();
                           result.body.pop();
                       }
@@ -2265,14 +2285,14 @@ export class DeepDocumentParser {
 
     const rx =
       type === 'figure'
-        ? /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo)\s*(\d+(?:\.\d+)*|[IVXLCDM]+)(?:\s*[.:.–\-])?/i
-        : /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Table|Tab\b\.?)\s*(\d+(?:\.\d+)*|[IVXLCDM]+)(?:\s*[.:.–\-])?/i;
+        ? /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo|Graph)\s*(?:(?:\(|\b)(?:[\dIVXLCDM]+(?:\.[\dIVXLCDM]+)*|[a-zA-Z])(?:\)|\b))?(?:\s*[:.\-–—\s])?/i
+        : /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Table|Tab\b\.?)\s*(?:(?:\(|\b)(?:[\dIVXLCDM]+(?:\.[\dIVXLCDM]+)*|[a-zA-Z])(?:\)|\b))?(?:\s*[:.\-–—\s])?/i;
 
     const captionOrdinal = (t: string): number | null => {
       const m = t.match(
         type === 'figure'
-          ? /(?:Figure|Fig\.?|Image|Chart|Diagram|Photo)\s*(\d+(?:\.\d+)*|[IVXLCDM]+)/i
-          : /(?:Table|Tab\.?)\s*(\d+(?:\.\d+)*|[IVXLCDM]+)/i
+          ? /(?:Figure|Fig\.?|Image|Chart|Diagram|Photo|Graph)\s*(?:(?:\(|\b)(\d+(?:\.\d+)*|[IVXLCDM]+)(?:\)|\b))/i
+          : /(?:Table|Tab\.?)\s*(?:(?:\(|\b)(\d+(?:\.\d+)*|[IVXLCDM]+)(?:\)|\b))/i
       );
       if (!m) return null;
       const s = m[1];
@@ -2300,7 +2320,7 @@ export class DeepDocumentParser {
     };
 
     // Scan next and previous siblings up to 35 hops (mammoth can inject several empty paragraphs between img and caption)
-    const blockEl = (el.tagName.toLowerCase() === 'img' && el.parentElement && ['p', 'div', 'span', 'figure'].includes(el.parentElement.tagName.toLowerCase()))
+    const blockEl = ((el.tagName.toLowerCase() === 'img' || el.tagName.toLowerCase() === 'table') && el.parentElement && ['p', 'div', 'span', 'figure'].includes(el.parentElement.tagName.toLowerCase()))
       ? el.parentElement
       : el;
 
