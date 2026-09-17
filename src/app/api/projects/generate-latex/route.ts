@@ -678,13 +678,27 @@ export async function POST(req: Request) {
         }
       }
 
-      const figBins = (modelBodyFigIds.length > 0 ? modelBodyFigIds : binaryNames)
+      const chartBinariesOnDisk = binaryNames
+        .filter(n => /^(?:rf_chart_|chart_)/i.test(n) && /\.(png|jpe?g|webp|gif|svg|eps|pdf)$/i.test(n))
+        .sort((a, b) => numIn(a) - numIn(b));
+
+      const chartBins = chartBinariesOnDisk.length > 0
+        ? chartBinariesOnDisk
+        : (modelBodyChartIds.length > 0 ? modelBodyChartIds : binaryNames)
+            .filter(n => /^(rf_chart_|chart_pending_)/i.test(n) || /chart/i.test(n))
+            .sort((a, b) => numIn(a) - numIn(b));
+
+      const figBinariesOnDisk = binaryNames
         .filter(n => !/logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer/i.test(n))
-        .filter(n => /^rf_fig_\d+\./i.test(n) || /\.(png|jpe?g|webp|gif|svg|eps)$/i.test(n))
+        .filter(n => /^rf_fig_\d+\./i.test(n) || /\.(png|jpe?g|webp|gif|svg|eps|pdf)$/i.test(n))
         .sort((a, b) => numIn(a) - numIn(b));
-      const chartBins = (modelBodyChartIds.length > 0 ? modelBodyChartIds : binaryNames)
-        .filter(n => /^(rf_chart_|chart_pending_)/i.test(n) || /chart/i.test(n))
-        .sort((a, b) => numIn(a) - numIn(b));
+
+      const figBins = figBinariesOnDisk.length > 0
+        ? figBinariesOnDisk
+        : (modelBodyFigIds.length > 0 ? modelBodyFigIds : binaryNames)
+            .filter(n => !/logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer/i.test(n))
+            .filter(n => /^rf_fig_\d+\./i.test(n) || /\.(png|jpe?g|webp|gif|svg|eps)$/i.test(n))
+            .sort((a, b) => numIn(a) - numIn(b));
 
       if (figBins.length > 0 || chartBins.length > 0 || binaryNames.length > 0) {
         // 1-to-1 Mapping to prevent counter drift across multiple files
@@ -711,14 +725,22 @@ export async function POST(req: Request) {
           if (refToTargetMap.has(baseName)) return refToTargetMap.get(baseName)!;
 
           const isChart = isChartRef(r);
-          const pool = (isChart && chartBins.length > 0) ? chartBins : (figBins.length > 0 ? figBins : binaryNames);
+          if (isChart && chartBins.length > 0) {
+            const chartNum = numIn(r);
+            const target = (chartNum > 0 && chartNum <= chartBins.length)
+              ? chartBins[chartNum - 1]
+              : chartBins[ci++ % chartBins.length];
+            refToTargetMap.set(r, target);
+            refToTargetMap.set(baseName, target);
+            return target;
+          }
+
+          const pool = figBins.length > 0 ? figBins : binaryNames;
           if (pool.length === 0) return null;
 
-          const idx = isChart && chartBins.length > 0 ? ci : fi;
-          const target = pool[idx % pool.length];
+          const target = pool[fi++ % pool.length];
           if (!target) return null;
 
-          if (isChart && chartBins.length > 0) ci++; else fi++;
           refToTargetMap.set(r, target);
           refToTargetMap.set(baseName, target);
           return target;

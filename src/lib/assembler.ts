@@ -1058,7 +1058,7 @@ export class LatexAssembler {
 
         // 3. CAPTION-ONLY PARAGRAPH: Tables and figures carry their own native \caption{}.
         // Suppress standalone caption lines to avoid duplicate rendered captions in the PDF.
-        if (/^(?:Table|Figure|Fig\.|Algorithm)\s+\d+[:.\s-]/i.test(text) && text.length < 140 && !text.includes('\n')) {
+        if (/^(?:Table|Figure|Fig\.?|Algorithm|Chart|Image|Diagram|Graph)(?:\s+(?:[\d]+(?:\.\d+)*|[IVXLCDM]+))?\s*[:.;\-–—]/i.test(text) && text.length < 200 && !text.includes('\n')) {
              return "";
         }
 
@@ -1101,7 +1101,7 @@ export class LatexAssembler {
         const fileId = rawId.replace(/^assets\//, '') || "image";
         const twoCol = (node as any).twoColumn === true;
         const figEnv = twoCol ? 'figure*' : 'figure';
-        const placement = twoCol ? '[htbp]' : '[H]';
+        const placement = twoCol ? '[!htbp]' : '[H]';
         return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${fileId}}\n\\end{${figEnv}}\n\\FloatBarrier\n`;
       }
       case 'figure': {
@@ -1115,7 +1115,7 @@ export class LatexAssembler {
         const label = `fig:${String(labelIdx).replace(/[^a-z0-9]/gi, '_')}`;
         const twoCol = (node as any).twoColumn === true;
         const figEnv = twoCol ? 'figure*' : 'figure';
-        const placement = twoCol ? '[htbp]' : '[H]';
+        const placement = twoCol ? '[!htbp]' : '[H]';
         return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${fileId}}\n\\caption{${caption}}\n\\label{${label}}\n\\end{${figEnv}}\n\\FloatBarrier\n`;
       }
       case 'chart': {
@@ -1129,7 +1129,7 @@ export class LatexAssembler {
         const label = `chart:${String(labelIdx).replace(/[^a-z0-9]/gi, '_')}`;
         const twoCol = (node as any).twoColumn === true;
         const figEnv = twoCol ? 'figure*' : 'figure';
-        const placement = twoCol ? '[htbp]' : '[H]';
+        const placement = twoCol ? '[!htbp]' : '[H]';
         return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${fileId}}\n\\caption{${caption}}\n\\label{${label}}\n\\end{${figEnv}}\n\\FloatBarrier\n`;
       }
       case 'figure-group':
@@ -1347,17 +1347,18 @@ export class LatexAssembler {
     const isTwoColMode = (node as any).twoColumn === true;
     const twoColWide = isTwoColMode && (totalGridCols > 2 || colMaxLen.some(l => l > 30));
     const tableEnv = twoColWide ? 'table*' : 'table';
-    const tablePlacement = twoColWide ? '[htbp]' : (isTwoColMode ? '[htbp]' : '[H]');
+    const tablePlacement = twoColWide ? '[!htbp]' : (isTwoColMode ? '[!htbp]' : '[H]');
     const tabularEnv = 'tabularx';
-    const widthParam = twoColWide ? '{\\textwidth}' : '{\\linewidth}';
+    const targetWidth = twoColWide ? '\\textwidth' : '\\linewidth';
+    const widthParam = `{${targetWidth}}`;
     const activeSpec = fullSpec;
 
     // In two-column mode, reduce padding and font size for tables with multiple columns to prevent margin overflow
-    const colSepCmd = (isTwoColMode && totalGridCols >= 4) ? '\\setlength{\\tabcolsep}{3pt}\n' : (totalGridCols >= 6 ? '\\setlength{\\tabcolsep}{4pt}\n' : '');
-    const fontSizeCmd = (isTwoColMode && totalGridCols >= 5) ? '{\\footnotesize\n' : ((isTwoColMode && totalGridCols >= 4) ? '{\\small\n' : (totalGridCols >= 7 ? '{\\small\n' : ''));
+    const colSepCmd = (isTwoColMode && totalGridCols >= 3) ? '\\setlength{\\tabcolsep}{3pt}\n' : (totalGridCols >= 5 ? '\\setlength{\\tabcolsep}{4pt}\n' : '');
+    const fontSizeCmd = (isTwoColMode && totalGridCols >= 4) ? '{\\footnotesize\n' : ((isTwoColMode && totalGridCols >= 3) ? '{\\small\n' : (totalGridCols >= 6 ? '{\\small\n' : ''));
     const fontSizeEnd = fontSizeCmd ? '\n}' : '';
 
-    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n\\caption{${caption}}\n\\label{${labelKey}}\n${colSepCmd}${fontSizeCmd}\\renewcommand{\\arraystretch}{1.2}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}${fontSizeEnd}\n\\end{${tableEnv}}\n\\FloatBarrier\n`;
+    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n\\caption{${caption}}\n\\label{${labelKey}}\n${colSepCmd}${fontSizeCmd}\\renewcommand{\\arraystretch}{1.2}\n\\adjustbox{max width=${targetWidth}}{\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}\n}${fontSizeEnd}\n\\end{${tableEnv}}\n\\FloatBarrier\n`;
   }
 
 
@@ -2360,9 +2361,13 @@ export class ModularLatexAssembler {
               const pText = (n.text || '').trim();
               const pNorm = normalize(pText);
               const pProbe = frontMatterProbe(pText);
-              // Only filter preamble/author duplicates if in the initial front-matter section
-              const isInitialSection = sectionIdx === 1 && /^(?:introduction|section|)$/i.test(currentSectionTitle.trim());
-              if (isInitialSection && isAcademicPreambleOrAuthor(pProbe, pNorm)) {
+              // Filter preamble/author/affiliation duplicates in initial sections or anywhere it strongly matches author/affiliation/designation
+              const isInitialSection = sectionIdx <= 2 || (dedupedNodes.length === 0);
+              if (isAcademicPreambleOrAuthor(pProbe, pNorm) && (isInitialSection || matchesAnyAuthor(pNorm) || isDesignationLine(pProbe) || /^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/i.test(pText))) {
+                continue;
+              }
+              // Filter standalone caption paragraphs that might have leaked as text nodes
+              if (/^(?:Table|Figure|Fig\.?|Algorithm|Chart|Image|Diagram|Graph)(?:\s+(?:[\d]+(?:\.\d+)*|[IVXLCDM]+))?\s*[:.;\-–—]/i.test(pText) && pText.length < 200 && !pText.includes('\n')) {
                 continue;
               }
               if ((/\b(?:mdpi|springer|elsevier|ieee|acm|wiley)\b/i.test(pText) && pText.length < 60) ||

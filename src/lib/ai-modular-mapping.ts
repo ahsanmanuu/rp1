@@ -549,14 +549,14 @@ function composeMainTex(
         if (/^(?:mdpi|springer|elsevier|ieee|acm|wiley)\.?$/i.test(l)) return false;
         if (/^(?:\\noindent\s*)?(?:deputy librarian|assistant professor|associate professor|visiting professor|lecturer|dean|principal)\b/i.test(l) && l.length < 150 && !l.endsWith('.')) return false;
         if (/^(?:\\noindent\s*)?(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\s+[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,4}\.?$/i.test(l) && l.length < 80 && !l.endsWith('.')) return false;
+        if (/^(?:\\noindent\s*)?(?:email|e-mail|orcid|corresponding author)\b/i.test(l) && l.length < 120) return false;
 
-        // In the first section, also strip standalone author and affiliation lines that do not end with a sentence period
-        if (sIdx === 0) {
-          const cleanLine = l.replace(/^\\noindent\s*/, '').replace(/[.,;:]*$/, '').toLowerCase().trim();
-          if (cleanLine.length > 3 && cleanLine.length < 120 && !l.endsWith('.')) {
-            if (authorNames.some((a: string) => a.length > 3 && (cleanLine === a || cleanLine.includes(a)))) return false;
-            if (affiliations.some((aff: string) => aff.length > 5 && (cleanLine === aff || aff.includes(cleanLine) || cleanLine.includes(aff)))) return false;
-          }
+        // Strip standalone author and affiliation lines that do not end with a sentence period
+        const cleanLine = l.replace(/^\\noindent\s*/, '').replace(/[.,;:]*$/, '').toLowerCase().trim();
+        if (cleanLine.length > 3 && cleanLine.length < 150 && !l.endsWith('.')) {
+          if (authorNames.some((a: string) => a.length > 3 && (cleanLine === a || cleanLine.includes(a)))) return false;
+          if (affiliations.some((aff: string) => aff.length > 5 && (cleanLine === aff || aff.includes(cleanLine) || cleanLine.includes(aff)))) return false;
+          if (/^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/i.test(cleanLine)) return false;
         }
         return true;
       })
@@ -582,6 +582,8 @@ function composeMainTex(
   if (preamble.length === 0) preamble = defaultPreamble(templateId);
   const preText = preamble.join('\n');
   if (!preText.includes('\\graphicspath')) preamble.push(...GRAPHICS_PATH_LINES);
+  if (!preText.includes('placeins')) preamble.push('\\usepackage{placeins}');
+  if (!preText.includes('adjustbox')) preamble.push('\\usepackage{adjustbox}');
   if (!preText.includes('subfigure')) {
     preamble.push(
       "\\catcode`\\@=11",
@@ -656,12 +658,34 @@ function composeMainTex(
   }
 
   // Sections in sorted numerical order (01_slug.tex, 02_slug.tex, ...)
-  for (const f of sections) body.push(`\\input{${f.path}}`);
+  // Add \FloatBarrier between sections to flush pending floats and prevent drifting across sections
+  for (let i = 0; i < sections.length; i++) {
+    body.push(`\\input{${sections[i].path}}`);
+    if (i < sections.length - 1) {
+      body.push('\\FloatBarrier');
+    }
+  }
+
+  // Build set of all float paths already referenced inside any section file content or body
+  const referencedFloatPaths = new Set<string>();
+  for (const f of sections) {
+    const content = f.content || '';
+    const inputRe = /\\input\s*\{\s*([^}]+)\s*\}/g;
+    let m: RegExpExecArray | null;
+    while ((m = inputRe.exec(content)) !== null) {
+      referencedFloatPaths.add(m[1].trim());
+    }
+  }
+  for (const line of body) {
+    const m = line.match(/\\input\s*\{\s*([^}]+)\s*\}/);
+    if (m) referencedFloatPaths.add(m[1].trim());
+  }
 
   // Any floats not inlined inside sections are included safely before references
-  const bodyJoined = body.join('\n');
   for (const f of floats) {
-    if (!bodyJoined.includes(`\\input{${f.path}}`)) body.push(`\\input{${f.path}}`);
+    if (!referencedFloatPaths.has(f.path)) {
+      body.push(`\\input{${f.path}}`);
+    }
   }
 
   // Bibliography
@@ -843,20 +867,47 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
 
     const sourceGroupProse = g.nodes.map((n: any) => n.text || '').join('\n').trim();
 
+    // Map body nodes to existing float files to avoid duplicate inline float environments
+    const nodeToFloatPath = new Map<any, string>();
+    let figCnt = 0, tabCnt = 0, algoCnt = 0;
+    for (const n of body) {
+      if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') {
+        figCnt++;
+        const p = `floats/figures/${figCnt}.tex`;
+        if (floatsRes.files.some(f => f.path === p)) nodeToFloatPath.set(n, p);
+      } else if (n.type === 'table') {
+        tabCnt++;
+        const p = `floats/tables/${tabCnt}.tex`;
+        if (floatsRes.files.some(f => f.path === p)) nodeToFloatPath.set(n, p);
+      } else if (n.type === 'algorithm') {
+        algoCnt++;
+        const p = `floats/algorithms/${algoCnt}.tex`;
+        if (floatsRes.files.some(f => f.path === p)) nodeToFloatPath.set(n, p);
+      }
+    }
+
+    const assembleBackfilledNode = (n: any): string => {
+      const floatPath = nodeToFloatPath.get(n);
+      if (floatPath) {
+        return `\\input{${floatPath}}`;
+      }
+      return LatexAssembler.assembleNode(n, mathBlocks);
+    };
+
     if (matchedFile) {
       // Check if AI returned a stub / truncated content while source had substantial prose
       const emittedContent = (matchedFile.content || '').trim();
       if (sourceGroupProse.length > 250 && emittedContent.length < 150) {
         console.warn(`[AI-MODULAR] Section "${rawTitle}" emitted only ${emittedContent.length} chars vs ${sourceGroupProse.length} source prose chars. Deterministically backfilling.`);
         const backfilledNodes = [g.heading, ...g.nodes];
-        matchedFile.content = backfilledNodes.map((n: any) => LatexAssembler.assembleNode(n, mathBlocks)).join('\n\n');
+        matchedFile.content = backfilledNodes.map(assembleBackfilledNode).join('\n\n');
       }
     } else {
       // AI completely skipped this section file! Deterministically generate it!
       const targetPath = `sections/${secNum.toString().padStart(2, '0')}_${safeTitle}.tex`;
       console.warn(`[AI-MODULAR] AI omitted section "${rawTitle}". Deterministically creating ${targetPath}.`);
       const backfilledNodes = [g.heading, ...g.nodes];
-      const backfilledContent = backfilledNodes.map((n: any) => LatexAssembler.assembleNode(n, mathBlocks)).join('\n\n');
+      const backfilledContent = backfilledNodes.map(assembleBackfilledNode).join('\n\n');
       sectionFiles.push({
         path: targetPath,
         content: backfilledContent,
