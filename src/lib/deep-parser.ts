@@ -591,16 +591,24 @@ export class DeepDocumentParser {
         const parentTag = parent.tagName.toLowerCase();
         if (['table', 'figure', 'ul', 'ol', 'pre', 'blockquote', 'p'].includes(parentTag)) {
           if (allSignificantRaw.includes(parent)) {
-            // Check if parent p was kept
+            // Check if parent p was kept - only discard child if parent p was kept with prose caption
             if (parentTag === 'p') {
               const clone = parent.cloneNode(true) as Element;
               Array.from(clone.querySelectorAll('img')).forEach(i => i.remove());
               const prose = (clone.textContent || '').replace(/CHARTIMGX\w+XEND/g, '').trim();
               const isCaption = /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\s*[\d.]+/i.test(prose);
               if (isCaption || prose.length >= 5) return false; // parent p is kept with prose, discard child
-            } else {
-              return false;
             }
+            // For non-'p' parents (table, figure, ul, ol, pre, blockquote): only discard if
+            // the parent is a figure and the child is not a table that should be kept
+            // Tables inside figure should still be kept, so we skip the discard for non-p parents
+            // unless it's clearly a decorative figure wrapper
+            else if (parentTag === 'figure' && tag !== 'table') {
+              // Only discard non-table children of figure if figure was kept with content
+              const figureContent = parent.textContent || '';
+              if (figureContent.trim().length < 10) return false;
+            }
+            // For other parents (ul, ol, pre, blockquote): keep the child
           }
         }
         parent = parent.parentElement;
@@ -759,18 +767,36 @@ export class DeepDocumentParser {
         }
       }
 
+      // Also check for figures that already have captions from Phase 1
+      // by matching on src patterns (handle ID format mismatches)
+      const figSrcPrefixes = new Set<string>();
+      for (const n of result.body) {
+        if (n.type === 'figure' || n.type === 'chart' || n.type === 'image') {
+          if (n.id) {
+            const normId = normFigId(n.id);
+            // Extract the base filename prefix for matching
+            const prefix = normId.replace(/\.\w+$/, '');
+            figSrcPrefixes.add(prefix);
+          }
+        }
+      }
+
       let autoFigIdx = 1;
       for (const src of allImageSrcs) {
         const normSrc = normFigId(src);
-        if (!presentFigureIds.has(normSrc) && !decorativeImages.has(normSrc)) {
-          const isChart = /rf_chart_|chart_pending_/i.test(src);
-          result.body.push({
-            type: isChart ? 'chart' : 'figure',
-            id: src,
-            caption: isChart ? `Chart ${autoFigIdx++}` : `Figure ${autoFigIdx++}`
-          } as any);
-          presentFigureIds.add(normSrc);
-        }
+        // Skip if already present in result.body (exact match or prefix match)
+        const isAlreadyPresent = presentFigureIds.has(normSrc) ||
+          // Check prefix match for ID format mismatches (e.g., "rf_fig_1.png" vs "fig_1.png")
+          [...figSrcPrefixes].some(prefix => normSrc.startsWith(prefix) || normSrc.endsWith(prefix));
+        if (isAlreadyPresent || decorativeImages.has(normSrc)) continue;
+
+        const isChart = /rf_chart_|chart_pending_/i.test(src);
+        result.body.push({
+          type: isChart ? 'chart' : 'figure',
+          id: src,
+          caption: isChart ? `Chart ${autoFigIdx++}` : `Figure ${autoFigIdx++}`
+        } as any);
+        presentFigureIds.add(normSrc);
       }
     } catch (reconcileErr) {
       console.warn('[PARSER] Figure reconciliation pass skipped:', reconcileErr);
@@ -2236,14 +2262,14 @@ export class DeepDocumentParser {
     // is a real caption even if it contains descriptive verbs like "summarizes" or "shows".
     // Only text WITHOUT a punctuation separator that immediately uses a running verb is body prose ("Table 1 summarizes the results").
     const trimmed = t.trim();
-    const hasDelim = /^\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]+\s*[:.–\-\—]/i.test(trimmed);
+    const hasDelim = /^\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]+\s*[:.\-–—]/.test(trimmed);
     if (hasDelim) return false;
 
     // No delimiter present: check if the first word immediately following the label is a verb
     const noDelimMatch = trimmed.match(/^\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]+\s+([a-zA-Z]+)/i);
     if (noDelimMatch) {
       const firstWord = noDelimMatch[1].toLowerCase();
-      return /^(?:shows?|presents?|illustrates?|compares?|depicts?|displays?|demonstrates?|summarizes?|lists?|reports?|plots?|gives?|provides?|represents?|outlines?|describes?|highlights?|overviews?|contains?|yields?|produces?|indicates?|details?|tabulates?|is|are|was|were)$/.test(firstWord);
+      return /^(?:shows?|presents?|illustrates?|compares?|depicts?|displays?|demonstrates?|summarizes?|lists?|reports?|plots?|gives?|provides?|represents?|outlines?|describes?|highlights?|overviews?|contains?|yields?|produces?|indicates?|details?|tabulates?|is|are|was|were|uses?|used)$/.test(firstWord);
     }
     return false;
   }
@@ -2285,18 +2311,24 @@ export class DeepDocumentParser {
 
     const rx =
       type === 'figure'
-        ? /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo|Graph)\s*(?:(?:\(|\b)(?:[\dIVXLCDM]+(?:\.[\dIVXLCDM]+)*|[a-zA-Z])(?:\)|\b))?(?:\s*[:.\-–—\s])?/i
-        : /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Table|Tab\b\.?)\s*(?:(?:\(|\b)(?:[\dIVXLCDM]+(?:\.[\dIVXLCDM]+)*|[a-zA-Z])(?:\)|\b))?(?:\s*[:.\-–—\s])?/i;
+        ? /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo|Graph)\s*(?:(?:\(|\b)(\d+(?:\.\d+)*|[a-zA-Z])(?:\)|\b))?(?:\s*[:.\-–—\s])?/i
+        : /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Table|Tab\b\.?)\s*(?:(?:\(|\b)(\d+(?:\.\d+)*|[a-zA-Z])(?:\)|\b))?(?:\s*[:.\-–—\s])?/i;
 
+    // Caption ordinal extractor: extracts the figure/table number from captions
+    // like "Figure 1", "Table 2", "Fig. 3", "Chart 1" etc.
     const captionOrdinal = (t: string): number | null => {
       const m = t.match(
         type === 'figure'
-          ? /(?:Figure|Fig\.?|Image|Chart|Diagram|Photo|Graph)\s*(?:(?:\(|\b)(\d+(?:\.\d+)*|[IVXLCDM]+)(?:\)|\b))/i
-          : /(?:Table|Tab\.?)\s*(?:(?:\(|\b)(\d+(?:\.\d+)*|[IVXLCDM]+)(?:\)|\b))/i
+          ? /(?:Figure|Fig\.?|Image|Chart|Diagram|Photo|Graph)\s*(?:\(|\b)(\d+(?:\.\d+)*|[a-zA-Z])(?:\)|\b)/i
+          : /(?:Table|Tab\.?)\s*(?:\(|\b)(\d+(?:\.\d+)*|[a-zA-Z])(?:\)|\b)/i
       );
       if (!m) return null;
       const s = m[1];
-      if (/^\d/.test(s)) return parseInt(s.split('.')[0], 10);
+      // Arabic numeral: extract the integer part before any decimal
+      if (/^\d/.test(s)) {
+        return parseInt(s.split('.')[0], 10);
+      }
+      // Roman numeral: convert to integer
       const roman: Record<string, number> = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
       let sum = 0;
       let prev = 0;
@@ -2340,7 +2372,11 @@ export class DeepDocumentParser {
           const capOrdinal = captionOrdinal(t);
           const farEl = farSibling(candidate, isForward ? 1 : -1);
           const farPos = farEl ? typePositions.get(farEl) : undefined;
-          const belongsToFar = capOrdinal !== null && farPos !== undefined && capOrdinal === farPos;
+          // Only skip this caption if the far element is the corresponding figure/table
+          // (i.e., the caption's ordinal matches the far element's position AND the far element
+          // is within a reasonable distance from the caption). This prevents double-counting
+          // while still allowing captions to be found even if the position mapping is slightly off.
+          const belongsToFar = capOrdinal !== null && farPos !== undefined && capOrdinal === farPos && i < 10;
           if (!belongsToFar) {
             processed.add(candidate);
             if (consumedTexts) consumedTexts.add(t);
@@ -2436,11 +2472,34 @@ export class DeepDocumentParser {
     let colCount = 0;
     const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
     let trMatch: RegExpExecArray | null;
+    // Track colSpan/rowSpan handling
+    const colSpanRegex = /colspan="(\d+)"/gi;
+    const rowSpanRegex = /rowspan="(\d+)"/gi;
+
     while ((trMatch = trRegex.exec(html)) !== null) {
       rowCount++;
-      const cellMatches = trMatch[1].match(/<t[dh][^>]*>/gi) || [];
-      colCount = Math.max(colCount, cellMatches.length);
+      const rowContent = trMatch[1];
+      // Count cells in this row, handling colspan
+      const cellMatches = rowContent.match(/<t[dh][^>]*>/gi) || [];
+      let maxCellsInRow = cellMatches.length;
+
+      // Adjust for colspan attributes - sum up the colspan values for cells in this row
+      const colspans = rowContent.match(colSpanRegex) || [];
+      const rowspans = rowContent.match(rowSpanRegex) || [];
+      
+      // Calculate effective cell count considering colspan
+      let effectiveColCount = 0;
+      for (let i = 0; i < cellMatches.length; i++) {
+        const cellMatch = cellMatches[i];
+        const colspanMatch = cellMatch.match(colSpanRegex);
+        const rowspanMatch = cellMatch.match(rowSpanRegex);
+        const colSpanVal = colspanMatch ? parseInt(colspanMatch[1], 10) : 1;
+        effectiveColCount += colSpanVal;
+      }
+      colCount = Math.max(colCount, effectiveColCount > 0 ? effectiveColCount : maxCellsInRow);
     }
+    // Ensure minimum column count of 1 if there are rows
+    if (rowCount > 0 && colCount === 0) colCount = 1;
     return { rowCount, colCount };
   }
 

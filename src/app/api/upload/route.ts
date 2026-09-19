@@ -1391,11 +1391,11 @@ async function runUploadProcessing(uploadId: string) {
         const markerToFinalName: Map<string, string> = new Map();
 
         let chartFileIdx = 1;
-        const chartTasks = pendingCharts.map((pc) => {
-          const isTrueChart = pc.target.includes('charts/');
-          const chartName = isTrueChart ? `rf_chart_${chartFileIdx++}.png` : `rf_fig_${figIdx++}.png`;
-          markerToFinalName.set(pc.marker, chartName);
-          return { pc, chartName, isTrueChart };
+        // Always use rf_chart_ prefix for ALL charts (true OOXML, VML, fallbacks)
+        // so the parser can consistently identify them via /rf_chart_/i.test(src)
+        const chartName = `rf_chart_${chartFileIdx++}.png`;
+        markerToFinalName.set(pc.marker, chartName);
+        return { pc, chartName, isTrueChart };
         });
 
         const extractedChartResults = await pMap(chartTasks, async ({ pc, chartName, isTrueChart }, idx) => {
