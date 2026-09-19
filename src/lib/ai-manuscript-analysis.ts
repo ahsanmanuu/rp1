@@ -623,15 +623,17 @@ export function reconcileVerdict(
   if (detRefs > 0) comps.references = detRefs;
 
   // Equations: ground against detected display math blocks & body equation nodes.
-  const detDisplayMath = (mathBlocks || []).filter((m: any) => m && (typeof m === 'object' ? m.isDisplay : false)).length;
+  const detDisplayMath = (mathBlocks || []).filter((m: any) => m && (typeof m === 'object' ? (m.isDisplay || m.isDisplayMath) : false)).length;
   const detBodyEq = countByType(['equation']);
-  const detEquations = Math.max(detDisplayMath, detBodyEq);
+  const totalMathBlocks = (mathBlocks || []).length;
+  const detEquations = Math.max(detDisplayMath, detBodyEq, (totalMathBlocks > 0 && detDisplayMath === 0) ? totalMathBlocks : 0);
   if (detEquations > 0) {
-    comps.equations = bound(detEquations, typeof comps.equations === 'number' ? comps.equations : 0, 8);
+    comps.equations = typeof comps.equations === 'number' && comps.equations > 0
+      ? Math.max(detEquations, Math.min(comps.equations, Math.max(detEquations * 3, detEquations + 30)))
+      : detEquations;
   } else if (typeof comps.equations === 'number' && comps.equations > 0) {
     // Parser found zero equation evidence but AI reports some — the AI may
     // have detected equations in mid-document text the parser missed.
-    // Accept AI's count but cap at a sane maximum to prevent hallucination.
     comps.equations = Math.min(comps.equations, 50);
   } else {
     comps.equations = 0;
@@ -888,7 +890,7 @@ export async function analyzeManuscriptStructure(
     const detPseudo = (deepData.body || []).filter(n => n.type === 'algorithm').length;
     const compsNow = verdict.components || {};
     const recountTargets: string[] = [];
-    if (typeof compsNow.equations === 'number' && detEquations > 0 && compsNow.equations > detEquations + 8 && (compsNow.equations - detEquations) / detEquations > 0.5) {
+    if (typeof compsNow.equations === 'number' && detEquations > 0 && compsNow.equations > Math.max(detEquations * 2.5, detEquations + 20) && (compsNow.equations - detEquations) / detEquations > 0.5) {
       recountTargets.push(`equations: parser found ${detEquations}, you reported ${compsNow.equations}`);
     }
     if (typeof compsNow.pseudocode === 'number' && detPseudo > 0 && compsNow.pseudocode > detPseudo + 8 && (compsNow.pseudocode - detPseudo) / detPseudo > 0.5) {
@@ -940,7 +942,7 @@ export async function analyzeManuscriptStructure(
               // Clamp the AI's recount to a sane bound above the deterministic
               // count — a "verified" count that triples the parser's evidence
               // is a hallucination, not a correction.
-              const detBound = key === 'equations' ? detEquations + 8 : detPseudo + 5;
+              const detBound = key === 'equations' ? Math.max(detEquations * 3, detEquations + 30) : detPseudo + 5;
               merged[key] = Math.min(Math.round(rc[key]), detBound);
             }
           }

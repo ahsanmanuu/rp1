@@ -971,9 +971,14 @@ export class LatexAssembler {
       }
     }
     
-    const cleanPattern = /^(?:Figure|Fig\.?|Image|Photo|Chart|Diagram|Table|Tab\.?|TABLE)\s*(?:[\dIVX\.\-A-Z]+)?\s*[:\.\-–—]?\s*/i;
-    const stripped = cleaned.replace(cleanPattern, '').trim();
-    return stripped.length > 0 ? stripped : '';
+    // Loop to remove ANY repeated label prefixes: e.g. "Table 1: Table 1:", "Fig. 2. Figure 2:"
+    const cleanPattern = /^(?:Figure|Fig\.?|Image|Photo|Chart|Diagram|Graph|Table|Tab\.?|TABLE)\s*(?:[\dIVX\.\-A-Z]+)?\s*[:\.\-–—]?\s*/i;
+    let prev = '';
+    while (prev !== cleaned) {
+      prev = cleaned;
+      cleaned = cleaned.replace(cleanPattern, '').trim();
+    }
+    return cleaned;
   }
 
   public static assembleNode(node: ContentNode, mathBlocks: any[]): string {
@@ -1022,8 +1027,20 @@ export class LatexAssembler {
         const normalizedFinal = finalText.toLowerCase().replace(/^(?:\d+[\s\.]+|[ivxlcdm]+[\s\.]+|[a-g][\s\.]+)+/i, '').trim();
         const isCanonicalL1Check = FORCED_L1.has(normalizedFinal) ||
           /^(?:conclusion|conclusions|concluding|future work|future scope|literature review|literature survey|related works?|system model|system architecture|materials and methods|results and discussion|performance evaluation|declarations|acknowledg|data availability)\b/i.test(normalizedFinal);
+
+        const rawTrimmed = rawText.trim();
+        const subSubMatch = rawTrimmed.match(/^(?:section|subsection|subsubsection)?\s*(\d+\.\d+\.\d+(?:\.\d+)*)/i);
+        const subMatch = rawTrimmed.match(/^(?:section|subsection|subsubsection)?\s*(\d+\.\d+)/i);
         let level = node.level || 1;
-        if (isCanonicalL1Check) level = 1;
+        if (subSubMatch) {
+          level = 3;
+        } else if (subMatch) {
+          level = 2;
+        } else if (node.level === 2 || node.level === 3) {
+          level = node.level;
+        } else if (isCanonicalL1Check) {
+          level = 1;
+        }
         
         const cmd = level === 1 ? 'section' : level === 2 ? 'subsection' : 'subsubsection';
         const unnumberedList = [
@@ -1114,13 +1131,14 @@ export class LatexAssembler {
         const rawCaption = node.caption || '';
         const hasRealCaption = rawCaption.length > 3 && !/^(?:Figure|Fig\.?|Image|Chart|Diagram|Photo)\s*$/i.test(rawCaption.trim());
         const cleaned = hasRealCaption ? LatexAssembler.cleanFigureCaption(rawCaption) : '';
-        const caption = LatexAssembler.escapeText(cleaned.length > 0 ? cleaned : 'Figure', mathBlocks);
+        const caption = LatexAssembler.escapeText(cleaned, mathBlocks);
+        const captionLine = caption ? `\\caption{${caption}}\n` : `\\caption{}\n`;
         const labelIdx = (node as any).labelIdx ?? Math.random().toString(36).substring(2, 7);
         const label = `fig:${String(labelIdx).replace(/[^a-z0-9]/gi, '_')}`;
         const twoCol = (node as any).twoColumn === true;
         const figEnv = twoCol ? 'figure*' : 'figure';
         const placement = twoCol ? '[!htbp]' : '[H]';
-        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${fileId}}\n\\caption{${caption}}\n\\label{${label}}\n\\end{${figEnv}}\n\\FloatBarrier\n`;
+        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${fileId}}\n${captionLine}\\label{${label}}\n\\end{${figEnv}}\n\\FloatBarrier\n`;
       }
       case 'chart': {
         const rawId = String(node.id || 'chart').replace(/\\/g, '/');
@@ -1128,13 +1146,14 @@ export class LatexAssembler {
         const rawCaption = node.caption || '';
         const hasRealCaption = rawCaption.length > 3 && !/^(?:Chart|Figure|Fig\.?)\s*$/i.test(rawCaption.trim());
         const cleaned = hasRealCaption ? LatexAssembler.cleanFigureCaption(rawCaption) : '';
-        const caption = LatexAssembler.escapeText(cleaned.length > 0 ? cleaned : 'Chart', mathBlocks);
+        const caption = LatexAssembler.escapeText(cleaned, mathBlocks);
+        const captionLine = caption ? `\\caption{${caption}}\n` : `\\caption{}\n`;
         const labelIdx = (node as any).labelIdx ?? Math.random().toString(36).substring(2, 7);
         const label = `chart:${String(labelIdx).replace(/[^a-z0-9]/gi, '_')}`;
         const twoCol = (node as any).twoColumn === true;
         const figEnv = twoCol ? 'figure*' : 'figure';
         const placement = twoCol ? '[!htbp]' : '[H]';
-        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${fileId}}\n\\caption{${caption}}\n\\label{${label}}\n\\end{${figEnv}}\n\\FloatBarrier\n`;
+        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${fileId}}\n${captionLine}\\label{${label}}\n\\end{${figEnv}}\n\\FloatBarrier\n`;
       }
       case 'figure-group':
         return LatexAssembler.assembleFigureGroup(node, mathBlocks);
@@ -1266,16 +1285,15 @@ export class LatexAssembler {
     const colCountSpans: number[] = [];
     for (const row of rows) {
       const cells = row.match(/<t[hd][^>]*>[\s\S]*?<\/t[hd]>/gi) || [];
-      let curCol = 0;
-      while (curCol < colCountSpans.length && colCountSpans[curCol] > 0) {
-        colCountSpans[curCol]--;
-        curCol++;
+      const isOccupied = colCountSpans.map(rem => rem > 0);
+      for (let i = 0; i < colCountSpans.length; i++) {
+        if (colCountSpans[i] > 0) colCountSpans[i]--;
       }
+      let curCol = 0;
       cells.forEach(c => {
         const colspan = parseInt(c.match(/colspan=["'](\d+)["']/i)?.[1] || '1', 10);
         const rowspan = parseInt(c.match(/rowspan=["'](\d+)["']/i)?.[1] || '1', 10);
-        while (curCol < colCountSpans.length && colCountSpans[curCol] > 0) {
-          colCountSpans[curCol]--;
+        while (curCol < isOccupied.length && isOccupied[curCol]) {
           curCol++;
         }
         if (rowspan > 1) {
@@ -1285,6 +1303,9 @@ export class LatexAssembler {
         }
         curCol += colspan;
       });
+      while (curCol < isOccupied.length && isOccupied[curCol]) {
+        curCol++;
+      }
       if (curCol > totalGridCols) totalGridCols = curCol;
     }
     if (totalGridCols === 0) return '';
@@ -1307,16 +1328,15 @@ export class LatexAssembler {
     const colSpanLenTracker = Array(totalGridCols).fill(0);
     rows.forEach(row => {
       const cells = row.match(/<t[hd][^>]*>[\s\S]*?<\/t[hd]>/gi) || [];
-      let curCol = 0;
-      while (curCol < totalGridCols && colSpanLenTracker[curCol] > 0) {
-        colSpanLenTracker[curCol]--;
-        curCol++;
+      const isOccupied = colSpanLenTracker.map(rem => rem > 0);
+      for (let i = 0; i < colSpanLenTracker.length; i++) {
+        if (colSpanLenTracker[i] > 0) colSpanLenTracker[i]--;
       }
+      let curCol = 0;
       cells.forEach(c => {
         const colspan = parseInt(c.match(/colspan=["'](\d+)["']/i)?.[1] || '1', 10);
         const rowspan = parseInt(c.match(/rowspan=["'](\d+)["']/i)?.[1] || '1', 10);
-        while (curCol < totalGridCols && colSpanLenTracker[curCol] > 0) {
-          colSpanLenTracker[curCol]--;
+        while (curCol < isOccupied.length && isOccupied[curCol]) {
           curCol++;
         }
         const text = c.replace(/<[^>]+>/g, '').trim();
@@ -1360,23 +1380,19 @@ export class LatexAssembler {
     const tableRows = rows.map((row, rowIdx) => {
       const cells = row.match(/<t[hd][^>]*>[\s\S]*?<\/t[hd]>/gi) || [];
       const isHeader = /<th[^>]*>/i.test(row);
+      const isOccupied = rowspanTracker.map(rem => rem > 0);
+      for (let i = 0; i < rowspanTracker.length; i++) {
+        if (rowspanTracker[i] > 0) rowspanTracker[i]--;
+      }
       const rowData: string[] = [];
       let colIdx = 0;
-
-      // Skip columns occupied by prior rowspans
-      while (colIdx < totalGridCols && rowspanTracker[colIdx] > 0) {
-        rowspanTracker[colIdx]--;
-        rowData.push('');
-        colIdx++;
-      }
 
       cells.forEach(c => {
         const colspan = parseInt(c.match(/colspan=["'](\d+)["']/i)?.[1] || '1', 10);
         const rowspan = parseInt(c.match(/rowspan=["'](\d+)["']/i)?.[1] || '1', 10);
 
-        // Skip columns occupied by prior rowspans
-        while (colIdx < totalGridCols && rowspanTracker[colIdx] > 0) {
-          rowspanTracker[colIdx]--;
+        // Fill empty cells for columns occupied by prior rowspans
+        while (colIdx < totalGridCols && isOccupied[colIdx]) {
           rowData.push('');
           colIdx++;
         }
@@ -1415,9 +1431,6 @@ export class LatexAssembler {
 
       // Pad missing cells (accounting for remaining active rowspans)
       while (colIdx < totalGridCols) {
-        if (rowspanTracker[colIdx] > 0) {
-          rowspanTracker[colIdx]--;
-        }
         rowData.push('');
         colIdx++;
       }
@@ -1430,13 +1443,13 @@ export class LatexAssembler {
     }).filter(Boolean).join('\n');
 
     // UNIVERSAL TABLE CAPTION CLEANING:
-    // Strip duplicate "Table N" label prefixes and AI disclaimers universally
     let cleanedCaption = (node.caption || '').trim();
     if (cleanedCaption) {
       cleanedCaption = LatexAssembler.cleanFigureCaption(cleanedCaption);
     }
-    const caption = LatexAssembler.escapeText(cleanedCaption.length > 1 ? cleanedCaption : `Data Table`, mathBlocks);
-    const labelKey = `tab:${caption.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20)}`;
+    const caption = LatexAssembler.escapeText(cleanedCaption, mathBlocks);
+    const labelKey = `tab:${(caption || 'table').toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20)}`;
+    const captionLine = caption ? `\\caption{${caption}}\n` : `\\caption{}\n`;
 
     // Force tabularx line-wrapping for all multi-column or text-bearing tables to prevent right-margin overflow
     const isTwoColMode = (node as any).twoColumn === true;
@@ -1453,7 +1466,7 @@ export class LatexAssembler {
     const fontSizeCmd = (isTwoColMode && totalGridCols >= 4) ? '{\\footnotesize\n' : ((isTwoColMode && totalGridCols >= 3) ? '{\\small\n' : (totalGridCols >= 6 ? '{\\small\n' : ''));
     const fontSizeEnd = fontSizeCmd ? '\n}' : '';
 
-    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n\\caption{${caption}}\n\\label{${labelKey}}\n${colSepCmd}${fontSizeCmd}\\renewcommand{\\arraystretch}{1.2}\n\\adjustbox{max width=${targetWidth}}{\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}\n}${fontSizeEnd}\n\\end{${tableEnv}}\n\\FloatBarrier\n`;
+    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n${captionLine}\\label{${labelKey}}\n${colSepCmd}${fontSizeCmd}\\renewcommand{\\arraystretch}{1.2}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}${fontSizeEnd}\n\\end{${tableEnv}}\n\\FloatBarrier\n`;
   }
 
 

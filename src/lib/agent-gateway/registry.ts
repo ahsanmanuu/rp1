@@ -1509,7 +1509,7 @@ ${commonInputs()}
 
 ## METADATA FILE RULES
 1. "metadata/title.tex" — the manuscript title EXACTLY from input B's title.text, in the template title form: e.g. \\title{<exact title>}. Strip numbering/quotes.
-2. "metadata/authors.tex" — every author from input B's authors array (exact names) with their affiliations from input B's affiliations array, in the template author form (see TARGET TEMPLATE CONVENTIONS). Never invent authors or affiliations.
+2. "metadata/authors.tex" — every author from input B's authors array (exact names) with their affiliations from input B's affiliations array, in the template author form (see TARGET TEMPLATE CONVENTIONS). In addition, if input A's text window clearly contains co-authors (second author, third author, etc.) or affiliations that were omitted or truncated in input B, you MUST include all genuine co-authors and their affiliations from input A as well. Never omit genuine co-authors, and never invent fictional authors.
 3. "metadata/abstract.tex" — the abstract EXACTLY verbatim from input B's abstract.text (strip a leading "Abstract" label) wrapped in the template abstract environment. If the template is IEEE, use \\begin{abstract}...\\end{abstract}.
 4. "metadata/keywords.tex" — keywords EXACTLY from input B's keywords array in the template keywords form. If no keywords exist, omit this file.
 5. "references/bibliography.tex" — the bibliography as a thebibliography block:

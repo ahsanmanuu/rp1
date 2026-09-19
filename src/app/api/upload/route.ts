@@ -484,7 +484,7 @@ function ommlToLatex(mathNode: Element, isDisplay: boolean): string {
 }
 
 // Ground truth extraction directly from word/document.xml
-function extractDocxXmlGroundTruth(zip: any): { tableCount: number; equationCount: number; mathData: Array<{ latex: string; isDisplay: boolean }> } | null {
+function extractDocxXmlGroundTruth(zip: any): { tableCount: number; equationCount: number; chartCount: number; mathData: Array<{ latex: string; isDisplay: boolean }> } | null {
   try {
     const docEntry = zip.getEntry('word/document.xml');
     if (!docEntry) return null;
@@ -539,7 +539,10 @@ function extractDocxXmlGroundTruth(zip: any): { tableCount: number; equationCoun
           const pText = (parent.textContent || '').trim();
           const mathText = (node.textContent || '').trim();
           const nonMathText = pText.replace(mathText, '').trim();
-          if (nonMathText.length === 0 || /^\s*[\(\d\.\-\s\)]+\s*$/.test(nonMathText)) {
+          const isEqNumOrEmpty = nonMathText.length === 0 ||
+            /^\s*(?:eq(?:uation)?\.?\s*)?[\[\(]?\s*[\d]+[a-z0-9\.\-_]*\s*[\]\)]?\s*$/i.test(nonMathText) ||
+            /^\s*[\(\d\.\-\s\)]+\s*$/.test(nonMathText);
+          if (isEqNumOrEmpty) {
             const isParamAssign = /^[A-Za-z]{1,5}\s*=\s*-?[\d.,]+\s*$/i.test(mathText) ||
               (mathText.length < 25 && /^[A-Za-z][A-Za-z0-9_]*\s*=\s*-?[\d.,]+(?:\s*[×x*]\s*[\d.]+)?\s*$/i.test(mathText));
             if (!isParamAssign) {
@@ -556,12 +559,23 @@ function extractDocxXmlGroundTruth(zip: any): { tableCount: number; equationCoun
       mathData.push({ latex: mathLatex, isDisplay });
     });
 
-    const finalEquationCount = mathData.filter(m => m.isDisplay).length;
+    const displayCount = mathData.filter(m => m.isDisplay).length;
+    const finalEquationCount = displayCount > 0 ? displayCount : mathData.filter(m => {
+      const tex = m.latex || '';
+      return /\\(?:frac|sum|int|sqrt|prod|partial|matrix|begin)/.test(tex) || tex.length > 20;
+    }).length;
+
+    // 3. Charts Ground Truth directly from OOXML entries
+    const zipEntries = typeof zip.getEntries === 'function' ? zip.getEntries() : [];
+    const chartEntries = zipEntries.filter((e: any) => /^word\/charts\/chart\d+\.xml$/i.test(e.entryName) && !e.isDirectory);
+    const chartCount = chartEntries.length;
+
     try { dom.window.close(); } catch {}
 
     return {
       tableCount: Math.max(0, validTables),
       equationCount: finalEquationCount,
+      chartCount,
       mathData
     };
   } catch (err) {
@@ -692,7 +706,7 @@ async function runUploadProcessing(uploadId: string) {
     console.log("[TELEMETRY] Starting upload processing for:", file.name);
     let deepData: any = null;
     let mammothResult = { value: "" };
-    let groundTruth: { imageCount?: number; tableCount: number; equationCount: number; mathData?: Array<{ latex: string; isDisplay: boolean }> } | null = null;
+    let groundTruth: { imageCount?: number; tableCount: number; equationCount: number; chartCount?: number; mathData?: Array<{ latex: string; isDisplay: boolean }> } | null = null;
 
     if (file.name.endsWith('.docx') && clientEnvelope) {
       // ════════════════════════════════════════════════════════════════════
@@ -799,7 +813,46 @@ async function runUploadProcessing(uploadId: string) {
               clientExtractedNames.add(origZipName.toLowerCase());
             }
           }
-          console.log(`[UPLOAD] Server-side extracted ${extractedImages.length} images from DOCX buffer.`);
+
+          // Extract and render OOXML charts from clientZip (word/charts/chart*.xml)
+          const chartEntries = zipEntries.filter((e: any) => /^word\/charts\/chart\d+\.xml$/i.test(e.entryName) && !e.isDirectory);
+          chartEntries.sort((a: any, b: any) => {
+            const numA = parseInt(a.entryName.match(/chart(\d+)\.xml/i)?.[1] || '0', 10);
+            const numB = parseInt(b.entryName.match(/chart(\d+)\.xml/i)?.[1] || '0', 10);
+            return numA - numB;
+          });
+
+          let serverChartIdx = 1;
+          for (const cEntry of chartEntries) {
+            try {
+              const xmlContent = cEntry.getData().toString('utf8');
+              const chartPngBuf = await generateChartImageFromXml(xmlContent);
+              if (chartPngBuf && chartPngBuf.length > 0) {
+                const chartName = `rf_chart_${serverChartIdx++}.png`;
+                const origChartBase = path.basename(cEntry.entryName, '.xml');
+                extractedImages.push({
+                  name: chartName,
+                  buffer: chartPngBuf,
+                  isStructural: false
+                });
+                clientExtractedNames.add(chartName.toLowerCase());
+                const aliasName = `${origChartBase}.png`;
+                if (!clientExtractedNames.has(aliasName.toLowerCase())) {
+                  extractedImages.push({
+                    name: aliasName,
+                    buffer: chartPngBuf,
+                    isStructural: false
+                  });
+                  clientExtractedNames.add(aliasName.toLowerCase());
+                }
+                console.log(`[UPLOAD] Generated chart PNG for ${chartName} from ${cEntry.entryName} (${chartPngBuf.length} bytes)`);
+              }
+            } catch (cErr) {
+              console.warn(`[UPLOAD] Failed to generate chart image from ${cEntry.entryName}:`, cErr);
+            }
+          }
+
+          console.log(`[UPLOAD] Server-side extracted ${extractedImages.length} images/charts from DOCX buffer.`);
         } catch (zipErr) {
           console.warn('[UPLOAD] Server-side DOCX image extraction fallback failed:', zipErr);
         }
@@ -860,6 +913,7 @@ async function runUploadProcessing(uploadId: string) {
             imageCount: 0,
             tableCount: groundTruth?.tableCount ?? 0,
             equationCount: groundTruth?.equationCount ?? 0,
+            chartCount: groundTruth?.chartCount ?? 0,
             referenceCount: 0,
             citationCount: 0,
             pseudocodeCount: 0,
@@ -874,6 +928,32 @@ async function runUploadProcessing(uploadId: string) {
         if (typeof groundTruth.equationCount === 'number' && groundTruth.equationCount > 0) {
           deepData.stats.equationCount = groundTruth.equationCount;
         }
+        if (typeof groundTruth.chartCount === 'number' && groundTruth.chartCount > 0) {
+          deepData.stats.chartCount = Math.max(deepData.stats.chartCount || 0, groundTruth.chartCount);
+        }
+      }
+
+      // Ensure any server-extracted charts (rf_chart_N.png) are represented in deepData.body
+      const chartImgs = extractedImages.filter(im => /rf_chart_\d+/i.test(im.name));
+      if (chartImgs.length > 0 && Array.isArray(deepData.body)) {
+        for (const cImg of chartImgs) {
+          const cName = cImg.name;
+          const exists = deepData.body.some((n: any) =>
+            (n.type === 'chart' || n.type === 'figure') &&
+            (String(n.id || '').toLowerCase() === cName.toLowerCase() ||
+             (n.images && n.images.some((im: any) => String(im.src || '').toLowerCase() === cName.toLowerCase())))
+          );
+          if (!exists) {
+            const chartIdxMatch = cName.match(/rf_chart_(\d+)/i);
+            const cIdx = chartIdxMatch ? chartIdxMatch[1] : '1';
+            deepData.body.push({
+              type: 'chart',
+              id: cName,
+              caption: `Chart ${cIdx}`
+            });
+          }
+        }
+        deepData.stats.chartCount = Math.max(deepData.stats.chartCount || 0, chartImgs.length);
       }
 
       // The figure manifest is authoritative for what the AI may reason about
@@ -973,13 +1053,16 @@ async function runUploadProcessing(uploadId: string) {
 
       progress(uploadId, 'Analyzing document structure', 65);
 
-      // XML GROUND-TRUTH OVERRIDE: the DOCX XML table/equation counts are exact
+      // XML GROUND-TRUTH OVERRIDE: the DOCX XML table/equation/chart counts are exact
       if (groundTruth) {
         if (typeof groundTruth.tableCount === 'number' && groundTruth.tableCount > 0) {
           deepData.stats.tableCount = groundTruth.tableCount;
         }
         if (typeof groundTruth.equationCount === 'number' && groundTruth.equationCount > 0) {
           deepData.stats.equationCount = groundTruth.equationCount;
+        }
+        if (typeof groundTruth.chartCount === 'number' && groundTruth.chartCount > 0) {
+          deepData.stats.chartCount = Math.max(deepData.stats.chartCount || 0, groundTruth.chartCount);
         }
       }
 

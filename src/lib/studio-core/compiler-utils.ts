@@ -243,6 +243,10 @@ ${_B}fi
       if (/\\spacing\b/.test(modified) && !hasPackage('setspace')) {
         preamblePkgs.push('\\usepackage{setspace}');
       }
+      // subcaption: enables \begin{subfigure} for side-by-side grouped figures
+      if (/\\begin\s*\{\s*subfigure\s*\}/.test(modified) && !hasPackage('subcaption')) {
+        preamblePkgs.push('\\usepackage{subcaption}');
+      }
 
       if (preamblePkgs.length > 0) {
         modified =
@@ -253,6 +257,15 @@ ${_B}fi
     }
   }
   } // end !_isCustomClass guard
+
+  // Subfigure guard: if document uses \begin{subfigure} but does not load subcaption, inject it
+  if (/\\begin\s*\{\s*subfigure\s*\}/.test(modified) && !/\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\bsubcaption\b[^}]*\}/.test(modified)) {
+    const beginDocMatch = modified.match(/\\begin\s*\{\s*document\s*\}/);
+    if (beginDocMatch && beginDocMatch.index !== undefined) {
+      const idx = beginDocMatch.index;
+      modified = modified.slice(0, idx) + '\\usepackage{subcaption}\n' + modified.slice(idx);
+    }
+  }
 
   // 3. PHANTOM ARTIFACT SIEVE (runs BEFORE overflow guards so sieve can't strip them)
   modified = applyFinalSanitizationSieve(modified);

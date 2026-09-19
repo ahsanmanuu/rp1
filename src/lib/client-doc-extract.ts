@@ -225,6 +225,12 @@ async function fallbackZipImageExtraction(
       if (rid && relsMap.has(rid)) referencedRIds.add(rid);
     });
 
+    // OOXML chart objects
+    doc.querySelectorAll('c\\:chart, chart').forEach(el => {
+      const rid = el.getAttribute('r:id') || el.getAttribute('id');
+      if (rid) referencedRIds.add(rid);
+    });
+
     // Any element with r:embed that points to a media file (excluding already-handled blip rIds)
     doc.querySelectorAll('[r\\:embed]').forEach(el => {
       if (el.tagName.toLowerCase().includes('blip')) return;
@@ -306,6 +312,57 @@ async function fallbackZipImageExtraction(
   for (const rid of referencedRIds) {
     const target = relsMap.get(rid);
     if (!target) continue;
+
+    // Handle OOXML charts (.xml targets under charts/)
+    const isChartXml = /charts\/chart\d+\.xml/i.test(target);
+    if (isChartXml) {
+      const basename = target.replace(/^.*\//, '');
+      const chartBase = basename.replace(/\.xml$/i, '');
+      // Check if this chart already has a fallback captured
+      if (!alreadyCaptured.has(basename) && !alreadyCaptured.has(chartBase)) {
+        let recovered = false;
+        // Check for raster fallback in word/charts/_rels/chartN.xml.rels
+        const chartRelsPath = target.replace(/charts\/([^/]+)$/, 'charts/_rels/$1.rels');
+        const zipRelsPath = chartRelsPath.startsWith('word/') ? chartRelsPath : `word/${chartRelsPath}`;
+        const relsEntry = zip.file(zipRelsPath);
+        if (relsEntry) {
+          try {
+            const relsXml = await relsEntry.async('string');
+            const imgRel = relsXml.match(/Relationship[^>]*Type="[^"]*\/image"[^>]*Target="([^"]+)"/);
+            if (imgRel && imgRel[1]) {
+              const relTarget = imgRel[1].replace(/^\.\.\//, '');
+              const imgZipPath = `word/${relTarget}`;
+              const imgEntry = zip.file(imgZipPath);
+              if (imgEntry) {
+                const rawBytes = await imgEntry.async('uint8array');
+                if (rawBytes.length >= 2048) {
+                  const ext = extFromFilename(relTarget);
+                  if (ext !== 'emf' && ext !== 'wmf') {
+                    const ct = contentTypeFromExt(ext);
+                    const name = `rf_chart_${figIdx++}.${ext}`;
+                    const dataUrl = `data:${ct};base64,${bytesToBase64(rawBytes)}`;
+                    newFigures.push({ name, contentType: ct, dataUrl, isChart: true, caption: basename });
+                    newImgTags.push(`<img src="${name}" alt="Chart" />`);
+                    alreadyCaptured.add(basename);
+                    alreadyCaptured.add(chartBase);
+                    recovered = true;
+                  }
+                }
+              }
+            }
+          } catch {}
+        }
+        if (!recovered) {
+          const name = `rf_chart_${figIdx++}.png`;
+          newFigures.push({ name, contentType: 'image/png', dataUrl: '', isChart: true, caption: basename });
+          newImgTags.push(`<img src="${name}" alt="Chart" />`);
+          alreadyCaptured.add(basename);
+          alreadyCaptured.add(chartBase);
+        }
+      }
+      continue;
+    }
+
     if (!IMAGE_EXTS.test(target)) continue;
 
     // Skip if already captured by mammoth

@@ -838,10 +838,14 @@ export class DeepDocumentParser {
     result.stats.citationCount = countCitationsFromHtml(rawHtmlForCitations);
 
     if (overrides) {
-      if (typeof overrides.tableCount === 'number') result.stats.tableCount = overrides.tableCount;
-      if (typeof overrides.equationCount === 'number') result.stats.equationCount = overrides.equationCount;
-      if (typeof overrides.chartCount === 'number') {
-        result.stats.chartCount = overrides.chartCount;
+      if (typeof overrides.tableCount === 'number' && overrides.tableCount > 0) {
+        result.stats.tableCount = Math.max(result.stats.tableCount, overrides.tableCount);
+      }
+      if (typeof overrides.equationCount === 'number' && overrides.equationCount > 0) {
+        result.stats.equationCount = Math.max(result.stats.equationCount, overrides.equationCount);
+      }
+      if (typeof overrides.chartCount === 'number' && overrides.chartCount > 0) {
+        result.stats.chartCount = Math.max(result.stats.chartCount, overrides.chartCount);
         let cCount = result.body.filter(n => n.type === 'chart').length;
         if (overrides.chartCount > cCount) {
           for (const node of result.body) {
@@ -853,8 +857,8 @@ export class DeepDocumentParser {
           }
         }
       }
-      if (typeof overrides.imageCount === 'number') {
-        result.stats.imageCount = overrides.imageCount;
+      if (typeof overrides.imageCount === 'number' && overrides.imageCount > 0) {
+        result.stats.imageCount = Math.max(result.stats.imageCount, overrides.imageCount);
       }
     }
 
@@ -1256,6 +1260,14 @@ export class DeepDocumentParser {
       if (nextRole === 'section' || nextRole === 'equation' || nextRole === 'table' || nextRole === 'figure') {
           flush(i);
           if (nextRole === 'table') {
+            if (!foundAbstract && i < 15) {
+              const tblText = (el.textContent || '').toLowerCase();
+              const hasAffil = AFFIL_KEYWORDS.test(tblText) || EMAIL_RE.test(tblText) || /author|affiliation|department|university|college|institute|faculty|polytechnic|orcid/i.test(tblText);
+              if (hasAffil) {
+                manifest.push({ role: 'author', startIdx: i, endIdx: i, elements: [el] });
+                continue;
+              }
+            }
             const innerTables = Array.from(el.querySelectorAll('table'));
             if (innerTables.length > 1) {
               for (const tbl of innerTables) {
@@ -1399,73 +1411,153 @@ export class DeepDocumentParser {
               }
           }
           else if (entry.role === 'author') {
-              let authorText = text;
-              // Clean styling guidance in parentheses e.g. "(16 pt, Bold, Title Case)" or "(Assistant Professor)"
-              authorText = authorText
-                .replace(/\((?:\d+\s*pt|bold|italic|title\s*case|single\s*column|line\s*spacing|affiliations?|institution)[^)]*\)/gi, '')
-                .replace(/\b(?:bold|italic|title\s*case)\b/gi, '');
-
-              let orgFragment = '';
-              const affilIdx = authorText.search(AFFIL_KEYWORDS);
-              if (affilIdx > 0) {
-                const preAffil = authorText.substring(0, affilIdx);
-                const lastSep = Math.max(preAffil.lastIndexOf(','), preAffil.lastIndexOf('\n'), preAffil.lastIndexOf(';'));
-                if (lastSep > 0) {
-                  authorText = preAffil.substring(0, lastSep).trim();
-                  orgFragment = text.substring(lastSep + 1).trim();
-                } else {
-                  authorText = preAffil.trim();
-                  orgFragment = text.substring(affilIdx).trim();
-                }
-              }
-              if (result.title && result.title.length > 20 && authorText.startsWith(result.title)) {
-                authorText = authorText.substring(result.title.length).replace(/^\s*[,;]?\s*/, '').trim();
-              }
-              const names = authorText.split(/[,;&]|\s+and\s+/i).map((n: string) => n.trim()).filter((n: string) => n.length > 2);
-              names.forEach((n: string) => {
-                  // Extract trailing superscript/affiliation marker: e.g. "Name of 1st Author 1", "John Doe¹", "Jane Doe, MD 1,2"
-                  // Do NOT strip "1" from "1st" or "2" from "2nd"!
-                  const trailingMarkerMatch = n.match(/(?:[\s,]+)?(?:\(\s*([1-9\d,\s*†‡]+)\s*\)|\[\s*([1-9\d,\s*†‡]+)\s*\]|([\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070*†‡]+)|(?:\b|\s)([1-9]\d*(?:\s*,\s*[1-9]\d*)*))\s*$/);
-                  let affilId = '';
-                  let rawClean = n;
-                  if (trailingMarkerMatch) {
-                    const rawIds = trailingMarkerMatch[1] || trailingMarkerMatch[2] || trailingMarkerMatch[3] || trailingMarkerMatch[4] || '';
-                    affilId = rawIds.replace(/\u00b9/g, '1').replace(/\u00b2/g, '2').replace(/\u00b3/g, '3').replace(/[^0-9,]/g, '').trim();
-                    rawClean = n.substring(0, trailingMarkerMatch.index).trim();
-                  }
-                  const cleanName = rawClean
+              // Check if entry elements contain a table (front-matter author grid)
+              const tableEl = entry.elements.find((e: any) => e.tagName?.toLowerCase() === 'table' || (e.querySelector && e.querySelector('table')));
+              if (tableEl) {
+                const targetTable = tableEl.tagName?.toLowerCase() === 'table' ? tableEl : tableEl.querySelector('table');
+                const cells: Element[] = Array.from(targetTable.querySelectorAll('td, th'));
+                for (const cell of cells) {
+                  const cellText = (cell.textContent || '').trim();
+                  if (cellText.length < 2) continue;
+                  const lines = cellText.split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean);
+                  if (lines.length === 0) continue;
+                  const firstLine = lines[0];
+                  const cleanName = firstLine
                     .replace(/^[*\u2020\u2021\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070\s.:)\-]+/g, '')
                     .replace(/[\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070*†‡]/g, '')
                     .replace(/\((?:\d+\s*pt|bold|italic|title\s*case)[^)]*\)/gi, '')
                     .replace(/^[\s,;()\-–—]+|[\s,;()\-–—]+$/g, '')
                     .trim();
-                  if (cleanName.length < 2) return;
-                  if (AFFIL_KEYWORDS.test(cleanName) || cleanName.split(' ').length > 7) return;
-                  let aut = result.authors.find(a => a.name.toLowerCase() === cleanName.toLowerCase());
-                  if (!aut) {
-                      aut = { name: cleanName, affiliationIds: affilId ? affilId.split(',').map(s => s.trim()).filter(Boolean) : [] };
+                  if (cleanName.length >= 2 && !AFFIL_KEYWORDS.test(cleanName) && cleanName.split(' ').length <= 7) {
+                    const emails = cellText.match(EMAIL_RE) || [];
+                    const affilLines = lines.slice(1).filter((l: string) => !EMAIL_RE.test(l));
+                    const affilStr = affilLines.join(', ').replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
+                    let aut = result.authors.find(a => a.name.toLowerCase() === cleanName.toLowerCase());
+                    if (!aut) {
+                      aut = {
+                        name: cleanName,
+                        affiliationIds: [],
+                        affiliation: affilStr || undefined,
+                        email: emails[0] || undefined
+                      };
                       result.authors.push(aut);
+                    } else {
+                      if (affilStr && !aut.affiliation) aut.affiliation = affilStr;
+                      if (emails[0] && !aut.email) aut.email = emails[0];
+                    }
+                    if (affilStr && affilStr.length > 3 && !result.organizations.includes(affilStr)) {
+                      result.organizations.push(affilStr);
+                    }
                   }
-              });
-              if (orgFragment && orgFragment.length > 5) {
-                let cleanOrg = orgFragment.replace(EMAIL_RE, '').replace(/[*\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070\d]/g, '').trim();
-                cleanOrg = cleanOrg.replace(/(?:corresponding\s+author\s*:\s*|corresponding\s+author\b)/gi, '')
-                                   .split('\n')
-                                   .map((line: string) => line.trim())
-                                   .filter((line: string) => {
-                                      const plain = line.replace(/[,;:\s()]/g, '');
-                                      return plain.length > 0 && !/^(?:email|e-mail|corresponding|author|contact)$/i.test(plain);
-                                   })
-                                   .join(', ')
-                                   .replace(/,\s*,/g, ',')
-                                   .replace(/^[\s,]+|[\s,]+$/g, '')
-                                   .trim();
-                if (cleanOrg && !result.organizations.includes(cleanOrg)) result.organizations.push(cleanOrg);
+                }
+              }
+
+              let authorText = text;
+              authorText = authorText
+                .replace(/\((?:\d+\s*pt|bold|italic|title\s*case|single\s*column|line\s*spacing|affiliations?|institution)[^)]*\)/gi, '')
+                .replace(/\b(?:bold|italic|title\s*case)\b/gi, '');
+              if (result.title && result.title.length > 20 && authorText.startsWith(result.title)) {
+                authorText = authorText.substring(result.title.length).replace(/^\s*[,;]?\s*/, '').trim();
+              }
+
+              const cleanAuthorNameAndMarker = (rawInput: string): { cleanName: string; affilId: string } => {
+                const trailingMarkerMatch = rawInput.match(/(?:[\s,]+)?(?:\(\s*([1-9\d,\s*†‡]+)\s*\)|\[\s*([1-9\d,\s*†‡]+)\s*\]|([\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070*†‡]+)|(?:\b|\s)([1-9]\d*(?:\s*,\s*[1-9]\d*)*))\s*$/);
+                let affilId = '';
+                let rawClean = rawInput;
+                if (trailingMarkerMatch) {
+                  const rawIds = trailingMarkerMatch[1] || trailingMarkerMatch[2] || trailingMarkerMatch[3] || trailingMarkerMatch[4] || '';
+                  affilId = rawIds.replace(/\u00b9/g, '1').replace(/\u00b2/g, '2').replace(/\u00b3/g, '3').replace(/[^0-9,]/g, '').trim();
+                  rawClean = rawInput.substring(0, trailingMarkerMatch.index).trim();
+                }
+                const cleanName = rawClean
+                  .replace(/^[*\u2020\u2021\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070\s.:)\-]+/g, '')
+                  .replace(/[\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070*†‡]/g, '')
+                  .replace(/\((?:\d+\s*pt|bold|italic|title\s*case)[^)]*\)/gi, '')
+                  .replace(/^[\s,;()\-–—]+|[\s,;()\-–—]+$/g, '')
+                  .trim();
+                return { cleanName, affilId };
+              };
+
+              // Process lines / blocks without prematurely dropping subsequent authors
+              const lines = authorText.split(/\r?\n|;/).map((s: string) => s.trim()).filter(Boolean);
+              let lastAddedAut: any = null;
+
+              for (const line of lines) {
+                const affilIdx = line.search(AFFIL_KEYWORDS);
+                const hasEmail = EMAIL_RE.test(line);
+
+                if (affilIdx === 0 || (affilIdx > 0 && line.substring(0, affilIdx).trim().length === 0)) {
+                  // Pure affiliation line
+                  let cleanOrg = line.replace(EMAIL_RE, '').replace(/[*†‡¹²³⁴⁵⁶⁷⁸⁹⁰\d]/g, '').trim();
+                  cleanOrg = cleanOrg.replace(/(?:corresponding\s+author\s*:\s*|corresponding\s+author\b)/gi, '')
+                    .replace(/^[\s,;()\-–—]+|[\s,;()\-–—]+$/g, '').trim();
+                  if (cleanOrg.length > 3 && !result.organizations.includes(cleanOrg)) {
+                    result.organizations.push(cleanOrg);
+                  }
+                  if (lastAddedAut && !lastAddedAut.affiliation) {
+                    lastAddedAut.affiliation = cleanOrg;
+                  }
+                  const emails = line.match(EMAIL_RE) || [];
+                  if (emails.length > 0 && lastAddedAut && !lastAddedAut.email) {
+                    lastAddedAut.email = emails[0];
+                  }
+                } else if (affilIdx > 0) {
+                  // Combined "Name, Affiliation" line
+                  const namePart = line.substring(0, affilIdx).replace(/[,;]+$/, '').trim();
+                  const affilPart = line.substring(affilIdx).trim();
+                  let cleanOrg = affilPart.replace(EMAIL_RE, '').replace(/[*†‡¹²³⁴⁵⁶⁷⁸⁹⁰\d]/g, '').trim();
+                  cleanOrg = cleanOrg.replace(/(?:corresponding\s+author\s*:\s*|corresponding\s+author\b)/gi, '')
+                    .replace(/^[\s,;()\-–—]+|[\s,;()\-–—]+$/g, '').trim();
+                  if (cleanOrg.length > 3 && !result.organizations.includes(cleanOrg)) {
+                    result.organizations.push(cleanOrg);
+                  }
+                  const emails = line.match(EMAIL_RE) || [];
+
+                  const subNames = namePart.split(/[,&]|\s+and\s+/i).map((n: string) => n.trim()).filter((n: string) => n.length > 2);
+                  for (const n of subNames) {
+                    const { cleanName, affilId } = cleanAuthorNameAndMarker(n);
+                    if (cleanName.length < 2 || AFFIL_KEYWORDS.test(cleanName) || cleanName.split(' ').length > 7) continue;
+                    let aut = result.authors.find(a => a.name.toLowerCase() === cleanName.toLowerCase());
+                    if (!aut) {
+                      aut = {
+                        name: cleanName,
+                        affiliationIds: affilId ? affilId.split(',').map(s => s.trim()).filter(Boolean) : [],
+                        affiliation: cleanOrg || undefined,
+                        email: emails[0] || undefined
+                      };
+                      result.authors.push(aut);
+                    } else {
+                      if (cleanOrg && !aut.affiliation) aut.affiliation = cleanOrg;
+                      if (emails[0] && !aut.email) aut.email = emails[0];
+                    }
+                    lastAddedAut = aut;
+                  }
+                } else if (hasEmail) {
+                  const emails = line.match(EMAIL_RE) || [];
+                  if (lastAddedAut && emails[0] && !lastAddedAut.email) {
+                    lastAddedAut.email = emails[0];
+                  }
+                } else {
+                  // Name(s) line
+                  const subNames = line.split(/[,&]|\s+and\s+/i).map((n: string) => n.trim()).filter((n: string) => n.length > 2);
+                  for (const n of subNames) {
+                    const { cleanName, affilId } = cleanAuthorNameAndMarker(n);
+                    if (cleanName.length < 2 || AFFIL_KEYWORDS.test(cleanName) || cleanName.split(' ').length > 7) continue;
+                    let aut = result.authors.find(a => a.name.toLowerCase() === cleanName.toLowerCase());
+                    if (!aut) {
+                      aut = {
+                        name: cleanName,
+                        affiliationIds: affilId ? affilId.split(',').map(s => s.trim()).filter(Boolean) : []
+                      };
+                      result.authors.push(aut);
+                    }
+                    lastAddedAut = aut;
+                  }
+                }
               }
           }
           else if (entry.role === 'affiliation') {
               const emails = text.match(EMAIL_RE) || [];
-              if (emails.length > 0 && result.authors.length > 0) result.authors[result.authors.length - 1].email = emails[0];
               let cleanOrg = text.replace(EMAIL_RE, '').replace(/[*†‡¹²³⁴⁵⁶⁷⁸⁹⁰\d]/g, '').trim();
               cleanOrg = cleanOrg.replace(/(?:corresponding\s+author\s*:\s*|corresponding\s+author\b)/gi, '')
                                  .split('\n')
@@ -1478,12 +1570,25 @@ export class DeepDocumentParser {
                                  .replace(/,\s*,/g, ',')
                                  .replace(/^[\s,]+|[\s,]+$/g, '')
                                  .trim();
-              // UNIVERSAL: Reject email-only noise entries that Word documents often produce
-              // e.g. "Email:, (Primary), name@domain.com (Secondary)"
+              // Reject email-only noise entries that Word documents produce
               const isNoise = /^(?:email|emails|primary|secondary|contact|corresponding|author|tel|phone|fax|e-mail|e-mails|[:,\s\-()\[\]])*$/i.test(cleanOrg) ||
-                              /^Email[:\s,]/i.test(text.trim()) || // starts with "Email:"
-                              (emails.length > 0 && text.replace(EMAIL_RE, '').replace(/[,;:\s()/]/g, '').length < 8); // mostly just email
-              if (cleanOrg && cleanOrg.length > 5 && !isNoise && !result.organizations.includes(cleanOrg)) result.organizations.push(cleanOrg);
+                              /^Email[:\s,]/i.test(text.trim()) ||
+                              (emails.length > 0 && text.replace(EMAIL_RE, '').replace(/[,;:\s()/]/g, '').length < 8);
+              if (cleanOrg && cleanOrg.length > 3 && !isNoise && !result.organizations.includes(cleanOrg)) {
+                result.organizations.push(cleanOrg);
+              }
+              // Associate with the most recent author(s) that lack an affiliation
+              if (result.authors.length > 0) {
+                const unassigned = result.authors.filter(a => !a.affiliation);
+                if (unassigned.length > 0) {
+                  unassigned[unassigned.length - 1].affiliation = cleanOrg;
+                  if (emails.length > 0 && !unassigned[unassigned.length - 1].email) {
+                    unassigned[unassigned.length - 1].email = emails[0];
+                  }
+                } else if (emails.length > 0 && !result.authors[result.authors.length - 1].email) {
+                  result.authors[result.authors.length - 1].email = emails[0];
+                }
+              }
           }
           else if (entry.role === 'section' || entry.role === 'paragraph') {
               const mergedText = mergeCitations(text);
@@ -1875,103 +1980,120 @@ export class DeepDocumentParser {
                 }
               }
 
+              // Detect group-level caption for multi-image containers
+              let groupCaption = entry.caption;
+              const imgBlock = (el0.parentElement && ['p', 'div', 'span', 'figure'].includes(el0.parentElement.tagName.toLowerCase()))
+                ? el0.parentElement
+                : el0;
+              const isFigCapText = (t: string) =>
+                /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram|Graph)\.?\s*(?:(?:\(|\b)(?:[\dIVXLCDM]+(?:\.[\dIVXLCDM]+)*|[a-zA-Z])(?:\)|\b))?(?:\s*[:.\-–—\s]|\s*$)\s*\S/i.test(t) &&
+                !this.isFigureCaptionProse(t);
+
+              if (!groupCaption) {
+                let sib = el0.nextElementSibling || imgBlock.nextElementSibling;
+                for (let h = 0; h < 6 && sib; h++, sib = sib.nextElementSibling) {
+                  const t = sib.textContent?.trim() || '';
+                  if (isFigCapText(t)) {
+                    groupCaption = t;
+                    consumedCaptions.add(sib);
+                    break;
+                  }
+                }
+              }
+              if (!groupCaption) {
+                let sib = el0.previousElementSibling || imgBlock.previousElementSibling;
+                for (let h = 0; h < 6 && sib; h++, sib = sib.previousElementSibling) {
+                  const t = sib.textContent?.trim() || '';
+                  if (isFigCapText(t)) {
+                    groupCaption = t;
+                    consumedCaptions.add(sib);
+                    break;
+                  }
+                }
+              }
+              if (!groupCaption && result.body.length > 0) {
+                const lastNode = result.body[result.body.length - 1];
+                if (lastNode && lastNode.type === 'paragraph' && isFigCapText(lastNode.text || '')) {
+                  groupCaption = (lastNode.text || '').trim();
+                  result.body.pop();
+                }
+              }
+
+              const validImgs: Array<{ src: string; caption: string; isChart: boolean }> = [];
+
               for (let idx = 0; idx < imgs.length; idx++) {
-                  const img = imgs[idx];
-                  const src = img.getAttribute('src') || img.getAttribute('data-src') || '';
-                  if (!src) continue;
-                  const alreadyInBody = result.body.some((n: any) => (n.type === 'figure' || n.type === 'chart' || n.type === 'image') && String(n.id || '').toLowerCase() === src.toLowerCase());
-                  if (alreadyInBody) continue;
+                const img = imgs[idx];
+                const src = img.getAttribute('src') || img.getAttribute('data-src') || '';
+                if (!src) continue;
+                const alreadyInBody = result.body.some((n: any) =>
+                  (n.type === 'figure' || n.type === 'chart' || n.type === 'image' || n.type === 'figure-group') &&
+                  (String(n.id || '').toLowerCase() === src.toLowerCase() ||
+                   (n.images && n.images.some((im: any) => String(im.src || '').toLowerCase() === src.toLowerCase())))
+                );
+                if (alreadyInBody) continue;
 
-                  let figCaption = entry.caption;
-                  const rawAlt = (img.getAttribute('alt') || img.getAttribute('title') || '').trim();
-                  const isAltDeco = !rawAlt || /logo|icon|header|banner|footer|decoration|watermark|bullet|spacer|signature|qrcode|license|badge|cc[-_]by|creative\s*commons/i.test(rawAlt) || this.isGenericAltText(rawAlt);
-                  const isFigCapText = (text: string) =>
-                    /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram|Graph)\.?\s*(?:(?:\(|\b)(?:[\dIVXLCDM]+(?:\.[\dIVXLCDM]+)*|[a-zA-Z])(?:\)|\b))?(?:\s*[:.\-–—\s]|\s*$)\s*\S/i.test(text) &&
-                    !this.isFigureCaptionProse(text);
+                const rawAlt = (img.getAttribute('alt') || img.getAttribute('title') || '').trim();
+                const isAltDeco = !rawAlt || /logo|icon|header|banner|footer|decoration|watermark|bullet|spacer|signature|qrcode|license|badge|cc[-_]by|creative\s*commons/i.test(rawAlt) || this.isGenericAltText(rawAlt);
+                const isFrontMatterImage = !hasSeenFirstSectionOrAbstract;
+                const isFooterImage = hasSeenReferences;
+                const decoHint = !groupCaption && (isFrontMatterImage || isFooterImage || isAltDeco || /logo|icon|header|banner|bullet|background|watermark|divider|spacer|signature|qr|qrcode|footer|license|badge|cc[-_]by|creative\s*commons/i.test(src));
+                if (decoHint) {
+                  (result as any)._decorativeImages = (result as any)._decorativeImages || new Set<string>();
+                  (result as any)._decorativeImages.add(src.toLowerCase());
+                  continue;
+                }
 
-                  const imgBlock = (el0.parentElement && ['p', 'div', 'span', 'figure'].includes(el0.parentElement.tagName.toLowerCase()))
-                    ? el0.parentElement
-                    : el0;
+                let subCaption = '';
+                if (subCaptions.length === imgs.length) {
+                  subCaption = subCaptions[idx];
+                } else if (!isAltDeco) {
+                  subCaption = rawAlt;
+                }
 
-                  if (!figCaption && !isAltDeco) {
-                      figCaption = rawAlt;
-                  }
-                  if (!figCaption) {
-                      let sib = el0.nextElementSibling || imgBlock.nextElementSibling;
-                      for (let h = 0; h < 6 && sib; h++, sib = sib.nextElementSibling) {
-                          const t = sib.textContent?.trim() || '';
-                          if (isFigCapText(t)) {
-                              figCaption = t;
-                              consumedCaptions.add(sib);
-                              break;
-                          }
-                      }
-                  }
-                  if (!figCaption) {
-                      let sib = el0.previousElementSibling || imgBlock.previousElementSibling;
-                      for (let h = 0; h < 6 && sib; h++, sib = sib.previousElementSibling) {
-                          const t = sib.textContent?.trim() || '';
-                          if (isFigCapText(t)) {
-                              figCaption = t;
-                              consumedCaptions.add(sib);
-                              break;
-                          }
-                      }
-                  }
-                  if (!figCaption && result.body.length > 0) {
-                      const lastNode = result.body[result.body.length - 1];
-                      if (lastNode && lastNode.type === 'paragraph' && isFigCapText(lastNode.text || '')) {
-                          figCaption = (lastNode.text || '').trim();
-                          result.body.pop();
-                      }
-                  }
+                let cleanSubCaption = subCaption.trim();
+                let prevClean = '';
+                while (prevClean !== cleanSubCaption) {
+                  prevClean = cleanSubCaption;
+                  cleanSubCaption = cleanSubCaption.replace(/^\s*(?:\(\s*[a-zA-Z0-9]\s*\)|\[\s*[a-zA-Z0-9]\s*\]|\b[a-zA-Z0-9]\s*\)|\b[a-zA-Z0-9]\s*\.)\s*[:.\-–—]?\s*/i, '').trim();
+                }
 
-                  // FALSE-POSITIVE GUARD: an image with NO caption
-                  // is almost always decorative (university logo, header banner, footer icon, bullet graphic, background, watermark, license badge).
-                  // When uncaptioned in the front-matter or footer region, it must NEVER be emitted as a body figure float.
-                  if (!figCaption) {
-                      const isFrontMatterImage = !hasSeenFirstSectionOrAbstract;
-                      const isFooterImage = hasSeenReferences;
-                      const decoHint = isFrontMatterImage || isFooterImage || isAltDeco || /logo|icon|header|banner|bullet|background|watermark|divider|spacer|signature|qr|qrcode|footer|license|badge|cc[-_]by|creative\s*commons/i.test(src);
-                      if (decoHint) {
-                          (result as any)._decorativeImages = (result as any)._decorativeImages || new Set<string>();
-                          (result as any)._decorativeImages.add(src.toLowerCase());
-                          continue;
-                      }
-                      const isSrcOrAltChart = /rf_chart_|chart_pending_|chart_/i.test(src) || CHART_KEYWORD_RE.test(src) || CHART_KEYWORD_RE.test(rawAlt);
-                      figCaption = rawAlt || (isSrcOrAltChart ? 'Chart' : 'Figure');
-                  }
-                  
-                  let subCaption = '';
-                  if (subCaptions.length === imgs.length) {
-                      subCaption = subCaptions[idx];
-                  }
+                const isChart = /rf_chart_|chart_pending_|chart_/i.test(src) || CHART_KEYWORD_RE.test(src) || CHART_KEYWORD_RE.test(rawAlt) || CHART_KEYWORD_RE.test(cleanSubCaption);
+                validImgs.push({ src, caption: cleanSubCaption, isChart });
+              }
 
-                  let cleanSubCaption = subCaption.trim();
-                  let prevClean = '';
-                  while (prevClean !== cleanSubCaption) {
-                      prevClean = cleanSubCaption;
-                      cleanSubCaption = cleanSubCaption.replace(/^\s*(?:\(\s*[a-zA-Z0-9]\s*\)|\[\s*[a-zA-Z0-9]\s*\]|\b[a-zA-Z0-9]\s*\)|\b[a-zA-Z0-9]\s*\.)\s*[:.\-–—]?\s*/i, '').trim();
-                  }
-
-                  const isChart = /rf_chart_|chart_pending_|chart_/i.test(src) || CHART_KEYWORD_RE.test(src) || CHART_KEYWORD_RE.test(rawAlt) || CHART_KEYWORD_RE.test(figCaption) || CHART_KEYWORD_RE.test(cleanSubCaption);
-                  if (isChart) {
-                    result.stats.chartCount++;
-                    result.body.push({
-                        type: 'chart',
-                        id: src,
-                        caption: figCaption || '',
-                        subCaption: cleanSubCaption
-                    } as any);
-                  } else {
-                    result.stats.imageCount++;
-                    result.body.push({
-                        type: 'figure',
-                        id: src,
-                        caption: figCaption || '',
-                        subCaption: cleanSubCaption
-                    } as any);
-                  }
+              if (validImgs.length > 1) {
+                // Group multiple side-by-side images into a single figure-group node
+                result.stats.imageCount += validImgs.length;
+                const anyChart = validImgs.some(vi => vi.isChart);
+                if (anyChart) {
+                  result.stats.chartCount += validImgs.filter(vi => vi.isChart).length;
+                }
+                result.body.push({
+                  type: 'figure-group',
+                  id: validImgs[0].src,
+                  caption: groupCaption || '',
+                  images: validImgs.map(vi => ({ src: vi.src, caption: vi.caption }))
+                } as any);
+              } else if (validImgs.length === 1) {
+                const single = validImgs[0];
+                const figCap = groupCaption || single.caption || (single.isChart ? 'Chart' : 'Figure');
+                if (single.isChart) {
+                  result.stats.chartCount++;
+                  result.body.push({
+                    type: 'chart',
+                    id: single.src,
+                    caption: figCap,
+                    subCaption: single.caption
+                  } as any);
+                } else {
+                  result.stats.imageCount++;
+                  result.body.push({
+                    type: 'figure',
+                    id: single.src,
+                    caption: figCap,
+                    subCaption: single.caption
+                  } as any);
+                }
               }
           }
           else if (entry.role === 'equation') {

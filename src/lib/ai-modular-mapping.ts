@@ -106,22 +106,25 @@ function isTopLevelSectionHeading(node: any, hasAnyL1: boolean): boolean {
     return false;
   }
 
-  const level = Number(node.level);
-  if (level === 1) return true;
-
-  // Numeric prefix check (e.g. "1.", "2. ", "1.1", "2.3.1")
+  // 1. Numeric prefix check (e.g. "1.", "2. ", "1.1", "2.3.1")
   const numMatch = text.match(/^(?:section\s+)?(\d+(?:\.\d+)*)/i);
   if (numMatch) {
     const parts = numMatch[1].split('.').filter(Boolean);
+    if (parts.length > 1) return false; // Explicit subsection e.g. 1.1, 2.3.1 - NEVER top level!
     if (parts.length === 1) return true;
-    return false; // Subsection e.g. 1.1, 2.1
   }
 
-  // Roman numerals e.g. "I. Introduction", "II. Literature Review"
+  // 2. Explicit node.level > 1 is a subsection
+  const level = Number(node.level);
+  if (level === 2 || level === 3) return false;
+
+  // 3. Roman numerals e.g. "I. Introduction", "II. Literature Review"
   if (/^[IVXLCDM]+\.?\s+/i.test(text)) return true;
 
-  // Canonical top-level names (always level 1)
+  // 4. Canonical top-level names (always level 1)
   if (CANONICAL_L1_REGEX.test(text)) return true;
+
+  if (level === 1) return true;
 
   // If document has explicit L1 headings, any other level > 1 is a subsection!
   if (hasAnyL1 && level > 1) return false;
@@ -183,18 +186,33 @@ function buildVerdictCompact(doc: Record<string, any>): Record<string, any> {
 
   // Derive sections directly from sectionGroups to guarantee strict 1:1 chunk alignment
   const sectionGroups = groupBodyBySections(body);
-  const sections: Array<{ title: string; level: number }> = sectionGroups.length > 0
+  const sections = sectionGroups.length > 0
     ? sectionGroups.map(g => ({
         title: String(g.heading.text || 'Untitled Section'),
         level: Number(g.heading.level) || 1,
+        subsections: g.nodes
+          .filter((n: any) => n.type === 'heading' && n.text)
+          .map((n: any) => ({
+            title: String(n.text),
+            level: Number(n.level) || 2,
+          }))
       }))
     : (Array.isArray(ai.sections) && ai.sections.length > 0
         ? ai.sections
             .filter((s: any) => s && typeof s.title === 'string' && !/^(?:references?|bibliography|works cited|literature cited)\b/i.test(s.title.trim()))
-            .map((s: any) => ({ title: s.title, level: Number(s.level) || 1 }))
+            .map((s: any) => ({ title: s.title, level: Number(s.level) || 1, subsections: [] }))
         : body
             .filter((n: any) => n.type === 'heading' && n.text && !/^(?:references?|bibliography|works cited|literature cited)\b/i.test(String(n.text).trim()))
-            .map((n: any) => ({ title: n.text, level: Number(n.level) || 1 })));
+            .map((n: any) => ({ title: n.text, level: Number(n.level) || 1, subsections: [] })));
+
+  // Full list of all sections, subsections, and subsubsections across the document
+  const allSections: Array<{ title: string; level: number }> = (Array.isArray(ai.sections) && ai.sections.length > 0)
+    ? ai.sections
+        .filter((s: any) => s && typeof s.title === 'string' && !/^(?:references?|bibliography|works cited|literature cited)\b/i.test(s.title.trim()))
+        .map((s: any) => ({ title: s.title, level: Number(s.level) || 1 }))
+    : body
+        .filter((n: any) => n.type === 'heading' && n.text && !/^(?:references?|bibliography|works cited|literature cited)\b/i.test(String(n.text).trim()))
+        .map((n: any) => ({ title: n.text, level: Number(n.level) || 1 }));
 
   // Extract figures/tables/algorithms from body when aiVerdict arrays are missing
   const figures = Array.isArray(ai.figures) && ai.figures.length > 0
@@ -257,6 +275,7 @@ function buildVerdictCompact(doc: Record<string, any>): Record<string, any> {
     abstract: ai.abstract?.text || doc.abstract || null,
     keywords: ai.keywords || doc.keywords || [],
     sections,
+    allSections,
     figures,
     tables,
     algorithms,
@@ -1028,15 +1047,20 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     }
   }
 
-  // Ensure affiliations were not skipped by AI in metadata/authors.tex
+  // Ensure affiliations and co-authors were not skipped by AI in metadata/authors.tex
   const authorsFile = files.find(f => f.path === 'metadata/authors.tex');
   if (authorsFile) {
     const det = ModularLatexAssembler.assemble(structured as any, templateId, templateMainTex);
     const detAuthors = det.files['metadata/authors.tex'] || '';
     const detHasAffil = /\\(?:affil|institute|IEEEauthorblockA|affiliation)\b/.test(detAuthors);
     const aiHasAffil = /\\(?:affil|institute|IEEEauthorblockA|affiliation)\b/.test(authorsFile.content || '');
-    if (detHasAffil && !aiHasAffil && detAuthors) {
-      console.warn(`[AI-MODULAR] AI metadata/authors.tex omitted affiliations. Restoring from deterministic assembler.`);
+    const missingCoAuthor = (structured.authors || []).slice(1).some((a: any) => {
+      const aName = String(a.name || '').trim().toLowerCase();
+      return aName.length > 3 && !(authorsFile.content || '').toLowerCase().includes(aName);
+    });
+
+    if (detAuthors && ((detHasAffil && !aiHasAffil) || missingCoAuthor)) {
+      console.warn(`[AI-MODULAR] AI metadata/authors.tex omitted affiliations or co-authors. Restoring from deterministic assembler.`);
       authorsFile.content = detAuthors;
     }
   }
