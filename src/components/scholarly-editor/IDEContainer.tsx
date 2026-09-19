@@ -164,10 +164,19 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
   useEffect(() => {
     if (monacoRef.current && editorMood) {
       const mon = monacoRef.current;
+      const isLight = editorMood === 'light' || !!EDITOR_MOODS[editorMood]?.isLight;
       mon.editor.defineTheme('scholarly-vibrant', {
-        base: 'vs-dark',
+        base: isLight ? 'vs' : 'vs-dark',
         inherit: true,
-        rules: [
+        rules: isLight ? [
+          { token: 'keyword.latex', foreground: '0969da', fontStyle: 'bold' },
+          { token: 'command.latex', foreground: '8250df' },
+          { token: 'parameter.latex', foreground: '0550ae' },
+          { token: 'string.latex', foreground: '0a3069' },
+          { token: 'comment.latex', foreground: '57606a', fontStyle: 'italic' },
+          { token: 'math.latex', foreground: '116329' },
+          { token: 'keyword.control.latex', foreground: 'cf222e' }
+        ] : [
           { token: 'keyword.latex', foreground: '569cd6', fontStyle: 'bold' },
           { token: 'command.latex', foreground: 'c586c0' },
           { token: 'parameter.latex', foreground: '9cdcfe' },
@@ -176,7 +185,16 @@ export default function IDEContainer({ projectId: initialProjectId, isGuest: _is
           { token: 'math.latex', foreground: 'dcdcaa' },
           { token: 'keyword.control.latex', foreground: '4ec9b0' }
         ],
-        colors: {
+        colors: isLight ? {
+          'editor.background': '#ffffff',
+          'editor.foreground': '#0f172a',
+          'editorCursor.foreground': '#0f172a',
+          'editor.lineHighlightBackground': 'rgba(0,0,0,0.03)',
+          'editorLineNumber.foreground': '#94a3b8',
+          'scrollbarSlider.background': 'rgba(0,0,0,0.12)',
+          'scrollbarSlider.hoverBackground': 'rgba(0,0,0,0.22)',
+          'scrollbarSlider.activeBackground': 'rgba(0,0,0,0.35)',
+        } : {
           'editor.background': EDITOR_MOODS[editorMood].bg,
           'editor.foreground': '#f0f0f0',
           'editorCursor.foreground': '#ffffff',

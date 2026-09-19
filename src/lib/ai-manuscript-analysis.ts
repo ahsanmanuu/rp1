@@ -355,10 +355,22 @@ function countCitationsFromPlainText(text: string): number {
 function normText(s: string): string {
   return (s || '')
     .toLowerCase()
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, ' ')
+    .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036"']/g, '')
+    .replace(/[\u2018\u2019\u201A\u201B`']/g, '')
+    .replace(/[\u2013\u2014\u2212]/g, '-')
     .replace(/\s+/g, ' ')
     .trim();
 }
+
+function normalizeRomanPrefix(s: string): string {
+  return (s || '').replace(/^(table|fig(?:ure)?|section|tab)\s+([ivxlcdm]+)\b/i, (m, p1, p2) => {
+    const romanMap: Record<string, number> = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10, xi: 11, xii: 12, xiii: 13, xiv: 14, xv: 15 };
+    const num = romanMap[p2.toLowerCase()];
+    return num ? `${p1} ${num}` : m;
+  });
+}
+
 
 const CANONICAL_SECTION_WHITELIST = [
   'literature review',
@@ -474,9 +486,18 @@ export function reconcileVerdict(
   rawHtml?: string
 ): AiStructureVerdict {
   const haystack = normText(plainText);
+  const haystackRoman = normalizeRomanPrefix(haystack);
+  const haystackAlpha = haystackRoman.replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ');
+
   const inText = (s: string): boolean => {
-    if (!s || s.length < 4) return false;
-    return haystack.includes(normText(s));
+    if (!s || s.length < 3) return false;
+    const n = normText(s);
+    if (haystack.includes(n)) return true;
+    const nRoman = normalizeRomanPrefix(n);
+    if (haystack.includes(nRoman) || haystackRoman.includes(nRoman)) return true;
+    const nAlpha = nRoman.replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (nAlpha.length >= 6 && (haystackAlpha.includes(nAlpha) || haystack.includes(nAlpha))) return true;
+    return false;
   };
 
   // ── Sections: keep only AI sections whose title actually appears in text ──
@@ -513,37 +534,63 @@ export function reconcileVerdict(
   // ── Figure / table / algorithm lists: drop captions not in the text ──
   // Returns UNDEFINED when NO entry passes containment — a fully hallucinated
   // list must not be kept (it would inflate counts and render fake floats).
-  const verifyCaptions = (list: Array<{ caption?: string }> | null | undefined): Array<{ caption?: string }> | undefined => {
+  const verifyCaptions = (list: Array<{ caption?: string }> | null | undefined, type?: string): Array<{ caption?: string }> | undefined => {
     if (!list || list.length === 0) return undefined;
     const verified = list.filter(c => {
       const cap = String(c?.caption || '').replace(/\s+/g, ' ').trim();
       if (!cap) return false;
       if (inText(cap)) return true;
       // Match the caption body without its "Figure N"/"TABLE N" prefix
-      return inText(cap.replace(/^(?:fig(?:ure)?|tab(?:le)?|alg(?:orithm)?|chart|img(?:age)?)[.\s]*[\dIVXLC]*-?[.\s:-]*/i, ''));
+      const bodyOnly = cap.replace(/^(?:fig(?:ure)?|tab(?:le)?|alg(?:orithm)?|chart|img(?:age)?)[.\s]*[\dIVXLC]*-?[.\s:-]*/i, '').trim();
+      if (bodyOnly && inText(bodyOnly)) return true;
+      // Cross-check against parser's detected body nodes
+      if (type && (deepData.body || []).some(n => {
+        if (n.type === type || (type === 'figure' && (n.type === 'image' || n.type === 'chart'))) {
+          const bCap = normText(n.caption || '');
+          const cCap = normText(cap);
+          if (bCap && (bCap.includes(cCap) || cCap.includes(bCap))) return true;
+          if (bodyOnly && bCap && bCap.includes(normText(bodyOnly))) return true;
+        }
+        return false;
+      })) {
+        return true;
+      }
+      return false;
     });
     return verified.length > 0 ? verified : undefined;
   };
-  verdict.figures = verifyCaptions(verdict.figures);
-  verdict.charts = verifyCaptions(verdict.charts);
-  verdict.tables = verifyCaptions(verdict.tables);
+  verdict.figures = verifyCaptions(verdict.figures, 'figure');
+  verdict.charts = verifyCaptions(verdict.charts, 'chart');
+  verdict.tables = verifyCaptions(verdict.tables, 'table');
   if (verdict.algorithms && verdict.algorithms.length > 0) {
     const verified = verdict.algorithms.filter(a => {
       const t = String(a?.title || '').replace(/\s+/g, ' ').trim();
       if (!t) return false;
-      return inText(t) || inText(t.replace(/^algorithm[\s\d:.-]*/i, ''));
+      if (inText(t) || inText(t.replace(/^algorithm[\s\d:.-]*/i, ''))) return true;
+      if ((deepData.body || []).some(n => n.type === 'algorithm' && normText(n.title || n.caption || '').includes(normText(t)))) return true;
+      return false;
     });
-    // Same rule as captions: an unverifiable algorithm list is dropped entirely.
     verdict.algorithms = verified.length > 0 ? verified : undefined;
   }
 
-  // ── References: keep only entries that exist verbatim in the text ──
+  // ── References: keep only entries that exist verbatim or match document references ──
   if (verdict.references && verdict.references.length > 0) {
     const verified = verdict.references.filter(r => {
       const clean = String(r || '').replace(/\s+/g, ' ').trim();
       if (!clean) return false;
-      // Compare the first ~100 chars (authors + year) against the document
-      return inText(clean.substring(0, 100));
+      // Compare with inText
+      if (inText(clean.substring(0, 80))) return true;
+      // Compare against parsed references
+      const normClean = normText(clean);
+      if ((deepData.references || []).some(dr => {
+        const normDr = normText(typeof dr === 'string' ? dr : (dr as any)?.text || '');
+        return normDr.length >= 15 && (normDr.includes(normClean.substring(0, 40)) || normClean.includes(normDr.substring(0, 40)));
+      })) return true;
+      // Match first author surname + 4-digit year
+      const yrMatch = clean.match(/\b(19|20)\d{2}\b/);
+      const firstWord = clean.replace(/[^a-zA-Z]/g, ' ').trim().split(/\s+/)[0];
+      if (yrMatch && firstWord && firstWord.length >= 3 && inText(`${firstWord} ${yrMatch[0]}`)) return true;
+      return false;
     });
     if (verified.length > 0) verdict.references = verified;
   }

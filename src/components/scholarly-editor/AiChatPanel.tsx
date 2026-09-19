@@ -148,7 +148,7 @@ export function AiChatPanel({
       const preText = content.substring(lastIndex, match.index);
       if (preText.trim()) {
         parts.push(
-          <div key={`txt-${lastIndex}`} style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '0.8rem', color: 'var(--text-primary)' }}>
+          <div key={`txt-${lastIndex}`} style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '0.8rem', color: '#0f172a' }}>
             {preText}
           </div>
         );
@@ -163,10 +163,10 @@ export function AiChatPanel({
         <div key={currentBlockKey} style={{
           margin: '0.6rem 0',
           borderRadius: '10px',
-          border: '1px solid rgba(0,0,0,0.1)',
+          border: '1px solid rgba(0,0,0,0.12)',
           background: '#f8fafc',
           overflow: 'hidden',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.35)'
+          boxShadow: '0 4px 16px rgba(0,0,0,0.08)'
         }}>
           <div style={{
             display: 'flex',
@@ -177,7 +177,7 @@ export function AiChatPanel({
             borderBottom: '1px solid rgba(0,0,0,0.08)',
             fontSize: '0.65rem',
             fontFamily: 'var(--font-mono)',
-            color: 'var(--text-secondary)'
+            color: '#475569'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
               <Code size={11} style={{ color: 'var(--accent-primary)' }} />
@@ -189,7 +189,7 @@ export function AiChatPanel({
                 style={{
                   background: isCopied ? 'rgba(34, 197, 94, 0.2)' : 'transparent',
                   border: isCopied ? '1px solid rgba(34, 197, 94, 0.4)' : 'none',
-                  color: isCopied ? '#4ade80' : 'var(--text-secondary)',
+                  color: isCopied ? '#16a34a' : '#475569',
                   cursor: 'pointer',
                   padding: '2px 6px',
                   borderRadius: '4px',
@@ -212,9 +212,9 @@ export function AiChatPanel({
                     afterApply?.();
                   }}
                   style={{
-                    background: 'rgba(99, 102, 241, 0.2)',
-                    border: '1px solid rgba(99, 102, 241, 0.4)',
-                    color: '#a5b4fc',
+                    background: 'rgba(99, 102, 241, 0.12)',
+                    border: '1px solid rgba(99, 102, 241, 0.3)',
+                    color: '#4338ca',
                     cursor: 'pointer',
                     padding: '2px 6px',
                     borderRadius: '4px',
@@ -239,7 +239,7 @@ export function AiChatPanel({
             fontFamily: 'var(--font-mono)',
             fontSize: '0.75rem',
             lineHeight: 1.5,
-            color: '#1e293b',
+            color: '#0f172a',
             whiteSpace: 'pre',
             maxHeight: '320px'
           }}>
@@ -255,7 +255,7 @@ export function AiChatPanel({
       const remaining = content.substring(lastIndex);
       if (remaining.trim()) {
         parts.push(
-          <div key={`txt-${lastIndex}`} style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '0.8rem', color: 'var(--text-primary)' }}>
+          <div key={`txt-${lastIndex}`} style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '0.8rem', color: '#0f172a' }}>
             {remaining}
           </div>
         );
@@ -263,7 +263,7 @@ export function AiChatPanel({
     }
 
     return parts.length > 0 ? parts : (
-      <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '0.8rem' }}>
+      <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '0.8rem', color: '#0f172a' }}>
         {content}
       </div>
     );
@@ -284,18 +284,18 @@ export function AiChatPanel({
           padding: '0.85rem 1rem',
           borderRadius: isAssistant ? '14px 14px 14px 4px' : '14px 14px 4px 14px',
           background: isAssistant
-            ? 'linear-gradient(145deg, #ffffff 0%, #f1f5f9 100%)'
-            : 'linear-gradient(145deg, rgba(79, 70, 229, 0.1) 0%, rgba(99, 102, 241, 0.05) 100%)',
-          color: 'var(--text-primary)',
+            ? '#ffffff'
+            : 'linear-gradient(145deg, #eff6ff 0%, #e0e7ff 100%)',
+          color: isAssistant ? '#0f172a' : '#1e3a8a',
           alignSelf: isAssistant ? 'flex-start' : 'flex-end',
           maxWidth: '92%',
           fontSize: '0.8rem',
           border: isAssistant
-            ? '1px solid rgba(0, 0, 0, 0.08)'
-            : '1px solid rgba(99, 102, 241, 0.2)',
+            ? '1px solid rgba(0, 0, 0, 0.1)'
+            : '1px solid #c7d2fe',
           boxShadow: isAssistant
-            ? '0 6px 24px rgba(0, 0, 0, 0.25)'
-            : '0 4px 16px rgba(99, 102, 241, 0.1)',
+            ? '0 4px 16px rgba(0, 0, 0, 0.06)'
+            : '0 2px 10px rgba(99, 102, 241, 0.1)',
           position: 'relative',
           backdropFilter: 'blur(20px)'
         }}
@@ -307,7 +307,7 @@ export function AiChatPanel({
           justifyContent: 'space-between',
           marginBottom: '0.45rem',
           fontSize: '0.65rem',
-          color: isAssistant ? '#4338ca' : '#4f46e5',
+          color: isAssistant ? '#4338ca' : '#3730a3',
           fontWeight: 700,
           fontFamily: 'var(--font-headline)',
           letterSpacing: '0.04em'
@@ -334,7 +334,7 @@ export function AiChatPanel({
               style={{
                 background: 'transparent',
                 border: 'none',
-                color: 'var(--text-secondary)',
+                color: '#64748b',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
@@ -355,13 +355,13 @@ export function AiChatPanel({
               onChange={e => setEditText(e.target.value)}
               style={{
                 width: '100%', background: '#ffffff', border: '1px solid rgba(0,0,0,0.15)',
-                borderRadius: '8px', padding: '0.5rem', color: 'var(--text-primary)', fontSize: '0.8rem',
+                borderRadius: '8px', padding: '0.5rem', color: '#0f172a', fontSize: '0.8rem',
                 outline: 'none', fontFamily: 'var(--font-mono)', minHeight: '60px'
               }}
             />
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.4rem' }}>
               <button onClick={cancelEdit} style={{
-                background: 'rgba(0,0,0,0.06)', color: 'var(--text-secondary)', border: 'none',
+                background: 'rgba(0,0,0,0.06)', color: '#475569', border: 'none',
                 borderRadius: '5px', padding: '0.25rem 0.6rem', fontSize: '0.65rem', cursor: 'pointer'
               }}>Cancel</button>
               <button onClick={() => saveEdit(i)} style={{
@@ -376,22 +376,22 @@ export function AiChatPanel({
               <div>
                 {parsedJson ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '0.8rem' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '0.8rem', color: '#0f172a' }}>
                       {parsedJson.explanation || m.content}
                     </div>
 
                     {parsedJson.edits && parsedJson.edits.length > 0 && (
                       <div style={{
-                        background: '#f1f5f9',
+                        background: '#f8fafc',
                         padding: '0.65rem 0.8rem',
                         borderRadius: '10px',
                         border: '1px solid rgba(99, 102, 241, 0.3)',
                         fontSize: '0.72rem',
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.06)'
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.35rem' }}>
                           <Terminal size={13} style={{ color: 'var(--accent-primary)' }} />
-                          <span style={{ fontWeight: 800, color: '#1e293b', letterSpacing: '0.04em' }}>
+                          <span style={{ fontWeight: 800, color: '#0f172a', letterSpacing: '0.04em' }}>
                             PROPOSED WORKSPACE CHANGES ({parsedJson.edits.length}):
                           </span>
                         </div>
@@ -400,21 +400,21 @@ export function AiChatPanel({
                             <div key={idx} style={{
                               display: 'flex', alignItems: 'center', gap: '0.4rem',
                               padding: '0.25rem 0.45rem', borderRadius: '6px',
-                              background: 'rgba(0,0,0,0.03)', border: '1px solid rgba(0,0,0,0.05)'
+                              background: '#ffffff', border: '1px solid rgba(0,0,0,0.08)'
                             }}>
                               <span style={{
                                 padding: '1px 5px', borderRadius: '4px',
                                 fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase',
-                                background: e.type === 'delete' ? 'rgba(239, 68, 68, 0.25)' : e.type === 'replace' ? 'rgba(234, 179, 8, 0.25)' : 'rgba(34, 197, 94, 0.25)',
-                                color: e.type === 'delete' ? '#f87171' : e.type === 'replace' ? '#facc15' : '#4ade80'
+                                background: e.type === 'delete' ? 'rgba(239, 68, 68, 0.15)' : e.type === 'replace' ? 'rgba(234, 179, 8, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+                                color: e.type === 'delete' ? '#dc2626' : e.type === 'replace' ? '#b45309' : '#16a34a'
                               }}>
                                 {e.type}
                               </span>
-                              <code style={{ color: '#a5b4fc', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}>
+                              <code style={{ color: '#4338ca', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}>
                                 {e.path}
                               </code>
                               {e.target && (
-                                <span style={{ opacity: 0.6, fontSize: '0.65rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                <span style={{ opacity: 0.8, fontSize: '0.65rem', color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                   target: &ldquo;{e.target.substring(0, 24)}...&rdquo;
                                 </span>
                               )}
@@ -475,10 +475,10 @@ export function AiChatPanel({
             {/* Message Controls */}
             <div style={{
               display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.45rem',
-              opacity: 0.5, transition: 'opacity 0.2s'
+              opacity: 0.6, transition: 'opacity 0.2s'
             }} className="msg-controls">
               <button onClick={() => handleCopy(m.content)} title="Copy Message"
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', padding: '2px' }}>
+                style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', padding: '2px' }}>
                 <Copy size={12} />
               </button>
               <button onClick={() => startEdit(i, m.content)} title="Edit Message"
@@ -486,7 +486,7 @@ export function AiChatPanel({
                 <Pencil size={12} />
               </button>
               <button onClick={() => deleteMessage(i)} title="Delete Message"
-                style={{ background: 'transparent', border: 'none', color: '#ff6b6b', cursor: 'pointer', display: 'flex', padding: '2px' }}>
+                style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', padding: '2px' }}>
                 <Trash2 size={12} />
               </button>
             </div>
@@ -505,7 +505,7 @@ export function AiChatPanel({
           exit={{ width: 0, opacity: 0 }}
           transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
           style={{
-            borderLeft: '1px solid rgba(0,0,0,0.08)',
+            borderLeft: '1px solid rgba(0,0,0,0.1)',
             display: 'flex',
             flexDirection: 'column',
             background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
@@ -514,7 +514,7 @@ export function AiChatPanel({
             flexShrink: 0,
             overflow: 'hidden',
             position: 'relative',
-            boxShadow: '-8px 0 32px rgba(0, 0, 0, 0.4)'
+            boxShadow: '-4px 0 24px rgba(0, 0, 0, 0.08)'
           }}
         >
           {/* Header */}
@@ -524,7 +524,7 @@ export function AiChatPanel({
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            background: '#f1f5f9',
+            background: '#f8fafc',
             flexShrink: 0
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
@@ -532,7 +532,7 @@ export function AiChatPanel({
                 width: '24px', height: '24px', borderRadius: '7px',
                 background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 0 14px rgba(99, 102, 241, 0.4)'
+                boxShadow: '0 0 14px rgba(99, 102, 241, 0.3)'
               }}>
                 <Bot size={14} color="#fff" />
               </div>
@@ -555,8 +555,8 @@ export function AiChatPanel({
                   title="Clear Chat History"
                   style={{
                     background: '#ffffff',
-                    border: '1px solid rgba(0,0,0,0.08)',
-                    color: 'var(--text-secondary)',
+                    border: '1px solid rgba(0,0,0,0.12)',
+                    color: '#475569',
                     borderRadius: '6px',
                     cursor: 'pointer',
                     display: 'flex',
@@ -572,8 +572,8 @@ export function AiChatPanel({
                 title="Close Chat"
                 style={{
                   background: '#ffffff',
-                  border: '1px solid rgba(0,0,0,0.08)',
-                  color: 'var(--text-secondary)',
+                  border: '1px solid rgba(0,0,0,0.12)',
+                  color: '#475569',
                   borderRadius: '6px',
                   cursor: 'pointer',
                   display: 'flex',
@@ -589,7 +589,7 @@ export function AiChatPanel({
           {/* Quick Action Prompt Chips */}
           <div style={{
             padding: '0.5rem 0.75rem',
-            borderBottom: '1px solid rgba(255,255,255,0.05)',
+            borderBottom: '1px solid rgba(0,0,0,0.06)',
             display: 'flex',
             gap: '0.35rem',
             overflowX: 'auto',
@@ -611,7 +611,7 @@ export function AiChatPanel({
                     padding: '0.25rem 0.55rem',
                     borderRadius: '20px',
                     background: '#ffffff',
-                    border: '1px solid rgba(0,0,0,0.08)',
+                    border: '1px solid rgba(0,0,0,0.12)',
                     color: '#334155',
                     fontSize: '0.65rem',
                     fontWeight: 600,
@@ -621,14 +621,14 @@ export function AiChatPanel({
                     opacity: sending ? 0.5 : 1
                   }}
                   onMouseEnter={e => {
-                    e.currentTarget.style.background = 'rgba(99, 102, 241, 0.2)';
-                    e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.4)';
-                    e.currentTarget.style.color = '#fff';
+                    e.currentTarget.style.background = '#e0e7ff';
+                    e.currentTarget.style.borderColor = '#a5b4fc';
+                    e.currentTarget.style.color = '#3730a3';
                   }}
                   onMouseLeave={e => {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
-                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
-                    e.currentTarget.style.color = '#cbd5e1';
+                    e.currentTarget.style.background = '#ffffff';
+                    e.currentTarget.style.borderColor = 'rgba(0,0,0,0.12)';
+                    e.currentTarget.style.color = '#334155';
                   }}
                 >
                   <Icon size={11} style={{ color: 'var(--accent-primary)' }} />
@@ -654,7 +654,7 @@ export function AiChatPanel({
             {messages.length === 0 ? (
               <div style={{
                 textAlign: 'center',
-                color: 'var(--text-secondary)',
+                color: '#64748b',
                 fontSize: '0.75rem',
                 margin: 'auto 0',
                 padding: '2rem 1.5rem',
@@ -662,11 +662,11 @@ export function AiChatPanel({
               }}>
                 <div style={{
                   width: '54px', height: '54px', borderRadius: '16px',
-                  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%)',
-                  border: '1px solid rgba(99, 102, 241, 0.3)',
+                  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(168, 85, 247, 0.12) 100%)',
+                  border: '1px solid rgba(99, 102, 241, 0.25)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   margin: '0 auto 1rem auto',
-                  boxShadow: '0 0 30px rgba(99, 102, 241, 0.2)'
+                  boxShadow: '0 4px 16px rgba(99, 102, 241, 0.15)'
                 }}>
                   <Sparkles size={24} style={{ color: 'var(--accent-primary)' }} />
                 </div>
@@ -692,9 +692,9 @@ export function AiChatPanel({
                   background: '#ffffff',
                   border: '1px solid rgba(99, 102, 241, 0.3)',
                   borderRadius: '12px',
-                  color: '#4f46e5',
+                  color: '#4338ca',
                   fontSize: '0.75rem',
-                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
+                  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)'
                 }}
               >
                 <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
@@ -721,12 +721,12 @@ export function AiChatPanel({
               display: 'flex',
               alignItems: 'flex-end',
               gap: '0.4rem',
-              background: 'rgba(0,0,0,0.02)',
-              border: '1px solid rgba(0,0,0,0.1)',
+              background: '#f8fafc',
+              border: '1px solid rgba(0,0,0,0.12)',
               borderRadius: '12px',
               padding: '0.4rem 0.6rem',
               transition: 'all 0.2s',
-              boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.3)'
+              boxShadow: 'none'
             }}>
               <textarea
                 ref={textareaRef}
@@ -762,9 +762,9 @@ export function AiChatPanel({
                   onClick={abort}
                   title="Abort AI Generation"
                   style={{
-                    background: 'rgba(239, 68, 68, 0.2)',
-                    border: '1px solid rgba(239, 68, 68, 0.4)',
-                    color: '#f87171',
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    color: '#dc2626',
                     borderRadius: '8px',
                     padding: '0.35rem 0.65rem',
                     cursor: 'pointer',
@@ -786,10 +786,10 @@ export function AiChatPanel({
                   title="Send message (Enter)"
                   style={{
                     background: input.trim()
-                      ? 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)'
-                      : 'rgba(255,255,255,0.05)',
-                    color: input.trim() ? '#fff' : 'rgba(255,255,255,0.3)',
-                    border: 'none',
+                      ? 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)'
+                      : '#f1f5f9',
+                    color: input.trim() ? '#fff' : '#94a3b8',
+                    border: input.trim() ? 'none' : '1px solid #e2e8f0',
                     borderRadius: '8px',
                     width: '32px',
                     height: '32px',
@@ -798,7 +798,7 @@ export function AiChatPanel({
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexShrink: 0,
-                    boxShadow: input.trim() ? '0 4px 12px rgba(99, 102, 241, 0.35)' : 'none',
+                    boxShadow: input.trim() ? '0 4px 12px rgba(79, 70, 229, 0.3)' : 'none',
                     transition: 'all 0.2s'
                   }}
                 >
@@ -813,8 +813,7 @@ export function AiChatPanel({
               alignItems: 'center',
               padding: '0 0.25rem',
               fontSize: '0.62rem',
-              color: 'var(--text-secondary)',
-              opacity: 0.7
+              color: '#64748b'
             }}>
               <span>Return to send, Shift+Return for newline</span>
               <span>Full context aware</span>

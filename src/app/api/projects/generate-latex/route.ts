@@ -597,11 +597,21 @@ export async function POST(req: Request) {
               } else if (filePath === 'metadata/authors.tex' && content) {
                 const aiAuthorCount = (extractedComponents[filePath]?.match(/\\author/g) || []).length;
                 const detAuthorCount = (content.match(/\\author/g) || []).length;
-                if (detAuthorCount > aiAuthorCount || (extractedComponents[filePath].includes('Institution') && !content.includes('Institution'))) {
+                const detHasAffil = /\\(?:affil|institute|IEEEauthorblockA|affiliation)\b/.test(content);
+                const aiHasAffil = /\\(?:affil|institute|IEEEauthorblockA|affiliation)\b/.test(extractedComponents[filePath] || '');
+                if (detAuthorCount > aiAuthorCount || (detHasAffil && !aiHasAffil) || (extractedComponents[filePath].includes('Institution') && !content.includes('Institution'))) {
                   extractedComponents[filePath] = content;
                 }
               } else if (filePath.startsWith('floats/tables/') && content && content.includes('\\begin{tabular')) {
                 if (!extractedComponents[filePath] || !extractedComponents[filePath].includes('\\begin{tabular') || extractedComponents[filePath].length < content.length * 0.4) {
+                  extractedComponents[filePath] = content;
+                }
+              } else if (filePath.startsWith('floats/figures/') && content && content.includes('\\includegraphics')) {
+                if (!extractedComponents[filePath] || !extractedComponents[filePath].includes('\\includegraphics') || !extractedComponents[filePath].includes('\\caption')) {
+                  extractedComponents[filePath] = content;
+                }
+              } else if (filePath.startsWith('floats/algorithms/') && content && content.includes('\\begin{algorithm')) {
+                if (!extractedComponents[filePath] || !extractedComponents[filePath].includes('\\begin{algorithm') || extractedComponents[filePath].length < content.length * 0.4) {
                   extractedComponents[filePath] = content;
                 }
               }

@@ -233,7 +233,12 @@ function buildVerdictCompact(doc: Record<string, any>): Record<string, any> {
   const authors = Array.isArray(ai.authors) && ai.authors.length > 0
     ? ai.authors
     : Array.isArray(doc.authors)
-      ? doc.authors.map((a: any) => ({ name: typeof a === 'string' ? a : a?.name, affiliations: [] }))
+      ? doc.authors.map((a: any) => ({
+          name: typeof a === 'string' ? a : a?.name,
+          affiliations: Array.isArray(a?.affiliations) && a.affiliations.length > 0
+            ? a.affiliations
+            : (a?.affiliation ? [a.affiliation] : [])
+        }))
       : [];
   const affiliations = ai.affiliations || doc.organizations || [];
   const authorNames = authors.map((a: any) => typeof a === 'string' ? a : a?.name).filter(Boolean);
@@ -329,13 +334,18 @@ function chunkTextWindow(
   return result;
 }
 
-/** Split body nodes into section-grouped text blocks (each starting with a heading). */
+/** Split body nodes into section-grouped text blocks (each starting with a top-level heading). */
 function splitIntoSections(nodes: any[]): string[] {
   const sections: string[] = [];
   let current: string[] = [];
+  const hasAnyL1 = nodes.some((n: any) => n.type === 'heading' && (
+    Number(n.level) === 1 ||
+    CANONICAL_L1_REGEX.test(String(n.text || '').trim()) ||
+    /^(?:section\s+)?\d+\.?\s+[a-z]/i.test(String(n.text || '').trim())
+  ));
 
   for (const node of nodes) {
-    if (node.type === 'heading' && node.text) {
+    if (node.type === 'heading' && node.text && isTopLevelSectionHeading(node, hasAnyL1)) {
       if (current.length > 0) sections.push(current.join('\n'));
       current = [];
     }
@@ -1015,6 +1025,19 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     }
     if (!files.some(f => f.path === 'metadata/keywords.tex') && det.files['metadata/keywords.tex']) {
       files.push({ path: 'metadata/keywords.tex', content: det.files['metadata/keywords.tex'] });
+    }
+  }
+
+  // Ensure affiliations were not skipped by AI in metadata/authors.tex
+  const authorsFile = files.find(f => f.path === 'metadata/authors.tex');
+  if (authorsFile) {
+    const det = ModularLatexAssembler.assemble(structured as any, templateId, templateMainTex);
+    const detAuthors = det.files['metadata/authors.tex'] || '';
+    const detHasAffil = /\\(?:affil|institute|IEEEauthorblockA|affiliation)\b/.test(detAuthors);
+    const aiHasAffil = /\\(?:affil|institute|IEEEauthorblockA|affiliation)\b/.test(authorsFile.content || '');
+    if (detHasAffil && !aiHasAffil && detAuthors) {
+      console.warn(`[AI-MODULAR] AI metadata/authors.tex omitted affiliations. Restoring from deterministic assembler.`);
+      authorsFile.content = detAuthors;
     }
   }
 

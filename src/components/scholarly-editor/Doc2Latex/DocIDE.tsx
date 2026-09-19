@@ -120,7 +120,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
   const [mounted, setMounted] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState('');
-  const [editorMood, setEditorMood] = useState<EditorMood>('obsidian');
+  const [editorMood, setEditorMood] = useState<EditorMood>('light');
   const [loadingCode, setLoadingCode] = useState(false);
   const [showAiChat, setShowAiChat] = useState(false);
 
@@ -692,10 +692,19 @@ export default function DocIDE({ projectId }: { projectId: string }) {
   useEffect(() => {
     if (monacoRef.current && editorMood) {
       const mon = monacoRef.current;
+      const isLight = editorMood === 'light' || !!EDITOR_MOODS[editorMood]?.isLight;
       mon.editor.defineTheme('scholarly-vibrant', {
-        base: 'vs-dark',
+        base: isLight ? 'vs' : 'vs-dark',
         inherit: true,
-        rules: [
+        rules: isLight ? [
+          { token: 'keyword.latex', foreground: '0969da', fontStyle: 'bold' },
+          { token: 'command.latex', foreground: '8250df' },
+          { token: 'parameter.latex', foreground: '0550ae' },
+          { token: 'string.latex', foreground: '0a3069' },
+          { token: 'comment.latex', foreground: '57606a', fontStyle: 'italic' },
+          { token: 'math.latex', foreground: '116329' },
+          { token: 'keyword.control.latex', foreground: 'cf222e' }
+        ] : [
           { token: 'keyword.latex', foreground: '569cd6', fontStyle: 'bold' },
           { token: 'command.latex', foreground: 'c586c0' },
           { token: 'parameter.latex', foreground: '9cdcfe' },
@@ -704,7 +713,16 @@ export default function DocIDE({ projectId }: { projectId: string }) {
           { token: 'math.latex', foreground: 'dcdcaa' },
           { token: 'keyword.control.latex', foreground: '4ec9b0' }
         ],
-        colors: {
+        colors: isLight ? {
+          'editor.background': '#ffffff',
+          'editor.foreground': '#0f172a',
+          'editorCursor.foreground': '#0f172a',
+          'editor.lineHighlightBackground': 'rgba(0,0,0,0.03)',
+          'editorLineNumber.foreground': '#94a3b8',
+          'scrollbarSlider.background': 'rgba(0,0,0,0.12)',
+          'scrollbarSlider.hoverBackground': 'rgba(0,0,0,0.22)',
+          'scrollbarSlider.activeBackground': 'rgba(0,0,0,0.35)',
+        } : {
           'editor.background': EDITOR_MOODS[editorMood].bg,
           'editor.foreground': '#f0f0f0',
           'editorCursor.foreground': '#ffffff',
@@ -1997,11 +2015,20 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                              } catch (e) {
                                console.warn("Failed to bind Ctrl+Enter command:", e);
                              }
- 
+
+                             const isLight = editorMood === 'light' || !!EDITOR_MOODS[editorMood]?.isLight;
                              mon.editor.defineTheme('scholarly-vibrant', {
-                               base: 'vs-dark',
+                               base: isLight ? 'vs' : 'vs-dark',
                                inherit: true,
-                               rules: [
+                               rules: isLight ? [
+                                 { token: 'keyword.latex', foreground: '0969da', fontStyle: 'bold' },
+                                 { token: 'command.latex', foreground: '8250df' },
+                                 { token: 'parameter.latex', foreground: '0550ae' },
+                                 { token: 'string.latex', foreground: '0a3069' },
+                                 { token: 'comment.latex', foreground: '57606a', fontStyle: 'italic' },
+                                 { token: 'math.latex', foreground: '116329' },
+                                 { token: 'keyword.control.latex', foreground: 'cf222e' }
+                               ] : [
                                  { token: 'keyword.latex', foreground: '569cd6', fontStyle: 'bold' },
                                  { token: 'command.latex', foreground: 'c586c0' },
                                  { token: 'parameter.latex', foreground: '9cdcfe' },
@@ -2010,12 +2037,25 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                                  { token: 'math.latex', foreground: 'dcdcaa' },
                                  { token: 'keyword.control.latex', foreground: '4ec9b0' }
                                ],
-                               colors: {
+                               colors: isLight ? {
+                                 'editor.background': '#ffffff',
+                                 'editor.foreground': '#0f172a',
+                                 'editorCursor.foreground': '#0f172a',
+                                 'editor.lineHighlightBackground': 'rgba(0,0,0,0.03)',
+                                 'editorLineNumber.foreground': '#94a3b8',
+                                 'scrollbarSlider.background': 'rgba(0,0,0,0.12)',
+                                 'scrollbarSlider.hoverBackground': 'rgba(0,0,0,0.22)',
+                                 'scrollbarSlider.activeBackground': 'rgba(0,0,0,0.35)',
+                               } : {
                                  'editor.background': EDITOR_MOODS[editorMood].bg,
                                  'editor.foreground': '#f0f0f0',
                                  'editorCursor.foreground': '#ffffff',
                                  'editor.lineHighlightBackground': 'rgba(255,255,255,0.03)',
                                  'editorLineNumber.foreground': 'rgba(255,255,255,0.2)',
+                                 'scrollbarSlider.background': 'rgba(255,255,255,0.18)',
+                                 'scrollbarSlider.hoverBackground': 'rgba(255,255,255,0.32)',
+                                 'scrollbarSlider.activeBackground': 'rgba(255,255,255,0.40)',
+                                 'scrollbarSlider.border': '1px solid rgba(255,255,255,0.05)',
                                }
                              });
                              mon.editor.setTheme('scholarly-vibrant');

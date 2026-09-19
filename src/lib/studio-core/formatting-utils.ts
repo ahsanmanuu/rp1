@@ -134,11 +134,13 @@ export function formatLatexCode(code: string): string {
   return finalLines.join('\n');
 }
 
-export type EditorMood = 'obsidian' | 'midnight' | 'slate' | 'classic';
+export type EditorMood = 'light' | 'obsidian' | 'midnight' | 'slate' | 'classic';
 
-export const EDITOR_MOODS: Record<EditorMood, { bg: string; name: string }> = {
+export const EDITOR_MOODS: Record<EditorMood, { bg: string; name: string; isLight?: boolean }> = {
+  light: { bg: '#ffffff', name: 'Academic Light (Crisp White)', isLight: true },
   obsidian: { bg: '#050505', name: 'Deep Obsidian (Pitch Black)' },
   midnight: { bg: '#0a0a1a', name: 'Astral Midnight (Deep Blue)' },
   slate: { bg: '#161920', name: 'Academic Slate (Pro)' },
   classic: { bg: '#1e1e1e', name: 'Legacy VS (Gray)' },
 };
+
