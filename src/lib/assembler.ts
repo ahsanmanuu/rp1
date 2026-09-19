@@ -1233,16 +1233,31 @@ export class LatexAssembler {
     const rows = rowsMatch ? Array.from(rowsMatch) : [];
     if (rows.length === 0) return '';
 
-    // Detect number of columns from widest row
+    // Detect number of columns accounting for colspan and rowspan
     let totalGridCols = 0;
+    const colCountSpans: number[] = [];
     for (const row of rows) {
       const cells = row.match(/<t[hd][^>]*>[\s\S]*?<\/t[hd]>/gi) || [];
-      let cols = 0;
+      let curCol = 0;
+      while (curCol < colCountSpans.length && colCountSpans[curCol] > 0) {
+        colCountSpans[curCol]--;
+        curCol++;
+      }
       cells.forEach(c => {
-        const m = c.match(/colspan=["'](\d+)["']/i);
-        cols += m ? parseInt(m[1]) : 1;
+        const colspan = parseInt(c.match(/colspan=["'](\d+)["']/i)?.[1] || '1', 10);
+        const rowspan = parseInt(c.match(/rowspan=["'](\d+)["']/i)?.[1] || '1', 10);
+        while (curCol < colCountSpans.length && colCountSpans[curCol] > 0) {
+          colCountSpans[curCol]--;
+          curCol++;
+        }
+        if (rowspan > 1) {
+          for (let s = 0; s < colspan; s++) {
+            colCountSpans[curCol + s] = rowspan - 1;
+          }
+        }
+        curCol += colspan;
       });
-      if (cols > totalGridCols) totalGridCols = cols;
+      if (curCol > totalGridCols) totalGridCols = curCol;
     }
     if (totalGridCols === 0) return '';
 
@@ -1261,14 +1276,31 @@ export class LatexAssembler {
 
     // Measure max content length per column to decide column type
     const colMaxLen = Array(totalGridCols).fill(0);
+    const colSpanLenTracker = Array(totalGridCols).fill(0);
     rows.forEach(row => {
       const cells = row.match(/<t[hd][^>]*>[\s\S]*?<\/t[hd]>/gi) || [];
       let curCol = 0;
+      while (curCol < totalGridCols && colSpanLenTracker[curCol] > 0) {
+        colSpanLenTracker[curCol]--;
+        curCol++;
+      }
       cells.forEach(c => {
-        const colspan = parseInt(c.match(/colspan=["'](\d+)["']/i)?.[1] || '1');
+        const colspan = parseInt(c.match(/colspan=["'](\d+)["']/i)?.[1] || '1', 10);
+        const rowspan = parseInt(c.match(/rowspan=["'](\d+)["']/i)?.[1] || '1', 10);
+        while (curCol < totalGridCols && colSpanLenTracker[curCol] > 0) {
+          colSpanLenTracker[curCol]--;
+          curCol++;
+        }
         const text = c.replace(/<[^>]+>/g, '').trim();
         const effectiveCol = Math.min(curCol, totalGridCols - 1);
         if (text.length > colMaxLen[effectiveCol]) colMaxLen[effectiveCol] = text.length;
+        if (rowspan > 1) {
+          for (let s = 0; s < colspan; s++) {
+            if (curCol + s < totalGridCols) {
+              colSpanLenTracker[curCol + s] = rowspan - 1;
+            }
+          }
+        }
         curCol += colspan;
       });
     });
@@ -1293,6 +1325,9 @@ export class LatexAssembler {
     const spec = specsList.join('|');
     const fullSpec = `|${spec}|`;
 
+    // Track active rowspans across rows
+    const rowspanTracker: number[] = Array(totalGridCols).fill(0);
+
     // Build table rows
     const tableRows = rows.map((row, rowIdx) => {
       const cells = row.match(/<t[hd][^>]*>[\s\S]*?<\/t[hd]>/gi) || [];
@@ -1300,8 +1335,24 @@ export class LatexAssembler {
       const rowData: string[] = [];
       let colIdx = 0;
 
+      // Skip columns occupied by prior rowspans
+      while (colIdx < totalGridCols && rowspanTracker[colIdx] > 0) {
+        rowspanTracker[colIdx]--;
+        rowData.push('');
+        colIdx++;
+      }
+
       cells.forEach(c => {
-        const colspan = parseInt(c.match(/colspan=["'](\d+)["']/i)?.[1] || '1');
+        const colspan = parseInt(c.match(/colspan=["'](\d+)["']/i)?.[1] || '1', 10);
+        const rowspan = parseInt(c.match(/rowspan=["'](\d+)["']/i)?.[1] || '1', 10);
+
+        // Skip columns occupied by prior rowspans
+        while (colIdx < totalGridCols && rowspanTracker[colIdx] > 0) {
+          rowspanTracker[colIdx]--;
+          rowData.push('');
+          colIdx++;
+        }
+
         const inner = c.replace(/<t[hd][^>]*>/i, '').replace(/<\/t[hd]>/i, '').trim();
         const clean = inner.replace(/<[^>]+>/g, '').trim();
         let escaped = isHeader
@@ -1321,11 +1372,27 @@ export class LatexAssembler {
         } else {
           rowData.push(escaped);
         }
+
+        // Register rowspan for subsequent rows
+        if (rowspan > 1) {
+          for (let s = 0; s < colspan; s++) {
+            if (colIdx + s < totalGridCols) {
+              rowspanTracker[colIdx + s] = rowspan - 1;
+            }
+          }
+        }
+
         colIdx += colspan;
       });
 
-      // Pad missing cells
-      while (colIdx < totalGridCols) { rowData.push(''); colIdx++; }
+      // Pad missing cells (accounting for remaining active rowspans)
+      while (colIdx < totalGridCols) {
+        if (rowspanTracker[colIdx] > 0) {
+          rowspanTracker[colIdx]--;
+        }
+        rowData.push('');
+        colIdx++;
+      }
 
       const hasContent = rowData.some(d => d.replace(/\\multicolumn.*/, '').replace(/&/g,'').trim().length > 0);
       if (!hasContent) return null; // skip completely empty rows

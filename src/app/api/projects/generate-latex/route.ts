@@ -476,7 +476,7 @@ export async function POST(req: Request) {
 
           // Hybrid fallback: Merge missing or truncated metadata/section files from deterministic assembly
           try {
-            const rescueMissingFloats = (aiContent: string, detContent: string): string => {
+            const rescueMissingFloats = (aiContent: string, detContent: string, currentFilePath?: string): string => {
               if (!detContent || !aiContent) return aiContent;
               const floatRegex = /\\begin\{(figure\*?|table\*?)\}(?:\[[^\]]*\])?[\s\S]*?\\end\{\1\}(?:\s*\\FloatBarrier)?/g;
               let match: RegExpExecArray | null;
@@ -485,14 +485,46 @@ export async function POST(req: Request) {
               while ((match = floatRegex.exec(detContent)) !== null) {
                 const floatBlock = match[0].trim();
                 
-                // 1. Check if already present in AI content
+                // 1. Check if already present in AI content (direct or via indirect \input{floats/...})
                 const imgMatch = floatBlock.match(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/);
                 const imgFile = imgMatch ? imgMatch[1].trim() : null;
-                if (imgFile && result.includes(imgFile)) continue;
+                if (imgFile) {
+                  const imgBase = imgFile.replace(/^.*\//, '');
+                  if (result.includes(imgFile) || result.includes(imgBase)) continue;
+
+                  // Check if this section already inputs a float file that contains this image
+                  const floatInputMatch = result.match(/\\input\{(floats\/[^}]+)\}/g);
+                  if (floatInputMatch) {
+                    const alreadyReferenced = floatInputMatch.some(inp => {
+                      const floatPath = inp.match(/\\input\{([^}]+)\}/)?.[1];
+                      if (!floatPath) return false;
+                      const comp = extractedComponents[floatPath] || extractedComponents[`${floatPath}.tex`];
+                      return comp && (comp.includes(imgBase) || comp.includes(imgFile));
+                    });
+                    if (alreadyReferenced) continue;
+                  }
+
+                  // Check if ANY other section already includes this image
+                  const alreadyInOtherSection = Object.entries(extractedComponents).some(([fPath, fContent]) => {
+                    if (fPath === currentFilePath || !fContent) return false;
+                    if (fPath.startsWith('sections/')) {
+                      return fContent.includes(imgFile) || fContent.includes(imgBase);
+                    }
+                    return false;
+                  });
+                  if (alreadyInOtherSection) continue;
+                }
 
                 const labelMatch = floatBlock.match(/\\label\{([^}]+)\}/);
                 const label = labelMatch ? labelMatch[1].trim() : null;
-                if (label && result.includes(`\\label{${label}}`)) continue;
+                if (label) {
+                  if (result.includes(`\\label{${label}}`)) continue;
+                  const labelInOther = Object.entries(extractedComponents).some(([fPath, fContent]) => {
+                    if (fPath === currentFilePath || !fContent) return false;
+                    return fPath.startsWith('sections/') && fContent.includes(`\\label{${label}}`);
+                  });
+                  if (labelInOther) continue;
+                }
 
                 // 2. Find best inline placement right after referencing paragraph
                 let insertIdx = -1;
@@ -536,7 +568,28 @@ export async function POST(req: Request) {
                 extractedComponents[filePath] = content;
               } else if (filePath.startsWith('sections/')) {
                 // Section was populated by AI; rescue any figures/tables dropped from deterministic pass
-                extractedComponents[filePath] = rescueMissingFloats(extractedComponents[filePath], content);
+                extractedComponents[filePath] = rescueMissingFloats(extractedComponents[filePath], content, filePath);
+              }
+            }
+
+            // Clean up any trailing float inputs in fullLatex if they are already inlined inside section files
+            const allSectionContent = Object.entries(extractedComponents)
+              .filter(([p]) => p.startsWith('sections/'))
+              .map(([, c]) => c)
+              .join('\n');
+            const floatInputsInSections = new Set(
+              Array.from(allSectionContent.matchAll(/\\input\{(floats\/[^}]+)\}/g)).map(m => m[1])
+            );
+            for (const fPath of Object.keys(extractedComponents)) {
+              if (fPath.startsWith('floats/')) {
+                const fContent = extractedComponents[fPath] || '';
+                const imgM = fContent.match(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/);
+                const imgF = imgM ? imgM[1].trim().replace(/^.*\//, '') : null;
+                const isAlreadyInSection = (imgF && allSectionContent.includes(imgF)) || floatInputsInSections.has(fPath);
+                if (isAlreadyInSection) {
+                  const trailRegex = new RegExp(`\\\\input\\{${fPath.replace(/\//g, '\\/')}\\}\\s*`, 'g');
+                  fullLatex = fullLatex.replace(trailRegex, '');
+                }
               }
             }
 

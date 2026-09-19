@@ -48,7 +48,8 @@ export interface StructuredDocument {
   references: string[];
   mathBlocks?: any[];
   algorithms?: Array<{ title: string, content: string }>;
-  tables?: Array<{ caption: string, id: string }>;
+  tables?: Array<{ caption: string, id: string; rowCount?: number; colCount?: number }>;
+  charts?: Array<{ caption: string, id: string }>;
   stats: {
     wordCount: number;
     charCount: number;
@@ -1604,20 +1605,28 @@ export class DeepDocumentParser {
                   // UNIVERSAL IMAGE RESCUE: If this paragraph contains any <img> elements
                   // (e.g. inline Mammoth output or prose followed by an image), emit each image
                   // as a figure node so it is preserved and referenced in the LaTeX code!
+                  const emittedFigIds = new Set<string>(
+                    result.body
+                      .filter((n: any) => (n.type === 'figure' || n.type === 'chart' || n.type === 'image') && n.id)
+                      .map((n: any) => String(n.id).toLowerCase())
+                  );
+
                   for (const pEl of entry.elements) {
                     const childImgs = Array.from(pEl.querySelectorAll('img')) as Element[];
                     for (const img of childImgs) {
                       const src = (img.getAttribute('src') || img.getAttribute('data-src') || '').trim();
                       if (!src) continue;
+                      if (emittedFigIds.has(src.toLowerCase())) continue; // Already emitted
                       const isDeco = /logo|icon|banner|watermark|divider|spacer|signature|qrcode/i.test(src);
                       if (isDeco) continue;
-                      const isChart = /rf_chart_|chart_pending_/i.test(src);
+                      const isChart = /rf_chart_|chart_pending_|chart_/i.test(src);
                       const altText = img.getAttribute('alt') || img.getAttribute('title') || '';
                       result.body.push({
                         type: isChart ? 'chart' : 'figure',
                         id: src,
                         caption: altText || (isChart ? 'Chart' : 'Figure'),
                       } as any);
+                      emittedFigIds.add(src.toLowerCase());
                     }
                   }
               }
@@ -1718,6 +1727,8 @@ export class DeepDocumentParser {
               if (!tableCaption) {
                 tableCaption = `Table (${rowCount} rows × ${colCount} cols)`;
               }
+              entry.caption = tableCaption;
+              if (tableCaption && consumedCaptionTexts) consumedCaptionTexts.add(tableCaption.trim());
               
               result.body.push({ type: 'table', html: tableHtml, caption: tableCaption } as any);
           }
@@ -1832,6 +1843,8 @@ export class DeepDocumentParser {
                   const img = imgs[idx];
                   const src = img.getAttribute('src') || img.getAttribute('data-src') || '';
                   if (!src) continue;
+                  const alreadyInBody = result.body.some((n: any) => (n.type === 'figure' || n.type === 'chart' || n.type === 'image') && String(n.id || '').toLowerCase() === src.toLowerCase());
+                  if (alreadyInBody) continue;
 
                   let figCaption = entry.caption;
                   const rawAlt = (img.getAttribute('alt') || img.getAttribute('title') || '').trim();
@@ -1889,7 +1902,7 @@ export class DeepDocumentParser {
                           (result as any)._decorativeImages.add(src.toLowerCase());
                           continue;
                       }
-                      figCaption = /rf_chart_/i.test(src) ? 'Chart' : 'Figure';
+                      figCaption = /rf_chart_|chart_pending_|chart_/i.test(src) ? 'Chart' : 'Figure';
                   }
                   
                   let subCaption = '';
@@ -1904,7 +1917,7 @@ export class DeepDocumentParser {
                       cleanSubCaption = cleanSubCaption.replace(/^\s*(?:\(\s*[a-zA-Z0-9]\s*\)|\[\s*[a-zA-Z0-9]\s*\]|\b[a-zA-Z0-9]\s*\)|\b[a-zA-Z0-9]\s*\.)\s*[:.\-–—]?\s*/i, '').trim();
                   }
 
-                  const isChart = /rf_chart_/i.test(src);
+                  const isChart = /rf_chart_|chart_pending_|chart_/i.test(src);
                   if (isChart) {
                     result.stats.chartCount++;
                     result.body.push({
@@ -2311,33 +2324,37 @@ export class DeepDocumentParser {
 
     const rx =
       type === 'figure'
-        ? /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo|Graph)\s*(?:(?:\(|\b)(\d+(?:\.\d+)*|[a-zA-Z]+)(?:\)|\b))?(?:\s*[:.\-–—\s])?/i
-        : /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Table|Tab\b\.?)\s*(?:(?:\(|\b)(\d+(?:\.\d+)*|[a-zA-Z]+)(?:\)|\b))?(?:\s*[:.\-–—\s])?/i;
+        ? /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo|Graph)\s*(?:(?:\(|\b)(\d+(?:\.\d+)*|S?\d+|[a-zA-Z]\b|[IVXLCDMivxlcdm]+\b)(?:\)|\b))?(?:\s*[:.\-–—\s])?/i
+        : /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Table|Tab\b\.?)\s*(?:(?:\(|\b)(\d+(?:\.\d+)*|S?\d+|[a-zA-Z]\b|[IVXLCDMivxlcdm]+\b)(?:\)|\b))?(?:\s*[:.\-–—\s])?/i;
 
     // Caption ordinal extractor: extracts the figure/table number from captions
     // like "Figure 1", "Table 2", "Fig. 3", "Chart 1" etc.
     const captionOrdinal = (t: string): number | null => {
       const m = t.match(
         type === 'figure'
-          ? /(?:Figure|Fig\.?|Image|Chart|Diagram|Photo|Graph)\s*(?:\(|\b)(\d+(?:\.\d+)*|[a-zA-Z]+)(?:\)|\b)/i
-          : /(?:Table|Tab\.?)\s*(?:\(|\b)(\d+(?:\.\d+)*|[a-zA-Z]+)(?:\)|\b)/i
+          ? /(?:Figure|Fig\.?|Image|Chart|Diagram|Photo|Graph)\s*(?:\(|\b)(\d+(?:\.\d+)*|S?\d+|[a-zA-Z]\b|[IVXLCDMivxlcdm]+\b)(?:\)|\b)/i
+          : /(?:Table|Tab\.?)\s*(?:\(|\b)(\d+(?:\.\d+)*|S?\d+|[a-zA-Z]\b|[IVXLCDMivxlcdm]+\b)(?:\)|\b)/i
       );
       if (!m) return null;
       const s = m[1];
       // Arabic numeral: extract the integer part before any decimal
-      if (/^\d/.test(s)) {
-        return parseInt(s.split('.')[0], 10);
+      const numMatch = s.match(/\d+/);
+      if (numMatch) {
+        return parseInt(numMatch[0], 10);
       }
       // Roman numeral: convert to integer
-      const roman: Record<string, number> = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
-      let sum = 0;
-      let prev = 0;
-      for (const ch of s.toUpperCase().split('').reverse()) {
-        const v = roman[ch] ?? 0;
-        sum += v < prev ? -v : v;
-        prev = v;
+      if (/^[ivxlcdm]+$/i.test(s)) {
+        const roman: Record<string, number> = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
+        let sum = 0;
+        let prev = 0;
+        for (const ch of s.toUpperCase().split('').reverse()) {
+          const v = roman[ch] ?? 0;
+          sum += v < prev ? -v : v;
+          prev = v;
+        }
+        return sum > 0 ? sum : null;
       }
-      return sum > 0 ? sum : null;
+      return null;
     };
 
     const farSibling = (node: Element | null, dir: 1 | -1): Element | null => {
@@ -2517,6 +2534,10 @@ export class DeepDocumentParser {
         colCount: dims.colCount
       };
     });
+    doc.charts = doc.body.filter(n => n.type === 'chart').map((n: any) => ({
+      caption: n.caption || 'Chart',
+      id: n.id || '',
+    }));
   }
 
   private static convertPlainTextTableToHtml(elements: Element[]): string {

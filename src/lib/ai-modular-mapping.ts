@@ -852,6 +852,35 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
 
   // ── Deterministic Content Backfill: Guarantee 100% section coverage & content fidelity ──
   const mathBlocks = structured.mathBlocks || [];
+
+  // Map body nodes to existing float files to avoid duplicate inline float environments
+  // Initialized once globally across the full body so float numbering is consistent
+  const nodeToFloatPath = new Map<any, string>();
+  let figCnt = 0, tabCnt = 0, algoCnt = 0;
+  for (const n of body) {
+    if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') {
+      figCnt++;
+      const p = `floats/figures/${figCnt}.tex`;
+      if (floatsRes.files.some(f => f.path === p)) nodeToFloatPath.set(n, p);
+    } else if (n.type === 'table') {
+      tabCnt++;
+      const p = `floats/tables/${tabCnt}.tex`;
+      if (floatsRes.files.some(f => f.path === p)) nodeToFloatPath.set(n, p);
+    } else if (n.type === 'algorithm') {
+      algoCnt++;
+      const p = `floats/algorithms/${algoCnt}.tex`;
+      if (floatsRes.files.some(f => f.path === p)) nodeToFloatPath.set(n, p);
+    }
+  }
+
+  const assembleBackfilledNode = (n: any): string => {
+    const floatPath = nodeToFloatPath.get(n);
+    if (floatPath) {
+      return `\\input{${floatPath}}`;
+    }
+    return LatexAssembler.assembleNode(n, mathBlocks);
+  };
+
   for (let idx = 0; idx < sectionGroups.length; idx++) {
     const g = sectionGroups[idx];
     const secNum = idx + 1;
@@ -867,33 +896,6 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
 
     const sourceGroupProse = g.nodes.map((n: any) => n.text || '').join('\n').trim();
 
-    // Map body nodes to existing float files to avoid duplicate inline float environments
-    const nodeToFloatPath = new Map<any, string>();
-    let figCnt = 0, tabCnt = 0, algoCnt = 0;
-    for (const n of body) {
-      if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') {
-        figCnt++;
-        const p = `floats/figures/${figCnt}.tex`;
-        if (floatsRes.files.some(f => f.path === p)) nodeToFloatPath.set(n, p);
-      } else if (n.type === 'table') {
-        tabCnt++;
-        const p = `floats/tables/${tabCnt}.tex`;
-        if (floatsRes.files.some(f => f.path === p)) nodeToFloatPath.set(n, p);
-      } else if (n.type === 'algorithm') {
-        algoCnt++;
-        const p = `floats/algorithms/${algoCnt}.tex`;
-        if (floatsRes.files.some(f => f.path === p)) nodeToFloatPath.set(n, p);
-      }
-    }
-
-    const assembleBackfilledNode = (n: any): string => {
-      const floatPath = nodeToFloatPath.get(n);
-      if (floatPath) {
-        return `\\input{${floatPath}}`;
-      }
-      return LatexAssembler.assembleNode(n, mathBlocks);
-    };
-
     if (matchedFile) {
       // Check if AI returned a stub / truncated content while source had substantial prose
       const emittedContent = (matchedFile.content || '').trim();
@@ -901,6 +903,42 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
         console.warn(`[AI-MODULAR] Section "${rawTitle}" emitted only ${emittedContent.length} chars vs ${sourceGroupProse.length} source prose chars. Deterministically backfilling.`);
         const backfilledNodes = [g.heading, ...g.nodes];
         matchedFile.content = backfilledNodes.map(assembleBackfilledNode).join('\n\n');
+      } else {
+        // Ensure any floats that belong to this section are inlined if AI omitted them!
+        const sectionFloatNodes = g.nodes.filter((n: any) =>
+          n.type === 'figure' || n.type === 'image' || n.type === 'chart' || n.type === 'table' || n.type === 'algorithm'
+        );
+        for (const fn of sectionFloatNodes) {
+          const floatPath = nodeToFloatPath.get(fn);
+          if (!floatPath) continue;
+          const floatBase = floatPath.replace(/\.tex$/, '');
+          const hasRef = matchedFile.content.includes(floatPath) ||
+                         matchedFile.content.includes(floatBase) ||
+                         (fn.id && matchedFile.content.includes(String(fn.id)));
+          if (!hasRef) {
+            const fnIdx = g.nodes.indexOf(fn);
+            let prevNodeText = '';
+            for (let pi = fnIdx - 1; pi >= 0; pi--) {
+              if (g.nodes[pi]?.text && g.nodes[pi].text.trim().length > 20) {
+                prevNodeText = g.nodes[pi].text.trim().slice(0, 40);
+                break;
+              }
+            }
+            let placed = false;
+            if (prevNodeText) {
+              const pIdx = matchedFile.content.indexOf(prevNodeText);
+              if (pIdx !== -1) {
+                const nextNewline = matchedFile.content.indexOf('\n\n', pIdx);
+                const insPoint = nextNewline !== -1 ? nextNewline + 2 : matchedFile.content.length;
+                matchedFile.content = matchedFile.content.slice(0, insPoint) + `\n\\input{${floatPath}}\n\n` + matchedFile.content.slice(insPoint);
+                placed = true;
+              }
+            }
+            if (!placed) {
+              matchedFile.content = `${matchedFile.content.trim()}\n\n\\input{${floatPath}}\n`;
+            }
+          }
+        }
       }
     } else {
       // AI completely skipped this section file! Deterministically generate it!

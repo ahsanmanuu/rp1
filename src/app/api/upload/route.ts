@@ -916,9 +916,14 @@ async function runUploadProcessing(uploadId: string) {
       }
 
       // Stats imageCount must reflect real figure/image body nodes (never inflated by decorative media)
-      const realFiguresCount = (deepData.body || []).filter((n: any) => n.type === 'figure' || n.type === 'image' || n.type === 'figure-group' || n.type === 'chart').length;
+      const realFiguresCount = (deepData.body || []).filter((n: any) => n.type === 'figure' || n.type === 'image' || n.type === 'figure-group').length;
+      const realChartsCount = (deepData.body || []).filter((n: any) => n.type === 'chart').length;
       if (!deepData.stats) deepData.stats = {} as any;
       deepData.stats.imageCount = realFiguresCount;
+      deepData.stats.chartCount = realChartsCount;
+
+      // ALWAYS sync derived collections after body mutations so tables/charts/algorithms are accurate
+      DeepDocumentParser.syncDerivedCollections(deepData);
 
       if (referencesText && (!deepData.references || deepData.references.length === 0)) {
         deepData.references = referencesText
@@ -1387,9 +1392,8 @@ async function runUploadProcessing(uploadId: string) {
 
       // ===== CHART EXTRACTION ENGINE (Phase 2: Image Extraction + Marker Resolution) =====
       console.time("[PERF] Chart Extraction Engine");
+      const markerToFinalName: Map<string, string> = new Map();
       if (pendingCharts.length > 0) {
-        const markerToFinalName: Map<string, string> = new Map();
-
         let chartFileIdx = 1;
         const chartTasks = pendingCharts.map((pc) => {
           const isTrueChart = pc.target.includes('charts/');
@@ -1462,10 +1466,10 @@ async function runUploadProcessing(uploadId: string) {
           }
         }
 
-        // Resolve CHARTIMGX markers to final rf_fig_N.png names
+        // Resolve CHARTIMGX markers to final rf_chart_N.png names (handling possible span tags inserted by Mammoth)
         if (mammothResult.value.includes('CHARTIMGX')) {
           mammothResult.value = mammothResult.value.replace(
-            /CHARTIMGX(chart_pending_\d+)XEND/g,
+            /CHARTIMGX(?:\s*<[^>]+>\s*)*(chart_pending_\d+)(?:\s*<[^>]+>\s*)*XEND/g,
             (_, markerName) => {
               const finalName = markerToFinalName.get(markerName) || markerName;
               return `<img src="${finalName}" alt="Chart" />`;
@@ -1544,12 +1548,35 @@ async function runUploadProcessing(uploadId: string) {
       console.timeEnd("[PERF] Deep Structural Analysis");
       progress(uploadId, 'Analyzing document structure', 55);
 
+      // Resolve any chart_pending IDs in body nodes to final rf_chart_N names
+      if (markerToFinalName.size > 0 && deepData?.body) {
+        for (const node of deepData.body) {
+          if ((node.type === 'chart' || node.type === 'figure') && node.id) {
+            const pending = String(node.id).replace(/\.png$/i, '');
+            const finalName = markerToFinalName.get(pending);
+            if (finalName) {
+              node.id = finalName;
+              node.type = 'chart';
+            }
+          }
+        }
+      }
+
       const placeholders = deepData.body.filter((n: any) => (n.type === 'figure' || n.type === 'chart') && n.id?.startsWith('chart_pending_'));
       if (placeholders.length > 0) {
         console.log(`[TELEMETRY] Generating ${placeholders.length} physical placeholders for missing charts.`);
         for (const p of placeholders) {
-          extractedImages.push({ name: p.id, buffer: getFallbackPngBuffer() });
+          const fallbackName = p.id.endsWith('.png') ? p.id : `${p.id}.png`;
+          extractedImages.push({ name: fallbackName, buffer: getFallbackPngBuffer() });
+          p.id = fallbackName;
+          p.type = 'chart';
         }
+      }
+
+      // Re-sync stats for charts & figures after marker resolution
+      const realDocxCharts = (deepData.body || []).filter((n: any) => n.type === 'chart').length;
+      if (realDocxCharts > 0) {
+        deepData.stats.chartCount = realDocxCharts;
       }
 
       // --- AI-ASSISTED STRUCTURAL VERIFICATION ---
@@ -1608,6 +1635,8 @@ async function runUploadProcessing(uploadId: string) {
         deepData.stats.equationCount = finalEquationCount;
       }
       // --- END AI-ASSISTED STRUCTURAL VERIFICATION ---
+      // ALWAYS sync derived collections after structural verification and ground-truth overrides
+      DeepDocumentParser.syncDerivedCollections(deepData);
 
       // --- BIBLIOGRAPHY EXTRACTION ---
       console.time("[PERF] Bibliography Extraction");
@@ -1916,6 +1945,17 @@ async function runUploadProcessing(uploadId: string) {
         rawHtmlForDb = rawHtmlForDb.slice(0, htmlBudget);
       }
       console.warn(`[TELEMETRY] structuredContent trimmed (PB limit ${pbContentLimit})`);
+    }
+
+    // Final sync of derived collections (tables, algorithms, charts) before persistence
+    if (deepData) {
+      DeepDocumentParser.syncDerivedCollections(deepData);
+      if (deepData.stats && Array.isArray(deepData.body)) {
+        const bodyChartCount = deepData.body.filter((n: any) => n.type === 'chart').length;
+        if (bodyChartCount > 0 && (!deepData.stats.chartCount || deepData.stats.chartCount === 0)) {
+          deepData.stats.chartCount = bodyChartCount;
+        }
+      }
     }
 
     const structuredJson = JSON.stringify({ ...deepData, rawHtml: rawHtmlForDb, rawXml: rawXmlForDb });

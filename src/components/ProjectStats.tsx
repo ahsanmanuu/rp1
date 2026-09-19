@@ -415,6 +415,42 @@ export const ProjectStats: React.FC<ProjectStatsProps> = ({ stats, metadata }) =
           </div>
         )}
 
+        {(displayStats.chartCount > 0 || (() => { try { return metadata.structuredContent ? JSON.parse(metadata.structuredContent).charts?.length > 0 : false; } catch { return false; } })()) && (
+          <div className="bg-[var(--strict-bg)] p-10 rounded-[3rem] border border-[var(--strict-border)] shadow-sm space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl flex items-center justify-center border border-[var(--strict-border)]">
+                <BarChart3 size={20} />
+              </div>
+              <h4 className="text-xs font-black uppercase tracking-[0.2em] text-[var(--strict-text)] opacity-80">Chart & Graph Directory</h4>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {(() => {
+                try {
+                  const parsed = JSON.parse(metadata.structuredContent || '{}');
+                  const charts = parsed.charts || [];
+                  if (charts.length > 0) {
+                    return charts.map((ch: any, i: number) => (
+                      <div key={i} className="flex items-start gap-4 bg-[var(--strict-bg)] p-5 rounded-2xl border border-[var(--strict-border)] shadow-sm transition-all hover:border-[var(--accent-primary)] hover:shadow-md">
+                        <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-white/10 flex items-center justify-center text-[10px] font-black border border-[var(--strict-border)] shrink-0">{i + 1}</div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-[var(--strict-text)] leading-snug line-clamp-2">{ch.caption || `Chart ${i + 1}`}</p>
+                          {ch.id && (
+                            <p className="text-xs text-[var(--strict-text)] opacity-60 mt-1 font-mono">{ch.id}</p>
+                          )}
+                        </div>
+                      </div>
+                    ));
+                  }
+                  return <p className="text-sm text-[var(--strict-text)] opacity-80 italic col-span-full">Charts and graphs identified and mapped for rendering.</p>;
+                } catch (e) {
+                  return null;
+                }
+              })()}
+            </div>
+          </div>
+        )}
+
         {metadataContribution && (
           <div className="px-10 border-l-4 border-primary-joy py-2">
             <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary-joy mb-3">Core Contribution</h4>
