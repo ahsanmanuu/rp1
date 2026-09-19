@@ -949,7 +949,7 @@ async function runUploadProcessing(uploadId: string) {
             imageFiles: figureNames,
             templateId: templateId,
           }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 30000))
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 135000))
         ]);
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
@@ -1600,7 +1600,7 @@ async function runUploadProcessing(uploadId: string) {
             imageFiles: imageNames,
             templateId: templateId,
           }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 30000))
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 135000))
         ]);
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
@@ -1839,7 +1839,7 @@ async function runUploadProcessing(uploadId: string) {
             imageFiles: [],
             templateId: templateId,
           }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 30000))
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 135000))
         ]);
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);

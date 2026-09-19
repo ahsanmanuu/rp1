@@ -101,11 +101,11 @@ function withAbortableTimeout<T>(
 // generous (25K+30K) to capture titles/authors that appear after long abstracts
 // or preamble text.
 const HAS_STRONG_PROVIDER = !!(process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
-const FULL_TEXT_LIMIT = HAS_STRONG_PROVIDER ? 350000 : 120000;
-const FULL_TEXT_TAIL = HAS_STRONG_PROVIDER ? 100000 : 30000;
+const FULL_TEXT_LIMIT = HAS_STRONG_PROVIDER ? 500000 : 200000;
+const FULL_TEXT_TAIL = HAS_STRONG_PROVIDER ? 150000 : 50000;
 // Front-matter windows: generous to capture titles/authors after long preambles
-const FRONTMATTER_TEXT_LIMIT = HAS_STRONG_PROVIDER ? 25000 : 12000;
-const FRONTMATTER_HTML_LIMIT = HAS_STRONG_PROVIDER ? 30000 : 15000;
+const FRONTMATTER_TEXT_LIMIT = HAS_STRONG_PROVIDER ? 40000 : 20000;
+const FRONTMATTER_HTML_LIMIT = HAS_STRONG_PROVIDER ? 50000 : 25000;
 
 // Strongest configured provider for structure passes (fallback via provider
 // chain in callLLM). null → registry default model.
@@ -664,9 +664,9 @@ export async function analyzeManuscriptStructure(
 
     const plainText = opts.html ? stripTags(opts.html) : opts.pdfText || '';
 
-    // For very large documents (500+ pages / >500K chars), skip AI verification
-    // to avoid extreme costs. Documents up to 500K chars still get AI verification.
-    const isLargeDoc = plainText.length > 500000;
+    // For very large documents (800+ pages / >800K chars), skip AI verification
+    // to avoid extreme costs. Documents up to 800K chars still get AI verification.
+    const isLargeDoc = plainText.length > 800000;
     if (isLargeDoc) {
       console.log(`[AI-STRUCTURE] Very large document detected (${plainText.length} chars) — using deterministic parsing.`);
       (deepData as any).largeDocWarning = `Very large document (${Math.round(plainText.length / 1000)}K chars): AI structure verification was skipped. The document was parsed using deterministic rules — some component detection may be less precise for very large manuscripts.`;

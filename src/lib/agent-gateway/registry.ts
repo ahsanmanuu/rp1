@@ -1066,16 +1066,17 @@ Analyze the manuscript and return ONE JSON object (no markdown, no commentary be
   "notes": "one short sentence about anything unusual"
 }
 
-## HARD RULES
-1. Use ONLY text that actually appears in input A (the full document text). NEVER invent, paraphrase, translate or beautify titles, abstracts, author names, affiliations, captions or references.
-2. If a field is missing from the document, set it to null (or [] for arrays). Never fabricate placeholder values like "Author Name", "Unknown" or "Institution".
-3. Authors: list every author with the exact name (drop only trailing superscript digits/asterisks used for affiliation markers, e.g. "John Doe1" -> "John Doe"). Attach the matching affiliation(s) from the manuscript.
-4. Affiliations: deduplicate; include department, institution and country when present.
-5. Abstract: copy verbatim; strip a leading "Abstract" label if present.
-6. Keywords: exact terms, no numbering, no bullet prefixes.
-7. Sections: the COMPLETE ordered list of every section, subsection and subsubsection heading visible in input A. level 1 = \\section, level 2 = \\subsection, level 3 = \\subsubsection. Drop leading numbering ("1.", "1.1", "1.1.2", "[1]", "I."). "References"/"Bibliography", "Acknowledgements", "Declarations", "Appendix" are level 1 headings. Never omit, merge or reorder sections. Keep every heading's implied depth: a "3.2" heading belongs at level 2, "3.2.1" at level 3 — never flatten them to level 1.
-8. figures/charts/tables/algorithms: list EVERY figure, chart, table and algorithm visible in input A with its caption/title copied VERBATIM, in document order. Empty arrays when none exist. An image without any caption or descriptive alt text is NOT a figure or chart - do not count or list it. Uncaptioned university logos, journal header banners, publisher badges, and footer watermarks are decorative assets, NOT figures.
-9. HARD RULES FOR COMPONENT INTEGRITY (ZERO BIAS):
+## HARD RULES (1000% ACCURACY MANDATORY)
+1. ZERO SKIPPING: You must extract EVERY SINGLE section, subsection, subsubsection, author, affiliation, figure, chart, table, algorithm, equation, and reference. Do NOT skip any characters, do not omit any sections, do not skip paragraphs in analysis. Your response must be 1000% accurate to the source.
+2. Use ONLY text that actually appears in input A (the full document text). NEVER invent, paraphrase, translate or beautify titles, abstracts, author names, affiliations, captions or references.
+3. If a field is missing from the document, set it to null (or [] for arrays). Never fabricate placeholder values like "Author Name", "Unknown" or "Institution".
+4. Authors: list every author with the exact name (drop only trailing superscript digits/asterisks used for affiliation markers, e.g. "John Doe1" -> "John Doe"). Attach the matching affiliation(s) from the manuscript.
+5. Affiliations: deduplicate; include department, institution and country when present.
+6. Abstract: copy verbatim character-by-character; strip a leading "Abstract" label if present. Do not truncate.
+7. Keywords: exact terms, no numbering, no bullet prefixes.
+8. Sections: the COMPLETE ordered list of EVERY SINGLE section, subsection and subsubsection heading visible in input A. level 1 = \section, level 2 = \subsection, level 3 = \subsubsection. Drop leading numbering ("1.", "1.1", "1.1.2", "[1]", "I."). "References"/"Bibliography", "Acknowledgements", "Declarations", "Appendix" are level 1 headings. NEVER omit, merge or reorder sections. Keep every heading's implied depth: a "3.2" heading belongs at level 2, "3.2.1" at level 3 — never flatten them to level 1.
+9. figures/charts/tables/algorithms: list EVERY figure, chart, table and algorithm visible in input A with its caption/title copied VERBATIM, in document order, skipping NOTHING. Empty arrays when none exist. An image without any caption or descriptive alt text is NOT a figure or chart - do not count or list it. Uncaptioned university logos, journal header banners, publisher badges, and footer watermarks are decorative assets, NOT figures.
+10. HARD RULES FOR COMPONENT INTEGRITY (ZERO BIAS):
    - FRONTMATTER METADATA ONLY: Author names, academic designations (e.g., 'Assistant Professor', 'Deputy Librarian', 'Lecturer', 'Dr.', 'Prof.'), department names, university names, polytechnic/institute names, and email addresses ARE FRONTMATTER METADATA. They MUST NEVER be placed in the "sections" array or counted as sections/headings. Strip template styling annotations like "(24 pt, Bold, Title Case)" or "(16 pt, Bold, Title Case)". Preserve ordinal numbers in names (e.g. "1st Author", "2nd Author").
    - SECTION HEADINGS ARE NOT EQUATIONS: Section and subsection titles (e.g. "6. AI-Assisted Responsible Citation (ARC) Framework", "3.1 Methods") ARE HEADINGS ONLY. They MUST NEVER be included in "equations" or classified as math.
    - FIGURE & CHART CAPTIONS ARE NOT SECTIONS: "Figure N: <caption>" / "Table N: <caption>" lines are CAPTIONS, never headings — do not put them in "sections".
@@ -1088,11 +1089,11 @@ Analyze the manuscript and return ONE JSON object (no markdown, no commentary be
    - NEVER inflate counts. If you see 3 tables, report 3 — not 5.
    - CONSISTENCY CHECK: the number of entries you list in "figures" MUST equal your "components.figures" count. The number of entries in "charts" MUST equal your "components.charts" count. The number of entries in "tables" MUST equal your "components.tables" count. The number of entries in "algorithms" MUST equal your "components.pseudocode" count. The "sections" array MUST contain "References"/"Bibliography" as its final entry whenever a reference list exists in input A.
    - If a count cannot be determined from the text, return null for that field — never guess 0.
-10. Citations: an in-text citation marker is a bracketed number/reference like [12] or (Smith et al., 2020) in the body text.
-11. References: include the actual bibliography entries verbatim (up to 150), excluding template instructional text. If no bibliography is visible in the text, return [].
-12. confidence for title/abstract must be 90+ when the text appears verbatim in the document.
-13. JSON keys must match EXACTLY. Escape backslashes and quotes properly.
-14. RESPONSE BUDGET: be maximally economical. Copy captions and references verbatim but NEVER add explanatory prose, whitespace padding, or commentary. Keep "notes" under 15 words. A short response is preferred over a long one as long as every count and list is exact.
+11. Citations: an in-text citation marker is a bracketed number/reference like [12] or (Smith et al., 2020) in the body text.
+12. References: include the actual bibliography entries verbatim (up to 150), excluding template instructional text. If no bibliography is visible in the text, return [].
+13. confidence for title/abstract must be 90+ when the text appears verbatim in the document.
+14. JSON keys must match EXACTLY. Escape backslashes and quotes properly.
+15. RESPONSE BUDGET: be maximally economical. Copy captions and references verbatim but NEVER add explanatory prose, whitespace padding, or commentary. Keep "notes" under 15 words. A short response is preferred over a long one as long as every count and list is exact.
 
 Respond with ONLY the JSON object.`;
   },
@@ -1126,7 +1127,7 @@ register({
   maxTokens: 6144,
   rateLimit: 20,
   buildSystemPrompt(ctx) {
-    const frontMatter = String(ctx.frontMatter || '').substring(0, 25000);
+    const frontMatter = String(ctx.frontMatter || '').substring(0, 45000);
     const documentTitle = String(ctx.documentTitle || 'Untitled Document');
     const heuristic = JSON.stringify(ctx.heuristic || {});
     const frontMatterHtml = String((ctx as any).frontMatterHtml || '');
@@ -1134,7 +1135,7 @@ register({
     return `You are a world-class scholarly document front-matter extraction engine with 20 years of experience in academic publishing (IEEE, ACM, Springer LNCS, Elsevier, Nature). Your job is to extract the EXACT front matter (title, authors, affiliations, abstract, keywords) of a converted academic manuscript with surgical precision.
 
 ## INPUTS
-### A. Document text (plain text — first ~25000 characters of the manuscript):
+### A. Document text (plain text — first ~45000 characters of the manuscript):
 """TEXT
 ${frontMatter}
 """
@@ -1199,16 +1200,17 @@ When extracting affiliations:
 - Deduplicate identical affiliations across authors
 - Use the heuristic.organizations and heuristic.rawAffilLines as hints, but verify against the actual text
 
-## HARD RULES
-1. Use ONLY text that actually appears in input A (and A2 if present). NEVER invent, paraphrase, translate or beautify titles, author names, affiliations or abstracts.
-2. If a field is missing from the front matter, set it to null (or [] for arrays). Never fabricate placeholder values like "Author Name", "Unknown" or "Institution".
-3. Authors: list every author with the exact name (drop only trailing superscript digits/asterisks used for affiliation markers, e.g. "John Doe1" -> "John Doe"). Strip template style annotations like "(16 pt, Bold, Title Case)". Preserve ordinal numbers ("1st Author"). Attach the matching affiliation(s) from the manuscript.
-4. Affiliations: deduplicate; include department, institution and country when present.
-5. Abstract: copy verbatim; strip a leading "Abstract" or "ABSTRACT" label if present. Include keywords if they appear within the abstract block.
-6. Keywords: exact terms as they appear, no numbering, no bullet prefixes. If keywords are labeled (e.g. "Keywords: AI, ML"), extract only the terms after the label.
-7. If the front matter shows only template boilerplate (e.g. placeholder titles like "<Title, 24 point, Bold>" or generic instruction text with no real content), set title/authors/abstract to null rather than returning the boilerplate.
-8. confidence for title/abstract must be 90+ when the text appears verbatim in the front matter.
-9. JSON keys must match EXACTLY. Escape backslashes and quotes properly.
+## HARD RULES (1000% ACCURACY MANDATORY)
+1. ZERO SKIPPING: You must extract EVERY SINGLE author and EVERY SINGLE affiliation present in the text. Do not omit ANY authors, no matter how long the list is. Your response must be 1000% accurate to the source.
+2. Use ONLY text that actually appears in input A (and A2 if present). NEVER invent, paraphrase, translate, or beautify titles, author names, affiliations or abstracts.
+3. If a field is missing from the front matter, set it to null (or [] for arrays). Never fabricate placeholder values like "Author Name", "Unknown" or "Institution".
+4. Authors: list EVERY author with their EXACT name (drop only trailing superscript digits/asterisks used for affiliation markers, e.g. "John Doe1" -> "John Doe"). Do NOT skip any characters in their names. Strip template style annotations like "(16 pt, Bold, Title Case)". Preserve ordinal numbers ("1st Author"). Attach the matching affiliation(s) from the manuscript perfectly.
+5. Affiliations: extract every single character of the affiliation text. Include department, institution, city, state, zip code, and country when present.
+6. Abstract: copy verbatim character-by-character; strip a leading "Abstract" or "ABSTRACT" label if present. Include keywords if they appear within the abstract block. Do not truncate the abstract.
+7. Keywords: exact terms as they appear, no numbering, no bullet prefixes. If keywords are labeled (e.g. "Keywords: AI, ML"), extract only the terms after the label.
+8. If the front matter shows only template boilerplate (e.g. placeholder titles like "<Title, 24 point, Bold>" or generic instruction text with no real content), set title/authors/abstract to null rather than returning the boilerplate.
+9. confidence for title/abstract must be 90+ when the text appears verbatim in the front matter.
+10. JSON keys must match EXACTLY. Escape backslashes and quotes properly.
 
 Respond with ONLY the JSON object.`;
   },
@@ -1288,11 +1290,12 @@ Return ONE JSON object (no markdown, no commentary) with this EXACT schema:
   "algorithms": [ { "index": 1, "latex": "\\begin{algorithm}\\n\\caption{<verbatim title>}\\n\\begin{algorithmic}[1]\\n<lines>\\n\\end{algorithmic}\\n\\end{algorithm}" } ]
 }
 
-## HARD RULES
-1. index = position of that component in the document (1-based, in order). Every component gets exactly one entry; never skip or merge.
-2. Captions and titles MUST be copied VERBATIM from inputs B/C/D (exact text, no rewriting).
-3. \\includegraphics/\\zimg filenames MUST come EXACTLY from input F's "filename" field for the matching index. Never invent filenames.
-4. tables: reconstruct rows/columns from the text ACCURATELY. Use tabularx with |c|c|..| column spec and \\hline. Use \\multicolumn for merged cells. Use \\adjustbox{max width=\\linewidth} to prevent overflow. Every table must compile standalone inside a float. Preserve ALL data rows — never truncate table content.
+## HARD RULES (1000% ACCURACY MANDATORY)
+1. ZERO SKIPPING / EXACT REPRODUCTION: You must emit exactly one entry for EVERY component provided in the inputs. Never skip or merge. For tables, you must reconstruct the rows EXACTLY. Never truncate table content. Your extraction must be 1000% accurate.
+2. index = position of that component in the document (1-based, in order).
+3. Captions and titles MUST be copied VERBATIM from inputs B/C/D (exact text, no rewriting).
+4. \\includegraphics/\\zimg filenames MUST come EXACTLY from input F's "filename" field for the matching index. Never invent filenames.
+5. tables: reconstruct rows/columns from the text ACCURATELY. Use tabularx with |c|c|..| column spec and \\hline. Use \\multicolumn for merged cells. Use \\adjustbox{max width=\\linewidth} to prevent overflow. Every table must compile standalone inside a float. Preserve ALL data rows — NEVER truncate table content.
 5. algorithms: reconstruct the pseudocode lines with \\State, \\For/\\EndFor, \\While/\\EndWhile, \\If/\\Else/\\EndIf, \\Procedure, \\Function, \\Return, \\Comment. Use the algorithmic environment (algorithmicx style).
 6. Latex must be a single float/environment block per entry — no \\documentclass, \\usepackage, \\input, \\newcommand, \\def, \\bibliography, \\maketitle, \\section, \\subsection, \\begin{equation}, or any other structural commands.
 7. Escape special characters in text (%, #, &, _ as \\%, \\#, \\&, \\_).
@@ -1465,15 +1468,17 @@ Emit ONE LaTeX file per verified section heading from input B's "sections" array
 
 ${commonInputs()}
 
-## SECTION FILE RULES
-1. File naming: "sections/01_introduction.tex", "sections/02_related_work.tex" — two-digit index, lowercase slug of the heading (max 40 chars). NEVER skip, merge or reorder sections: every heading in input B's sections array gets exactly one file. If the evidence for a section is partially missing from the window, emit the file with the verbatim heading and ALL available paragraphs that provably belong to it — include every sentence you can find in the text window that logically belongs after this heading and before the next heading.
-2. Heading level mapping: level 1 → \\section{<verbatim>}, level 2 → \\subsection{<verbatim>}, level 3 → \\subsubsection{<verbatim>}. Strip numbering ("1.", "1.1", "1.1.2", "I.") from the heading text; keep the words EXACT.
-3. Content: render paragraphs faithfully; lists as itemize/enumerate; inline math as $...$; display math as \\begin{equation}...\\end{equation} ONLY when the evidence clearly shows a standalone display equation (with or without a trailing equation number). Include EVERY paragraph, sentence, and piece of evidence that belongs to this section — never omit content.
-4. Citations: convert every bracketed citation marker [N] to \\cite{refN}. Include citations inline in the paragraph text exactly where they appear in the source.
-5. Floats: when a verified figure/table/algorithm caption from input B occurs inside this section, insert the float where it belongs as a single INPUT line: \\input{floats/figures/N.tex}, \\input{floats/tables/N.tex} or \\input{floats/algorithms/N.tex} (N = 1-based index from the verified list). Do NOT emit \\begin{figure}, \\begin{table}, \\includegraphics, or \\caption inline in section files — only use the \\input{floats/...} line.
-6. The "References"/"Bibliography" heading in the sections array is NOT a section file — skip it (the bibliography file is generated separately). Same for "Acknowledgements" only if input B lists it as a section: emit it as a normal section file.
-7. Never split a paragraph mid-sentence, never duplicate text, never emit empty files. Every section file MUST contain substantial content — at minimum the section heading and all available body text for that section.
-8. Frontmatter Suppression: Never emit author names, affiliations, designations (e.g. 'Deputy Librarian', 'Assistant Professor'), or publisher names ('MDPI', 'Springer', etc.) in any section body paragraph. Completely omit them from section files.`;
+## SECTION FILE RULES (1000% ACCURACY MANDATORY)
+1. ZERO SKIPPING / EXACT REPRODUCTION: You must retain EVERY SINGLE paragraph, sentence, and character verbatim. Do not summarize, do not omit any paragraphs, and do not drop any text. Your content extraction must be 1000% accurate.
+2. File naming: "sections/01_introduction.tex", "sections/02_related_work.tex" — two-digit index, lowercase slug of the heading (max 40 chars). NEVER skip, merge or reorder sections: every heading in input B's sections array gets exactly one file. If the evidence for a section is partially missing from the window, emit the file with the verbatim heading and ALL available paragraphs that provably belong to it — include every sentence you can find in the text window that logically belongs after this heading and before the next heading.
+3. Heading level mapping: level 1 → \\section{<verbatim>}, level 2 → \\subsection{<verbatim>}, level 3 → \\subsubsection{<verbatim>}. Strip numbering ("1.", "1.1", "1.1.2", "I.") from the heading text; keep the words EXACT.
+4. Content: render paragraphs faithfully; lists as itemize/enumerate; inline math as $...$; display math as \\begin{equation}...\\end{equation} ONLY when the evidence clearly shows a standalone display equation (with or without a trailing equation number). Include EVERY paragraph, sentence, and piece of evidence that belongs to this section — NEVER omit content. DO NOT summarize text.
+5. Citations: convert every bracketed citation marker [N] to \\cite{refN}. Include citations inline in the paragraph text exactly where they appear in the source.
+6. Floats: when a verified figure/table/algorithm caption from input B occurs inside this section, insert the float where it belongs as a single INPUT line: \\input{floats/figures/N.tex}, \\input{floats/tables/N.tex} or \\input{floats/algorithms/N.tex} (N = 1-based index from the verified list). Do NOT emit \\begin{figure}, \\begin{table}, \\includegraphics, or \\caption inline in section files — only use the \\input{floats/...} line.
+7. The "References"/"Bibliography" heading in the sections array is NOT a section file — skip it (the bibliography file is generated separately). Same for "Acknowledgements" only if input B lists it as a section: emit it as a normal section file.
+8. Never split a paragraph mid-sentence, never duplicate text, never emit empty files. Every section file MUST contain substantial content — at minimum the section heading and all available body text for that section.
+9. Frontmatter Suppression: Never emit author names, affiliations, designations (e.g. 'Deputy Librarian', 'Assistant Professor'), or publisher names ('MDPI', 'Springer', etc.) in any section body paragraph. Completely omit them from section files.
+10. CHILD SUBSECTIONS AND SUBSUBSECTIONS MANDATE: Whenever a section contains child subsections (e.g. level 2 headings) or subsubsections (level 3 headings), you MUST emit their LaTeX commands (\\subsection{<exact heading>} and \\subsubsection{<exact heading>}) INSIDE this section file, followed by EVERY SINGLE one of their paragraphs, equations, and lists verbatim. NEVER omit subsections, NEVER summarize them, and NEVER skip any paragraphs under subsections. Preserve 100% of the text character-by-character.`;
 
     }
 
@@ -1491,7 +1496,7 @@ ${commonInputs()}
 2. figures/charts: ONLY generate float files for figures with VERIFIED captions in input B. Use: \\begin{figure}[${templateConventions.floatPlacement === 'table*/figure* for wide content, [!ht] otherwise' ? '!ht' : templateConventions.floatPlacement}]\\centering\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{<EXACT image filename from input C, in order>}\\caption{<VERBATIM caption from input B>}\\label{fig:N}\\end{figure}
    In two-column layouts (IEEE, ACM sigconf), for wide figures, multi-panel charts, or wide tables (>= 4 columns), use \\begin{figure*} / \\begin{table*} to span both columns without overflow or clipping.
    Never create floats for uncaptioned decorative images, logos, or banners.
-3. tables: reconstruct the rows/columns ACCURATELY from input A's evidence. Use tabularx (column spec chosen to fit the table, \\hline between rows, \\multicolumn for merged cells, always wrap in \\adjustbox{max width=\\linewidth} to prevent overflow). Preserve ALL data rows — never truncate. Caption VERBATIM from input B; \\label{tab:N}.
+3. tables: Reconstruct ALL table data rows, column headers, and cell contents ACCURATELY from input A's evidence (which contains the table's HTML or text rows). Use tabularx with \\adjustbox (e.g. \\begin{table}[!ht]\\centering\\begin{adjustbox}{max width=\\linewidth}\\begin{tabularx}{\\linewidth}{|l|X|...}...\\end{tabularx}\\end{adjustbox}\\caption{<VERBATIM caption>}\\label{tab:N}\\end{table}). NEVER omit data rows, never emit empty placeholder tables, and never truncate.
 4. algorithms: use \\begin{algorithm}[${templateConventions.floatPlacement === '[!ht]' ? '!ht' : 'htbp'}]\\caption{<VERBATIM title from input B>}\\begin{algorithmic}[1]\\State ...\\For{...}...\\EndFor\\Return ...\\end{algorithmic}\\end{algorithm}. Reconstruct the pseudocode steps faithfully from input A — keep every step, never truncate.
 5. COUNT INTEGRITY: the verified structure in input B declares the exact component counts (components.figures, components.charts, components.tables, components.pseudocode). Emit EXACTLY that many files per type — never more, never fewer (total figure+chart files = components.figures + (components.charts ?? 0)). Index N starts at 1 and increments in document order.
 6. Every file must compile standalone inside a float — no document scaffolding, no \\section, no \\captionof, no structural commands (rule 4 of the universal rules).`;

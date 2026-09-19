@@ -274,9 +274,21 @@ function chunkTextWindow(
       if (n.type === 'equation') return `\n[Equation: ${n.latex || n.text || ''}]\n`;
       if (n.text) return n.text;
       if (n.caption) return `[Caption: ${n.caption}]`;
-      if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') return `[Figure: ${n.caption || n.name || n.id || 'unnamed'}]`;
-      if (n.type === 'table') return `[Table: ${n.caption || 'untitled'}]`;
-      if (n.type === 'algorithm') return `[Algorithm: ${n.title || n.caption || 'untitled'}]`;
+      if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') {
+        const cap = n.caption || '';
+        const fname = n.name || n.id || '';
+        return `\n[Figure: ${fname}${cap ? ` | Caption: ${cap}` : ''}]\n`;
+      }
+      if (n.type === 'table') {
+        const cap = n.caption || 'untitled';
+        const content = n.html || (Array.isArray(n.rows) ? n.rows.map((r: any) => Array.isArray(r) ? r.join(' | ') : String(r)).join('\n') : n.text || '');
+        return `\n[Table: ${cap}]\n${content}\n`;
+      }
+      if (n.type === 'algorithm') {
+        const title = n.title || n.caption || 'untitled';
+        const steps = Array.isArray(n.items) ? n.items.join('\n') : (n.text || '');
+        return `\n[Algorithm: ${title}]\n${steps}\n`;
+      }
       if (n.type === 'reference') return `[Ref: ${n.text || ''}]`;
       return '';
     })
@@ -332,9 +344,21 @@ function splitIntoSections(nodes: any[]): string[] {
     else if (node.type === 'equation') text = `\n[Equation: ${node.latex || node.text || ''}]\n`;
     else if (node.text) text = node.text;
     else if (node.caption) text = `[Caption: ${node.caption}]`;
-    else if (node.type === 'figure' || node.type === 'image' || node.type === 'chart') text = `[Figure: ${node.caption || node.name || 'unnamed'}]`;
-    else if (node.type === 'table') text = `[Table: ${node.caption || 'untitled'}]`;
-    else if (node.type === 'algorithm') text = `[Algorithm: ${node.title || node.caption || 'untitled'}]`;
+    else if (node.type === 'figure' || node.type === 'image' || node.type === 'chart') {
+      const cap = node.caption || '';
+      const fname = node.name || node.id || '';
+      text = `\n[Figure: ${fname}${cap ? ` | Caption: ${cap}` : ''}]\n`;
+    }
+    else if (node.type === 'table') {
+      const cap = node.caption || 'untitled';
+      const content = node.html || (Array.isArray(node.rows) ? node.rows.map((r: any) => Array.isArray(r) ? r.join(' | ') : String(r)).join('\n') : node.text || '');
+      text = `\n[Table: ${cap}]\n${content}\n`;
+    }
+    else if (node.type === 'algorithm') {
+      const title = node.title || node.caption || 'untitled';
+      const steps = Array.isArray(node.items) ? node.items.join('\n') : (node.text || '');
+      text = `\n[Algorithm: ${title}]\n${steps}\n`;
+    }
     else if (node.type === 'reference') text = `[Ref: ${node.text || ''}]`;
     if (text) current.push(text);
   }
@@ -751,9 +775,21 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
       if (n.type === 'equation') return `\n[Equation: ${n.latex || n.text || ''}]\n`;
       if (n.text) return n.text;
       if (n.caption) return `[Caption: ${n.caption}]`;
-      if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') return `[Figure: ${n.caption || n.name || ''}]`;
-      if (n.type === 'table') return `[Table: ${n.caption || ''}]`;
-      if (n.type === 'algorithm') return `[Algorithm: ${n.title || n.caption || ''}]`;
+      if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') {
+        const cap = n.caption || '';
+        const fname = n.name || n.id || '';
+        return `\n[Figure: ${fname}${cap ? ` | Caption: ${cap}` : ''}]\n`;
+      }
+      if (n.type === 'table') {
+        const cap = n.caption || '';
+        const content = n.html || (Array.isArray(n.rows) ? n.rows.map((r: any) => Array.isArray(r) ? r.join(' | ') : String(r)).join('\n') : n.text || '');
+        return `\n[Table: ${cap}]\n${content}\n`;
+      }
+      if (n.type === 'algorithm') {
+        const title = n.title || n.caption || '';
+        const steps = Array.isArray(n.items) ? n.items.join('\n') : (n.text || '');
+        return `\n[Algorithm: ${title}]\n${steps}\n`;
+      }
       if (n.type === 'reference') return `[Ref: ${n.text || ''}]`;
       return '';
     }).join('\n');
@@ -786,9 +822,12 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     {
       name: 'metadata',
       run: () => {
-        // Metadata only needs front matter (title, authors, abstract, keywords)
-        // Trim textWindow to first 8,000 chars to minimize tokens and prevent timeouts
-        const metaWindow = (fullTextForPasses || '').substring(0, 8000);
+        // Generous frontmatter window + references tail so authors, affiliations, abstract, keywords, and bibliography are NEVER truncated
+        const headPart = (fullTextForPasses || '').substring(0, 45000);
+        const tailPart = (fullTextForPasses || '').length > 45000
+          ? (fullTextForPasses || '').substring(Math.max(45000, (fullTextForPasses || '').length - 35000))
+          : '';
+        const metaWindow = tailPart ? `${headPart}\n\n[... middle of document elided ...]\n\n${tailPart}` : headPart;
         return runScopeWithRetry('metadata', { ...fullCtx, textWindow: metaWindow }, { userId, userEmail, projectId });
       },
     },
@@ -899,7 +938,7 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     if (matchedFile) {
       // Check if AI returned a stub / truncated content while source had substantial prose
       const emittedContent = (matchedFile.content || '').trim();
-      if (sourceGroupProse.length > 250 && emittedContent.length < 150) {
+      if (sourceGroupProse.length > 200 && (emittedContent.length < 150 || emittedContent.length < sourceGroupProse.length * 0.5)) {
         console.warn(`[AI-MODULAR] Section "${rawTitle}" emitted only ${emittedContent.length} chars vs ${sourceGroupProse.length} source prose chars. Deterministically backfilling.`);
         const backfilledNodes = [g.heading, ...g.nodes];
         matchedFile.content = backfilledNodes.map(assembleBackfilledNode).join('\n\n');

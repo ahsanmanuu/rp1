@@ -2176,9 +2176,11 @@ export class ModularLatexAssembler {
     const authorLines = (doc.authors || []).map((a, idx) => {
       const name = LatexAssembler.escape(typeof a.name === 'string' ? a.name : (a as any).text || 'Author', []);
 
-      // Proper affiliation lookup by ID (matches LatexAssembler logic)
+      // Proper affiliation lookup (verbatim affiliation from author info takes priority)
       let affil = "Institution";
-      if (a.affiliationIds && a.affiliationIds.length > 0) {
+      if (a.affiliation && typeof a.affiliation === 'string' && a.affiliation.trim().length > 0) {
+        affil = LatexAssembler.escape(a.affiliation.trim(), []);
+      } else if (a.affiliationIds && a.affiliationIds.length > 0) {
         const affilIdx = parseInt(a.affiliationIds[0]) - 1;
         if (!isNaN(affilIdx) && orgs[affilIdx]) {
           affil = orgs[affilIdx];

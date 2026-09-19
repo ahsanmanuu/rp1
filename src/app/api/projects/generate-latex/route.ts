@@ -582,14 +582,28 @@ export async function POST(req: Request) {
                 extractedComponents[filePath] = content;
               } else if (
                 filePath.startsWith('sections/') &&
-                (extractedComponents[filePath].trim().length < 50 || extractedComponents[filePath].split(/\s+/).length < 15) &&
+                (
+                  extractedComponents[filePath].trim().length < 50 ||
+                  extractedComponents[filePath].split(/\s+/).length < 15 ||
+                  (content.length > 400 && extractedComponents[filePath].length < content.length * 0.45)
+                ) &&
                 content.trim().length > 100
               ) {
-                // Section was empty or truncated in AI pass; restore full content from deterministic pass
+                // Section was empty or truncated/summarized in AI pass; restore full verbatim content from deterministic pass
                 extractedComponents[filePath] = content;
               } else if (filePath.startsWith('sections/')) {
                 // Section was populated by AI; rescue any figures/tables dropped from deterministic pass
                 extractedComponents[filePath] = rescueMissingFloats(extractedComponents[filePath], content, filePath);
+              } else if (filePath === 'metadata/authors.tex' && content) {
+                const aiAuthorCount = (extractedComponents[filePath]?.match(/\\author/g) || []).length;
+                const detAuthorCount = (content.match(/\\author/g) || []).length;
+                if (detAuthorCount > aiAuthorCount || (extractedComponents[filePath].includes('Institution') && !content.includes('Institution'))) {
+                  extractedComponents[filePath] = content;
+                }
+              } else if (filePath.startsWith('floats/tables/') && content && content.includes('\\begin{tabular')) {
+                if (!extractedComponents[filePath] || !extractedComponents[filePath].includes('\\begin{tabular') || extractedComponents[filePath].length < content.length * 0.4) {
+                  extractedComponents[filePath] = content;
+                }
               }
             }
 

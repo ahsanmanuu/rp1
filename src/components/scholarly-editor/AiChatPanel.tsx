@@ -163,8 +163,8 @@ export function AiChatPanel({
         <div key={currentBlockKey} style={{
           margin: '0.6rem 0',
           borderRadius: '10px',
-          border: '1px solid rgba(255,255,255,0.12)',
-          background: 'rgba(10, 10, 15, 0.95)',
+          border: '1px solid rgba(0,0,0,0.1)',
+          background: '#f8fafc',
           overflow: 'hidden',
           boxShadow: '0 8px 24px rgba(0,0,0,0.35)'
         }}>
@@ -173,8 +173,8 @@ export function AiChatPanel({
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '0.35rem 0.65rem',
-            background: 'rgba(255,255,255,0.04)',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(0,0,0,0.04)',
+            borderBottom: '1px solid rgba(0,0,0,0.08)',
             fontSize: '0.65rem',
             fontFamily: 'var(--font-mono)',
             color: 'var(--text-secondary)'
@@ -239,7 +239,7 @@ export function AiChatPanel({
             fontFamily: 'var(--font-mono)',
             fontSize: '0.75rem',
             lineHeight: 1.5,
-            color: '#e2e8f0',
+            color: '#1e293b',
             whiteSpace: 'pre',
             maxHeight: '320px'
           }}>
@@ -284,15 +284,15 @@ export function AiChatPanel({
           padding: '0.85rem 1rem',
           borderRadius: isAssistant ? '14px 14px 14px 4px' : '14px 14px 4px 14px',
           background: isAssistant
-            ? 'linear-gradient(145deg, rgba(26, 28, 44, 0.85) 0%, rgba(18, 20, 32, 0.95) 100%)'
-            : 'linear-gradient(145deg, rgba(79, 70, 229, 0.25) 0%, rgba(99, 102, 241, 0.15) 100%)',
+            ? 'linear-gradient(145deg, #ffffff 0%, #f1f5f9 100%)'
+            : 'linear-gradient(145deg, rgba(79, 70, 229, 0.1) 0%, rgba(99, 102, 241, 0.05) 100%)',
           color: 'var(--text-primary)',
           alignSelf: isAssistant ? 'flex-start' : 'flex-end',
           maxWidth: '92%',
           fontSize: '0.8rem',
           border: isAssistant
-            ? '1px solid rgba(255, 255, 255, 0.08)'
-            : '1px solid rgba(99, 102, 241, 0.35)',
+            ? '1px solid rgba(0, 0, 0, 0.08)'
+            : '1px solid rgba(99, 102, 241, 0.2)',
           boxShadow: isAssistant
             ? '0 6px 24px rgba(0, 0, 0, 0.25)'
             : '0 4px 16px rgba(99, 102, 241, 0.1)',
@@ -307,7 +307,7 @@ export function AiChatPanel({
           justifyContent: 'space-between',
           marginBottom: '0.45rem',
           fontSize: '0.65rem',
-          color: isAssistant ? '#a5b4fc' : '#c7d2fe',
+          color: isAssistant ? '#4338ca' : '#4f46e5',
           fontWeight: 700,
           fontFamily: 'var(--font-headline)',
           letterSpacing: '0.04em'
@@ -354,14 +354,14 @@ export function AiChatPanel({
               value={editText}
               onChange={e => setEditText(e.target.value)}
               style={{
-                width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.15)',
+                width: '100%', background: '#ffffff', border: '1px solid rgba(0,0,0,0.15)',
                 borderRadius: '8px', padding: '0.5rem', color: 'var(--text-primary)', fontSize: '0.8rem',
                 outline: 'none', fontFamily: 'var(--font-mono)', minHeight: '60px'
               }}
             />
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.4rem' }}>
               <button onClick={cancelEdit} style={{
-                background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', border: 'none',
+                background: 'rgba(0,0,0,0.06)', color: 'var(--text-secondary)', border: 'none',
                 borderRadius: '5px', padding: '0.25rem 0.6rem', fontSize: '0.65rem', cursor: 'pointer'
               }}>Cancel</button>
               <button onClick={() => saveEdit(i)} style={{
@@ -382,7 +382,7 @@ export function AiChatPanel({
 
                     {parsedJson.edits && parsedJson.edits.length > 0 && (
                       <div style={{
-                        background: 'rgba(15, 17, 26, 0.85)',
+                        background: '#f1f5f9',
                         padding: '0.65rem 0.8rem',
                         borderRadius: '10px',
                         border: '1px solid rgba(99, 102, 241, 0.3)',
@@ -391,7 +391,7 @@ export function AiChatPanel({
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.35rem' }}>
                           <Terminal size={13} style={{ color: 'var(--accent-primary)' }} />
-                          <span style={{ fontWeight: 800, color: '#e0e7ff', letterSpacing: '0.04em' }}>
+                          <span style={{ fontWeight: 800, color: '#1e293b', letterSpacing: '0.04em' }}>
                             PROPOSED WORKSPACE CHANGES ({parsedJson.edits.length}):
                           </span>
                         </div>
@@ -400,7 +400,7 @@ export function AiChatPanel({
                             <div key={idx} style={{
                               display: 'flex', alignItems: 'center', gap: '0.4rem',
                               padding: '0.25rem 0.45rem', borderRadius: '6px',
-                              background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)'
+                              background: 'rgba(0,0,0,0.03)', border: '1px solid rgba(0,0,0,0.05)'
                             }}>
                               <span style={{
                                 padding: '1px 5px', borderRadius: '4px',
@@ -505,10 +505,10 @@ export function AiChatPanel({
           exit={{ width: 0, opacity: 0 }}
           transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
           style={{
-            borderLeft: '1px solid rgba(255,255,255,0.08)',
+            borderLeft: '1px solid rgba(0,0,0,0.08)',
             display: 'flex',
             flexDirection: 'column',
-            background: 'linear-gradient(180deg, rgba(13, 15, 24, 0.96) 0%, rgba(10, 11, 18, 0.98) 100%)',
+            background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
             backdropFilter: 'blur(30px)',
             fontFamily: 'var(--font-headline)',
             flexShrink: 0,
@@ -520,11 +520,11 @@ export function AiChatPanel({
           {/* Header */}
           <div style={{
             padding: '0.75rem 1rem',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            borderBottom: '1px solid rgba(0,0,0,0.08)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            background: 'rgba(255,255,255,0.02)',
+            background: '#f1f5f9',
             flexShrink: 0
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
@@ -537,10 +537,10 @@ export function AiChatPanel({
                 <Bot size={14} color="#fff" />
               </div>
               <div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#f8fafc', letterSpacing: '0.04em' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#0f172a', letterSpacing: '0.04em' }}>
                   LATEX AI ASSISTANT
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.62rem', color: '#94a3b8' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.62rem', color: '#475569' }}>
                   <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
                   <span>{activeFile}</span>
                   {fileCount !== undefined && <span>• {fileCount} files</span>}
@@ -554,8 +554,8 @@ export function AiChatPanel({
                   onClick={clearMessages}
                   title="Clear Chat History"
                   style={{
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    background: '#ffffff',
+                    border: '1px solid rgba(0,0,0,0.08)',
                     color: 'var(--text-secondary)',
                     borderRadius: '6px',
                     cursor: 'pointer',
@@ -571,8 +571,8 @@ export function AiChatPanel({
                 onClick={onClose}
                 title="Close Chat"
                 style={{
-                  background: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.08)',
+                  background: '#ffffff',
+                  border: '1px solid rgba(0,0,0,0.08)',
                   color: 'var(--text-secondary)',
                   borderRadius: '6px',
                   cursor: 'pointer',
@@ -594,7 +594,7 @@ export function AiChatPanel({
             gap: '0.35rem',
             overflowX: 'auto',
             scrollbarWidth: 'none',
-            background: 'rgba(0,0,0,0.2)',
+            background: '#f8fafc',
             flexShrink: 0
           }}>
             {QUICK_PROMPTS.map((qp, idx) => {
@@ -610,9 +610,9 @@ export function AiChatPanel({
                     gap: '0.3rem',
                     padding: '0.25rem 0.55rem',
                     borderRadius: '20px',
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    color: '#cbd5e1',
+                    background: '#ffffff',
+                    border: '1px solid rgba(0,0,0,0.08)',
+                    color: '#334155',
                     fontSize: '0.65rem',
                     fontWeight: 600,
                     whiteSpace: 'nowrap',
@@ -670,7 +670,7 @@ export function AiChatPanel({
                 }}>
                   <Sparkles size={24} style={{ color: 'var(--accent-primary)' }} />
                 </div>
-                <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#f8fafc', marginBottom: '0.35rem' }}>
+                <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#0f172a', marginBottom: '0.35rem' }}>
                   Academic Pair Programmer
                 </div>
                 Ask questions, generate equations, audit bibliography citations, or request automatic file modifications across your manuscript!
@@ -689,10 +689,10 @@ export function AiChatPanel({
                   alignItems: 'center',
                   gap: '0.65rem',
                   padding: '0.65rem 0.85rem',
-                  background: 'rgba(26, 28, 44, 0.85)',
+                  background: '#ffffff',
                   border: '1px solid rgba(99, 102, 241, 0.3)',
                   borderRadius: '12px',
-                  color: '#c7d2fe',
+                  color: '#4f46e5',
                   fontSize: '0.75rem',
                   boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
                 }}
@@ -710,8 +710,8 @@ export function AiChatPanel({
           {/* Interactive Multi-line Input Box */}
           <div style={{
             padding: '0.75rem',
-            borderTop: '1px solid rgba(255,255,255,0.08)',
-            background: 'rgba(15, 17, 26, 0.95)',
+            borderTop: '1px solid rgba(0,0,0,0.08)',
+            background: '#ffffff',
             display: 'flex',
             flexDirection: 'column',
             gap: '0.4rem',
@@ -721,8 +721,8 @@ export function AiChatPanel({
               display: 'flex',
               alignItems: 'flex-end',
               gap: '0.4rem',
-              background: 'rgba(255, 255, 255, 0.04)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
+              background: 'rgba(0,0,0,0.02)',
+              border: '1px solid rgba(0,0,0,0.1)',
               borderRadius: '12px',
               padding: '0.4rem 0.6rem',
               transition: 'all 0.2s',
@@ -745,7 +745,7 @@ export function AiChatPanel({
                   flex: 1,
                   background: 'transparent',
                   border: 'none',
-                  color: '#f8fafc',
+                  color: '#0f172a',
                   fontSize: '0.8rem',
                   outline: 'none',
                   fontFamily: 'var(--font-headline)',

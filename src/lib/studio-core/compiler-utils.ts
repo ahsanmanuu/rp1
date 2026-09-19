@@ -223,6 +223,14 @@ ${_B}fi
       if (!hasPackage('microtype')) {
         preamblePkgs.push('\\usepackage{microtype}');
       }
+      // booktabs: publication-quality horizontal rules for tables
+      if (!hasPackage('booktabs')) {
+        preamblePkgs.push('\\usepackage{booktabs}');
+      }
+      // placeins: controls float drifting across sections
+      if (!hasPackage('placeins')) {
+        preamblePkgs.push('\\usepackage{placeins}');
+      }
       // geometry: proper page margins (1in standard)
       if (!isAcademic && !hasPackage('geometry')) {
         preamblePkgs.push('\\usepackage[margin=1in]{geometry}');
@@ -271,6 +279,8 @@ ${_B}fi
       '\\ifx\\UrlBreaks\\@undefined\\else',
       '  \\g@addto@macro{\\UrlBreaks}{\\do\\/\\do\\-\\do\\.\\do\\a\\do\\b\\do\\c\\do\\d\\do\\e\\do\\f\\do\\g\\do\\h\\do\\i\\do\\j\\do\\k\\do\\l\\do\\m\\do\\n\\do\\o\\do\\p\\do\\q\\do\\r\\do\\s\\do\\t\\do\\u\\do\\v\\do\\w\\do\\x\\do\\y\\do\\z\\do\\A\\do\\B\\do\\C\\do\\D\\do\\E\\do\\F\\do\\G\\do\\H\\do\\I\\do\\J\\do\\K\\do\\L\\do\\M\\do\\N\\do\\O\\do\\P\\do\\Q\\do\\R\\do\\S\\do\\T\\do\\U\\do\\V\\do\\W\\do\\X\\do\\Y\\do\\Z\\do\\0\\do\\1\\do\\2\\do\\3\\do\\4\\do\\5\\do\\6\\do\\7\\do\\8\\do\\9}',
       '\\fi',
+      // Hyperlink styling: clean publication-grade link colors without bounding boxes
+      '\\ifx\\hypersetup\\@undefined\\else\\hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue}\\fi',
       // Image constraint: all images respect page width automatically
       '\\ifx\\setkeys\\@undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.7\\textheight,keepaspectratio}\\fi',
       // listings: enable line breaking for ALL lstlisting environments (if listings is loaded)
