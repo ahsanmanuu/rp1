@@ -2311,16 +2311,16 @@ export class DeepDocumentParser {
 
     const rx =
       type === 'figure'
-        ? /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo|Graph)\s*(?:(?:\(|\b)(\d+(?:\.\d+)*|[a-zA-Z])(?:\)|\b))?(?:\s*[:.\-–—\s])?/i
-        : /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Table|Tab\b\.?)\s*(?:(?:\(|\b)(\d+(?:\.\d+)*|[a-zA-Z])(?:\)|\b))?(?:\s*[:.\-–—\s])?/i;
+        ? /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo|Graph)\s*(?:(?:\(|\b)(\d+(?:\.\d+)*|[a-zA-Z]+)(?:\)|\b))?(?:\s*[:.\-–—\s])?/i
+        : /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Table|Tab\b\.?)\s*(?:(?:\(|\b)(\d+(?:\.\d+)*|[a-zA-Z]+)(?:\)|\b))?(?:\s*[:.\-–—\s])?/i;
 
     // Caption ordinal extractor: extracts the figure/table number from captions
     // like "Figure 1", "Table 2", "Fig. 3", "Chart 1" etc.
     const captionOrdinal = (t: string): number | null => {
       const m = t.match(
         type === 'figure'
-          ? /(?:Figure|Fig\.?|Image|Chart|Diagram|Photo|Graph)\s*(?:\(|\b)(\d+(?:\.\d+)*|[a-zA-Z])(?:\)|\b)/i
-          : /(?:Table|Tab\.?)\s*(?:\(|\b)(\d+(?:\.\d+)*|[a-zA-Z])(?:\)|\b)/i
+          ? /(?:Figure|Fig\.?|Image|Chart|Diagram|Photo|Graph)\s*(?:\(|\b)(\d+(?:\.\d+)*|[a-zA-Z]+)(?:\)|\b)/i
+          : /(?:Table|Tab\.?)\s*(?:\(|\b)(\d+(?:\.\d+)*|[a-zA-Z]+)(?:\)|\b)/i
       );
       if (!m) return null;
       const s = m[1];
