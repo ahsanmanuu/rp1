@@ -65,10 +65,38 @@ export function useAiChat({ projectId, storageKey, apiEndpoint, buildContext }: 
     setCollapsedMessages({});
   }, [saveMessages]);
 
-  const send = useCallback(async () => {
-    if (!input.trim() || sending) return;
-    const userMsg = input.trim();
-    setInput('');
+  const parseMessageJson = useCallback((content: string): any => {
+    try {
+      let cleaned = content.trim();
+      cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+      try {
+        const parsed = JSON.parse(cleaned);
+        if (parsed && (parsed.edits || parsed.explanation)) return parsed;
+      } catch {}
+      const start = cleaned.indexOf('{');
+      const end = cleaned.lastIndexOf('}');
+      if (start !== -1 && end > start) {
+        const block = cleaned.substring(start, end + 1);
+        try {
+          const parsed = JSON.parse(block);
+          if (parsed && (parsed.edits || parsed.explanation)) return parsed;
+        } catch {
+          try {
+            const cleanBlock = block.replace(/,(\s*[}\]])/g, '$1');
+            const parsed = JSON.parse(cleanBlock);
+            if (parsed && (parsed.edits || parsed.explanation)) return parsed;
+          } catch {}
+        }
+      }
+    } catch {}
+    return null;
+  }, []);
+
+  const send = useCallback(async (customPrompt?: string) => {
+    const rawInput = customPrompt || input;
+    if (!rawInput.trim() || sending) return;
+    const userMsg = rawInput.trim();
+    if (!customPrompt) setInput('');
     const updated: ChatMessage[] = [...messages, { role: 'user', content: userMsg }];
     saveMessages(updated);
     setSending(true);
@@ -78,11 +106,27 @@ export function useAiChat({ projectId, storageKey, apiEndpoint, buildContext }: 
     const timeoutId = setTimeout(() => controller.abort(), 300000);
 
     try {
+      // Sanitize multi-turn history for clean LLM context memory
+      const sanitizedMessages = updated
+        .filter(m => !m.content.startsWith('ERROR:'))
+        .map(m => {
+          if (m.role === 'assistant') {
+            const parsed = parseMessageJson(m.content);
+            if (parsed && parsed.explanation) {
+              const editSummary = parsed.edits && parsed.edits.length > 0
+                ? ` [Applied ${parsed.edits.length} workspace edit(s)]`
+                : '';
+              return { role: 'assistant' as const, content: parsed.explanation + editSummary };
+            }
+          }
+          return m;
+        });
+
       const ctx = buildContext ? await buildContext() : {};
       const res = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: updated, ...ctx }),
+        body: JSON.stringify({ messages: sanitizedMessages, ...ctx }),
         signal: controller.signal,
       });
 
@@ -110,7 +154,6 @@ export function useAiChat({ projectId, storageKey, apiEndpoint, buildContext }: 
 
       const responseMsg = data.message || (data.data?.message) || 'No response from AI.';
       saveMessages([...updated, { role: 'assistant', content: responseMsg }]);
-      setCollapsedMessages(prev => ({ ...prev, [updated.length]: true }));
     } catch (err: any) {
       clearTimeout(timeoutId);
       let errorMsg = err.message || 'AI Agent connection disrupted.';
@@ -118,12 +161,11 @@ export function useAiChat({ projectId, storageKey, apiEndpoint, buildContext }: 
         errorMsg = 'AI Agent request timed out (exceeded 120 seconds). Please try a shorter prompt.';
       }
       saveMessages([...updated, { role: 'assistant', content: `ERROR: ${errorMsg}` }]);
-      setCollapsedMessages(prev => ({ ...prev, [updated.length]: true }));
     } finally {
       setSending(false);
       abortRef.current = null;
     }
-  }, [input, sending, messages, apiEndpoint, buildContext, saveMessages]);
+  }, [input, sending, messages, apiEndpoint, buildContext, saveMessages, parseMessageJson]);
 
   const abort = useCallback(() => {
     if (abortRef.current) {
@@ -166,32 +208,6 @@ export function useAiChat({ projectId, storageKey, apiEndpoint, buildContext }: 
     setMessageStates(prev => ({ ...prev, [idx]: state }));
   }, []);
 
-  const parseMessageJson = useCallback((content: string): any => {
-    try {
-      let cleaned = content.trim();
-      cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-      try {
-        const parsed = JSON.parse(cleaned);
-        if (parsed && (parsed.edits || parsed.explanation)) return parsed;
-      } catch {}
-      const start = cleaned.indexOf('{');
-      const end = cleaned.lastIndexOf('}');
-      if (start !== -1 && end > start) {
-        const block = cleaned.substring(start, end + 1);
-        try {
-          const parsed = JSON.parse(block);
-          if (parsed && (parsed.edits || parsed.explanation)) return parsed;
-        } catch {
-          try {
-            const cleanBlock = block.replace(/,(\s*[}\]])/g, '$1');
-            const parsed = JSON.parse(cleanBlock);
-            if (parsed && (parsed.edits || parsed.explanation)) return parsed;
-          } catch {}
-        }
-      }
-    } catch {}
-    return null;
-  }, []);
 
   return {
     messages,

@@ -579,6 +579,11 @@ export class LatexAssembler {
             if (/^(?:keywords?|index terms?|key words?|highlights?)(?:\s*[:\-].*)?$/i.test(headingText)) return;
         }
 
+        // Skip nodes tagged as author, affiliation or frontmatter
+        if ((node as any).componentRole === 'author' || (node as any).componentRole === 'affiliation' || (node as any).componentRole === 'frontmatter') {
+            return;
+        }
+
         // UNIVERSAL FRONT-MATTER & SECTION SPLITTING ENGINE:
         // Before the first real section heading (e.g. Introduction), any author lines,
         // affiliations, designations, and preamble paragraphs belong to front matter metadata
@@ -598,8 +603,7 @@ export class LatexAssembler {
                 const isRealSectionHeading = FORCED_L1_ASSEMBLER.has(normHeading) ||
                   /^(?:introduction|related work|literature review|background|methodology|methods|overview|problem formulation|system model|materials and methods|experimental|preliminaries|proposed|results|discussion|conclusion)\b/i.test(normHeading) ||
                   (/^\d+(?:\.\d+)*\.?\s+[A-Za-z]/i.test(text) && !isAcademicPreambleOrAuthor(probe, norm)) ||
-                  (/^[ivxlcdm]+\.?\s+[A-Za-z]/i.test(text) && !isAcademicPreambleOrAuthor(probe, norm)) ||
-                  ((node.level ?? 1) <= 2 && probe.length >= 3 && !isAcademicPreambleOrAuthor(probe, norm) && !/^\d+\.\s*(?:dr|prof|professor|mr|ms|mrs|md)/i.test(text));
+                  (/^[ivxlcdm]+\.?\s+[A-Za-z]/i.test(text) && !isAcademicPreambleOrAuthor(probe, norm));
 
                 if (isRealSectionHeading) {
                     frontMatterDone = true;
@@ -1228,8 +1232,32 @@ export class LatexAssembler {
   static assembleTable(node: ContentNode, mathBlocks: any[]): string {
     const aiOverride = (node as any)._aiLatex;
     if (typeof aiOverride === 'string' && aiOverride.trim().length > 0) return aiOverride;
-    if (!node.html) return '';
-    const rowsMatch = node.html.match(/<tr[^>]*>([\s\S]*?)<\/tr>/gi);
+    let html = node.html || '';
+    if (!html && node.text) {
+      const lines = node.text.split('\n').map((l: string) => l.trim()).filter(Boolean);
+      if (lines.length > 0) {
+        html = '<table>';
+        lines.forEach((line: string, rIdx: number) => {
+          let cells: string[] = [];
+          if (line.includes('|')) {
+            cells = line.split('|').map(c => c.trim());
+            if (line.startsWith('|')) cells.shift();
+            if (line.endsWith('|')) cells.pop();
+          } else if (line.includes('\t')) {
+            cells = line.split('\t').map(c => c.trim());
+          } else if (/\s{2,}/.test(line)) {
+            cells = line.split(/\s{2,}/).map(c => c.trim());
+          } else {
+            cells = line.split(',').map(c => c.trim());
+          }
+          const tag = rIdx === 0 ? 'th' : 'td';
+          html += '<tr>' + cells.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
+        });
+        html += '</table>';
+      }
+    }
+    if (!html) return '';
+    const rowsMatch = html.match(/<tr[^>]*>([\s\S]*?)<\/tr>/gi);
     const rows = rowsMatch ? Array.from(rowsMatch) : [];
     if (rows.length === 0) return '';
 
@@ -1354,7 +1382,7 @@ export class LatexAssembler {
         }
 
         const inner = c.replace(/<t[hd][^>]*>/i, '').replace(/<\/t[hd]>/i, '').trim();
-        const clean = inner.replace(/<[^>]+>/g, '').trim();
+        const clean = inner.replace(/<[^>]+>/g, '').replace(/[\r\n]+/g, ' ').trim();
         let escaped = isHeader
           ? `\\textbf{${LatexAssembler.escapeText(clean, mathBlocks)}}`
           : LatexAssembler.escapeText(clean, mathBlocks);
@@ -1897,7 +1925,6 @@ export class LatexAssembler {
     }
 
     // 4. UNROLL MATH MARKERS
-    const seenMath = new Set<string>();
     sanitized = sanitized.replace(/MATHBLOCKX(\d+)XMARKER/g, (match, idx) => {
         const entry = mathBlocks[parseInt(idx)] || "";
         const raw = typeof entry === 'string' ? entry : (entry.latex || "");
@@ -1911,9 +1938,6 @@ export class LatexAssembler {
             .trim();
         
         if (!inner) return '';
-        const normalized = inner.replace(/\s+/g, '');
-        if (normalized.length > 5 && seenMath.has(normalized)) return ''; // Cross-marker dedup (only for non-trivial math to avoid stripping simple variables like $x$)
-        seenMath.add(normalized);
         return `$${inner}$`;
     });
 
@@ -2571,8 +2595,7 @@ export class ModularLatexAssembler {
                 const isRealSectionHeading = FORCED_L1_ASSEMBLER.has(normHeading) ||
                   /^(?:introduction|related work|literature review|background|methodology|methods|overview|problem formulation|system model|materials and methods|experimental|preliminaries|proposed|results|discussion|conclusion)\b/i.test(normHeading) ||
                   (/^\d+(?:\.\d+)*\.?\s+[A-Za-z]/i.test(text) && !isAcademicPreambleOrAuthor(probe, norm)) ||
-                  (/^[ivxlcdm]+\.?\s+[A-Za-z]/i.test(text) && !isAcademicPreambleOrAuthor(probe, norm)) ||
-                  ((node.level ?? 1) <= 2 && probe.length >= 3 && !isAcademicPreambleOrAuthor(probe, norm) && !/^\d+\.\s*(?:dr|prof|professor|mr|ms|mrs|md)/i.test(text));
+                  (/^[ivxlcdm]+\.?\s+[A-Za-z]/i.test(text) && !isAcademicPreambleOrAuthor(probe, norm));
 
                 if (isRealSectionHeading) {
                     frontMatterDone = true;

@@ -138,6 +138,8 @@ export default function DocIDE({ projectId }: { projectId: string }) {
   // background re-sync can NEVER overwrite the user's in-editor edits.
   const dirtyRef = useRef(false);
   const compilingRef = useRef(false);
+  const isSwitchingTabRef = useRef(false);
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const shareProject = async () => {
     const tid = toast.loading("Generating share link...");
     try {
@@ -357,21 +359,20 @@ export default function DocIDE({ projectId }: { projectId: string }) {
             console.warn('AI snapshot localStorage restore failed (non-critical):', verdictErr);
           }
           
-          // Preserve valid local image assets before clearing old text files
+          // Cache existing local image assets for hydration fallbacks
           const preservedLocalImages = new Map<string, string>();
           try {
-            const oldFiles = await studioFs.listFiles(projectId);
-            for (const oldFile of oldFiles) {
-              const ext = oldFile.path.split('.').pop()?.toLowerCase() || '';
+            const currentLocalFiles = await studioFs.listFiles(projectId);
+            for (const localFile of currentLocalFiles) {
+              const ext = localFile.path.split('.').pop()?.toLowerCase() || '';
               const isImg = ['png', 'jpg', 'jpeg', 'pdf', 'webp', 'gif', 'svg', 'eps', 'tiff', 'tif', 'bmp', 'heic', 'heif', 'avif'].includes(ext);
-              if (isImg && oldFile.content && oldFile.content.length > 200 && !oldFile.content.includes('AAAAASUVORK5CYII=')) {
-                preservedLocalImages.set(oldFile.path, oldFile.content);
-                preservedLocalImages.set(oldFile.path.split('/').pop() || oldFile.path, oldFile.content);
+              if (isImg && localFile.content && localFile.content.length > 200 && !localFile.content.includes('AAAAASUVORK5CYII=')) {
+                preservedLocalImages.set(localFile.path, localFile.content);
+                preservedLocalImages.set(localFile.path.split('/').pop() || localFile.path, localFile.content);
               }
-              await studioFs.deleteFile(projectId, oldFile.path);
             }
-          } catch (clearErr) {
-            console.warn("Failed to clear old local files:", clearErr);
+          } catch (scanErr) {
+            console.warn("Failed to scan existing local files:", scanErr);
           }
           
           // Inject project metadata into StudioFS
@@ -382,7 +383,8 @@ export default function DocIDE({ projectId }: { projectId: string }) {
             data.project.mainFile || 'main.tex'
           );
           
-          if (data.project.latexContent) {
+          // Only overwrite local main.tex if server has valid, non-empty content
+          if (data.project.latexContent && data.project.latexContent.trim().length > 30) {
             await studioFs.writeFile(projectId, 'main.tex', data.project.latexContent);
           }
           
@@ -900,6 +902,11 @@ export default function DocIDE({ projectId }: { projectId: string }) {
   const saveFile = useCallback(async (path: string, content: string) => {
     if (isOutOfCredits) return;
     if (!fs || !projectId) return;
+    // CRITICAL GUARD: Never write empty or whitespace-only content to main.tex
+    if ((path === 'main.tex' || path === './main.tex') && (!content || content.trim().length === 0)) {
+      console.warn("[DocIDE] Blocked attempt to overwrite main.tex with empty content in saveFile.");
+      return;
+    }
     await fs.writeFile(projectId, path, content);
     dirtyRef.current = false;
     setFiles(await fs.listFiles(projectId));
@@ -927,11 +934,24 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       return;
     }
     if (!project) return;
+    // CRITICAL: Block spurious empty string onChange triggered during Monaco mount or tab switch
+    if (isSwitchingTabRef.current) {
+      return;
+    }
     const val = value || '';
+    // Guard main.tex from spurious empty wipes
+    if ((activeFile === 'main.tex' || activeFile === './main.tex') && val.trim().length === 0 && code && code.trim().length > 30) {
+      console.warn("[DocIDE] Blocked spurious empty code change on main.tex");
+      return;
+    }
+
     setCode(val);
     dirtyRef.current = true;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     if (saveTimer) clearTimeout(saveTimer);
-    setSaveTimer(setTimeout(() => saveFile(activeFile, val), 1000));
+    const timer = setTimeout(() => saveFile(activeFile, val), 1000);
+    saveTimerRef.current = timer;
+    setSaveTimer(timer);
   };
 
   const isImage = (path: string) => {
@@ -942,22 +962,37 @@ export default function DocIDE({ projectId }: { projectId: string }) {
   const switchTab = async (path: string) => {
     if (!project) return;
     if (path === activeFile) return;
-    // Save outgoing file if it still exists
-    if (fs && !isImage(activeFile) && !isOutOfCredits) {
-      const stillExists = await fs.readFile(projectId, activeFile);
-      if (stillExists) await fs.writeFile(projectId, activeFile, code);
-    }
-    setLoadingCode(true);
-    setActiveFile(path);
-    if (!openTabs.includes(path)) setOpenTabs(t => [...t, path]);
 
-    // Read directly from IndexedDB VFS for fresh, true content
+    // 1. Synchronously lock tab switching and clear any pending autosave timers
+    isSwitchingTabRef.current = true;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      setSaveTimer(null);
+    }
+
+    // 2. Save outgoing file if it still exists and is not an image and not empty
+    if (fs && !isImage(activeFile) && !isOutOfCredits && code && code.trim().length > 0) {
+      try {
+        const stillExists = await fs.readFile(projectId, activeFile);
+        if (stillExists) await fs.writeFile(projectId, activeFile, code);
+      } catch {}
+    }
+
+    setLoadingCode(true);
+
+    // 3. Read incoming content from IndexedDB VFS or state FIRST before changing activeFile
     let freshContent = '';
     if (fs) {
-      const fsFile = await fs.readFile(projectId, path);
-      if (fsFile && typeof fsFile.content === 'string') {
-        freshContent = fsFile.content;
-      }
+      try {
+        const fsFile = await fs.readFile(projectId, path);
+        if (fsFile && typeof fsFile.content === 'string') {
+          freshContent = fsFile.content;
+        }
+      } catch {}
     }
     if (!freshContent) {
       const file = files.find(f => f.path === path);
@@ -967,32 +1002,41 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     }
 
     if (isImage(path)) {
-      // If it's an image and content is empty or short placeholder, resolve from upload URL
-      if (!freshContent || freshContent.length < 200) {
-        try {
-          const cleanName = path.replace(/^assets\//, '');
-          const candidateUrl = `/uploads/projects/${projectId}/${cleanName}`;
-          const res = await fetch(candidateUrl);
-          if (res.ok) {
-            const blob = await res.blob();
-            const reader = new FileReader();
-            const dataUrlPromise = new Promise<string>((resolve) => {
-              reader.onloadend = () => resolve(reader.result as string);
-            });
-            reader.readAsDataURL(blob);
-            const resolvedDataUrl = await dataUrlPromise;
-            if (resolvedDataUrl && resolvedDataUrl.startsWith('data:')) {
-              freshContent = resolvedDataUrl;
-              if (fs) await fs.writeFile(projectId, path, resolvedDataUrl);
+      // If it's an image and content is empty or short placeholder, resolve with multi-path fallback
+      if (!freshContent || freshContent.length < 200 || !freshContent.startsWith('data:')) {
+        const cleanBase = path.split('/').pop() || path;
+        const candidateUrls = [
+          `/uploads/projects/${projectId}/${path}`,
+          `/uploads/projects/${projectId}/${cleanBase}`,
+          `/uploads/projects/${projectId}/figures/${cleanBase}`,
+          `/uploads/projects/${projectId}/assets/${cleanBase}`
+        ];
+        for (const candidateUrl of candidateUrls) {
+          try {
+            const res = await fetch(candidateUrl);
+            if (res.ok) {
+              const blob = await res.blob();
+              const reader = new FileReader();
+              const dataUrlPromise = new Promise<string>((resolve) => {
+                reader.onloadend = () => resolve(reader.result as string);
+              });
+              reader.readAsDataURL(blob);
+              const resolvedDataUrl = await dataUrlPromise;
+              if (resolvedDataUrl && resolvedDataUrl.startsWith('data:')) {
+                freshContent = resolvedDataUrl;
+                if (fs) await fs.writeFile(projectId, path, resolvedDataUrl);
+                break;
+              }
             }
-          }
-        } catch (fetchErr) {
-          console.warn("[DocIDE] Could not resolve image fallback URL:", fetchErr);
+          } catch {}
         }
       }
 
       setCode(freshContent);
+      setActiveFile(path);
+      if (!openTabs.includes(path)) setOpenTabs(t => [...t, path]);
       setLoadingCode(false);
+      setTimeout(() => { isSwitchingTabRef.current = false; }, 150);
     } else {
       // For main.tex, guard against ever setting an empty string if valid content exists
       if (path === 'main.tex' && (!freshContent || freshContent.trim().length === 0)) {
@@ -1004,12 +1048,16 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       }
       const formatted = formatLatexCode(freshContent);
       setCode(formatted);
+      setActiveFile(path);
+      if (!openTabs.includes(path)) setOpenTabs(t => [...t, path]);
+
       if (editorRef.current) {
         try {
           editorRef.current.setValue(formatted);
         } catch (e) {}
       }
       setLoadingCode(false);
+      setTimeout(() => { isSwitchingTabRef.current = false; }, 200);
     }
   };
 
@@ -1041,14 +1089,21 @@ export default function DocIDE({ projectId }: { projectId: string }) {
 
     if (!confirm(`Delete ${path}?`)) return;
 
-    // Clear any pending autosave timer before deleting
-    if (saveTimer) clearTimeout(saveTimer);
+    // Clear any pending autosave timers immediately before deleting
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      setSaveTimer(null);
+    }
 
     let updatedMainContent: string | null = null;
+    let currentMain = '';
 
     // 2. Clean references to the deleted file from main.tex
     try {
-      let currentMain = '';
       if (activeFile === 'main.tex' && code && code.trim().length > 0) {
         currentMain = code;
       } else {
@@ -1072,6 +1127,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
 
         if (cleaned !== currentMain && cleaned.trim().length > 30) {
           updatedMainContent = cleaned;
+          currentMain = cleaned;
           await fs.writeFile(projectId, 'main.tex', cleaned);
           setFiles(prev => prev.map(f => f.path === 'main.tex' ? { ...f, content: cleaned } : f));
           if (activeFile === 'main.tex') {
@@ -1094,16 +1150,17 @@ export default function DocIDE({ projectId }: { projectId: string }) {
 
     if (activeFile === path) {
       const remainingFiles = files.filter(f => f.path !== path);
-      const fallbackTab = remainingTabs[0] || remainingFiles.find(f => f.path === 'main.tex')?.path || remainingFiles[0]?.path || '';
+      const fallbackTab = remainingTabs[0] || remainingFiles.find(f => f.path === 'main.tex')?.path || remainingFiles[0]?.path || 'main.tex';
       if (fallbackTab) switchTab(fallbackTab);
       else setCode('');
     }
 
-    // 4. PROPAGATE THE DELETE AND UPDATED MAIN.TEX TO THE CLOUD
+    // 4. PROPAGATE THE DELETE AND GUARANTEE MAIN.TEX TO THE CLOUD
     try {
+      const mainToSend = updatedMainContent || currentMain || (project as any)?.latexContent || '';
       const putBody: Record<string, any> = { deleteFiles: [path] };
-      if (updatedMainContent) {
-        putBody.latexContent = updatedMainContent;
+      if (mainToSend && mainToSend.trim().length > 30) {
+        putBody.latexContent = mainToSend;
       }
       const delRes = await fetch(`/api/projects/${projectId}`, {
         method: 'PUT',
@@ -1111,6 +1168,14 @@ export default function DocIDE({ projectId }: { projectId: string }) {
         body: JSON.stringify(putBody)
       });
       if (!delRes.ok) console.error("Delete propagation failed:", delRes.status);
+
+      // Update local project updatedAt in StudioFS to match so background staleness probe doesn't re-sync
+      try {
+        const localProj = await fs.getProject(projectId);
+        if (localProj) {
+          await (fs as any).idbPut?.('projects', { ...localProj, updatedAt: Date.now() });
+        }
+      } catch {}
     } catch (delErr) {
       console.error("Delete propagation error:", delErr);
     }
@@ -1260,7 +1325,9 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       // via async useEffect and can be stale if user types then clicks BUILD
       // in the same microtask. Monaco always holds the authoritative buffer.
       const liveContent = editorRef.current?.getValue() ?? codeRef.current ?? '';
-      await fs.writeFile(projectId, activeFile, liveContent);
+      if (!isImage(activeFile) && (activeFile !== 'main.tex' || (liveContent && liveContent.trim().length > 30))) {
+        await fs.writeFile(projectId, activeFile, liveContent);
+      }
       // The editor buffer is now persisted — safe for background syncs.
       dirtyRef.current = false;
       const payloadMeta = await fs.listFiles(projectId);
@@ -1722,30 +1789,39 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                     />
 
                     {isImage(activeFile) ? (
-                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', padding: '2rem' }}>
-                          <div style={{ position: 'relative', maxWidth: '100%', maxHeight: '100%', boxShadow: '0 0 50px rgba(0,0,0,0.5)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <div key={activeFile} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', padding: '2rem' }}>
+                          <div style={{ position: 'relative', maxWidth: '100%', maxHeight: '100%', boxShadow: '0 0 50px rgba(0,0,0,0.5)', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#0a0a0f' }}>
                             {(() => {
                               const ext = activeFile.split('.').pop()?.toLowerCase() || '';
+                              const cleanBase = activeFile.split('/').pop() || activeFile;
                               const isRenderable = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'avif', 'bmp'].includes(ext);
                               if (isRenderable) {
-                                const cleanBase = activeFile.replace(/^(assets|figures)\//, '');
-                                const fallbackUrl = `/uploads/projects/${projectId}/${cleanBase}`;
                                 const hasDataUrl = code && typeof code === 'string' && code.startsWith('data:image/') && code.length > 200 && !code.includes('AAAAASUVORK5CYII=');
-                                const imageSrc = hasDataUrl ? code : fallbackUrl;
+                                const candidateUrls = [
+                                  `/uploads/projects/${projectId}/${activeFile}`,
+                                  `/uploads/projects/${projectId}/${cleanBase}`,
+                                  `/uploads/projects/${projectId}/figures/${cleanBase}`,
+                                  `/uploads/projects/${projectId}/assets/${cleanBase}`
+                                ];
+                                const imageSrc = hasDataUrl ? code : candidateUrls[0];
                                 return (
-                                  <img 
-                                    src={imageSrc} 
-                                    alt={activeFile} 
-                                    onError={(e) => {
-                                      const target = e.currentTarget;
-                                      if (target.src !== fallbackUrl) {
-                                        target.src = fallbackUrl;
-                                      } else if (!target.src.includes(`assets/${cleanBase}`)) {
-                                        target.src = `/uploads/projects/${projectId}/assets/${cleanBase}`;
-                                      }
-                                    }}
-                                    style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', display: 'block', borderRadius: '4px' }} 
-                                  />
+                                  <div style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '260px', minWidth: '320px' }}>
+                                    <img 
+                                      key={activeFile}
+                                      src={imageSrc} 
+                                      alt={activeFile} 
+                                      onError={(e) => {
+                                        const target = e.currentTarget;
+                                        for (const fallback of candidateUrls) {
+                                          if (!target.src.endsWith(fallback)) {
+                                            target.src = fallback;
+                                            break;
+                                          }
+                                        }
+                                      }}
+                                      style={{ maxWidth: '100%', maxHeight: '65vh', objectFit: 'contain', display: 'block', borderRadius: '6px', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }} 
+                                    />
+                                  </div>
                                 );
                               } else if (ext === 'pdf') {
                                 let pdfSrc = code;
@@ -1756,6 +1832,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                                 }
                                 return (
                                   <iframe 
+                                    key={activeFile}
                                     src={pdfSrc} 
                                     style={{ width: '100%', height: '80vh', minWidth: '600px', border: 'none', background: '#fff', borderRadius: '8px' }} 
                                     title="PDF Preview"
@@ -1763,7 +1840,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                                 );
                               } else {
                                 return (
-                                  <div style={{
+                                  <div key={activeFile} style={{
                                     width: '450px',
                                     padding: '2.5rem',
                                     background: 'rgba(255, 255, 255, 0.02)',
@@ -1815,9 +1892,37 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                                 );
                               }
                             })()}
-                            <div style={{ width: '100%', padding: '0.75rem', background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                               <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#888', fontFamily: 'var(--font-headline)' }}>{activeFile.toUpperCase()}</span>
-                               <span style={{ fontSize: '0.6rem', background: 'var(--accent-primary)', color: '#fff', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 900 }}>IMAGE ASSET</span>
+                            <div style={{ width: '100%', padding: '0.65rem 1rem', background: 'rgba(15, 17, 26, 0.95)', backdropFilter: 'blur(10px)', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                 <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#f8fafc', fontFamily: 'var(--font-mono)' }}>{activeFile}</span>
+                                 <span style={{ fontSize: '0.6rem', background: 'rgba(99, 102, 241, 0.25)', color: '#a5b4fc', border: '1px solid rgba(99, 102, 241, 0.4)', padding: '0.15rem 0.45rem', borderRadius: '4px', fontWeight: 800 }}>ASSET</span>
+                               </div>
+                               <button
+                                 onClick={() => {
+                                   const cleanBase = activeFile.split('/').pop() || activeFile;
+                                   const snippet = `\\begin{figure}[htbp]\n  \\centering\n  \\includegraphics[width=0.85\\linewidth]{${cleanBase}}\n  \\caption{Figure description}\n  \\label{fig:${cleanBase.replace(/\\.[^/.]+$/, '')}}\n\\end{figure}`;
+                                   navigator.clipboard.writeText(snippet);
+                                   toast.success("LaTeX figure snippet copied to clipboard!", { icon: '📋' });
+                                 }}
+                                 style={{
+                                   background: 'rgba(255, 255, 255, 0.08)',
+                                   border: '1px solid rgba(255, 255, 255, 0.12)',
+                                   color: '#e2e8f0',
+                                   fontSize: '0.65rem',
+                                   fontWeight: 600,
+                                   padding: '0.3rem 0.65rem',
+                                   borderRadius: '6px',
+                                   cursor: 'pointer',
+                                   display: 'flex',
+                                   alignItems: 'center',
+                                   gap: '0.35rem',
+                                   transition: 'all 0.2s'
+                                 }}
+                                 onMouseEnter={e => e.currentTarget.style.background = 'rgba(99, 102, 241, 0.3)'}
+                                 onMouseLeave={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'}
+                               >
+                                 Copy \includegraphics Code
+                               </button>
                             </div>
                          </div>
                       </div>
@@ -1945,6 +2050,8 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                     projectId={projectId}
                     storageKey={`doc2latex_chat_${projectId}`}
                     apiEndpoint="/api/doc2latex/chat"
+                    activeFile={activeFile}
+                    fileCount={files.length}
                     buildContext={() => ({
                       activeFile,
                       fileContent: code,

@@ -174,25 +174,70 @@ register({
     const activeFile = String(ctx.activeFile || 'main.tex');
     const fileContent = String(ctx.fileContent || '');
     const allFiles = (ctx.allFiles as Array<{ path: string; content?: string }>) || [];
-    return `You are an expert Academic LaTeX Assistant for Latexify Studio.
+    
+    // Build rich multi-file manuscript context (budget: up to 24,000 chars total)
+    let extraContextBlocks: string[] = [];
+    let remainingBudget = 24000 - Math.min(fileContent.length, 12000);
+
+    // 1. Always prioritize bibliography files (.bib) so assistant can cite & inspect references
+    const bibFiles = allFiles.filter(f => f.path.endsWith('.bib') && f.path !== activeFile);
+    for (const bf of bibFiles) {
+      if (bf.content && remainingBudget > 500) {
+        const slice = bf.content.slice(0, Math.min(bf.content.length, remainingBudget, 6000));
+        extraContextBlocks.push(`### Bibliography (${bf.path}):\n\`\`\`bibtex\n${slice}\n\`\`\``);
+        remainingBudget -= slice.length;
+      }
+    }
+
+    // 2. Prioritize main.tex if activeFile is a section/subfile
+    if (activeFile !== 'main.tex') {
+      const mainFile = allFiles.find(f => f.path === 'main.tex');
+      if (mainFile && mainFile.content && remainingBudget > 500) {
+        const slice = mainFile.content.slice(0, Math.min(mainFile.content.length, remainingBudget, 8000));
+        extraContextBlocks.push(`### Root Document Structure (main.tex):\n\`\`\`latex\n${slice}\n\`\`\``);
+        remainingBudget -= slice.length;
+      }
+    }
+
+    // 3. Other relevant text files (sections, chapters, metadata)
+    const otherTextFiles = allFiles.filter(f => 
+      f.path !== activeFile && 
+      f.path !== 'main.tex' && 
+      !f.path.endsWith('.bib') &&
+      /\.(tex|cls|sty|txt)$/i.test(f.path)
+    );
+    for (const of of otherTextFiles) {
+      if (of.content && remainingBudget > 400) {
+        const slice = of.content.slice(0, Math.min(of.content.length, remainingBudget, 4000));
+        extraContextBlocks.push(`### File Context (${of.path}):\n\`\`\`latex\n${slice}\n\`\`\``);
+        remainingBudget -= slice.length;
+      }
+    }
+
+    const extraContextStr = extraContextBlocks.length > 0 
+      ? `\n\n### ADDITIONAL MANUSCRIPT CONTEXT:\n${extraContextBlocks.join('\n\n')}` 
+      : '';
+
+    return `You are an expert Academic LaTeX Assistant and Research Pair Programmer for Latexify / Doc2LaTeX Studio.
 The user is currently editing active file: "${activeFile}".
 
 Current active file contents:
 \`\`\`latex
 ${fileContent}
 \`\`\`
+${extraContextStr}
 
-All project files available:
+All project files available in workspace:
 ${allFiles.map((f) => `- ${f.path} (${(f.content || '').length} chars)`).join('\n')}
 
-Provide highly accurate code and text assistance. 
+Provide highly accurate, professional academic LaTeX assistance. Cite keys accurately from the bibliography, adhere to proper packages, and follow standard scientific writing principles.
 
 ### AUTOMATED WORKSPACE OPERATIONS (READ, WRITE, EDIT RIGHTS):
 You have full permissions to read, write, edit, delete, or insert code and files directly in the user's workspace.
 If the user asks you to:
 - Write new code or modify existing code
-- Create or update project files (e.g. main.tex, references.bib, cls/sty templates)
-- Insert, delete, or replace specific paragraphs/lines
+- Create or update project files (e.g. main.tex, references.bib, sections/*.tex)
+- Insert, delete, or replace specific paragraphs/lines/equations
 You MUST respond with a single valid JSON block of this structure:
 {
   "explanation": "Friendly text explanation of what changes you are applying.",
@@ -206,7 +251,7 @@ You MUST respond with a single valid JSON block of this structure:
   ]
 }
 
-Otherwise, if the user is just asking a question that requires no workspace edits, respond with normal markdown/text.`;
+Otherwise, if the user is just asking a question, discussing concepts, reviewing text, or explaining errors that require no automated workspace edits, respond with clear, beautifully structured markdown with code snippets.`;
   },
   parseResponse(raw) {
     return { message: raw };
@@ -1440,7 +1485,7 @@ ${commonInputs()}
 
 ## FLOAT FILE RULES
 1. Exactly one float environment per file. File naming:
-   - figures: "floats/figures/N.tex"   charts: "floats/figures/N.tex" too, using the chart image file
+   - figures & charts: "floats/figures/N.tex" (sequential index across all visual figures and charts in document order; use the exact filename from input C, e.g. rf_fig_N.png or rf_chart_N.png)
    - tables: "floats/tables/N.tex"
    - algorithms: "floats/algorithms/N.tex"
 2. figures/charts: ONLY generate float files for figures with VERIFIED captions in input B. Use: \\begin{figure}[${templateConventions.floatPlacement === 'table*/figure* for wide content, [!ht] otherwise' ? '!ht' : templateConventions.floatPlacement}]\\centering\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{<EXACT image filename from input C, in order>}\\caption{<VERBATIM caption from input B>}\\label{fig:N}\\end{figure}
@@ -1448,7 +1493,7 @@ ${commonInputs()}
    Never create floats for uncaptioned decorative images, logos, or banners.
 3. tables: reconstruct the rows/columns ACCURATELY from input A's evidence. Use tabularx (column spec chosen to fit the table, \\hline between rows, \\multicolumn for merged cells, always wrap in \\adjustbox{max width=\\linewidth} to prevent overflow). Preserve ALL data rows — never truncate. Caption VERBATIM from input B; \\label{tab:N}.
 4. algorithms: use \\begin{algorithm}[${templateConventions.floatPlacement === '[!ht]' ? '!ht' : 'htbp'}]\\caption{<VERBATIM title from input B>}\\begin{algorithmic}[1]\\State ...\\For{...}...\\EndFor\\Return ...\\end{algorithmic}\\end{algorithm}. Reconstruct the pseudocode steps faithfully from input A — keep every step, never truncate.
-5. COUNT INTEGRITY: the verified structure in input B declares the exact component counts (components.figures, components.charts, components.tables, components.pseudocode). Emit EXACTLY that many files per type — never more, never fewer. Index N starts at 1 and increments in document order.
+5. COUNT INTEGRITY: the verified structure in input B declares the exact component counts (components.figures, components.charts, components.tables, components.pseudocode). Emit EXACTLY that many files per type — never more, never fewer (total figure+chart files = components.figures + (components.charts ?? 0)). Index N starts at 1 and increments in document order.
 6. Every file must compile standalone inside a float — no document scaffolding, no \\section, no \\captionof, no structural commands (rule 4 of the universal rules).`;
     }
 

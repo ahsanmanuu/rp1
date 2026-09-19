@@ -182,22 +182,26 @@ async function fallbackZipImageExtraction(
   }
 
   // Collect every rId referenced by image-bearing elements.
-  // We look for: a:blip r:embed, v:imagedata r:id, v:shape filled image,
-  // c:chart r:id, o:OLEObject r:id, and any generic r:embed / r:id on
-  // drawing-related elements.
+  // Track DrawingML blip images handled by mammoth to prevent duplicate extraction
+  const mammothBlipTargets = new Set<string>();
   const referencedRIds = new Set<string>();
 
   try {
     const parser = new DOMParser();
     const doc = parser.parseFromString(docXml, 'application/xml');
 
-    // DrawingML blip images (mammoth handles these, but we track for dedup)
+    // DrawingML blip images are handled natively by mammoth.
+    // Record their relationship targets as already handled so fallback extraction never duplicates them.
     doc.querySelectorAll('a\\:blip, blip').forEach(el => {
       const rid = el.getAttribute('r:embed') || el.getAttribute('embed');
-      if (rid) referencedRIds.add(rid);
+      if (rid && relsMap.has(rid)) {
+        const tgt = relsMap.get(rid)!;
+        mammothBlipTargets.add(tgt);
+        mammothBlipTargets.add(tgt.replace(/^.*\//, ''));
+      }
     });
 
-    // VML imagedata
+    // VML imagedata (mammoth drops these)
     doc.querySelectorAll('v\\:imagedata, imagedata').forEach(el => {
       const rid = el.getAttribute('r:id') || el.getAttribute('id');
       if (rid) referencedRIds.add(rid);
@@ -221,8 +225,9 @@ async function fallbackZipImageExtraction(
       if (rid && relsMap.has(rid)) referencedRIds.add(rid);
     });
 
-    // Any element with r:embed that points to a media file
+    // Any element with r:embed that points to a media file (excluding already-handled blip rIds)
     doc.querySelectorAll('[r\\:embed]').forEach(el => {
+      if (el.tagName.toLowerCase().includes('blip')) return;
       const rid = el.getAttribute('r:embed');
       if (rid && relsMap.has(rid)) referencedRIds.add(rid);
     });
@@ -230,8 +235,17 @@ async function fallbackZipImageExtraction(
     // DOMParser failed — fall through to regex-based extraction
   }
 
+  // If mammoth captured 0 figures but document.xml has images, allow blip fallback
+  if (figures.length === 0 && mammothBlipTargets.size > 0) {
+    for (const [rid, tgt] of relsMap.entries()) {
+      if (mammothBlipTargets.has(tgt) || mammothBlipTargets.has(tgt.replace(/^.*\//, ''))) {
+        referencedRIds.add(rid);
+      }
+    }
+  }
+
   // Regex fallback if DOMParser produced nothing (some browsers / malformed XML)
-  if (referencedRIds.size === 0) {
+  if (referencedRIds.size === 0 && figures.length === 0) {
     const ridRegex = /(?:r:embed|r:id|embed|id)=["']([^"']*rId\d+[^"']*)/gi;
     let rm: RegExpExecArray | null;
     while ((rm = ridRegex.exec(docXml))) {
@@ -242,10 +256,10 @@ async function fallbackZipImageExtraction(
     }
   }
 
-  console.log(`[DOCX-EXTRACT] JSZip: ${relsMap.size} relationships, ${referencedRIds.size} image-bearing rIds found in document.xml`);
+  console.log(`[DOCX-EXTRACT] JSZip: ${relsMap.size} relationships, ${referencedRIds.size} fallback image-bearing rIds found in document.xml`);
   if (referencedRIds.size > 0) {
     const ridTargets = [...referencedRIds].map(r => `${r} -> ${relsMap.get(r) || '?'}`);
-    console.log(`[DOCX-EXTRACT] JSZip: rId targets:`, ridTargets.join(', '));
+    console.log(`[DOCX-EXTRACT] JSZip: fallback rId targets:`, ridTargets.join(', '));
   }
 
   // Scan word/media/ to see what's actually in the ZIP
@@ -256,10 +270,15 @@ async function fallbackZipImageExtraction(
   console.log(`[DOCX-EXTRACT] JSZip: ${mediaFiles.length} files in word/media/: ${mediaFiles.slice(0, 10).join(', ')}${mediaFiles.length > 10 ? '...' : ''}`);
 
   // 3. Build a set of image paths already captured by mammoth
-  //    (mammoth replaces <img> src with the rId's target path)
   const alreadyCaptured = new Set<string>();
   for (const fig of figures) {
     alreadyCaptured.add(fig.name);
+  }
+  // When mammoth extracted figures, mark all its blip targets as already captured
+  if (figures.length > 0) {
+    for (const tgt of mammothBlipTargets) {
+      alreadyCaptured.add(tgt);
+    }
   }
 
   // Also scan HTML for any src attributes that reference media files

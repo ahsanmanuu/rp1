@@ -177,20 +177,27 @@ export async function POST(req: Request) {
           const ext = path.extname(entry.entryName).replace(/^\./, '').toLowerCase() || 'png';
           if (ext === 'emf' || ext === 'wmf') continue;
           const origName = path.basename(entry.entryName);
-          const rfName = `rf_fig_${figSeq++}.${ext === 'jpeg' ? 'jpg' : ext}`;
+          const curSeq = figSeq++;
+          const rfName = `rf_fig_${curSeq}.${ext === 'jpeg' ? 'jpg' : ext}`;
+          const rfChartName = `rf_chart_${curSeq}.${ext === 'jpeg' ? 'jpg' : ext}`;
 
           validCurrentFigureNames.add(origName);
           validCurrentFigureNames.add(rfName);
+          validCurrentFigureNames.add(rfChartName);
 
           const origRoot = path.join(projectDir, origName);
           const origFig = path.join(figuresSubDir, origName);
           const rfRoot = path.join(projectDir, rfName);
           const rfFig = path.join(figuresSubDir, rfName);
+          const rfChartRoot = path.join(projectDir, rfChartName);
+          const rfChartFig = path.join(figuresSubDir, rfChartName);
 
           if (!fs.existsSync(origRoot)) fs.writeFileSync(origRoot, entryBuf);
           if (!fs.existsSync(origFig)) fs.writeFileSync(origFig, entryBuf);
           if (!fs.existsSync(rfRoot)) fs.writeFileSync(rfRoot, entryBuf);
           if (!fs.existsSync(rfFig)) fs.writeFileSync(rfFig, entryBuf);
+          if (!fs.existsSync(rfChartRoot)) fs.writeFileSync(rfChartRoot, entryBuf);
+          if (!fs.existsSync(rfChartFig)) fs.writeFileSync(rfChartFig, entryBuf);
         }
         console.log(`[GENERATE-LATEX] Unpacked ${mediaEntries.length} media files from source.docx as robust fallback.`);
       } catch (docxErr) {
@@ -248,6 +255,17 @@ export async function POST(req: Request) {
               if (!fs.existsSync(rootPath)) fs.writeFileSync(rootPath, buf);
               if (!fs.existsSync(figPath)) fs.writeFileSync(figPath, buf);
               if (!fs.existsSync(assetPath)) fs.writeFileSync(assetPath, buf);
+
+              if (baseName.startsWith('rf_fig_')) {
+                const chartAlias = baseName.replace(/^rf_fig_/, 'rf_chart_');
+                validCurrentFigureNames.add(chartAlias);
+                const cRoot = path.join(projectDir, chartAlias);
+                const cFig = path.join(figuresSubDir, chartAlias);
+                const cAsset = path.join(assetsSubDir, chartAlias);
+                if (!fs.existsSync(cRoot)) fs.writeFileSync(cRoot, buf);
+                if (!fs.existsSync(cFig)) fs.writeFileSync(cFig, buf);
+                if (!fs.existsSync(cAsset)) fs.writeFileSync(cAsset, buf);
+              }
             }
           }
         }
@@ -478,7 +496,7 @@ export async function POST(req: Request) {
           try {
             const rescueMissingFloats = (aiContent: string, detContent: string, currentFilePath?: string): string => {
               if (!detContent || !aiContent) return aiContent;
-              const floatRegex = /\\begin\{(figure\*?|table\*?)\}(?:\[[^\]]*\])?[\s\S]*?\\end\{\1\}(?:\s*\\FloatBarrier)?/g;
+              const floatRegex = /\\begin\{(figure\*?|table\*?|algorithm\*?)\}(?:\[[^\]]*\])?[\s\S]*?\\end\{\1\}(?:\s*\\FloatBarrier)?/g;
               let match: RegExpExecArray | null;
               let result = aiContent;
 
@@ -530,14 +548,17 @@ export async function POST(req: Request) {
                 let insertIdx = -1;
                 const capMatch = floatBlock.match(/\\caption\{([^}]+)\}/);
                 const caption = capMatch ? capMatch[1].trim() : '';
-                const numMatch = (caption + ' ' + (label || '') + ' ' + (imgFile || '')).match(/(?:figure|fig\.?|table|tab\.?|image)[_:\s.-]*(\d+|[IVXLCDM]+)/i);
+                const numMatch = (caption + ' ' + (label || '') + ' ' + (imgFile || '')).match(/(?:figure|fig\.?|table|tab\.?|image|algorithm|alg\.?)[_:\s.-]*(\d+|[IVXLCDM]+)/i);
                 
                 if (numMatch) {
                   const num = numMatch[1];
+                  const isAlgo = /(?:algorithm|alg)/i.test(numMatch[0]);
                   const isFig = /(?:fig|image)/i.test(numMatch[0]);
-                  const mentionRegex = isFig
-                    ? new RegExp(`\\b(?:figure|fig\\.?)\\s*~?\\s*${num}\\b`, 'i')
-                    : new RegExp(`\\b(?:table|tab\\.?)\\s*~?\\s*${num}\\b`, 'i');
+                  const mentionRegex = isAlgo
+                    ? new RegExp(`\\b(?:algorithm|alg\\.?)\\s*~?\\s*${num}\\b`, 'i')
+                    : isFig
+                      ? new RegExp(`\\b(?:figure|fig\\.?)\\s*~?\\s*${num}\\b`, 'i')
+                      : new RegExp(`\\b(?:table|tab\\.?)\\s*~?\\s*${num}\\b`, 'i');
                   const m = result.match(mentionRegex);
                   if (m && m.index !== undefined) {
                     const nextPara = result.indexOf('\n\n', m.index);

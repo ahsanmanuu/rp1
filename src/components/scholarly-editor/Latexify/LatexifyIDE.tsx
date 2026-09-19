@@ -1651,6 +1651,8 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
                         projectId={projectId}
                         storageKey={`latexify_chat_${projectId}`}
                         apiEndpoint="/api/latex-studio/chat"
+                        activeFile={activeFile}
+                        fileCount={files.length}
                         buildContext={() => ({
                           activeFile,
                           fileContent: code,

@@ -1064,10 +1064,9 @@ export class DeepDocumentParser {
             /\b(?:librarian|deputy librarian|assistant professor|associate professor|lecturer|department|dept|university|institute)\b/i.test(f.text)
           );
           const isSectionHeading = !isCaptionText && !isAuthorAffilText && (
-            detectedLvl !== null ||
             isNumberedHeading ||
             isStandardSectionName ||
-            (tagName.startsWith('h') && !isAuthorAffilText) ||
+            (foundAbstract && (detectedLvl !== null || tagName.startsWith('h'))) ||
             (tagName === 'p' && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 && (foundAbstract || isNumberedHeading || isStandardSectionName))
           );
 
@@ -1242,7 +1241,19 @@ export class DeepDocumentParser {
       }
 
       // 2. Perform the flush check
-      if (nextRole === 'section' || nextRole === 'equation' || nextRole === 'table' || nextRole === 'figure' || nextRole === 'algorithm') {
+      if (nextRole === 'algorithm') {
+          if (currentRole !== 'algorithm') {
+            flush(i);
+            currentRole = 'algorithm';
+            currentStart = i;
+            currentElements = [el];
+          } else {
+            currentElements.push(el);
+          }
+          continue;
+      }
+
+      if (nextRole === 'section' || nextRole === 'equation' || nextRole === 'table' || nextRole === 'figure') {
           flush(i);
           if (nextRole === 'table') {
             const innerTables = Array.from(el.querySelectorAll('table'));
@@ -1733,7 +1744,16 @@ export class DeepDocumentParser {
               // Degenerate detections (tab-stopped layout/prose lines, empty shells) are
               // demoted to plain paragraphs so they neither pollute the table count nor
               // render as empty tables.
-              const { rowCount, colCount } = this.tableHtmlDimensions(tableHtml);
+              let { rowCount, colCount } = this.tableHtmlDimensions(tableHtml);
+              if ((rowCount === 0 || colCount === 0) && entry.elements.length > 0) {
+                  const recoveredHtml = this.convertPlainTextTableToHtml(entry.elements);
+                  const recoveredDims = this.tableHtmlDimensions(recoveredHtml);
+                  if (recoveredDims.rowCount > 0 && recoveredDims.colCount > 0) {
+                    tableHtml = recoveredHtml;
+                    rowCount = recoveredDims.rowCount;
+                    colCount = recoveredDims.colCount;
+                  }
+              }
               if (rowCount === 0 || colCount === 0) {
                   const fallbackText = entry.elements.map((e: Element) => e.textContent || '').join('\n').trim();
                   if (fallbackText) result.body.push({ type: 'paragraph', text: fallbackText });
@@ -1988,13 +2008,15 @@ export class DeepDocumentParser {
                 result.body.push({ type: 'heading', level: 1, text: cleanResolved });
               } else {
                 let formula = text;
-                const mbMatch = text.match(/MATHBLOCKX(\d+)XMARKER/i);
-                if (mbMatch) {
-                  const mb = _mathBlocks[parseInt(mbMatch[1])];
-                  if (mb) {
+                let prevFormula = '';
+                while (formula.includes('MATHBLOCKX') && formula !== prevFormula) {
+                  prevFormula = formula;
+                  formula = formula.replace(/MATHBLOCKX(\d+)XMARKER/gi, (_m: string, idxStr: string) => {
+                    const mb = _mathBlocks[parseInt(idxStr)];
+                    if (!mb) return '';
                     const raw = typeof mb === 'string' ? mb : (mb?.latex || mb?.tex || '');
-                    if (raw) formula = raw;
-                  }
+                    return raw || '';
+                  });
                 }
                 result.body.push({ type: 'equation', text: formula, latex: formula });
               }
@@ -2540,7 +2562,7 @@ export class DeepDocumentParser {
   public static syncDerivedCollections(doc: StructuredDocument): void {
     if (!doc || !Array.isArray(doc.body)) return;
     doc.algorithms = doc.body.filter(n => n.type === 'algorithm').map(n => ({
-      title: n.title || 'Algorithm', content: (n.items || []).join('\n')
+      title: n.title || 'Algorithm', content: (n.items || []).join('\n') || n.text || ''
     }));
     doc.tables = doc.body.filter(n => n.type === 'table').map((n: any) => {
       const dims = n.html ? DeepDocumentParser.tableHtmlDimensions(n.html) : { rowCount: 0, colCount: 0 };
@@ -2573,6 +2595,8 @@ export class DeepDocumentParser {
           if (line.endsWith('|')) cells.pop();
         } else if (line.includes('\t')) {
           cells = line.split('\t').map(c => c.trim());
+        } else if (/\s{2,}/.test(line)) {
+          cells = line.split(/\s{2,}/).map(c => c.trim());
         } else {
           cells = line.split(',').map(c => c.trim());
         }
@@ -2647,11 +2671,13 @@ export class DeepDocumentParser {
     const splitCells = (line: string): string[] => {
       if (line.includes('\t')) return line.split(/\t/).map(c => c.trim()).filter(Boolean);
       if (line.includes('|')) return line.split('|').map(c => c.trim()).filter(Boolean);
+      if (/\s{2,}/.test(line)) return line.split(/\s{2,}/).map(c => c.trim()).filter(Boolean);
       return line.split(',').map(c => c.trim()).filter(Boolean);
     };
     const numericCellCount = (cells: string[]) => cells.filter(c => /\d/.test(c)).length;
 
-    if (tabCount >= 1 || pipeCount >= 2) {
+    const multiSpaceCount = (f.text.match(/\s{2,}/g) || []).length;
+    if (tabCount >= 1 || pipeCount >= 2 || (multiSpaceCount >= 2 && (numericDensity > 0.05 || isMultiLine))) {
       if (isMultiLine) {
         const rowCols = lines.map(l => splitCells(l).length).filter(n => n >= 2);
         if (rowCols.length >= 2 && Math.max(...rowCols) - Math.min(...rowCols) <= 1) return true;

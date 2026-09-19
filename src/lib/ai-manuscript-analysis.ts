@@ -408,7 +408,11 @@ const CANONICAL_SECTION_WHITELIST = [
 // The probe strips leading numbering ("1. Dr. Mohammad Aadil Khan") and trailing
 // superscript affiliation digits ("Mohammad Aadil Khan1") which previously
 // defeated every ^-anchored regex in the pipeline.
-function isFrontMatterNoiseSection(title: string): boolean {
+function isFrontMatterNoiseSection(
+  title: string,
+  knownAuthors?: Array<{ name?: string } | string>,
+  knownOrgs?: string[]
+): boolean {
   const t = String(title || '').replace(/\s+/g, ' ').trim();
   if (!t || t.length < 2) return false;
   if (/@/.test(t)) return true;
@@ -423,6 +427,24 @@ function isFrontMatterNoiseSection(title: string): boolean {
   for (const canon of CANONICAL_SECTION_WHITELIST) {
     if (lowerProbe === canon || lowerProbe.startsWith(canon + ' ') || lowerProbe.startsWith(canon + ':') || lowerProbe.startsWith(canon + ' -') || lowerProbe.startsWith(canon + '–')) {
       return false;
+    }
+  }
+
+  // Author and organization match: any heading matching an author or affiliation is noise
+  if (knownAuthors && knownAuthors.length > 0) {
+    for (const a of knownAuthors) {
+      const aName = (typeof a === 'string' ? a : a?.name || '').toLowerCase().trim();
+      if (aName.length >= 3 && (lowerProbe === aName || lowerProbe.includes(aName) || aName.includes(lowerProbe))) {
+        return true;
+      }
+    }
+  }
+  if (knownOrgs && knownOrgs.length > 0) {
+    for (const o of knownOrgs) {
+      const oName = (typeof o === 'string' ? o : '').toLowerCase().trim();
+      if (oName.length >= 4 && (lowerProbe === oName || lowerProbe.includes(oName) || oName.includes(lowerProbe))) {
+        return true;
+      }
     }
   }
 
@@ -459,7 +481,7 @@ export function reconcileVerdict(
 
   // ── Sections: keep only AI sections whose title actually appears in text ──
   // Also filter out author/affiliation noise that should never be sections.
-  const isAuthorOrAffilNoise = (title: string): boolean => isFrontMatterNoiseSection(title);
+  const isAuthorOrAffilNoise = (title: string): boolean => isFrontMatterNoiseSection(title, deepData.authors, deepData.organizations);
   if (verdict.sections && verdict.sections.length > 0) {
     const verified = verdict.sections.filter(s => {
       const t = String(s?.title || '').replace(/\s+/g, ' ').trim();
@@ -634,7 +656,7 @@ export async function analyzeManuscriptStructure(
       // caption headings to the AI as [SECTION] evidence — the AI would confirm
       // them, and the containment check would then "verify" them against the
       // text, legitimizing the false positive.
-      if (n.type === 'heading' && n.text && !isFrontMatterNoiseSection(n.text)) sectionTitles.push(n.text);
+      if (n.type === 'heading' && n.text && !isFrontMatterNoiseSection(n.text, deepData.authors, deepData.organizations)) sectionTitles.push(n.text);
       else if ((n.type === 'figure' || n.type === 'image' || n.type === 'chart') && n.caption) figureCaptions.push(n.caption);
       else if (n.type === 'table' && n.caption) tableCaptions.push(n.caption);
       else if (n.type === 'algorithm' && n.title) algorithmTitles.push(n.title);
@@ -1035,10 +1057,30 @@ export function applyStructureCorrections(
     if (authors.length > 0) {
       deepData.authors = authors;
       applied.push('authors');
+
+      // Tag any body nodes matching author names so assembler ignores them as body sections
+      const authorNames = authors.map(a => a.name.toLowerCase().trim());
+      for (const node of (deepData.body || [])) {
+        const text = String(node.text || '').toLowerCase().trim();
+        if (text && authorNames.some(an => an.length >= 3 && (text === an || text.includes(an) || an.includes(text)))) {
+          (node as any).componentRole = 'author';
+        }
+      }
     }
   } else if (verdict.affiliations && verdict.affiliations.length > 0) {
     deepData.organizations = verdict.affiliations.slice(0, 20);
     applied.push('affiliations');
+  }
+
+  // Tag any body nodes matching affiliations
+  if (deepData.organizations && deepData.organizations.length > 0) {
+    const orgNames = deepData.organizations.map(o => o.toLowerCase().trim());
+    for (const node of (deepData.body || [])) {
+      const text = String(node.text || '').toLowerCase().trim();
+      if (text && orgNames.some(on => on.length >= 4 && (text === on || text.includes(on) || on.includes(text)))) {
+        (node as any).componentRole = 'affiliation';
+      }
+    }
   }
 
   // ── Abstract ─────────────────────────────────────────────────────────────
@@ -1108,7 +1150,7 @@ export function applyStructureCorrections(
     const body = deepData.body || [];
     const aiSections: Array<{ title: string; level: number }> = [];
     const seenAiNorms = new Set<string>();
-    const isAuthorOrAffilNoise = (title: string): boolean => isFrontMatterNoiseSection(title);
+    const isAuthorOrAffilNoise = (title: string): boolean => isFrontMatterNoiseSection(title, deepData.authors, deepData.organizations);
     // REFERENCES DEDUPE: when the parser extracted real \bibitem references,
     // the bibliography file renders the "References" heading. The AI is
     // prompt-forced to list "References"/"Bibliography" as a section even when
@@ -1420,6 +1462,29 @@ export function applyStructureCorrections(
     fixCaptions(verdict.charts, ['chart'], 'caption', 'chartCaptions');
   }
   fixCaptions(verdict.tables, ['table'], 'caption', 'tableCaptions');
+
+  // Promote paragraph or table nodes to algorithms when AI reports verified algorithms
+  if (verdict.algorithms && verdict.algorithms.length > 0) {
+    const algoTitlesList = verdict.algorithms.map(a => (a.title || '').trim()).filter(Boolean);
+    const algoTitlesLower = algoTitlesList.map(t => t.toLowerCase());
+    for (const node of deepData.body) {
+      if (node.type === 'paragraph' || node.type === 'table') {
+        const txt = String(node.text || (node as any).caption || (node as any).title || '').trim();
+        const matchesAlgo = algoTitlesLower.some(t => t && (txt.toLowerCase().includes(t) || t.includes(txt.toLowerCase())));
+        const hasAlgoKeyword = /^(?:Algorithm|Pseudocode|Procedure|Listing)\s*\d+/i.test(txt);
+        if (matchesAlgo || hasAlgoKeyword) {
+          node.type = 'algorithm';
+          if (!node.title) {
+            const matchTitle = algoTitlesList.find(t => t.toLowerCase().includes(txt.toLowerCase()) || txt.toLowerCase().includes(t.toLowerCase()));
+            node.title = matchTitle || txt.split('\n')[0].substring(0, 80);
+          }
+          if (!node.items && node.text) {
+            node.items = node.text.split('\n').map((l: string) => l.trim()).filter(Boolean);
+          }
+        }
+      }
+    }
+  }
   fixCaptions(verdict.algorithms, ['algorithm'], 'title', 'algorithmTitles');
 
   // ── Component counts ─────────────────────────────────────────────────────
@@ -1445,6 +1510,12 @@ export function applyStructureCorrections(
     applyCount('pseudocode', 'pseudocodeCount', 'pseudocode');
     applyCount('citations', 'citationCount', 'citations');
     applyCount('references', 'referenceCount', 'references');
+  }
+
+  // Ensure pseudocodeCount is kept consistent if AI found algorithms but verdict.components.pseudocode was not specified
+  if (verdict.algorithms && verdict.algorithms.length > 0 && (deepData.stats.pseudocodeCount ?? 0) < verdict.algorithms.length) {
+    deepData.stats.pseudocodeCount = verdict.algorithms.length;
+    if (!applied.includes('pseudocode')) applied.push('pseudocode');
   }
 
   // Synchronize derived doc.tables and doc.algorithms from updated doc.body
