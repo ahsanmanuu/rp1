@@ -53,16 +53,76 @@ export function extractJsonBlock(raw: string): string {
   if (lastEnd > start) {
     return raw.substring(start, lastEnd + 1);
   }
-  return '';
+  // Truncated mid-response fallback: return from start brace so repairUnclosedJson can close it
+  return raw.substring(start);
+}
+
+function repairUnclosedJson(json: string): string {
+  const stack: ('{' | '[')[] = [];
+  let inString = false;
+  let escaped = false;
+  let cleanJson = '';
+
+  for (let i = 0; i < json.length; i++) {
+    const char = json[i];
+    cleanJson += char;
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (char === '{') {
+        stack.push('{');
+      } else if (char === '}') {
+        if (stack[stack.length - 1] === '{') stack.pop();
+      } else if (char === '[') {
+        stack.push('[');
+      } else if (char === ']') {
+        if (stack[stack.length - 1] === '[') stack.pop();
+      }
+    }
+  }
+
+  if (inString) {
+    cleanJson += '"';
+  }
+
+  // Remove trailing commas standard JSON hates
+  cleanJson = cleanJson.trim().replace(/,\s*$/, '').replace(/,(\s*[}\]])/g, '$1');
+
+  while (stack.length > 0) {
+    const open = stack.pop();
+    if (open === '{') cleanJson += '}';
+    else if (open === '[') cleanJson += ']';
+  }
+
+  return cleanJson;
 }
 
 export function cleanAndParseJson(jsonStr: string): any {
-  let json = jsonStr;
-  for (let attempt = 0; attempt < 6; attempt++) {
+  let json = (jsonStr || '')
+    .replace(/^\s*```(?:json)?\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim();
+
+  const firstBrace = json.search(/[{\[]/);
+  if (firstBrace > 0) {
+    json = json.substring(firstBrace);
+  }
+  for (let attempt = 0; attempt < 7; attempt++) {
     try {
       return JSON.parse(json);
     } catch (e: any) {
-      if (attempt === 5) {
+      if (attempt === 6) {
         console.error('[Registry JSON Parse Error]:', e.message);
         console.error('Raw JSON length:', json.length);
         console.error('Sample start:', json.slice(0, 400));
@@ -92,6 +152,10 @@ export function cleanAndParseJson(jsonStr: string): any {
         case 4:
           // Fix unquoted keys
           json = json.replace(/([{,]\s*)(\w+)(\s*:)/g, '$1"$2"$3');
+          break;
+        case 5:
+          // Repair truncated/unclosed JSON (token boundary cuts)
+          json = repairUnclosedJson(json);
           break;
       }
     }
@@ -926,7 +990,7 @@ ${equationSnippets.slice(0, 30).map(s => `- ${s}`).join('\n') || 'none'}
 ### H. Reference entries detected:
 ${referenceEntries.slice(0, 150).map((s, i) => `${i + 1}. ${s}`).join('\n') || 'none'}
 
-### I. Image classification ground truth (from the conversion engine's filename analysis — TRUST IT for the figures-vs-charts split; you only verify captions):
+### I. Image classification hints (from parser filename and caption analysis):
 ${imageClassifications && imageClassifications.length > 0 ? imageClassifications.join('\n') : 'none'}
 
 Document working title (from filename, may be wrong): "${documentTitle}"
@@ -941,11 +1005,12 @@ Analyze the manuscript and return ONE JSON object (no markdown, no commentary be
   "keywords": ["keyword1", "keyword2"],
   "sections": [ { "title": "exact heading text without numbering", "level": 1, 2 or 3 } ],
   "figures": [ { "caption": "exact figure caption as it appears, e.g. \"Fig. 1. Overview of the proposed framework.\"" } ],
+  "charts": [ { "caption": "exact chart/plot caption as it appears, e.g. \"Fig. 3. Comparison of accuracy curves.\"" } ],
   "tables": [ { "caption": "exact table caption as it appears, e.g. \"TABLE I. Simulation Parameters\"" } ],
   "algorithms": [ { "title": "exact algorithm/pseudocode title as it appears, e.g. \"Algorithm 1\" or \"Algorithm 1: K-Means Clustering\"" } ],
   "components": {
-    "figures": <integer: count captioned figure images (photos, illustrations, architecture diagrams) in the BODY text. Each "Fig. N" or "Figure N" caption = 1 figure. Sub-figures (a)(b)(c) under one caption = 1 figure. Decorative images without captions do NOT count. Charts/plots NEVER count as figures — they go under "charts">,
-    "charts": <integer: count charts/plots/graphs (bar, line, pie, scatter, histogram, box, heatmap). A chart with a "Fig." caption is STILL a chart — count it under charts ONLY, never under figures>,
+    "figures": <integer: count captioned photos, illustrations, architecture diagrams, flowcharts, and system schematics in the BODY text. Each caption = 1 figure. Sub-figures (a)(b)(c) under one caption = 1 figure. Decorative images without captions do NOT count. Charts/plots NEVER count as figures — they go under "charts">,
+    "charts": <integer: count charts/plots/graphs (bar, line, pie, scatter, histogram, box, heatmap, ROC curve, confusion matrix). A chart with a "Fig." caption is STILL a chart — count it under charts ONLY, never under figures>,
     "tables": <integer: count Table/Tab. captions. Each "Table N" or "TABLE N" label = 1 table. Do NOT count algorithm listings formatted as tables>,
     "equations": <integer: count display/math equations — numbered equations like (1), (2), equation blocks, LaTeX \\begin{equation}. Do NOT count inline math, parameter assignments like 'n = 100', or value labels>,
     "pseudocode": <integer: count Algorithm/Pseudocode/Procedure/Listing blocks. Each "Algorithm N" label = 1>,
@@ -964,19 +1029,19 @@ Analyze the manuscript and return ONE JSON object (no markdown, no commentary be
 5. Abstract: copy verbatim; strip a leading "Abstract" label if present.
 6. Keywords: exact terms, no numbering, no bullet prefixes.
 7. Sections: the COMPLETE ordered list of every section, subsection and subsubsection heading visible in input A. level 1 = \\section, level 2 = \\subsection, level 3 = \\subsubsection. Drop leading numbering ("1.", "1.1", "1.1.2", "[1]", "I."). "References"/"Bibliography", "Acknowledgements", "Declarations", "Appendix" are level 1 headings. Never omit, merge or reorder sections. Keep every heading's implied depth: a "3.2" heading belongs at level 2, "3.2.1" at level 3 — never flatten them to level 1.
-8. figures/tables/algorithms: list EVERY figure, table and algorithm visible in input A with its caption/title copied VERBATIM, in document order. Empty arrays when none exist. An image without any caption or descriptive alt text is NOT a figure - do not count or list it. Uncaptioned university logos, journal header banners, publisher badges, and footer watermarks are decorative assets, NOT figures.
+8. figures/charts/tables/algorithms: list EVERY figure, chart, table and algorithm visible in input A with its caption/title copied VERBATIM, in document order. Empty arrays when none exist. An image without any caption or descriptive alt text is NOT a figure or chart - do not count or list it. Uncaptioned university logos, journal header banners, publisher badges, and footer watermarks are decorative assets, NOT figures.
 9. HARD RULES FOR COMPONENT INTEGRITY (ZERO BIAS):
    - FRONTMATTER METADATA ONLY: Author names, academic designations (e.g., 'Assistant Professor', 'Deputy Librarian', 'Lecturer', 'Dr.', 'Prof.'), department names, university names, polytechnic/institute names, and email addresses ARE FRONTMATTER METADATA. They MUST NEVER be placed in the "sections" array or counted as sections/headings. Strip template styling annotations like "(24 pt, Bold, Title Case)" or "(16 pt, Bold, Title Case)". Preserve ordinal numbers in names (e.g. "1st Author", "2nd Author").
    - SECTION HEADINGS ARE NOT EQUATIONS: Section and subsection titles (e.g. "6. AI-Assisted Responsible Citation (ARC) Framework", "3.1 Methods") ARE HEADINGS ONLY. They MUST NEVER be included in "equations" or classified as math.
-   - FIGURE CAPTIONS ARE NOT SECTIONS: "Figure N: <caption>" / "Table N: <caption>" lines are CAPTIONS, never headings — do not put them in "sections".
-   - FIGURES & CHARTS: Count by "Fig." or "Figure" captions ONLY, excluding charts/plots. Sub-figures (a)(b)(c) under one "Fig. N" = 1 figure. Do NOT count images without captions or decorative header/footer logos. When input I classifies an image file as a chart (filename contains "rf_chart" or "chart_pending"), it is a CHART even if its caption reads "Fig. N" — report it under "charts" only.
-   - CHARTS: Count chart/plot images only (a chart with a "Fig." caption counts here, not under figures).
+   - FIGURE & CHART CAPTIONS ARE NOT SECTIONS: "Figure N: <caption>" / "Table N: <caption>" lines are CAPTIONS, never headings — do not put them in "sections".
+   - FIGURES & CHARTS: Categorize visual assets carefully. Architectural diagrams, photos, flowcharts, and system overviews belong in "figures". Data plots, graphs, bar charts, line plots, scatter plots, histograms, heatmaps, ROC curves, and confusion matrices MUST be categorized under "charts" (both in the "charts" array and in "components.charts"), even if their printed label in the manuscript says "Fig." or "Figure". Do NOT count decorative header/footer logos.
+   - CHARTS: Count chart/plot images only (a chart with a "Fig." caption counts under "charts", not under "figures").
    - TABLES: Count by "Table" or "TABLE" captions. Do NOT count algorithm or equation tables.
    - EQUATIONS: Count ONLY display equations — numbered equations like (1), (2), or explicit equation/align/gather blocks. Inline math ($x$), parameter assignments ("n = 100"), inequality constraints, section titles, and simple expressions in prose are NOT equations.
    - PSEUDOCODE: Count "Algorithm N" or "Pseudocode N" blocks only.
    - REFERENCES INTEGRITY: Only extract genuine academic bibliography entries (with authors, year, journal/conference/publisher). IGNORE template instructional guidelines (e.g. "• Enclose the citation number...", "• Where appropriate, include...", "References within Main Content...", "Example of List of References").
    - NEVER inflate counts. If you see 3 tables, report 3 — not 5.
-   - CONSISTENCY CHECK: the number of entries you list in "figures"/"tables"/"algorithms" MUST equal your "components" figures/tables/pseudocode counts. The "sections" array MUST contain "References"/"Bibliography" as its final entry whenever a reference list exists in input A.
+   - CONSISTENCY CHECK: the number of entries you list in "figures" MUST equal your "components.figures" count. The number of entries in "charts" MUST equal your "components.charts" count. The number of entries in "tables" MUST equal your "components.tables" count. The number of entries in "algorithms" MUST equal your "components.pseudocode" count. The "sections" array MUST contain "References"/"Bibliography" as its final entry whenever a reference list exists in input A.
    - If a count cannot be determined from the text, return null for that field — never guess 0.
 10. Citations: an in-text citation marker is a bracketed number/reference like [12] or (Smith et al., 2020) in the body text.
 11. References: include the actual bibliography entries verbatim (up to 150), excluding template instructional text. If no bibliography is visible in the text, return [].

@@ -37,6 +37,8 @@ export interface ClientFigure {
   name: string;
   contentType: string;
   dataUrl: string;
+  isChart?: boolean;
+  caption?: string;
 }
 
 export interface ClientDocxEnvelope {
@@ -310,10 +312,12 @@ async function fallbackZipImageExtraction(
         continue;
       }
 
+      const isChartTarget = /charts\/|chart\d+/i.test(target) ||
+        /\b(?:chart|plot|graph|histogram|heatmap|scatter\s*plot|bar\s*chart|box\s*plot|pie\s*chart|line\s*chart|roc\s*curve|precision-recall\s*curve|confusion\s*matrix|pareto)\b/i.test(basename);
       const ct = contentTypeFromExt(ext);
-      const name = `rf_fig_${figIdx++}.${ext}`;
+      const name = isChartTarget ? `rf_chart_${figIdx++}.${ext}` : `rf_fig_${figIdx++}.${ext}`;
       const dataUrl = `data:${ct};base64,${bytesToBase64(rawBytes)}`;
-      newFigures.push({ name, contentType: ct, dataUrl });
+      newFigures.push({ name, contentType: ct, dataUrl, isChart: isChartTarget, caption: basename });
 
       // Inject an <img> tag so DeepDocumentParser can pick it up
       newImgTags.push(`<img src="${name}" alt="${basename}" />`);
@@ -374,14 +378,16 @@ export async function extractClientDocx(file: File): Promise<ClientDocxEnvelope>
       convertImage: mammoth.images.imgElement(async (image) => {
         const contentType = String(image.contentType || 'image/png');
         const ext = contentType.includes('jpeg') ? 'jpg' : contentType.includes('gif') ? 'gif' : 'png';
-        const name = `rf_fig_${figIdx++}.${ext}`;
+        const altText = (image as any).altText ? String((image as any).altText) : '';
+        const isChart = /\b(?:chart|plot|graph|histogram|heatmap|scatter\s*plot|bar\s*chart|box\s*plot|pie\s*chart|line\s*chart|roc\s*curve|precision-recall\s*curve|confusion\s*matrix|pareto)\b/i.test(altText);
+        const name = isChart ? `rf_chart_${figIdx++}.${ext}` : `rf_fig_${figIdx++}.${ext}`;
         try {
           const imageBuffer: Uint8Array = await image.read();
-          figures.push({ name, contentType, dataUrl: `data:${contentType};base64,${bytesToBase64(imageBuffer)}` });
+          figures.push({ name, contentType, dataUrl: `data:${contentType};base64,${bytesToBase64(imageBuffer)}`, isChart, caption: altText });
         } catch (err) {
           warnings.push(`Skipped unreadable image "${name}"`);
         }
-        return { src: name, alt: (image as any).altText ? String((image as any).altText) : '' };
+        return { src: name, alt: altText };
       }),
     },
   );

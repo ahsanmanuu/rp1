@@ -415,7 +415,16 @@ export const ProjectStats: React.FC<ProjectStatsProps> = ({ stats, metadata }) =
           </div>
         )}
 
-        {(displayStats.chartCount > 0 || (() => { try { return metadata.structuredContent ? JSON.parse(metadata.structuredContent).charts?.length > 0 : false; } catch { return false; } })()) && (
+        {(displayStats.chartCount > 0 || (() => {
+          try {
+            const parsed = JSON.parse(metadata.structuredContent || '{}');
+            return Boolean(
+              (Array.isArray(parsed.charts) && parsed.charts.length > 0) ||
+              (Array.isArray(parsed.body) && parsed.body.some((n: any) => n.type === 'chart')) ||
+              (Array.isArray(parsed.aiStructure?.charts) && parsed.aiStructure.charts.length > 0)
+            );
+          } catch { return false; }
+        })()) && (
           <div className="bg-[var(--strict-bg)] p-10 rounded-[3rem] border border-[var(--strict-border)] shadow-sm space-y-6">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl flex items-center justify-center border border-[var(--strict-border)]">
@@ -428,7 +437,22 @@ export const ProjectStats: React.FC<ProjectStatsProps> = ({ stats, metadata }) =
               {(() => {
                 try {
                   const parsed = JSON.parse(metadata.structuredContent || '{}');
-                  const charts = parsed.charts || [];
+                  const bodyCharts = Array.isArray(parsed.body)
+                    ? parsed.body.filter((n: any) => n.type === 'chart').map((n: any, idx: number) => ({
+                        caption: n.caption || n.title || `Chart ${idx + 1}`,
+                        id: n.id || ''
+                      }))
+                    : [];
+                  const aiCharts = Array.isArray(parsed.aiStructure?.charts)
+                    ? parsed.aiStructure.charts.map((c: any, idx: number) => ({
+                        caption: c.caption || `Chart ${idx + 1}`,
+                        id: c.id || ''
+                      }))
+                    : [];
+                  const charts = (Array.isArray(parsed.charts) && parsed.charts.length > 0)
+                    ? parsed.charts
+                    : (bodyCharts.length > 0 ? bodyCharts : aiCharts);
+
                   if (charts.length > 0) {
                     return charts.map((ch: any, i: number) => (
                       <div key={i} className="flex items-start gap-4 bg-[var(--strict-bg)] p-5 rounded-2xl border border-[var(--strict-border)] shadow-sm transition-all hover:border-[var(--accent-primary)] hover:shadow-md">

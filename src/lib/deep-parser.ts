@@ -66,6 +66,7 @@ export interface StructuredDocument {
 const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/;
 // Narrow AFFIL_KEYWORDS: remove generic words (research, systems, lab, group, etc.)
 const AFFIL_KEYWORDS = /(?:^|\b|\d|_|\W)(?:department|dept|university|institute|college|school|center|centre|organization|institution|corporation|inc|co\.|ltd|association|academy|laboratory|lab|division|faculty|campus|polytechnic|univ|inst|state|national)\b/i;
+const CHART_KEYWORD_RE = /\b(?:chart|plot|graph|histogram|heatmap|scatter\s*plot|bar\s*chart|box\s*plot|pie\s*chart|line\s*chart|roc\s*curve|precision-recall\s*curve|confusion\s*matrix|pareto)\b/i;
 
 // ── UNIVERSAL FRONT-MATTER / AUTHOR-LINE GUARD ───────────────────────────────
 // Word/PDF author blocks are frequently styled as Heading paragraphs
@@ -386,6 +387,8 @@ export class DeepDocumentParser {
                       result.body.push({ type: 'table', caption: captionText, id: `pdf_tab_${i}` } as any);
                   } else if (/^(?:algorithm|algo\.|pseudocode|listing)/i.test(lowerLine.trim())) {
                       result.body.push({ type: 'algorithm', title: captionText, items: [] } as any);
+                  } else if (CHART_KEYWORD_RE.test(lowerLine)) {
+                      result.body.push({ type: 'chart', caption: captionText, id: `pdf_chart_${i}.png` } as any);
                   } else {
                       result.body.push({ type: 'figure', caption: captionText, id: `pdf_fig_${i}.png` } as any);
                   }
@@ -488,14 +491,17 @@ export class DeepDocumentParser {
         if (n.type === 'figure-group') {
           return sum + (n.images ? n.images.length : 0);
         }
-        if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') {
+        if (n.type === 'figure' || n.type === 'image') {
           return sum + (n.images ? n.images.length : 1);
         }
         return sum;
       }, 0);
+      result.stats.chartCount = result.body.filter(n => n.type === 'chart').length;
       result.stats.equationCount = result.body.filter(n => n.type === 'equation').length;
       result.stats.pseudocodeCount = result.body.filter(n => n.type === 'algorithm').length;
       result.stats.referenceCount = result.references.length;
+
+      DeepDocumentParser.syncDerivedCollections(result);
 
       return result;
   }
@@ -744,6 +750,7 @@ export class DeepDocumentParser {
     try {
       const allImgElements = Array.from(doc.querySelectorAll('img')) as Element[];
       const allImageSrcs = new Set<string>();
+      const imgAltMap = new Map<string, string>();
       const decorativeImages = ((result as any)._decorativeImages as Set<string>) || new Set<string>();
       for (const img of allImgElements) {
         const src = (img.getAttribute('src') || img.getAttribute('data-src') || '').trim();
@@ -753,6 +760,7 @@ export class DeepDocumentParser {
           /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer|decoration|license|badge|cc[-_]by|creative\s*commons|copyright/i.test(alt);
         if (src && !src.startsWith('data:') && !isDeco) {
           allImageSrcs.add(src);
+          if (alt) imgAltMap.set(src, alt);
         }
       }
 
@@ -791,11 +799,12 @@ export class DeepDocumentParser {
           [...figSrcPrefixes].some(prefix => normSrc.startsWith(prefix) || normSrc.endsWith(prefix));
         if (isAlreadyPresent || decorativeImages.has(normSrc)) continue;
 
-        const isChart = /rf_chart_|chart_pending_/i.test(src);
+        const alt = imgAltMap.get(src) || '';
+        const isChart = /rf_chart_|chart_pending_|chart_/i.test(src) || CHART_KEYWORD_RE.test(src) || CHART_KEYWORD_RE.test(alt);
         result.body.push({
           type: isChart ? 'chart' : 'figure',
           id: src,
-          caption: isChart ? `Chart ${autoFigIdx++}` : `Figure ${autoFigIdx++}`
+          caption: alt || (isChart ? `Chart ${autoFigIdx++}` : `Figure ${autoFigIdx++}`)
         } as any);
         presentFigureIds.add(normSrc);
       }
@@ -829,16 +838,23 @@ export class DeepDocumentParser {
     result.stats.citationCount = countCitationsFromHtml(rawHtmlForCitations);
 
     if (overrides) {
-      if (overrides.tableCount) result.stats.tableCount = overrides.tableCount;
-      if (overrides.equationCount) result.stats.equationCount = overrides.equationCount;
-      // AI-provided figure/chart overrides are applied only when the document
-      // actually contains that media — a hallucinated count must never inflate
-      // the stats, so we clamp to what the parser found.
-      if (overrides.imageCount) {
-        result.stats.imageCount = Math.min(overrides.imageCount, result.stats.imageCount);
+      if (typeof overrides.tableCount === 'number') result.stats.tableCount = overrides.tableCount;
+      if (typeof overrides.equationCount === 'number') result.stats.equationCount = overrides.equationCount;
+      if (typeof overrides.chartCount === 'number') {
+        result.stats.chartCount = overrides.chartCount;
+        let cCount = result.body.filter(n => n.type === 'chart').length;
+        if (overrides.chartCount > cCount) {
+          for (const node of result.body) {
+            if (cCount >= overrides.chartCount) break;
+            if (node.type === 'figure' || node.type === 'image') {
+              node.type = 'chart';
+              cCount++;
+            }
+          }
+        }
       }
-      if (overrides.chartCount) {
-        result.stats.chartCount = Math.min(overrides.chartCount, result.stats.chartCount);
+      if (typeof overrides.imageCount === 'number') {
+        result.stats.imageCount = overrides.imageCount;
       }
     }
 
@@ -1619,8 +1635,8 @@ export class DeepDocumentParser {
                       if (emittedFigIds.has(src.toLowerCase())) continue; // Already emitted
                       const isDeco = /logo|icon|banner|watermark|divider|spacer|signature|qrcode/i.test(src);
                       if (isDeco) continue;
-                      const isChart = /rf_chart_|chart_pending_|chart_/i.test(src);
                       const altText = img.getAttribute('alt') || img.getAttribute('title') || '';
+                      const isChart = /rf_chart_|chart_pending_|chart_/i.test(src) || CHART_KEYWORD_RE.test(src) || CHART_KEYWORD_RE.test(altText);
                       result.body.push({
                         type: isChart ? 'chart' : 'figure',
                         id: src,
@@ -1857,7 +1873,7 @@ export class DeepDocumentParser {
                     ? el0.parentElement
                     : el0;
 
-                  if (!figCaption && !isAltDeco && isFigCapText(rawAlt)) {
+                  if (!figCaption && !isAltDeco) {
                       figCaption = rawAlt;
                   }
                   if (!figCaption) {
@@ -1902,7 +1918,8 @@ export class DeepDocumentParser {
                           (result as any)._decorativeImages.add(src.toLowerCase());
                           continue;
                       }
-                      figCaption = /rf_chart_|chart_pending_|chart_/i.test(src) ? 'Chart' : 'Figure';
+                      const isSrcOrAltChart = /rf_chart_|chart_pending_|chart_/i.test(src) || CHART_KEYWORD_RE.test(src) || CHART_KEYWORD_RE.test(rawAlt);
+                      figCaption = rawAlt || (isSrcOrAltChart ? 'Chart' : 'Figure');
                   }
                   
                   let subCaption = '';
@@ -1917,7 +1934,7 @@ export class DeepDocumentParser {
                       cleanSubCaption = cleanSubCaption.replace(/^\s*(?:\(\s*[a-zA-Z0-9]\s*\)|\[\s*[a-zA-Z0-9]\s*\]|\b[a-zA-Z0-9]\s*\)|\b[a-zA-Z0-9]\s*\.)\s*[:.\-–—]?\s*/i, '').trim();
                   }
 
-                  const isChart = /rf_chart_|chart_pending_|chart_/i.test(src);
+                  const isChart = /rf_chart_|chart_pending_|chart_/i.test(src) || CHART_KEYWORD_RE.test(src) || CHART_KEYWORD_RE.test(rawAlt) || CHART_KEYWORD_RE.test(figCaption) || CHART_KEYWORD_RE.test(cleanSubCaption);
                   if (isChart) {
                     result.stats.chartCount++;
                     result.body.push({

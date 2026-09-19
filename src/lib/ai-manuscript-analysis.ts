@@ -14,8 +14,13 @@ const analysisCache = new Map<string, { result: any; ts: number }>();
 const ANALYSIS_CACHE_TTL = 600_000;
 
 function computeAnalysisCacheKey(deepData: StructuredDocument, filename: string): string {
-  const text = String((deepData as any).body?.map((n: any) => n.text || '').join('') || '').substring(0, 10000);
-  return createHash('sha256').update(`${filename}:${text}`).digest('hex').slice(0, 32);
+  const full = String((deepData as any).body?.map((n: any) => n.text || n.caption || '').join(' ') || '');
+  const len = full.length;
+  const sample = len <= 30000
+    ? full
+    : `${full.substring(0, 10000)}::${full.substring(Math.floor(len / 2) - 5000, Math.floor(len / 2) + 5000)}::${full.substring(len - 10000)}`;
+  const nodeCount = (deepData.body || []).length;
+  return createHash('sha256').update(`${filename}:${len}:${nodeCount}:${sample}`).digest('hex').slice(0, 32);
 }
 
 /**
@@ -47,6 +52,7 @@ export interface AiStructureVerdict {
   keywords?: string[] | null;
   sections?: Array<{ title?: string; level?: number }> | null;
   figures?: Array<{ caption?: string }> | null;
+  charts?: Array<{ caption?: string }> | null;
   tables?: Array<{ caption?: string }> | null;
   algorithms?: Array<{ title?: string }> | null;
   components?: AiStructureComponents | null;
@@ -213,7 +219,7 @@ function sanitizeCaptionArray(
   return out.length > 0 ? out : undefined;
 }
 
-function normalizeVerdict(raw: any): AiStructureVerdict | null {
+export function normalizeVerdict(raw: any): AiStructureVerdict | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
 
   const verdict: AiStructureVerdict = {};
@@ -258,13 +264,16 @@ function normalizeVerdict(raw: any): AiStructureVerdict | null {
       if (!s || typeof s !== 'object') continue;
       const title = String(s.title || '').replace(/\s+/g, ' ').trim();
       if (!title || title.length < 2) continue;
-      sections.push({ title, level: s.level === 2 ? 2 : 1 });
+      sections.push({ title, level: s.level === 2 || s.level === 3 ? s.level : 1 });
     }
     if (sections.length > 0) verdict.sections = sections;
   }
 
   const figures = sanitizeCaptionArray(raw.figures, 80, 'caption');
   if (figures) verdict.figures = figures as Array<{ caption?: string }>;
+
+  const charts = sanitizeCaptionArray(raw.charts, 80, 'caption');
+  if (charts) verdict.charts = charts as Array<{ caption?: string }>;
 
   const tables = sanitizeCaptionArray(raw.tables, 80, 'caption');
   if (tables) verdict.tables = tables as Array<{ caption?: string }>;
@@ -436,7 +445,7 @@ function isFrontMatterNoiseSection(title: string): boolean {
  *  - reference count anchors on the heuristically-extracted entries;
  *  - equations/pseudocode anchor on actual parsed math/algorithm blocks.
  */
-function reconcileVerdict(
+export function reconcileVerdict(
   verdict: AiStructureVerdict,
   deepData: StructuredDocument,
   plainText: string,
@@ -494,6 +503,7 @@ function reconcileVerdict(
     return verified.length > 0 ? verified : undefined;
   };
   verdict.figures = verifyCaptions(verdict.figures);
+  verdict.charts = verifyCaptions(verdict.charts);
   verdict.tables = verifyCaptions(verdict.tables);
   if (verdict.algorithms && verdict.algorithms.length > 0) {
     const verified = verdict.algorithms.filter(a => {
@@ -573,20 +583,21 @@ function reconcileVerdict(
     comps.tables = detTables;
   }
 
-  // Figures: the VERIFIED AI caption list is the ground truth when it exists
-  // (containment-verified against the real text — the AI can subtract heuristic
-  // false positives like logos counted as figures). Without a verified list,
-  // fall back to the bounded max of (body figure/image nodes, AI count).
-  // Charts are a separate component (counted by their own body nodes) so
-  // figures and charts can never double-count.
+  // Figures & Charts: the VERIFIED AI caption lists are authoritative when they exist.
+  // Figures and charts are strictly separated so they can never double-count.
   const detFigures = countByType(['figure', 'figure-group', 'image']);
   const detCharts = countByType(['chart']);
   if (verdict.figures !== undefined) {
     comps.figures = verdict.figures.length;
   } else {
-    comps.figures = bound(detFigures, typeof comps.figures === 'number' ? comps.figures : 0, 5);
+    comps.figures = typeof comps.figures === 'number' ? Math.max(detFigures, comps.figures) : detFigures;
   }
-  comps.charts = bound(detCharts, typeof comps.charts === 'number' ? comps.charts : 0, 5);
+
+  if (verdict.charts !== undefined) {
+    comps.charts = verdict.charts.length;
+  } else {
+    comps.charts = typeof comps.charts === 'number' ? Math.max(detCharts, comps.charts) : detCharts;
+  }
 
   if (Object.keys(comps).length > 0) verdict.components = comps;
   return verdict;
@@ -782,6 +793,7 @@ export async function analyzeManuscriptStructure(
       ...(verdictA || {}),
       sections: verdictB?.sections ?? verdictA?.sections,
       figures: verdictB?.figures ?? verdictA?.figures,
+      charts: verdictB?.charts ?? verdictA?.charts,
       tables: verdictB?.tables ?? verdictA?.tables,
       algorithms: verdictB?.algorithms ?? verdictA?.algorithms,
       components: {
@@ -1263,6 +1275,12 @@ export function applyStructureCorrections(
     }
   }
 
+  const isPlaceholder = (c: string): boolean =>
+    !c ||
+    /^(?:table|figure|chart|image)\s*(?:\(\s*\d+\s*rows?\s*[×x,]\s*\d+\s*cols?\s*\))?$/i.test(c.trim()) ||
+    /^(?:data table|figure|table|chart|image|untitled)\.?$/i.test(c.trim()) ||
+    /^(?:table|figure|chart)\s*\d+$/i.test(c.trim());
+
   // ── Figure / table / algorithm caption fixes (verbatim from AI, matched by
   //    normalized similarity; sequential assignment only when counts align) ──
   const fixCaptions = (
@@ -1304,11 +1322,6 @@ export function applyStructureCorrections(
 
     let fixed = 0;
     const unused = new Set(texts.map((_, i) => i));
-    const isPlaceholder = (c: string): boolean =>
-      !c ||
-      /^(?:table|figure|chart|image)\s*(?:\(\s*\d+\s*rows?\s*[×x,]\s*\d+\s*cols?\s*\))?$/i.test(c.trim()) ||
-      /^(?:data table|figure|table|chart|image|untitled)\.?$/i.test(c.trim()) ||
-      /^(?:table|figure|chart)\s*\d+$/i.test(c.trim());
 
     // Pass 1: match nodes by ordinal label (e.g. "Table 1" or "Table 1:" matches AI's "Table 1: Title")
     for (const n of nodes) {
@@ -1366,7 +1379,46 @@ export function applyStructureCorrections(
     if (fixed > 0) applied.push(label);
   };
 
-  fixCaptions(verdict.figures, ['figure', 'chart', 'image', 'figure-group'], 'caption', 'figureCaptions');
+  const CHART_KEYWORD_RE = /\b(?:chart|plot|graph|histogram|heatmap|scatter\s*plot|bar\s*chart|box\s*plot|pie\s*chart|line\s*chart|roc\s*curve|precision-recall\s*curve|confusion\s*matrix|pareto)\b/i;
+
+  // 1. Promote figure nodes to chart nodes when their caption, alt, src, or text matches chart keywords or AI verdict chart captions
+  const chartCaptionsList = (verdict.charts || [])
+    .map(c => (c.caption || '').trim())
+    .filter(Boolean);
+  const chartCaptionsLower = chartCaptionsList.map(c => c.toLowerCase());
+
+  for (const node of deepData.body) {
+    if (node.type === 'figure' || node.type === 'image' || (node as any).type === 'figure-group') {
+      const cap = String(node.caption || (node as any).alt || (node as any).title || '').toLowerCase();
+      const src = String((node as any).src || (node as any).url || '').toLowerCase();
+      const matchesChartVerdict = chartCaptionsLower.some(c => c && (cap.includes(c) || c.includes(cap)));
+      const hasChartKeyword = CHART_KEYWORD_RE.test(cap) || CHART_KEYWORD_RE.test(src);
+      if (matchesChartVerdict || hasChartKeyword) {
+        node.type = 'chart';
+      }
+    }
+  }
+
+  // If AI verdict reported charts, but fewer nodes are classified as charts, promote remaining matching/placeholder figures
+  let chartNodeCount = deepData.body.filter(n => n.type === 'chart').length;
+  const desiredChartCount = verdict.components?.charts ?? chartCaptionsList.length;
+  if (desiredChartCount > chartNodeCount) {
+    for (const node of deepData.body) {
+      if (chartNodeCount >= desiredChartCount) break;
+      if (node.type === 'figure' || node.type === 'image') {
+        const cap = String(node.caption || (node as any).alt || '').trim();
+        if (isPlaceholder(cap) || CHART_KEYWORD_RE.test(cap)) {
+          node.type = 'chart';
+          chartNodeCount++;
+        }
+      }
+    }
+  }
+
+  fixCaptions(verdict.figures, ['figure', 'image', 'figure-group'], 'caption', 'figureCaptions');
+  if (verdict.charts && verdict.charts.length > 0) {
+    fixCaptions(verdict.charts, ['chart'], 'caption', 'chartCaptions');
+  }
   fixCaptions(verdict.tables, ['table'], 'caption', 'tableCaptions');
   fixCaptions(verdict.algorithms, ['algorithm'], 'title', 'algorithmTitles');
 
@@ -1402,6 +1454,10 @@ export function applyStructureCorrections(
     model,
     appliedAt: new Date().toISOString(),
     applied,
+    figures: verdict.figures ? [...verdict.figures] : undefined,
+    charts: verdict.charts ? [...verdict.charts] : undefined,
+    tables: verdict.tables ? [...verdict.tables] : undefined,
+    algorithms: verdict.algorithms ? [...verdict.algorithms] : undefined,
     // Exact AI-verified counts (null-safe): authoritative for the report when
     // the AI pass provided a number; `undefined` keys fall back downstream.
     components: verdict.components ? { ...verdict.components } : undefined,

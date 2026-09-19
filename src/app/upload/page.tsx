@@ -1337,10 +1337,10 @@ function UploadContent() {
                     return {
                       wordCount:       projectData.wordCount       || s.wordCount       || 0,
                       charCount:       projectData.charCount       || s.charCount       || 0,
-                      imageCount:      hasBody ? Math.max(bodyFigureCount, aiCount('figures') ?? 0) : (aiCount('figures') ?? s.imageCount ?? projectData.imageCount ?? 0),
-                      chartCount:      hasBody ? Math.max(bodyChartCount, aiCount('charts') ?? 0)   : (aiCount('charts')  ?? s.chartCount ?? 0),
-                      tableCount:      hasBody ? Math.max(bodyTableCount, aiCount('tables') ?? 0)   : (aiCount('tables')  ?? s.tableCount ?? 0),
-                      equationCount:   hasBody ? Math.max(bodyEquationCount, aiCount('equations') ?? 0) : (aiCount('equations') ?? s.equationCount ?? 0),
+                      imageCount:      aiCount('figures') ?? (hasBody && bodyFigureCount > 0 ? bodyFigureCount : (s.imageCount ?? projectData.imageCount ?? 0)),
+                      chartCount:      aiCount('charts')  ?? (hasBody && bodyChartCount > 0 ? bodyChartCount : (s.chartCount ?? 0)),
+                      tableCount:      aiCount('tables')  ?? (hasBody && bodyTableCount > 0 ? bodyTableCount : (s.tableCount ?? 0)),
+                      equationCount:   aiCount('equations') ?? (hasBody && bodyEquationCount > 0 ? bodyEquationCount : (s.equationCount ?? 0)),
                       // Citations: use the server-computed count (from FULL rawHtml
                       // before any PB truncation) as the primary source. Live
                       // re-computation from stored rawHtml is only a secondary
@@ -1358,7 +1358,7 @@ function UploadContent() {
                       // References: the refs array is authoritative when present
                       // (AI replaces it wholesale for corrected docs)
                       referenceCount:  hasRefsArray ? validRefs.length : (aiCount('references') ?? (s.referenceCount || projectData.referenceCount || 0)),
-                      pseudocodeCount: hasBody ? Math.max(bodyPseudoCount, aiCount('pseudocode') ?? 0) : (aiCount('pseudocode') ?? s.pseudocodeCount ?? 0),
+                      pseudocodeCount: aiCount('pseudocode') ?? (hasBody && bodyPseudoCount > 0 ? bodyPseudoCount : (s.pseudocodeCount ?? 0)),
                     };
                   })()}
                   metadata={{

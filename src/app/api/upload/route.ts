@@ -904,7 +904,10 @@ async function runUploadProcessing(uploadId: string) {
             html.toLowerCase().includes(fName.toLowerCase());
 
           if (hasRealCaption || isReferencedInText) {
-            const isChart = /rf_chart_|chart_pending_/i.test(fName);
+            const isChart = Boolean((fig as any).isChart) ||
+              /rf_chart_|chart_pending_|chart_/i.test(fName) ||
+              /\b(?:chart|plot|graph|histogram|heatmap|scatter\s*plot|bar\s*chart|box\s*plot|pie\s*chart|line\s*chart|roc\s*curve|precision-recall\s*curve|confusion\s*matrix|pareto)\b/i.test(caption) ||
+              /\b(?:chart|plot|graph|histogram|heatmap|scatter\s*plot|bar\s*chart|box\s*plot|pie\s*chart|line\s*chart|roc\s*curve|precision-recall\s*curve|confusion\s*matrix|pareto)\b/i.test(fName);
             deepData.body.push({
               type: isChart ? 'chart' : 'figure',
               id: fName,
@@ -1597,7 +1600,7 @@ async function runUploadProcessing(uploadId: string) {
             imageFiles: imageNames,
             templateId: templateId,
           }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000))
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 30000))
         ]);
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
@@ -1836,7 +1839,7 @@ async function runUploadProcessing(uploadId: string) {
             imageFiles: [],
             templateId: templateId,
           }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 14000))
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 30000))
         ]);
         if (aiRes) {
           const { applied } = applyStructureCorrections(deepData, aiRes.verdict, aiRes.model);
