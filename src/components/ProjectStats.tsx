@@ -119,45 +119,39 @@ export const ProjectStats: React.FC<ProjectStatsProps> = ({ stats, metadata }) =
         // the refs array (from a previous parser version). Apply the same validity
         // filter as isNewReferenceStart to get the accurate count universally.
         const validRefs = refs.filter((r: string) => {
-          const t = r.trim();
-          if (t.length < 10) return false;
-          const hasYear       = /\b(19|20)\d{2}\b/.test(t);
-          const hasQuotes     = /[""\u201c\u201d"'`']/.test(t);
-          const hasRefKw      = /\b(?:vol|volume|no|issue|pp|pages|page|press|university|dept|department|journal|proceedings|proc|conf|conference|transactions|trans|ieee|acm|elsevier|springer|doi|https?|url|www|unpublished|submitted|in\s+press)\b/i.test(t);
-          const hasNumPrefix  = /^\[?\d+\]?[\.\-\t\s]+/.test(t);
-          // Must have at least ONE academic signal
-          if (!hasYear && !hasQuotes && !hasRefKw && !hasNumPrefix) return false;
+          const t = (typeof r === 'string' ? r : '').trim();
+          if (t.length < 5) return false;
           // Reject obvious guideline headings (references within / references in the)
           if (/^references?\s+(?:within|in\s+the|at\s+the|inside|outside)\b/i.test(t)) return false;
           // Reject pure instruction sentences
-          if (/\b(?:write|ensure|use|should|must|following|include|format|align|enclose|cite|citation\s+number)\b/i.test(t) && !hasNumPrefix) return false;
+          if (/\b(?:write|ensure|use|should|must|following|include|format|align|enclose|cite|citation\s+number)\b/i.test(t) && !/^\[?\d+\]?/.test(t)) return false;
           return true;
         });
 
         const s = parsed.stats || {};
         // ─── AI-VERIFIED COUNTS ─────────────────────────────────────────
         // When the AI structure pass ran (aiStructure.components), its exact
-        // component counts are authoritative — the heuristic body walk may
-        // have undercounted elements the AI verified from the full evidence.
-        // Fall back to the body walk / cached stats per-metric.
+        // component counts are authoritative. Otherwise take the maximum of
+        // verified ground truth, body walk, and cached stats to avoid drops.
         const aiComp = parsed.aiStructure?.components || null;
         const aiCount = (key: string) => (typeof aiComp?.[key] === 'number' ? aiComp[key] : null);
-        // For each metric: AI verdict wins, then live array count, then cached stats
+        
         displayStats.wordCount       = s.wordCount      || displayStats.wordCount;
         displayStats.charCount       = s.charCount      || displayStats.charCount;
-        displayStats.tableCount      = aiCount('tables')     ?? (bTable   > 0 ? bTable   : (s.tableCount      || displayStats.tableCount));
-        displayStats.equationCount   = aiCount('equations')  ?? (bEq      > 0 ? bEq      : (s.equationCount   || displayStats.equationCount));
-        displayStats.chartCount      = aiCount('charts')     ?? (bChart   > 0 ? bChart   : (s.chartCount      || displayStats.chartCount));
-        displayStats.pseudocodeCount = aiCount('pseudocode') ?? (bPseudo  > 0 ? bPseudo  : (s.pseudocodeCount || displayStats.pseudocodeCount));
+        displayStats.tableCount      = aiCount('tables')     ?? Math.max(bTable, s.tableCount || 0, displayStats.tableCount || 0);
+        displayStats.equationCount   = aiCount('equations')  ?? Math.max(bEq, s.equationCount || 0, displayStats.equationCount || 0);
+        displayStats.chartCount      = aiCount('charts')     ?? Math.max(bChart, s.chartCount || 0, displayStats.chartCount || 0);
+        displayStats.pseudocodeCount = aiCount('pseudocode') ?? Math.max(bPseudo, s.pseudocodeCount || 0, displayStats.pseudocodeCount || 0);
         // Use sanitized refs count — accurate for both new and old projects
         displayStats.referenceCount  = validRefs.length > 0 ? validRefs.length : (aiCount('references') ?? (s.referenceCount || displayStats.referenceCount));
-        displayStats.citationCount   = aiCount('citations') ?? (s.citationCount  || displayStats.citationCount);
-        // Figure count: AI verdict wins, then body walk, then DB file list (already in displayStats)
+        displayStats.citationCount   = aiCount('citations') ?? Math.max(s.citationCount || 0, displayStats.citationCount || 0);
+        // Figure count: AI verdict wins, then maximum of body walk, cached stats, and DB file count
         const aiFigures = aiCount('figures');
-        if (aiFigures != null) displayStats.imageCount = aiFigures;
-        else if (bFig > 0) displayStats.imageCount = Math.max(bFig, displayStats.imageCount);
-        else if (s.imageCount) displayStats.imageCount = displayStats.imageCount || s.imageCount;
-        // chartCount is already set above — don't re-apply Max here (would double-inflate)
+        if (aiFigures != null) {
+          displayStats.imageCount = aiFigures;
+        } else {
+          displayStats.imageCount = Math.max(bFig, s.imageCount || 0, displayStats.imageCount || 0);
+        }
       }
 
       if (metadataAuthors.length === 0 && parsed.authors) metadataAuthors = parsed.authors;

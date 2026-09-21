@@ -860,6 +860,16 @@ export class DeepDocumentParser {
       if (typeof overrides.imageCount === 'number' && overrides.imageCount > 0) {
         result.stats.imageCount = Math.max(result.stats.imageCount, overrides.imageCount);
       }
+      // Re-synchronize imageCount & chartCount to guarantee 100% mutual consistency
+      result.stats.chartCount = result.body.filter(n => n.type === 'chart').length;
+      result.stats.imageCount = result.body.reduce((sum, n) => {
+        if (n.type === 'figure-group') return sum + (n.images ? n.images.length : 0);
+        if (n.type === 'figure' || n.type === 'image') return sum + (n.images ? n.images.length : 1);
+        return sum;
+      }, 0);
+      if (typeof overrides.imageCount === 'number' && overrides.imageCount > 0) {
+        result.stats.imageCount = Math.max(result.stats.imageCount, overrides.imageCount);
+      }
     }
 
     DeepDocumentParser.syncDerivedCollections(result);
@@ -2056,10 +2066,16 @@ export class DeepDocumentParser {
                 if (alreadyInBody) continue;
 
                 const rawAlt = (img.getAttribute('alt') || img.getAttribute('title') || '').trim();
-                const isAltDeco = !rawAlt || /logo|icon|header|banner|footer|decoration|watermark|bullet|spacer|signature|qrcode|license|badge|cc[-_]by|creative\s*commons/i.test(rawAlt) || this.isGenericAltText(rawAlt);
+                // Word DOCX documents typically do NOT include alt-text; lack of alt-text must NEVER classify an image as decorative!
+                const isExplicitAltDeco = Boolean(rawAlt) && (
+                  /logo|icon|header|banner|footer|decoration|watermark|bullet|spacer|signature|qrcode|license|badge|cc[-_]by|creative\s*commons/i.test(rawAlt) ||
+                  this.isGenericAltText(rawAlt)
+                );
                 const isFrontMatterImage = !hasSeenFirstSectionOrAbstract;
                 const isFooterImage = hasSeenReferences;
-                const decoHint = !groupCaption && (isFrontMatterImage || isFooterImage || isAltDeco || /logo|icon|header|banner|bullet|background|watermark|divider|spacer|signature|qr|qrcode|footer|license|badge|cc[-_]by|creative\s*commons/i.test(src));
+                const isBodyRegion = hasSeenFirstSectionOrAbstract && !hasSeenReferences;
+                const isExplicitSrcDeco = /logo|icon|header|banner|bullet|background|watermark|divider|spacer|signature|qr|qrcode|footer|license|badge|cc[-_]by|creative\s*commons/i.test(src);
+                const decoHint = isExplicitAltDeco || isExplicitSrcDeco || (!isBodyRegion && !groupCaption && (isFrontMatterImage || isFooterImage));
                 if (decoHint) {
                   (result as any)._decorativeImages = (result as any)._decorativeImages || new Set<string>();
                   (result as any)._decorativeImages.add(src.toLowerCase());
@@ -2069,7 +2085,7 @@ export class DeepDocumentParser {
                 let subCaption = '';
                 if (subCaptions.length === imgs.length) {
                   subCaption = subCaptions[idx];
-                } else if (!isAltDeco) {
+                } else if (!isExplicitAltDeco) {
                   subCaption = rawAlt;
                 }
 
@@ -2360,9 +2376,6 @@ export class DeepDocumentParser {
           );
         
         if (isHeadingLike) {
-          if (matchesCanonical) {
-            return 1;
-          }
           if (matchesNumbered) {
             const prefixMatch = liText.match(/^(?:\s*(?:(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[A-Za-z])(?:\.(?:\d+|[ivxlcdm]+|[A-Za-z]))*)(?:\]|\))?(?:\.?[.:\s)]+))/i);
             if (prefixMatch && isValidSectionPrefix(prefixMatch[1], prefixMatch[0])) {
@@ -2370,6 +2383,9 @@ export class DeepDocumentParser {
               const parts = cleanPrefix.split('.');
               return Math.min(3, parts.length);
             }
+          }
+          if (matchesCanonical) {
+            return 1;
           }
           return 2;
         } else {
@@ -2413,10 +2429,8 @@ export class DeepDocumentParser {
     });
     if (authorMatch) return null;
 
-    // Priority 1: Canonical Academic Section Names (always level 1)
-    if (this.FORCED_LEVEL1.has(normClean)) return 1;
-
-    // Priority 2: Numerical/Alpha Hierarchical Numbering Ground Truth (1., 1.1, 1.1.1, A., A.1, I., I.1, [1], (A))
+    // Priority 1: Numerical/Alpha Hierarchical Numbering Ground Truth (1., 1.1, 1.1.1, A., A.1, I., I.1, [1], (A))
+    // Author numbering ALWAYS takes absolute precedence over generic canonical dictionaries
     const isNumbered = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(f.text);
     if (isNumbered) {
       const prefixMatch = f.text.match(/^(?:\s*(?:(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[A-Za-z])(?:\.(?:\d+|[ivxlcdm]+|[A-Za-z]))*)(?:\]|\))?(?:\.?[.:\s)]+))/i);
@@ -2439,13 +2453,16 @@ export class DeepDocumentParser {
       }
     }
 
-    // Priority 3: HTML Tag Name Fallback
+    // Priority 2: HTML Tag Name Ground Truth (h1 -> 1, h2 -> 2, h3 -> 3)
     if (targetEl.tagName.toLowerCase().startsWith('h') && targetEl.tagName.toLowerCase().length > 1) {
       const parsed = parseInt(targetEl.tagName.toLowerCase().substring(1));
       if (!isNaN(parsed) && parsed >= 1 && parsed <= 6) {
         return Math.min(3, parsed);
       }
     }
+
+    // Priority 3: Canonical Academic Section Names (always level 1 fallback when unnumbered & untagged)
+    if (this.FORCED_LEVEL1.has(normClean)) return 1;
 
     // Priority 4: Stand-alone line heuristic: short, bold, title-cased, no trailing punctuation
     const trimmedText = f.text.trim();
@@ -2682,37 +2699,33 @@ export class DeepDocumentParser {
   public static tableHtmlDimensions(html: string): { rowCount: number; colCount: number } {
     let rowCount = 0;
     let colCount = 0;
+    if (!html) return { rowCount: 0, colCount: 0 };
     const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
     let trMatch: RegExpExecArray | null;
-    // Track colSpan/rowSpan handling
-    const colSpanRegex = /colspan="(\d+)"/gi;
-    const rowSpanRegex = /rowspan="(\d+)"/gi;
 
     while ((trMatch = trRegex.exec(html)) !== null) {
       rowCount++;
-      const rowContent = trMatch[1];
+      const rowContent = trMatch[1] || '';
       // Count cells in this row, handling colspan
-      const cellMatches = rowContent.match(/<t[dh][^>]*>/gi) || [];
+      const cellMatches = rowContent.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/gi) || rowContent.match(/<t[dh][^>]*>/gi) || [];
       let maxCellsInRow = cellMatches.length;
 
-      // Adjust for colspan attributes - sum up the colspan values for cells in this row
-      const colspans = rowContent.match(colSpanRegex) || [];
-      const rowspans = rowContent.match(rowSpanRegex) || [];
-      
-      // Calculate effective cell count considering colspan
+      // Calculate effective cell count considering colspan cleanly without stateful regex
       let effectiveColCount = 0;
       for (let i = 0; i < cellMatches.length; i++) {
-        const cellMatch = cellMatches[i];
-        const colspanMatch = cellMatch.match(colSpanRegex);
-        const rowspanMatch = cellMatch.match(rowSpanRegex);
-        const colSpanVal = colspanMatch ? parseInt(colspanMatch[1], 10) : 1;
+        const cellTag = cellMatches[i];
+        const csMatch = cellTag.match(/colspan=["']?(\d+)["']?/i);
+        const colSpanVal = csMatch ? Math.max(1, parseInt(csMatch[1], 10) || 1) : 1;
         effectiveColCount += colSpanVal;
       }
-      colCount = Math.max(colCount, effectiveColCount > 0 ? effectiveColCount : maxCellsInRow);
+      const rowCols = Math.max(effectiveColCount > 0 ? effectiveColCount : maxCellsInRow, maxCellsInRow);
+      if (Number.isFinite(rowCols) && rowCols > colCount) {
+        colCount = rowCols;
+      }
     }
     // Ensure minimum column count of 1 if there are rows
-    if (rowCount > 0 && colCount === 0) colCount = 1;
-    return { rowCount, colCount };
+    if (rowCount > 0 && (!Number.isFinite(colCount) || colCount === 0)) colCount = 1;
+    return { rowCount, colCount: Number.isFinite(colCount) ? colCount : 0 };
   }
 
   public static syncDerivedCollections(doc: StructuredDocument): void {

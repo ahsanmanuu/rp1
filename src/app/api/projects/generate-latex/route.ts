@@ -605,15 +605,15 @@ export async function POST(req: Request) {
                 if (detAuthorCount > aiAuthorCount || (detHasAffil && !aiHasAffil) || (extractedComponents[filePath].includes('Institution') && !content.includes('Institution'))) {
                   extractedComponents[filePath] = content;
                 }
-              } else if (filePath.startsWith('floats/tables/') && content && content.includes('\\begin{tabular')) {
+              } else if ((filePath.startsWith('floats/tables/') || filePath.startsWith('tables/')) && content && content.includes('\\begin{tabular')) {
                 if (!extractedComponents[filePath] || !extractedComponents[filePath].includes('\\begin{tabular') || extractedComponents[filePath].length < content.length * 0.4) {
                   extractedComponents[filePath] = content;
                 }
-              } else if (filePath.startsWith('floats/figures/') && content && content.includes('\\includegraphics')) {
+              } else if ((filePath.startsWith('floats/figures/') || filePath.startsWith('figures/')) && content && content.includes('\\includegraphics')) {
                 if (!extractedComponents[filePath] || !extractedComponents[filePath].includes('\\includegraphics') || !extractedComponents[filePath].includes('\\caption')) {
                   extractedComponents[filePath] = content;
                 }
-              } else if (filePath.startsWith('floats/algorithms/') && content && content.includes('\\begin{algorithm')) {
+              } else if ((filePath.startsWith('floats/algorithms/') || filePath.startsWith('algorithms/')) && content && content.includes('\\begin{algorithm')) {
                 if (!extractedComponents[filePath] || !extractedComponents[filePath].includes('\\begin{algorithm') || extractedComponents[filePath].length < content.length * 0.4) {
                   extractedComponents[filePath] = content;
                 }
@@ -897,8 +897,14 @@ export async function POST(req: Request) {
         });
 
         const floatKeys = Object.keys(extractedComponents)
-          .filter(k => /^(figures\/figure_\d+\.tex|figures\/figure_group_\d+\.tex)$/i.test(k))
-          .sort((a, b) => numIn(a) - numIn(b));
+          .filter(k => /^(?:floats\/figures\/\d+\.tex|figures\/figure_\d+\.tex|figures\/figure_group_\d+\.tex)$/i.test(k))
+          .sort((a, b) => {
+            const aIsFloats = a.startsWith('floats/');
+            const bIsFloats = b.startsWith('floats/');
+            if (aIsFloats && !bIsFloats) return -1;
+            if (!aIsFloats && bIsFloats) return 1;
+            return numIn(a) - numIn(b);
+          });
 
         for (const k of floatKeys) extractedComponents[k] = apply(extractedComponents[k]);
         for (const k of Object.keys(extractedComponents)) {

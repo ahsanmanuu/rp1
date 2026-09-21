@@ -531,8 +531,9 @@ function extractDocxXmlGroundTruth(zip: any): { tableCount: number; equationCoun
       const isGrid = (rows >= 1 && cells >= 2);
       const hasEmailContext = (text.includes('@') && /\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/i.test(text));
       const isMetadata = hasEmailContext || text.includes('affiliation') || text.includes('institution') || text.includes('orcid');
-      const isEarly = idx === 0 && text.length < 200 && rows < 3;
-      return isGrid && !isMetadata && !isEarly;
+      // Only discard the initial table if it is clearly an author/affiliation layout container
+      const isAuthorLayout = idx === 0 && rows <= 2 && (isMetadata || text.includes('department') || text.includes('university') || text.includes('author'));
+      return isGrid && !isMetadata && !isAuthorLayout;
     }).length;
 
     // 2. Display Equations Ground Truth
@@ -1000,28 +1001,21 @@ async function runUploadProcessing(uploadId: string) {
         for (const fig of figureManifest) {
           const fName = String(fig?.name || '').trim();
           if (!fName || presentFigIds.has(fName.toLowerCase())) continue;
-          const isDeco = /logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer/i.test(fName);
+          const isDeco = /logo|icon|bullet|spacer|divider|signature|qrcode|header|footer/i.test(fName);
           if (isDeco) continue;
 
-          // Only inject if the figure has a verified caption from client extraction
-          // or is explicitly referenced in the HTML/text
+          // Preserve all genuine images from the manuscript
           const caption = typeof fig.caption === 'string' ? fig.caption.trim() : '';
-          const hasRealCaption = caption.length > 3 && !/^figure\s*\d+$/i.test(caption);
-          const isReferencedInText = new RegExp(`\\b(?:fig(?:ure)?\\.?|chart)\\s*\\d+`, 'i').test(html) &&
-            html.toLowerCase().includes(fName.toLowerCase());
-
-          if (hasRealCaption || isReferencedInText) {
-            const isChart = Boolean((fig as any).isChart) ||
-              /rf_chart_|chart_pending_|chart_/i.test(fName) ||
-              /\b(?:chart|plot|graph|histogram|heatmap|scatter\s*plot|bar\s*chart|box\s*plot|pie\s*chart|line\s*chart|roc\s*curve|precision-recall\s*curve|confusion\s*matrix|pareto)\b/i.test(caption) ||
-              /\b(?:chart|plot|graph|histogram|heatmap|scatter\s*plot|bar\s*chart|box\s*plot|pie\s*chart|line\s*chart|roc\s*curve|precision-recall\s*curve|confusion\s*matrix|pareto)\b/i.test(fName);
-            deepData.body.push({
-              type: isChart ? 'chart' : 'figure',
-              id: fName,
-              caption: caption || (isChart ? 'Chart' : 'Figure')
-            });
-            presentFigIds.add(fName.toLowerCase());
-          }
+          const isChart = Boolean((fig as any).isChart) ||
+            /rf_chart_|chart_pending_|chart_/i.test(fName) ||
+            /\b(?:chart|plot|graph|histogram|heatmap|scatter\s*plot|bar\s*chart|box\s*plot|pie\s*chart|line\s*chart|roc\s*curve|precision-recall\s*curve|confusion\s*matrix|pareto)\b/i.test(caption) ||
+            /\b(?:chart|plot|graph|histogram|heatmap|scatter\s*plot|bar\s*chart|box\s*plot|pie\s*chart|line\s*chart|roc\s*curve|precision-recall\s*curve|confusion\s*matrix|pareto)\b/i.test(fName);
+          deepData.body.push({
+            type: isChart ? 'chart' : 'figure',
+            id: fName,
+            caption: caption || (isChart ? 'Chart' : 'Figure')
+          });
+          presentFigIds.add(fName.toLowerCase());
         }
       }
 
@@ -1414,11 +1408,11 @@ async function runUploadProcessing(uploadId: string) {
         const hasEmailContext = (text.includes('@') && /\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/i.test(text));
         const isMetadata = hasEmailContext || text.includes('affiliation') || text.includes('institution') || text.includes('orcid');
 
-        // Rule 3: Positional suppression for Header Region (Template Tables)
-        // Only suppress the very first w:tbl if it has very little data content (layout table)
-        const isEarly = idx === 0 && text.length < 200 && rows < 3;
+        // Rule 3: Positional suppression for Header Region (Template Author Tables)
+        // Only suppress the initial w:tbl if it is clearly an author/affiliation layout container
+        const isAuthorLayout = idx === 0 && rows <= 2 && (isMetadata || text.includes('department') || text.includes('university') || text.includes('author'));
 
-        return isGrid && !isMetadata && !isEarly;
+        return isGrid && !isMetadata && !isAuthorLayout;
       }).length;
 
       // Ground Truth Equation Count — DISPLAY-ONLY (block-level math, not inline).
@@ -1827,18 +1821,18 @@ async function runUploadProcessing(uploadId: string) {
       }
 
       progress(uploadId, 'Analyzing document structure', 65);
-      // XML GROUND-TRUTH OVERRIDE: the DOCX XML table/equation counts (validTables,
-      // finalEquationCount) are exact — layout/metadata tables and parameter
-      // assignments are already excluded there. Body-walk counts can over-count
-      // (comma-separated numeric lines parsed as tables, headings wrapped in
-      // OMML counted as equations), so the XML ground truth wins when present.
-      if (typeof validTables === 'number' && validTables > 0) {
-        deepData.stats.tableCount = validTables;
-      }
-      if (typeof finalEquationCount === 'number' && finalEquationCount > 0) {
-        // XML display-math count is exact (heading-like OMML and parameter
-        // assignments are excluded upstream) — it wins over any AI/heuristic count.
-        deepData.stats.equationCount = finalEquationCount;
+      // XML GROUND-TRUTH OVERRIDE: the DOCX XML table/equation counts from groundTruth
+      // are exact — layout/metadata tables and parameter assignments are already excluded there.
+      if (groundTruth) {
+        if (typeof groundTruth.tableCount === 'number' && groundTruth.tableCount > 0) {
+          deepData.stats.tableCount = groundTruth.tableCount;
+        }
+        if (typeof groundTruth.equationCount === 'number' && groundTruth.equationCount > 0) {
+          deepData.stats.equationCount = groundTruth.equationCount;
+        }
+        if (typeof groundTruth.chartCount === 'number' && groundTruth.chartCount > 0) {
+          deepData.stats.chartCount = Math.max(deepData.stats.chartCount || 0, groundTruth.chartCount);
+        }
       }
       // --- END AI-ASSISTED STRUCTURAL VERIFICATION ---
       // ALWAYS sync derived collections after structural verification and ground-truth overrides

@@ -95,7 +95,7 @@ function balancedWindow(text: string): string {
   return `${text.substring(0, WINDOW_HEAD)}\n\n[... middle of the document elided for context budget ...]\n\n${text.substring(text.length - WINDOW_TAIL)}`;
 }
 
-const CANONICAL_L1_REGEX = /^(?:(?:\d+|[ivxlcdm]+)[\.:]?\s+)?(?:introduction|literature\s+review|literature\s+survey|review\s+of\s+literature|survey\s+of\s+literature|related\s+work|related\s+works|background|methodology|methods|materials\s+and\s+methods|system\s+design|system\s+architecture|implementation|experimental\s+setup|experiments?|results|discussion|results\s+and\s+discussion|conclusion|conclusions|future\s+work|acknowledgements?)\b/i;
+const CANONICAL_L1_REGEX = /^(?:(?:\d+|[ivxlcdm]+)[\.:]?\s+)?(?:introduction|literature\s+review|literature\s+survey|review\s+of\s+literature|survey\s+of\s+literature|related\s+work|related\s+works|background|methodology|methods|materials\s+and\s+methods|experiments?|results|discussion|results\s+and\s+discussion|conclusion|conclusions|acknowledgements?)\b/i;
 
 function isTopLevelSectionHeading(node: any, hasAnyL1: boolean): boolean {
   if (node.type !== 'heading' || !node.text) return false;
@@ -929,18 +929,41 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
   const nodeToFloatPath = new Map<any, string>();
   let figCnt = 0, tabCnt = 0, algoCnt = 0;
   for (const n of body) {
-    if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') {
+    if (n.type === 'figure' || n.type === 'image' || n.type === 'chart' || n.type === 'figure-group') {
       figCnt++;
       const p = `floats/figures/${figCnt}.tex`;
-      if (floatsRes.files.some(f => f.path === p)) nodeToFloatPath.set(n, p);
+      if (floatsRes.files.some(f => f.path === p)) {
+        nodeToFloatPath.set(n, p);
+      } else {
+        const assembledNode = n.type === 'figure-group'
+          ? LatexAssembler.assembleFigureGroup(n, mathBlocks)
+          : LatexAssembler.assembleNode(n, mathBlocks);
+        floatsRes.files.push({ path: p, content: assembledNode });
+        nodeToFloatPath.set(n, p);
+        console.log(`[AI-MODULAR] Backfilled missing figure float: ${p}`);
+      }
     } else if (n.type === 'table') {
       tabCnt++;
       const p = `floats/tables/${tabCnt}.tex`;
-      if (floatsRes.files.some(f => f.path === p)) nodeToFloatPath.set(n, p);
+      if (floatsRes.files.some(f => f.path === p)) {
+        nodeToFloatPath.set(n, p);
+      } else {
+        const assembledNode = LatexAssembler.assembleTable(n, mathBlocks);
+        floatsRes.files.push({ path: p, content: assembledNode });
+        nodeToFloatPath.set(n, p);
+        console.log(`[AI-MODULAR] Backfilled missing table float: ${p}`);
+      }
     } else if (n.type === 'algorithm') {
       algoCnt++;
       const p = `floats/algorithms/${algoCnt}.tex`;
-      if (floatsRes.files.some(f => f.path === p)) nodeToFloatPath.set(n, p);
+      if (floatsRes.files.some(f => f.path === p)) {
+        nodeToFloatPath.set(n, p);
+      } else {
+        const assembledNode = LatexAssembler.assembleAlgorithm(n, mathBlocks);
+        floatsRes.files.push({ path: p, content: assembledNode });
+        nodeToFloatPath.set(n, p);
+        console.log(`[AI-MODULAR] Backfilled missing algorithm float: ${p}`);
+      }
     }
   }
 

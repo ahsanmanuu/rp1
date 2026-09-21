@@ -1308,14 +1308,9 @@ function UploadContent() {
                     // universally without requiring a re-upload.
                     const validRefs = refs.filter((r: any) => {
                       const t = (typeof r === 'string' ? r : '').trim();
-                      if (t.length < 10) return false;
-                      const hasYear      = /\b(19|20)\d{2}\b/.test(t);
-                      const hasQuotes    = /["""\u201c\u201d'`']/.test(t);
-                      const hasRefKw     = /\b(?:vol|volume|no|issue|pp|pages|page|press|university|dept|department|journal|proceedings|proc|conf|conference|transactions|trans|ieee|acm|elsevier|springer|doi|https?|url|www|unpublished|submitted|in\s+press)\b/i.test(t);
-                      const hasNumPrefix = /^\[?\d+\]?[\.\-\t\s]+/.test(t);
-                      if (!hasYear && !hasQuotes && !hasRefKw && !hasNumPrefix) return false;
+                      if (t.length < 5) return false;
                       if (/^references?\s+(?:within|in\s+the|at\s+the|inside|outside)\b/i.test(t)) return false;
-                      if (/\b(?:write|ensure|use|should|must|following|include|format|align|enclose|cite|citation\s+number)\b/i.test(t) && !hasNumPrefix) return false;
+                      if (/\b(?:write|ensure|use|should|must|following|include|format|align|enclose|cite|citation\s+number)\b/i.test(t) && !/^\[?\d+\]?/.test(t)) return false;
                       return true;
                     });
 
@@ -1329,18 +1324,17 @@ function UploadContent() {
                     const hasRefsArray = Array.isArray(structured.references);
                     // ─── AI-VERIFIED COUNTS ──────────────────────────────────────────
                     // When the AI structure pass ran (aiStructure.components), its exact
-                    // component counts are authoritative — the heuristic body walk may
-                    // have undercounted elements the AI verified from the full evidence.
-                    // Fall back to the body walk / stored snapshot per-metric.
+                    // component counts are authoritative. Otherwise take the maximum of
+                    // verified ground truth, body walk, and cached stats to avoid drops.
                     const aiComp = structured?.aiStructure?.components || null;
                     const aiCount = (key: string) => (typeof aiComp?.[key] === 'number' ? aiComp[key] : null);
                     return {
                       wordCount:       projectData.wordCount       || s.wordCount       || 0,
                       charCount:       projectData.charCount       || s.charCount       || 0,
-                      imageCount:      aiCount('figures') ?? (hasBody && bodyFigureCount > 0 ? bodyFigureCount : (s.imageCount ?? projectData.imageCount ?? 0)),
-                      chartCount:      aiCount('charts')  ?? (hasBody && bodyChartCount > 0 ? bodyChartCount : (s.chartCount ?? 0)),
-                      tableCount:      aiCount('tables')  ?? (hasBody && bodyTableCount > 0 ? bodyTableCount : (s.tableCount ?? 0)),
-                      equationCount:   aiCount('equations') ?? (hasBody && bodyEquationCount > 0 ? bodyEquationCount : (s.equationCount ?? 0)),
+                      imageCount:      aiCount('figures') ?? Math.max(bodyFigureCount, s.imageCount ?? 0, projectData.imageCount ?? 0),
+                      chartCount:      aiCount('charts')  ?? Math.max(bodyChartCount, s.chartCount ?? 0, projectData.chartCount ?? 0),
+                      tableCount:      aiCount('tables')  ?? Math.max(bodyTableCount, s.tableCount ?? 0, projectData.tableCount ?? 0),
+                      equationCount:   aiCount('equations') ?? Math.max(bodyEquationCount, s.equationCount ?? 0, projectData.equationCount ?? 0),
                       // Citations: use the server-computed count (from FULL rawHtml
                       // before any PB truncation) as the primary source. Live
                       // re-computation from stored rawHtml is only a secondary
@@ -1348,7 +1342,7 @@ function UploadContent() {
                       // to fit PB limits, yielding a false 0. Take the MAX of
                       // stored count and live count to ensure no undercounting.
                       citationCount:   (() => {
-                        const storedCount = aiCount('citations') ?? (s.citationCount || projectData.citationCount || 0);
+                        const storedCount = aiCount('citations') ?? Math.max(s.citationCount || 0, projectData.citationCount || 0);
                         if (typeof structured?.rawHtml === 'string' && structured.rawHtml.length > 0) {
                           const liveCount = countCitationsFromHtml(structured.rawHtml);
                           return Math.max(storedCount, liveCount);
@@ -1357,8 +1351,8 @@ function UploadContent() {
                       })(),
                       // References: the refs array is authoritative when present
                       // (AI replaces it wholesale for corrected docs)
-                      referenceCount:  hasRefsArray ? validRefs.length : (aiCount('references') ?? (s.referenceCount || projectData.referenceCount || 0)),
-                      pseudocodeCount: aiCount('pseudocode') ?? (hasBody && bodyPseudoCount > 0 ? bodyPseudoCount : (s.pseudocodeCount ?? 0)),
+                      referenceCount:  hasRefsArray && validRefs.length > 0 ? validRefs.length : (aiCount('references') ?? (s.referenceCount || projectData.referenceCount || 0)),
+                      pseudocodeCount: aiCount('pseudocode') ?? Math.max(bodyPseudoCount, s.pseudocodeCount ?? 0, projectData.pseudocodeCount ?? 0),
                     };
                   })()}
                   metadata={{

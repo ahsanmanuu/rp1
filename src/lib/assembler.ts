@@ -1308,6 +1308,13 @@ export class LatexAssembler {
     const aiOverride = (node as any)._aiLatex;
     if (typeof aiOverride === 'string' && aiOverride.trim().length > 0) return aiOverride;
     let html = node.html || '';
+    if (!html && (node as any).headers && (node as any).rows) {
+      const headers = (node as any).headers as string[];
+      const rows = (node as any).rows as string[][];
+      html = '<table><thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>' +
+        rows.map(r => '<tr>' + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') +
+        '</tbody></table>';
+    }
     if (!html && node.text) {
       const lines = node.text.split('\n').map((l: string) => l.trim()).filter(Boolean);
       if (lines.length > 0) {
@@ -1409,8 +1416,15 @@ export class LatexAssembler {
       });
     });
 
-    // Column spec: X for long text, c for short
-    const specsList = colMaxLen.map(len => len > 15 ? '>{\\raggedright\\arraybackslash}X' : 'c');
+    // Balanced column spec:
+    // If a column has long prose (> 25 chars), allocate >{\raggedright\arraybackslash}X.
+    // If the table has few columns (<= 3) and text > 15, allocate X.
+    // Keep data/numerical columns (<= 15 chars) as 'c' so tabularx doesn't compress data into narrow slivers.
+    const specsList = colMaxLen.map((len) => {
+      if (len > 25) return '>{\\raggedright\\arraybackslash}X';
+      if (len > 15 && totalGridCols <= 3) return '>{\\raggedright\\arraybackslash}X';
+      return 'c';
+    });
     // ALWAYS ensure at least one X column in tabularx tables so \linewidth constraint is enforced
     if (!specsList.includes('>{\\raggedright\\arraybackslash}X')) {
       let maxLenIdx = 0;
@@ -1509,7 +1523,7 @@ export class LatexAssembler {
 
     // Force tabularx line-wrapping for all multi-column or text-bearing tables to prevent right-margin overflow
     const isTwoColMode = (node as any).twoColumn === true;
-    const twoColWide = isTwoColMode && (totalGridCols > 2 || colMaxLen.some(l => l > 30));
+    const twoColWide = isTwoColMode && (totalGridCols >= 3 || colMaxLen.some(l => l > 25));
     const tableEnv = twoColWide ? 'table*' : 'table';
     const tablePlacement = twoColWide ? '[!htbp]' : (isTwoColMode ? '[!htbp]' : '[H]');
     const tabularEnv = 'tabularx';
@@ -1522,7 +1536,7 @@ export class LatexAssembler {
     const fontSizeCmd = (isTwoColMode && totalGridCols >= 4) ? '{\\footnotesize\n' : ((isTwoColMode && totalGridCols >= 3) ? '{\\small\n' : (totalGridCols >= 6 ? '{\\small\n' : ''));
     const fontSizeEnd = fontSizeCmd ? '\n}' : '';
 
-    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n${captionLine}\\label{${labelKey}}\n${colSepCmd}${fontSizeCmd}\\renewcommand{\\arraystretch}{1.2}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}${fontSizeEnd}\n\\end{${tableEnv}}\n\\FloatBarrier\n`;
+    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n${captionLine}\\label{${labelKey}}\n${colSepCmd}${fontSizeCmd}\\renewcommand{\\arraystretch}{1.2}\n\\begin{adjustbox}{max width=${targetWidth}}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}\n\\end{adjustbox}${fontSizeEnd}\n\\end{${tableEnv}}\n\\FloatBarrier\n`;
   }
 
 
@@ -2825,6 +2839,9 @@ export class ModularLatexAssembler {
     let aiChartIdx = 0;
     let aiTableIdx = 0;
     let aiAlgoIdx = 0;
+    let modularFigIdx = 0;
+    let modularTabIdx = 0;
+    let modularAlgoIdx = 0;
     let frontMatterDone = false; 
     const headerInputs = new Set<string>(); 
     // (FORCED_L1_ASSEMBLER and isCanonicalSectionL1 are declared above before isAcademicPreambleOrAuthor)
@@ -2963,7 +2980,8 @@ export class ModularLatexAssembler {
                 return;
             }
 
-            const isLevel1 = (node.level === 1) || isCanonicalSectionL1(normHeading);
+            // Prevent child subsections (level 2, 3) from being erroneously promoted to Level 1 section files
+            const isLevel1 = (node.level === 1) || (!node.level && isCanonicalSectionL1(normHeading));
             if (isLevel1) {
                 flushSection();
                 currentSectionTitle = text || "section";
@@ -3010,19 +3028,27 @@ export class ModularLatexAssembler {
 
         currentSectionNodes.push(node);
 
-        // Save individual components to dedicated folders (grouped for UI)
+        // Save individual components to dedicated folders (grouped for UI and modular generation)
         if (node.type === 'table') {
+            modularTabIdx++;
             const content = LatexAssembler.assembleTable(node, mathBlocks);
             files[`tables/table_${nodeIdx}.tex`] = "% Required Packages: \\usepackage{booktabs}, \\usepackage{multirow}, \\usepackage{tabularx}\n\n" + content;
+            files[`floats/tables/${modularTabIdx}.tex`] = content;
         } else if (node.type === 'figure' || node.type === 'image' || node.type === 'chart') {
+            modularFigIdx++;
             const content = LatexAssembler.assembleNode({ ...node, labelIdx: nodeIdx } as any, mathBlocks);
             files[`figures/figure_${nodeIdx}.tex`] = "% Required Packages: \\usepackage{graphicx}, \\usepackage{float}\n\n" + content;
+            files[`floats/figures/${modularFigIdx}.tex`] = content;
         } else if (node.type === 'figure-group') {
+            modularFigIdx++;
             const content = LatexAssembler.assembleFigureGroup(node as any, mathBlocks);
             files[`figures/figure_${nodeIdx}.tex`] = "% Required Packages: \\usepackage{graphicx}, \\usepackage{float}\n\n" + content;
+            files[`floats/figures/${modularFigIdx}.tex`] = content;
         } else if (node.type === 'algorithm') {
+            modularAlgoIdx++;
             const content = LatexAssembler.assembleAlgorithm(node, mathBlocks);
             files[`algorithms/algo_${nodeIdx}.tex`] = "% Required Packages: \\usepackage{algorithm}, \\usepackage{algpseudocode}\n\n" + content;
+            files[`floats/algorithms/${modularAlgoIdx}.tex`] = content;
         } else if (node.type === 'equation') {
             const content = LatexAssembler.assembleNode(node as any, mathBlocks);
             if (content && content.trim().length > 0) {
