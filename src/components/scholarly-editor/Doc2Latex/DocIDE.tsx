@@ -1742,7 +1742,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
         />
 
          <div style={{ 
-           display: 'flex', flex: 1, overflow: 'hidden', padding: '0.75rem', gap: '0.25rem',
+           display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', padding: '0.75rem', gap: '0.25rem',
            background: 'var(--bg-secondary)', borderRadius: '24px', margin: '0.5rem', border: '1px solid var(--border)'
          }}>
            
@@ -1771,13 +1771,13 @@ export default function DocIDE({ projectId }: { projectId: string }) {
             />
  
             {/* NEW WORKSPACE WRAPPER */}
-           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, gap: '0.25rem' }}>
+           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', gap: '0.25rem' }}>
              
-             <div style={{ display: 'flex', flex: 1, minHeight: 0, gap: '0.25rem' }}>
+             <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', gap: '0.25rem' }}>
                <motion.main 
                  initial={{ y: 20, opacity: 0 }}
                  animate={{ y: 0, opacity: 1 }}
-                 style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid var(--border)', overflow: 'hidden', boxShadow: '0 8px 30px rgba(0,0,0,0.15)' }}
+                 style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, height: '100%', background: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid var(--border)', overflow: 'hidden', boxShadow: '0 8px 30px rgba(0,0,0,0.15)' }}
                >
                  <div style={{ 
                      height: '42px', 
@@ -1821,8 +1821,8 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                       ))}
                   </div>
 
-                  <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: showAiChat ? 'row' : 'column', minWidth: 0, background: EDITOR_MOODS[editorMood].bg }}>
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                  <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: showAiChat ? 'row' : 'column', minWidth: 0, minHeight: 0, height: 'calc(100% - 42px)', overflow: 'hidden', background: EDITOR_MOODS[editorMood].bg }}>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, height: '100%', overflow: 'hidden' }}>
                     <EditorLoadingOverlay
                       visible={isSyncing}
                       label="LOADING LATEX MANUSCRIPT"
@@ -1968,7 +1968,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                          </div>
                       </div>
                     ) : (
-                      <div style={{ flex: 1, position: 'relative', height: '100%', width: '100%', minWidth: 0 }}>
+                      <div style={{ flex: 1, position: 'relative', height: '100%', width: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
                         <MonacoEditor 
                            key={activeFile}
                            path={activeFile}

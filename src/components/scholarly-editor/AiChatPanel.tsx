@@ -59,6 +59,13 @@ export function AiChatPanel({
     }
   }, [input]);
 
+  // Auto-scroll chat messages container on new messages
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [messages.length]);
+
   const handleCopy = useCallback(async (content: string, blockKey?: string) => {
     try {
       if (navigator?.clipboard?.writeText) {
@@ -272,7 +279,14 @@ export function AiChatPanel({
   const renderMessage = (m: ChatMessage, i: number) => {
     const isAssistant = m.role === 'assistant';
     const parsedJson = isAssistant ? parseMessageJson(m.content) : null;
-    const isCollapsed = isAssistant && collapsedMessages[i];
+    const isEditing = editingIndex === i;
+    const isStreamingActive = sending && isAssistant && i === messages.length - 1;
+    // Auto-collapse both user input messages and AI responses by default
+    const isCollapsed = isEditing
+      ? false
+      : isStreamingActive
+        ? false
+        : (collapsedMessages[i] !== undefined ? collapsedMessages[i] : true);
 
     return (
       <motion.div
@@ -280,8 +294,11 @@ export function AiChatPanel({
         initial={{ opacity: 0, y: 8, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.2 }}
+        onClick={() => {
+          if (isCollapsed) toggleCollapse(i);
+        }}
         style={{
-          padding: '0.85rem 1rem',
+          padding: isCollapsed ? '0.65rem 0.85rem' : '0.85rem 1rem',
           borderRadius: isAssistant ? '14px 14px 14px 4px' : '14px 14px 4px 14px',
           background: isAssistant
             ? '#ffffff'
@@ -297,21 +314,34 @@ export function AiChatPanel({
             ? '0 4px 16px rgba(0, 0, 0, 0.06)'
             : '0 2px 10px rgba(99, 102, 241, 0.1)',
           position: 'relative',
-          backdropFilter: 'blur(20px)'
+          backdropFilter: 'blur(20px)',
+          cursor: isCollapsed ? 'pointer' : 'default',
+          transition: 'all 0.2s ease'
         }}
+        title={isCollapsed ? 'Click to expand message' : undefined}
       >
         {/* Header line for message */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '0.45rem',
-          fontSize: '0.65rem',
-          color: isAssistant ? '#4338ca' : '#3730a3',
-          fontWeight: 700,
-          fontFamily: 'var(--font-headline)',
-          letterSpacing: '0.04em'
-        }}>
+        <div
+          onClick={(e) => {
+            if (!isEditing) {
+              e.stopPropagation();
+              toggleCollapse(i);
+            }
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: isCollapsed ? '0.25rem' : '0.45rem',
+            fontSize: '0.65rem',
+            color: isAssistant ? '#4338ca' : '#3730a3',
+            fontWeight: 700,
+            fontFamily: 'var(--font-headline)',
+            letterSpacing: '0.04em',
+            cursor: isEditing ? 'default' : 'pointer',
+            userSelect: 'none'
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             {isAssistant ? (
               <>
@@ -328,28 +358,38 @@ export function AiChatPanel({
               <span>YOU</span>
             )}
           </div>
-          {isAssistant && (
+          {!isEditing && (
             <button
-              onClick={() => toggleCollapse(i)}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleCollapse(i);
+              }}
               style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#64748b',
+                background: 'rgba(99, 102, 241, 0.08)',
+                border: '1px solid rgba(99, 102, 241, 0.2)',
+                borderRadius: '4px',
+                padding: '0.15rem 0.4rem',
+                color: '#4f46e5',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.2rem',
-                fontSize: '0.65rem'
+                fontSize: '0.62rem',
+                fontWeight: 600,
+                transition: 'all 0.15s'
               }}
             >
-              {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+              {isCollapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
               {isCollapsed ? 'Expand' : 'Collapse'}
             </button>
           )}
         </div>
 
-        {editingIndex === i ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        {isEditing ? (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
+          >
             <textarea
               value={editText}
               onChange={e => setEditText(e.target.value)}
@@ -360,81 +400,119 @@ export function AiChatPanel({
               }}
             />
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.4rem' }}>
-              <button onClick={cancelEdit} style={{
+              <button onClick={(e) => { e.stopPropagation(); cancelEdit(); }} style={{
                 background: 'rgba(0,0,0,0.06)', color: '#475569', border: 'none',
                 borderRadius: '5px', padding: '0.25rem 0.6rem', fontSize: '0.65rem', cursor: 'pointer'
               }}>Cancel</button>
-              <button onClick={() => saveEdit(i)} style={{
+              <button onClick={(e) => { e.stopPropagation(); saveEdit(i); }} style={{
                 background: 'var(--accent-primary)', color: '#fff', border: 'none',
                 borderRadius: '5px', padding: '0.25rem 0.6rem', fontSize: '0.65rem', cursor: 'pointer', fontWeight: 600
               }}>Save</button>
             </div>
           </div>
-        ) : (
-          <>
-            {!isCollapsed && (
-              <div>
-                {parsedJson ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '0.8rem', color: '#0f172a' }}>
-                      {parsedJson.explanation || m.content}
-                    </div>
-
-                    {parsedJson.edits && parsedJson.edits.length > 0 && (
-                      <div style={{
-                        background: '#f8fafc',
-                        padding: '0.65rem 0.8rem',
-                        borderRadius: '10px',
-                        border: '1px solid rgba(99, 102, 241, 0.3)',
-                        fontSize: '0.72rem',
-                        boxShadow: '0 2px 10px rgba(0,0,0,0.06)'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.35rem' }}>
-                          <Terminal size={13} style={{ color: 'var(--accent-primary)' }} />
-                          <span style={{ fontWeight: 800, color: '#0f172a', letterSpacing: '0.04em' }}>
-                            PROPOSED WORKSPACE CHANGES ({parsedJson.edits.length}):
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                          {parsedJson.edits.map((e: any, idx: number) => (
-                            <div key={idx} style={{
-                              display: 'flex', alignItems: 'center', gap: '0.4rem',
-                              padding: '0.25rem 0.45rem', borderRadius: '6px',
-                              background: '#ffffff', border: '1px solid rgba(0,0,0,0.08)'
-                            }}>
-                              <span style={{
-                                padding: '1px 5px', borderRadius: '4px',
-                                fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase',
-                                background: e.type === 'delete' ? 'rgba(239, 68, 68, 0.15)' : e.type === 'replace' ? 'rgba(234, 179, 8, 0.15)' : 'rgba(34, 197, 94, 0.15)',
-                                color: e.type === 'delete' ? '#dc2626' : e.type === 'replace' ? '#b45309' : '#16a34a'
-                              }}>
-                                {e.type}
-                              </span>
-                              <code style={{ color: '#4338ca', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}>
-                                {e.path}
-                              </code>
-                              {e.target && (
-                                <span style={{ opacity: 0.8, fontSize: '0.65rem', color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  target: &ldquo;{e.target.substring(0, 24)}...&rdquo;
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  renderFormattedContent(m.content, i)
-                )}
+        ) : isCollapsed ? (
+          /* Auto-collapsed state: Preview text snippet */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <div style={{
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              fontSize: '0.76rem',
+              lineHeight: 1.45,
+              color: isAssistant ? '#334155' : '#1e3a8a',
+              opacity: 0.9,
+              wordBreak: 'break-word'
+            }}>
+              {isAssistant
+                ? (parsedJson?.explanation || (typeof m.content === 'string' ? m.content.replace(/```[\s\S]*?```/g, '[Code snippet]').trim() : ''))
+                : m.content
+              }
+            </div>
+            {isAssistant && parsedJson?.edits && parsedJson.edits.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.15rem' }}>
+                <span style={{
+                  fontSize: '0.6rem',
+                  fontWeight: 700,
+                  color: '#4338ca',
+                  background: 'rgba(99, 102, 241, 0.1)',
+                  padding: '1px 6px',
+                  borderRadius: '4px',
+                  border: '1px solid rgba(99, 102, 241, 0.2)'
+                }}>
+                  {parsedJson.edits.length} file update{parsedJson.edits.length > 1 ? 's' : ''} available
+                </span>
               </div>
             )}
+          </div>
+        ) : (
+          /* Expanded state: Full message with controls */
+          <>
+            <div>
+              {parsedJson ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '0.8rem', color: '#0f172a' }}>
+                    {parsedJson.explanation || m.content}
+                  </div>
+
+                  {parsedJson.edits && parsedJson.edits.length > 0 && (
+                    <div style={{
+                      background: '#f8fafc',
+                      padding: '0.65rem 0.8rem',
+                      borderRadius: '10px',
+                      border: '1px solid rgba(99, 102, 241, 0.3)',
+                      fontSize: '0.72rem',
+                      boxShadow: '0 2px 10px rgba(0,0,0,0.06)'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.35rem' }}>
+                        <Terminal size={13} style={{ color: 'var(--accent-primary)' }} />
+                        <span style={{ fontWeight: 800, color: '#0f172a', letterSpacing: '0.04em' }}>
+                          PROPOSED WORKSPACE CHANGES ({parsedJson.edits.length}):
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                        {parsedJson.edits.map((e: any, idx: number) => (
+                          <div key={idx} style={{
+                            display: 'flex', alignItems: 'center', gap: '0.4rem',
+                            padding: '0.25rem 0.45rem', borderRadius: '6px',
+                            background: '#ffffff', border: '1px solid rgba(0,0,0,0.08)'
+                          }}>
+                            <span style={{
+                              padding: '1px 5px', borderRadius: '4px',
+                              fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase',
+                              background: e.type === 'delete' ? 'rgba(239, 68, 68, 0.15)' : e.type === 'replace' ? 'rgba(234, 179, 8, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+                              color: e.type === 'delete' ? '#dc2626' : e.type === 'replace' ? '#b45309' : '#16a34a'
+                            }}>
+                              {e.type}
+                            </span>
+                            <code style={{ color: '#4338ca', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}>
+                              {e.path}
+                            </code>
+                            {e.target && (
+                              <span style={{ opacity: 0.8, fontSize: '0.65rem', color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                target: &ldquo;{e.target.substring(0, 24)}...&rdquo;
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                renderFormattedContent(m.content, i)
+              )}
+            </div>
 
             {/* Action buttons for assistant responses */}
-            {isAssistant && !isCollapsed && (
+            {isAssistant && (
               <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.65rem' }}>
                 <button
-                  onClick={() => handleApply(i, m.content)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleApply(i, m.content);
+                  }}
                   style={{
                     background: messageStates[i] === 'applied'
                       ? 'rgba(34, 197, 94, 0.25)'
@@ -477,16 +555,25 @@ export function AiChatPanel({
               display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.45rem',
               opacity: 0.6, transition: 'opacity 0.2s'
             }} className="msg-controls">
-              <button onClick={() => handleCopy(m.content)} title="Copy Message"
-                style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', padding: '2px' }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleCopy(m.content); }}
+                title="Copy Message"
+                style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', padding: '2px' }}
+              >
                 <Copy size={12} />
               </button>
-              <button onClick={() => startEdit(i, m.content)} title="Edit Message"
-                style={{ background: 'transparent', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', display: 'flex', padding: '2px' }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); startEdit(i, m.content); }}
+                title="Edit Message"
+                style={{ background: 'transparent', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', display: 'flex', padding: '2px' }}
+              >
                 <Pencil size={12} />
               </button>
-              <button onClick={() => deleteMessage(i)} title="Delete Message"
-                style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', padding: '2px' }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); deleteMessage(i); }}
+                title="Delete Message"
+                style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', padding: '2px' }}
+              >
                 <Trash2 size={12} />
               </button>
             </div>
@@ -508,6 +595,9 @@ export function AiChatPanel({
             borderLeft: '1px solid rgba(0,0,0,0.1)',
             display: 'flex',
             flexDirection: 'column',
+            height: '100%',
+            maxHeight: '100%',
+            minHeight: 0,
             background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
             backdropFilter: 'blur(30px)',
             fontFamily: 'var(--font-headline)',
@@ -644,6 +734,8 @@ export function AiChatPanel({
             className="custom-scroll"
             style={{
               flex: 1,
+              minHeight: 0,
+              maxHeight: '100%',
               overflowY: 'auto',
               padding: '0.85rem',
               display: 'flex',

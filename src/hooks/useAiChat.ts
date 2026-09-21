@@ -201,7 +201,10 @@ export function useAiChat({ projectId, storageKey, apiEndpoint, buildContext }: 
   }, []);
 
   const toggleCollapse = useCallback((idx: number) => {
-    setCollapsedMessages(prev => ({ ...prev, [idx]: !prev[idx] }));
+    setCollapsedMessages(prev => {
+      const current = prev[idx] !== undefined ? prev[idx] : true;
+      return { ...prev, [idx]: !current };
+    });
   }, []);
 
   const setMessageState = useCallback((idx: number, state: 'applied' | 'rejected' | 'none') => {

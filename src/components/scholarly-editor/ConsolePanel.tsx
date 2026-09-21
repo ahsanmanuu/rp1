@@ -139,7 +139,7 @@ export default function ConsolePanel({
   };
 
   return (
-    <div style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-primary)', position: 'relative', width: '100%', zIndex: 50 }}>
+    <div style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-primary)', position: 'relative', width: '100%', flexShrink: 0, zIndex: 50 }}>
       {/* Resizer Handle */}
       {isOpen && (
         <div 
