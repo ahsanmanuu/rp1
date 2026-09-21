@@ -345,7 +345,7 @@ export class DeepDocumentParser {
       let lastPdfHeadingLevel = 0;
       for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
-          if (/^(?:\d+\.?\s*)?(?:REFERENCES|BIBLIOGRAPHY|WORKS CITED)\.?\s*$/i.test(line) && i > lines.length * 0.4) {
+          if (/^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:references?|bibliography|works\s+cited|literature\s+cited|references\s*(?:and|&)\s*notes|reference\s+list)(?:\s*[:.\-–—]|\s*<[^>]*>)*$/i.test(line.trim()) && i > lines.length * 0.4) {
               inRefs = true; continue;
           }          if (inRefs) {
               const isPostRef = /^(?:\d+\.?\s*)?(?:acknowledgments?|declarations?|ethics\s+(?:approval|statement)|conflict\s+of\s+interest|competing\s+interests|funding|data\s+availability|authors?\s+contributions?|supplementary|appendix|appendices|supporting|biography|author\s+biography|about\s+the\s+author)s?[.:]?\s*$/i.test(line.trim());

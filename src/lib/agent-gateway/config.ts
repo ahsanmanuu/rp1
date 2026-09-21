@@ -19,7 +19,7 @@ const PROVIDERS: ProviderConfig[] = [
     baseUrl: 'https://openrouter.ai/api/v1',
     models: [
       'google/gemini-2.0-flash-001',
-      'google/gemini-2.5-flash-001',
+      'google/gemini-flash-1.5',
       'google/gemini-2.0-flash-lite-001',
       'mistral/mistral-small-3.1-24b-instruct',
     ],

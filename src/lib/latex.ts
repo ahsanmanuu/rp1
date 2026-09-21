@@ -398,13 +398,73 @@ export function extractEnvironment(latex: string, envName: string): { body: stri
   return { body: currentBody, extracted };
 }
 
+export function findBalancedBraces(text: string, startIndex: number): number {
+  let depth = 0;
+  let foundStart = false;
+  for (let i = startIndex; i < text.length; i++) {
+    if (text[i] === '{') { depth++; foundStart = true; }
+    else if (text[i] === '}') { depth--; if (foundStart && depth === 0) return i; }
+  }
+  return -1;
+}
+
+export function replaceCommandContent(text: string, cmdName: string, transform: (arg: string) => string): string {
+  let result = text;
+  const pattern = new RegExp(`\\\\${cmdName}\\*?\\s*\\{`, 'g');
+  let match;
+  while ((match = pattern.exec(result)) !== null) {
+    const startIdx = match.index;
+    const openBrace = result.indexOf('{', startIdx);
+    if (openBrace === -1) break;
+    const closeBrace = findBalancedBraces(result, openBrace);
+    if (closeBrace === -1) {
+      pattern.lastIndex = openBrace + 1;
+      continue;
+    }
+    const inner = result.substring(openBrace + 1, closeBrace);
+    const transformed = `\\${cmdName}{${transform(inner)}}`;
+    result = result.substring(0, startIdx) + transformed + result.substring(closeBrace + 1);
+    pattern.lastIndex = startIdx + transformed.length;
+  }
+  return result;
+}
+
+export function extractCommandArg(text: string, cmdName: string): string | null {
+  const pattern = new RegExp(`\\\\${cmdName}\\*?\\s*(?:\\[[^\\]]*\\])?\\s*\\{`, 'i');
+  const match = pattern.exec(text);
+  if (!match) return null;
+  const startBrace = text.indexOf('{', match.index);
+  if (startBrace === -1) return null;
+  const endBrace = findBalancedBraces(text, startBrace);
+  if (endBrace === -1) return null;
+  return text.substring(startBrace + 1, endBrace);
+}
+
+export function extractAllCommandArgs(text: string, cmdName: string): string[] {
+  const results: string[] = [];
+  const pattern = new RegExp(`\\\\${cmdName}\\*?\\s*(?:\\[[^\\]]*\\])?\\s*\\{`, 'gi');
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    const startBrace = text.indexOf('{', match.index);
+    if (startBrace === -1) break;
+    const endBrace = findBalancedBraces(text, startBrace);
+    if (endBrace === -1) {
+      pattern.lastIndex = startBrace + 1;
+      continue;
+    }
+    results.push(text.substring(startBrace + 1, endBrace));
+    pattern.lastIndex = endBrace + 1;
+  }
+  return results;
+}
+
 function normalizeAcmStructure(pre: string, body: string): { preamble: string, body: string } {
   let patchedPre = pre;
   let patchedBody = body;
 
-  // 1. Repair affiliations in preamble
-  patchedPre = patchedPre.replace(/\\author\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, (_m, c) => `\\author{${repairAcmAffiliation(c)}}`);
-  patchedPre = patchedPre.replace(/\\affiliation\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, (_m, c) => `\\affiliation{${repairAcmAffiliation(c)}}`);
+  // 1. Repair affiliations in preamble safely with balanced-brace parsing (no catastrophic regexes)
+  patchedPre = replaceCommandContent(patchedPre, 'author', repairAcmAffiliation);
+  patchedPre = replaceCommandContent(patchedPre, 'affiliation', repairAcmAffiliation);
 
   // 2. Extract abstract and keywords from body
   const absRes = extractEnvironment(patchedBody, "abstract");
@@ -434,10 +494,11 @@ export function safeReplace(text: any, pattern: RegExp | string, replacement: an
 export function escapeLatexSpecialChars(text: string): string {
   if (!text) return "";
   // Shield math environments, LaTeX commands, and specific scholarly macros
-  const parts = text.split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\$.*?\$|\\begin\{[^}]*\}[\s\S]*?\\end\{[^}]*\}|\\[a-zA-Z]+\*?(?:\s*\[[^\]]*\])?(?:\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})*)/g);
+  // Non-backtracking, bounded token splitting to prevent V8 stack buffer overruns (0xC0000409)
+  const parts = text.split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|(?<!\\)\$[^$\n\r]+?\$|\\begin\{[a-zA-Z*]+\}[\s\S]*?\\end\{[a-zA-Z*]+\}|\\[a-zA-Z]+\*?(?:\s*\[[^\]\n\r]{0,300}\])?(?:\s*\{[^{}\n\r]{0,1000}\}){0,3})/g);
   return parts.map((part, index) => {
     if (index % 2 === 0) {
-      // Only escape in non-shielded parts
+      // Only escape in non-shielded plain text parts
       return part
         .replace(/(?<!\\)&/g, '\\&')
         .replace(/(?<!\\)_/g, '\\_')
@@ -446,16 +507,6 @@ export function escapeLatexSpecialChars(text: string): string {
     }
     return part;
   }).join("");
-}
-
-export function findBalancedBraces(text: string, startIndex: number): number {
-  let depth = 0;
-  let foundStart = false;
-  for (let i = startIndex; i < text.length; i++) {
-    if (text[i] === '{') { depth++; foundStart = true; }
-    else if (text[i] === '}') { depth--; if (foundStart && depth === 0) return i; }
-  }
-  return -1;
 }
 
 export function extractAndRemoveCommand(content: string, commandName: string): { body: string, extracted: string[] } {
@@ -1241,23 +1292,27 @@ export function extractProfessionalMetadata(latex: string): ScholarlyMetadata {
   if (raMatch) meta.runningAuthor = raMatch[1].trim();
   
   // 1. Title
-  const titleMatch = latex.match(/\\title\s*(?:\[[^\]]*\])?\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/i);
-  if (titleMatch) meta.title = titleMatch[1].trim();
+  const titleVal = extractCommandArg(latex, 'title');
+  if (titleVal) meta.title = titleVal.trim();
 
   // 2. Abstract
   const absEnvMatch = latex.match(/\\begin\{abstract\}([\s\S]*?)\\end\{abstract\}/i);
   if (absEnvMatch) {
     meta.abstract = absEnvMatch[1].trim();
   } else {
-    const absCmdMatch = latex.match(/\\abstract\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/i);
-    if (absCmdMatch) meta.abstract = absCmdMatch[1].trim();
+    const absCmdVal = extractCommandArg(latex, 'abstract');
+    if (absCmdVal) meta.abstract = absCmdVal.trim();
   }
 
   // 3. Keywords
-  const kwMatch = latex.match(/\\keywords\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/i) || 
-                  latex.match(/\\begin\{IEEEkeywords\}([\s\S]*?)\\end\{IEEEkeywords\}/i) ||
-                  latex.match(/\\begin\{keyword\}([\s\S]*?)\\end\{keyword\}/i);
-  if (kwMatch) meta.keywords = kwMatch[1].trim();
+  const kwCmdVal = extractCommandArg(latex, 'keywords');
+  const kwEnvMatch = latex.match(/\\begin\{IEEEkeywords\}([\s\S]*?)\\end\{IEEEkeywords\}/i) ||
+                     latex.match(/\\begin\{keyword\}([\s\S]*?)\\end\{keyword\}/i);
+  if (kwCmdVal) {
+    meta.keywords = kwCmdVal.trim();
+  } else if (kwEnvMatch && kwEnvMatch[1]) {
+    meta.keywords = kwEnvMatch[1].trim();
+  }
 
   // 4. Authors & Affiliations (Deep Springer sn-jnl Logic)
   if (latex.includes("\\fnm") || latex.includes("\\sur") || latex.includes("\\affil") || latex.includes("\\affiliation")) {
@@ -1339,32 +1394,41 @@ export function extractProfessionalMetadata(latex: string): ScholarlyMetadata {
       });
     }
   } else if (latex.includes("\\IEEEauthorblock")) {
-    // IEEE LOGIC
-    const blockN = [...latex.matchAll(/\\IEEEauthorblockN\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/gi)];
-    const blockA = [...latex.matchAll(/\\IEEEauthorblockA\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/gi)];
-    blockN.forEach((m, i) => {
-      const emailMatch = blockA[i]?.[1].match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/);
+    // IEEE LOGIC - Safe balanced brace scanner
+    const blockN = extractAllCommandArgs(latex, 'IEEEauthorblockN');
+    const blockA = extractAllCommandArgs(latex, 'IEEEauthorblockA');
+    blockN.forEach((nameContent, i) => {
+      const emailMatch = (blockA[i] || '').match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/);
       meta.authors.push({
-        name: m[1].replace(/\\and/g, "").trim(),
+        name: nameContent.replace(/\\and/g, "").trim(),
         email: emailMatch?.[0] || "",
         affiliationIds: [String(i)]
       });
       if (blockA[i]) {
         meta.affiliations.push({
           id: String(i),
-          organization: blockA[i][1].replace(/\\textit\{([^}]*)\}/g, "$1").trim()
+          organization: blockA[i].replace(/\\textit\{([^}]*)\}/g, "$1").trim()
         });
       }
     });
   } else {
-    // STANDARD / ACM / ELSEVIER LOGIC (Simplified fallback)
-    const authRegex = /\\author\s*(?:\[([^\]]*)\])?\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/gi;
-    let m;
-    while ((m = authRegex.exec(latex)) !== null) {
+    // STANDARD / ACM / ELSEVIER LOGIC - Safe balanced brace scanner
+    const authRegex = /\\author\*?\s*(?:\[([^\]]*)\])?\s*\{/gi;
+    let authMatch;
+    while ((authMatch = authRegex.exec(latex)) !== null) {
+      const startBrace = latex.indexOf('{', authMatch.index);
+      if (startBrace === -1) break;
+      const endBrace = findBalancedBraces(latex, startBrace);
+      if (endBrace === -1) {
+        authRegex.lastIndex = startBrace + 1;
+        continue;
+      }
+      const authorText = latex.substring(startBrace + 1, endBrace).trim();
       meta.authors.push({
-        name: m[2].trim(),
-        affiliationIds: m[1] ? m[1].split(",") : []
+        name: authorText,
+        affiliationIds: authMatch[1] ? authMatch[1].split(",").map((s: string) => s.trim()) : []
       });
+      authRegex.lastIndex = endBrace + 1;
     }
     const emailRegex = /\\email\s*\{([^}]*)\}/gi;
     let em;

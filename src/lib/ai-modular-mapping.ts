@@ -49,11 +49,11 @@ const WINDOW_HEAD = HAS_STRONG_PROVIDER ? 500000 : 120000;
 const WINDOW_TAIL = HAS_STRONG_PROVIDER ? 150000 : 30000;
 const PASS_TIMEOUT_MS = 120_000;
 const RETRY_TIMEOUT_MS = 60_000;
-const MAX_CONCURRENT_AI_CALLS = 4;
+const MAX_CONCURRENT_AI_CALLS = 2;
 const CHUNK_SIZE = 5; // 5 sections per chunk ensures zero truncation
 
 const AI_MODEL_OVERRIDE = process.env.OPENROUTER_API_KEY
-  ? 'google/gemini-2.5-flash-001'
+  ? 'google/gemini-2.0-flash-001'
   : process.env.GEMINI_API_KEY
     ? 'gemini-2.5-flash'
     : null;
@@ -741,7 +741,8 @@ function composeMainTex(
     }
   }
 
-  // Bibliography
+  // Bibliography (Universal: handles thebibliography input, BibTeX files, and verdict reference lists)
+  const hasDocumentRefs = !!(verdict?.references && Array.isArray(verdict.references) && verdict.references.length > 0);
   if (bib) {
     body.push(`\\input{references/bibliography.tex}`);
   } else if (bibFile) {
@@ -749,6 +750,8 @@ function composeMainTex(
     const bstStyle = bstMatch ? bstMatch[1] : (isIeee ? 'IEEEtran' : isAcm ? 'ACM-Reference-Format' : 'plain');
     body.push(`\\bibliographystyle{${bstStyle}}`);
     body.push(`\\bibliography{references/references}`);
+  } else if (hasDocumentRefs) {
+    body.push(`\\input{references/bibliography.tex}`);
   }
   body.push('\\end{document}');
 
@@ -1021,17 +1024,32 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     }
   }
 
+  // Universal in-text citation linking on all AI-generated section files
+  const docRefs = Array.isArray(structured?.references) && structured.references.length > 0
+    ? structured.references
+    : (Array.isArray(verdict?.references) ? verdict.references : []);
+  if (docRefs.length > 0) {
+    const rawRefs = docRefs.map((r: any) => typeof r === 'string' ? r : r?.text || '').filter(Boolean);
+    for (const sf of sectionFiles) {
+      sf.content = LatexAssembler.linkCitationsInLatex(sf.content, rawRefs);
+    }
+  }
+
   // Re-sort section files in numerical order
   sectionFiles.sort((a, b) => a.path.localeCompare(b.path));
 
   const files = [...floatsRes.files, ...sectionFiles, ...metadataRes.files];
   const totalRejected = floatsRes.rejected + metadataRes.rejected + sectionRejected;
 
-  // ── Fail-Safe Metadata Backfill ──
+  // ── Universal Fail-Safe Metadata & Bibliography Backfill ──
   const hasTitle = files.some(f => f.path === 'metadata/title.tex');
   const hasAuthors = files.some(f => f.path === 'metadata/authors.tex');
-  if (!hasTitle || !hasAuthors) {
-    console.warn(`[AI-MODULAR] Missing title or authors file from AI metadata pass. Backfilling deterministically.`);
+  const hasBib = files.some(f => f.path === 'references/bibliography.tex');
+  const hasBibFile = files.some(f => f.path === 'references/references.bib' || f.path === 'references.bib');
+  const docHasReferences = docRefs.length > 0;
+
+  if (!hasTitle || !hasAuthors || (docHasReferences && (!hasBib || !hasBibFile))) {
+    console.warn(`[AI-MODULAR] Backfilling missing frontmatter or bibliography files deterministically.`);
     const det = ModularLatexAssembler.assemble(structured as any, templateId, templateMainTex);
     if (!hasTitle && det.files['metadata/title.tex']) {
       files.push({ path: 'metadata/title.tex', content: det.files['metadata/title.tex'] });
@@ -1044,6 +1062,15 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     }
     if (!files.some(f => f.path === 'metadata/keywords.tex') && det.files['metadata/keywords.tex']) {
       files.push({ path: 'metadata/keywords.tex', content: det.files['metadata/keywords.tex'] });
+    }
+    if (docHasReferences && !hasBib && det.files['references/bibliography.tex']) {
+      files.push({ path: 'references/bibliography.tex', content: det.files['references/bibliography.tex'] });
+      console.log('[AI-MODULAR] Backfilled references/bibliography.tex from deterministic assembler.');
+    }
+    if (docHasReferences && !hasBibFile && det.files['references/references.bib']) {
+      files.push({ path: 'references/references.bib', content: det.files['references/references.bib'] });
+      files.push({ path: 'references.bib', content: det.files['references/references.bib'] });
+      console.log('[AI-MODULAR] Backfilled references/references.bib from deterministic assembler.');
     }
   }
 

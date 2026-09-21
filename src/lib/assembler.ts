@@ -1751,7 +1751,8 @@ export class LatexAssembler {
   // always cite the SURNAME ("(Smith et al., 2021)"), so aliasing only the
   // first word leaves those cites with no bibitem — the "[?]" bug.
   // Extract all potential author surnames from the author segment of a reference string.
-  // Handles "Smith, J.", "John Smith", "A. Vaswani, N. Shazeer", "Doe, J. & Watson, J."
+  // Handles "Smith, J.", "John Smith", "A. Vaswani, N. Shazeer", "Doe, J. & Watson, J.",
+  // hyphenated names ("Stokel-Walker"), particles ("Van Noorden", "von Neumann", "de Silva", "Al-Khowaiter")
   static surnameCandidates(cleanRef: string): string[] {
     const clean = cleanRef.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '').trim();
     // Segment before title (often in quotes or before year/journal)
@@ -1760,52 +1761,229 @@ export class LatexAssembler {
       const lower = w.toLowerCase();
       return w.length >= 2 && !['and', 'et', 'al', 'ed', 'eds', 'the', 'in', 'of', 'vol', 'pp', 'dr', 'prof'].includes(lower);
     });
-    return [...new Set(words)];
+    const expanded = words.flatMap(w => {
+      const raw = w.toLowerCase().replace(/[^\w]/g, '');
+      const parts = w.toLowerCase().split(/[-'\s]+/).map(p => p.replace(/[^\w]/g, '')).filter(Boolean);
+      return [w, raw, ...parts];
+    }).filter(Boolean);
+    return [...new Set(expanded)];
+  }
+
+  /**
+   * Document-agnostic, universal in-text citation linker.
+   * Converts parenthetical author-year citations like "(Cronin, 1984; Garfield, 1979)",
+   * "(Stokel-Walker and Van Noorden, 2023)", or numeric markers "[1, 2]" into LaTeX \cite{...}
+   * keys matching the document's bibliography (ref1, ref2, etc.).
+   * Safely shields existing \cite, \ref, \label, math mode, and unmapped parentheticals.
+   */
+  static linkCitationsInLatex(latex: string, references: string[] = []): string {
+    if (!latex || typeof latex !== 'string') return latex || '';
+    const refs = (references || []).map((r: any) => typeof r === 'string' ? r : r?.text || '').filter(Boolean);
+    if (refs.length === 0) return latex;
+
+    // 1. Shield existing citation and math commands from double-linking or damage
+    const shielded: string[] = [];
+    let s = latex.replace(/\\(?:cite|citep|citet|citeauthor|citeyear|ref|eqref|cref|Cref|label|url|href)(?:\[[^\]]*\])?\{[^}]+\}/g, m => {
+      const ph = `__CMD_SHIELD_${shielded.length}__`;
+      shielded.push(m);
+      return ph;
+    });
+
+    // Also shield display math and inline math
+    s = s.replace(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\$(?:\\\$|[^$])+\$)/g, m => {
+      const ph = `__MATH_SHIELD_${shielded.length}__`;
+      shielded.push(m);
+      return ph;
+    });
+
+    // 2. Build dynamic reference metadata index from current document references
+    const refMeta = refs.map((ref: string, idx: number) => {
+      const yearMatch = String(ref).match(/\b(19|20)\d{2}([a-z])?\b/i);
+      const fullYear = yearMatch ? yearMatch[0].toLowerCase() : '';
+      const baseYear = yearMatch ? (yearMatch[0].match(/\b(19|20)\d{2}\b/) || [])[0] : '';
+      const authors = LatexAssembler.surnameCandidates(String(ref)).flatMap(n => {
+        const raw = n.toLowerCase().replace(/[^\w]/g, '');
+        const parts = n.toLowerCase().split(/[-'\s]+/).map(p => p.replace(/[^\w]/g, '')).filter(Boolean);
+        return [raw, ...parts];
+      });
+      return { key: `ref${idx + 1}`, authors: [...new Set(authors)], year: fullYear, baseYear };
+    }).filter(m => m.authors.length > 0 && (m.year || m.baseYear));
+
+    if (refMeta.length > 0) {
+      const matchRef = (part: string): string | null => {
+        const clean = part.trim();
+        const yearMatch = clean.match(/(?:19|20)\d{2}([a-z])?/i);
+        const citeYear = yearMatch ? yearMatch[0].toLowerCase() : '';
+        const citeBaseYear = yearMatch ? (yearMatch[0].match(/(?:19|20)\d{2}/) || [])[0] : '';
+        if (!citeYear && !citeBaseYear) return null;
+
+        const authorPart = clean.split(/(?:,\s*|\s*)(?:19|20)\d{2}/)[0] || '';
+        const candWords = authorPart
+          .replace(/[^A-Za-z\u00C0-\u017F\s\-']/g, ' ')
+          .split(/\s+/)
+          .filter(w => {
+            const l = w.toLowerCase();
+            return l.length >= 2 && !['and', 'et', 'al', 'the', 'in', 'of', 'by', 'see', 'eg', 'cf'].includes(l);
+          });
+        const candNorms = candWords.flatMap(w => {
+          const raw = w.toLowerCase().replace(/[^\w]/g, '');
+          const parts = w.toLowerCase().split(/[-'\s]+/).map(p => p.replace(/[^\w]/g, '')).filter(Boolean);
+          return [raw, ...parts];
+        });
+
+        // 1. Exact author surname + full year (e.g. 2020a) match
+        if (citeYear) {
+          for (const a of candNorms) {
+            const exactHit = refMeta.find(m => m.year === citeYear && m.authors.includes(a));
+            if (exactHit) return exactHit.key;
+          }
+        }
+
+        // 2. Exact author surname + 4-digit base year match
+        if (citeBaseYear) {
+          for (const a of candNorms) {
+            const baseHit = refMeta.find(m => m.baseYear === citeBaseYear && m.authors.includes(a));
+            if (baseHit) return baseHit.key;
+          }
+        }
+
+        // 3. Single reference fallback by author surname (handles minor year drift in manuscripts)
+        for (const a of candNorms) {
+          const authorHits = refMeta.filter(m => m.authors.includes(a));
+          if (authorHits.length === 1) return authorHits[0].key;
+        }
+        return null;
+      };
+
+      // Universal regex for parenthetical author-year citations:
+      // Matches "(Author, Year)", "(Author1, Year1; Author2, Year2)", "(Author et al., Year)", "(e.g., Author, Year)"
+      const rxParenthetical = /\(([A-Za-z\u00C0-\u017F][A-Za-z\u00C0-\u017F\s\-'.,&]+?(?:,\s*|\s*)(?:19|20)\d{2}(?:[a-z])?(?:[;,]\s*[A-Za-z\u00C0-\u017F][A-Za-z\u00C0-\u017F\s\-'.,&]+?(?:,\s*|\s*)(?:19|20)\d{2}(?:[a-z])?)*)\)/g;
+
+      s = s.replace(rxParenthetical, (match: string, inner: string) => {
+        const prefixMatch = inner.match(/^(e\.?g\.?,?|see(?:\s+also)?|cf\.?|for\s+example,?)\s+/i);
+        const prefix = prefixMatch ? prefixMatch[0] : '';
+        const citeBody = prefix ? inner.slice(prefix.length) : inner;
+
+        const parts = citeBody.split(/(?:;\s*|(?<=\b(?:19|20)\d{2}[a-z]?)\s*,\s*)/).map((p: string) => p.trim()).filter(Boolean);
+        const resolved = parts.map((p: string) => matchRef(p));
+        // If ANY citation in this parenthetical group cannot be identified with a reference, preserve original text
+        if (resolved.some((r: string | null) => r === null)) return match;
+        const unique = [...new Set(resolved as string[])];
+        if (prefix) {
+          return `(${prefix}\\cite{${unique.join(',')}})`;
+        }
+        return `\\cite{${unique.join(',')}}`;
+      });
+
+      // Narrative citations: "Smith et al. (2020)", "Knuth (1984)", "Vaswani et al. (2017)"
+      const rxNarrative = /\b([A-Za-z\u00C0-\u017F][A-Za-z\u00C0-\u017F\-']*(?:\s+et\s+al\.?|\s+(?:and|&)\s+[A-Za-z\u00C0-\u017F][A-Za-z\u00C0-\u017F\-']*)?)\s*\(\s*((?:19|20)\d{2}[a-z]?)\s*\)/g;
+      s = s.replace(rxNarrative, (match, authorName, yearStr) => {
+        const hitKey = matchRef(`${authorName}, ${yearStr}`);
+        if (hitKey) {
+          return `${authorName}~\\cite{${hitKey}}`;
+        }
+        return match;
+      });
+    }
+
+    // 3. Convert superscript numeric citations: \textsuperscript{1}, \textsuperscript{[1]}, \textsuperscript{1,2}
+    s = s.replace(/\\textsuperscript\s*\{\s*\[?\s*(\d{1,3}(?:\s*[,;–\-]\s*\d{1,3})*)\s*\]?\s*\}/gi, (match, inner) => {
+      const parts: string[] = inner.split(/[,;–\-\u2013\u2014]/).map((p: string) => p.trim()).filter(Boolean);
+      if (parts.some((p: string) => parseInt(p) === 0 || (refs.length > 0 && parseInt(p) > refs.length))) {
+        return match;
+      }
+      const refsFound = inner.split(/[,;]/).map((r: string) => {
+        const trimmed = r.trim();
+        if (!trimmed) return null;
+        if (/^\d+\s*[-–]\s*\d+$/.test(trimmed)) {
+          const [start, end] = trimmed.split(/[-–]/).map(n => parseInt(n.trim()));
+          if (!isNaN(start) && !isNaN(end) && start >= 1 && start < end && end - start < 20 && (refs.length === 0 || end <= refs.length)) {
+            return Array.from({ length: end - start + 1 }, (_, i) => `ref${start + i}`).join(',');
+          }
+        }
+        const num = parseInt(trimmed);
+        if (/^\d+$/.test(trimmed) && num >= 1 && (refs.length === 0 || num <= refs.length)) {
+          return `ref${num}`;
+        }
+        return null;
+      }).filter(Boolean).join(',');
+
+      if (!refsFound) return match;
+      return `\\cite{${refsFound}}`;
+    });
+
+    // 4. Convert unshielded bracketed numeric citations: [1], [1, 2], [1-4]
+    // Guard against non-citation phrases like [Table 1], [Figure 2], intervals [0, 1]
+    s = s.replace(/(?<!\b(?:interval|range|scale|domain|coordinates|matrix|vector|box|bounds|values|pixel|pixels|from|to|between)\s*)\[\s*(\d{1,3}(?:\s*[,;–\-]\s*\d{1,3})*)\s*\]/gi, (match, inner) => {
+      const parts: string[] = inner.split(/[,;–\-\u2013\u2014]/).map((p: string) => p.trim()).filter(Boolean);
+      // Citation numbers in bibliography start at 1; intervals like [0, 1] or numbers beyond the bibliography are preserved
+      if (parts.some((p: string) => parseInt(p) === 0 || (refs.length > 0 && parseInt(p) > refs.length))) {
+        return match;
+      }
+      const refsFound = inner.split(/[,;]/).map((r: string) => {
+        const trimmed = r.trim();
+        if (!trimmed) return null;
+        if (/^\d+\s*[-–]\s*\d+$/.test(trimmed)) {
+          const [start, end] = trimmed.split(/[-–]/).map(n => parseInt(n.trim()));
+          if (!isNaN(start) && !isNaN(end) && start >= 1 && start < end && end - start < 20 && (refs.length === 0 || end <= refs.length)) {
+            return Array.from({ length: end - start + 1 }, (_, i) => `ref${start + i}`).join(',');
+          }
+        }
+        const num = parseInt(trimmed);
+        if (/^\d+$/.test(trimmed) && num >= 1 && (refs.length === 0 || num <= refs.length)) {
+          return `ref${num}`;
+        }
+        return null;
+      }).filter(Boolean).join(',');
+
+      if (!refsFound) return match;
+      return `\\cite{${refsFound}}`;
+    });
+
+    // Unwrap any nested \textsuperscript{\cite{...}}
+    s = s.replace(/\\textsuperscript\s*\{\s*\\cite\{([^}]+)\}\s*\}/gi, '\\cite{$1}');
+
+    // Consolidate adjacent citations: \cite{ref1}, \cite{ref2} -> \cite{ref1,ref2}
+    // and range citations: \cite{ref1}-\cite{ref3} -> \cite{ref1,ref2,ref3}
+    s = s.replace(/\\cite\{ref(\d+)\}\s*[-–—]\s*\\cite\{ref(\d+)\}/g, (match, s1, s2) => {
+      const start = parseInt(s1);
+      const end = parseInt(s2);
+      if (start >= 1 && start < end && end - start < 20 && (refs.length === 0 || end <= refs.length)) {
+        const keys = Array.from({ length: end - start + 1 }, (_, i) => `ref${start + i}`);
+        return `\\cite{${keys.join(',')}}`;
+      }
+      return match;
+    });
+
+    let prevS = '';
+    while (prevS !== s) {
+      prevS = s;
+      s = s.replace(/\\cite\{([^}]+)\}\s*(?:,|;)\s*\\cite\{([^}]+)\}/g, (_m, k1, k2) => {
+        const set = [...new Set([...k1.split(','), ...k2.split(',')])];
+        return `\\cite{${set.join(',')}}`;
+      });
+    }
+
+    // 4. Restore shielded commands and math blocks
+    shielded.forEach((cmd, idx) => {
+      s = s.replace(`__CMD_SHIELD_${idx}__`, () => cmd);
+      s = s.replace(`__MATH_SHIELD_${idx}__`, () => cmd);
+    });
+
+    return s;
   }
 
   // Resolves parenthetical citations like "(Smith et al., 2020)" in body text
   // to numbered \cite{refN} keys whenever the reference list contains a
-  // matching author+year entry. This is the PRIMARY citation fix: without it,
-  // the parenthetical engine in escape() emits author-year keys that have no
-  // bibitem/entry, and every such citation renders as "[?]".
+  // matching author+year entry.
   static resolveParentheticalCitations(doc: StructuredDocument): void {
-    const refs = (doc.references || []).filter(Boolean);
+    const refs = (doc.references || []).map((r: any) => typeof r === 'string' ? r : r?.text || '').filter(Boolean);
     if (refs.length === 0) return;
-    const refMeta = refs.map((ref: string, idx: number) => {
-      const year = (String(ref).match(/\b(19|20)\d{2}\b/) || [])[0] || '';
-      const authors = LatexAssembler.surnameCandidates(String(ref)).map(n => n.toLowerCase().replace(/[^\w]/g, ''));
-      return { key: `ref${idx + 1}`, authors, year };
-    }).filter(m => m.authors.length > 0 && m.year);
-    if (refMeta.length === 0) return;
-
-    const rx = /\(([A-Z][a-zA-Z\u00C0-\u017F]+(?: et al\.?| & [A-Z][a-zA-Z\u00C0-\u017F]+| and [A-Z][a-zA-Z\u00C0-\u017F]+)?(?:,\s*|\s+)(?:19|20)\d{2}(?:[a-z])?(?:;\s*[A-Z][a-zA-Z\u00C0-\u017F]+(?: et al\.?| & [A-Z][a-zA-Z\u00C0-\u017F]+| and [A-Z][a-zA-Z\u00C0-\u017F]+)?(?:,\s*|\s+)(?:19|20)\d{2}(?:[a-z])?)*)\)/g;
-    const matchRef = (part: string): string | null => {
-      const clean = part.trim();
-      const author = (clean.match(/^([A-Za-z\u00C0-\u017F]+)/) || [])[1] || '';
-      const year = (clean.match(/(?:19|20)\d{2}/) || [])[0] || '';
-      if (!author || !year) return null;
-      const a = author.toLowerCase().replace(/[^\w]/g, '');
-      // Exact author+year match wins (keeps the citation faithful to the source).
-      const exactHit = refMeta.find(m => m.year === year && m.authors.includes(a));
-      if (exactHit) return exactHit.key;
-      // AUTHOR-ONLY FALLBACK: when the DOCX cites "(Resnik, 1998)" but the
-      // reference list says "(Resnik, 2005)" (year drift in the source), map to
-      // the unique reference by surname anyway.
-      const authorHits = refMeta.filter(m => m.authors.includes(a));
-      if (authorHits.length === 1) return authorHits[0].key;
-      return null;
-    };
 
     (doc.body || []).forEach((n: any) => {
       if (!n || typeof n.text !== 'string') return;
       if (['equation', 'table', 'figure', 'figure-group', 'chart', 'algorithm'].includes(n.type)) return;
-      n.text = n.text.replace(rx, (match: string, inner: string) => {
-        const parts = inner.split(';').map((p: string) => p.trim()).filter(Boolean);
-        const resolved = parts.map((p: string) => matchRef(p));
-        if (resolved.some((r: string | null) => r === null)) return match;
-        const unique = [...new Set(resolved as string[])];
-        return `\\cite{${unique.join(',')}}`;
-      });
+      n.text = LatexAssembler.linkCitationsInLatex(n.text, refs);
     });
   }
 
@@ -2631,7 +2809,8 @@ export class ModularLatexAssembler {
           fileName = `sections/${sectionIdx.toString().padStart(2, '0')}_${safeTitle}_${fileSuffix}.tex`;
           fileSuffix++;
         }
-        files[fileName] = sectionContent + "\n";
+        const rawDocRefs = (doc.references || []).map((r: any) => typeof r === 'string' ? r : r?.text || '').filter(Boolean);
+        files[fileName] = LatexAssembler.linkCitationsInLatex(sectionContent, rawDocRefs) + "\n";
         if (!headerInputs.has(`\\input{${fileName}}`)) {
           headerInputs.add(`\\input{${fileName}}`);
           header.push(`\\input{${fileName}}`);
@@ -3005,7 +3184,8 @@ export class ModularLatexAssembler {
         bibEntries.push(buildBibEntry(key, ref, idx));
       });
 
-      const bibContent = `\n\\begin{thebibliography}{99}\n${bibItems.join('\n')}\n\\end{thebibliography}`;
+      const bibWidth = (doc.references || []).length > 99 ? '999' : '99';
+      const bibContent = `\n\\begin{thebibliography}{${bibWidth}}\n${bibItems.join('\n')}\n\\end{thebibliography}`;
       files['references/bibliography.tex'] = bibContent;
       header.push("\\input{references/bibliography.tex}");
 

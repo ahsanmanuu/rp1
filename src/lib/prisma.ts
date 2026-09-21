@@ -116,10 +116,16 @@ function toFilter(where?: WhereClause): string | undefined {
       } else {
         parts.push(`${key} != ${fmtFilterVal(val.not)}`);
       }
-    } else if (typeof val === 'object' && val !== null && 'contains' in val) {
-      parts.push(`${key} ~ "${val.contains}"`);
-    } else if (typeof val === 'object' && val !== null && 'startsWith' in val) {
-      parts.push(`${key} ~ "${val.startsWith}"`);
+    } else if (typeof val === 'object' && val !== null && ('startsWith' in val || 'endsWith' in val || 'contains' in val)) {
+      const conds: string[] = [];
+      if ('contains' in val && val.contains !== undefined && val.contains !== null) conds.push(`${key} ~ "${val.contains}"`);
+      if ('startsWith' in val && val.startsWith !== undefined && val.startsWith !== null) conds.push(`${key} ~ "${val.startsWith}"`);
+      if ('endsWith' in val && val.endsWith !== undefined && val.endsWith !== null) conds.push(`${key} ~ "${val.endsWith}"`);
+      if (conds.length === 1) {
+        parts.push(conds[0]);
+      } else if (conds.length > 1) {
+        parts.push(`(${conds.join(' && ')})`);
+      }
     } else if (typeof val === 'object' && val !== null && 'gt' in val) {
       parts.push(`${key} > ${fmtFilterVal(val.gt)}`);
     } else if (typeof val === 'object' && val !== null && 'gte' in val) {
@@ -135,7 +141,7 @@ function toFilter(where?: WhereClause): string | undefined {
     } else if (val instanceof Date) {
       parts.push(`${key} = "${pbDateStr(val)}"`);
     } else if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
-      const isOperator = Object.keys(val).some(k => ['in','not','contains','startsWith','gt','gte','lt','lte','notIn'].includes(k));
+      const isOperator = Object.keys(val).some(k => ['in','not','contains','startsWith','endsWith','mode','gt','gte','lt','lte','notIn'].includes(k));
       if (isOperator) {
         parts.push(`${key} = "${String(val)}"`);
       } else {

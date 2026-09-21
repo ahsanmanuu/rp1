@@ -70,12 +70,12 @@ export function extractBibliography(zip: AdmZip): string {
       for (const p of paragraphs) {
         const text = (p.textContent || '').trim();
         if (!text) continue;
-        if (/^(?:\d+\.?\s*)?(?:REFERENCES|BIBLIOGRAPHY|WORKS CITED)\.?\s*$/i.test(text)) {
+        if (/^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:references?|bibliography|works\s+cited|literature\s+cited|references\s*(?:and|&)\s*notes|reference\s+list)(?:\s*[:.\-–—]|\s*<[^>]*>)*$/i.test(text.trim())) {
           inRefs = true;
           continue;
         }
         if (inRefs) {
-          const isHeader = /^(?:\d+\.?\s*)?(?:acknowledgments?|declarations?|appendix|funding)/i.test(text);
+          const isHeader = /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:acknowledgments?|declarations?|ethics\s+(?:approval|statement)|conflict\s+of\s+interest|competing\s+interests|funding|data\s+availability|authors?\s+contributions?|supplementary|appendix|appendices|supporting|biography|author\s+biography|about\s+the\s+author)\b/i.test(text.trim());
           if (isHeader) {
             inRefs = false;
             break;

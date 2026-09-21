@@ -552,8 +552,15 @@ function applyUniversalBibliographyFix(activeFiles: FilePayload[], cleanMain: st
     mainObj.content = tex;
   }
 
-  // 4) Ensure \bibliography{...} exists if \cite{...} is present without inline thebibliography
-  const hasInlineBib = tex.includes('\\begin{thebibliography}');
+  // 4) Ensure \bibliography{...} exists if \cite{...} is present without inline or modular thebibliography
+  const hasInlineBib = tex.includes('\\begin{thebibliography}') ||
+    /\\(?:input|include)\s*\{[^}]*(?:bib|ref)[^}]*\}/i.test(tex) ||
+    activeFiles.some(f => {
+      const p = f.path.toLowerCase();
+      return (p.includes('bibliography') || p.includes('reference')) &&
+        typeof f.content === 'string' &&
+        f.content.includes('\\begin{thebibliography}');
+    });
   if (citedKeys.length > 0 && !/\\bibliography\b/.test(tex) && !hasInlineBib) {
     const bibFiles = activeFiles.filter(f => f.path.toLowerCase().endsWith('.bib'));
     const bibFileNames = bibFiles.map(f => path.basename(f.path).replace(/\.bib$/i, '')).filter(b => b !== 'scholarly-autocite');
@@ -665,7 +672,7 @@ function applyUniversalBibliographyFix(activeFiles: FilePayload[], cleanMain: st
   // citation as "[?]". Inlining the entries with their original keys into the
   // main .tex makes references + citations work on EVERY compiler in one pass.
   const finalTex = mainObj.content || tex;
-  if (/\\bibliography\s*\{/.test(finalTex) && !finalTex.includes('\\begin{thebibliography}')) {
+  if (/\\bibliography\s*\{/.test(finalTex) && !finalTex.includes('\\begin{thebibliography}') && !/\\(?:input|include)\s*\{[^}]*(?:bib|ref)[^}]*\}/i.test(finalTex)) {
     try {
       const bibBaseNames = [...finalTex.matchAll(/\\bibliography\s*\{([^}]*)\}/gi)]
         .flatMap(m => (m[1] || '').split(','))

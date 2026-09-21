@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import fs from 'fs';
 import path from 'path';
 import { autoHealLatex } from '@/lib/latex';
-import { ModularLatexAssembler } from '@/lib/assembler';
+import { ModularLatexAssembler, LatexAssembler } from '@/lib/assembler';
 import { DeepDocumentParser } from '@/lib/deep-parser';
 import { runModularAiMapping } from '@/lib/ai-modular-mapping';
 import { getTemplateById, mapLegacyTemplateId } from '@/lib/templates/registry';
@@ -185,19 +185,14 @@ export async function POST(req: Request) {
           validCurrentFigureNames.add(rfName);
           validCurrentFigureNames.add(rfChartName);
 
-          const origRoot = path.join(projectDir, origName);
+          // Write only to canonical locations without redundant file churn
           const origFig = path.join(figuresSubDir, origName);
           const rfRoot = path.join(projectDir, rfName);
           const rfFig = path.join(figuresSubDir, rfName);
-          const rfChartRoot = path.join(projectDir, rfChartName);
-          const rfChartFig = path.join(figuresSubDir, rfChartName);
 
-          if (!fs.existsSync(origRoot)) fs.writeFileSync(origRoot, entryBuf);
           if (!fs.existsSync(origFig)) fs.writeFileSync(origFig, entryBuf);
           if (!fs.existsSync(rfRoot)) fs.writeFileSync(rfRoot, entryBuf);
           if (!fs.existsSync(rfFig)) fs.writeFileSync(rfFig, entryBuf);
-          if (!fs.existsSync(rfChartRoot)) fs.writeFileSync(rfChartRoot, entryBuf);
-          if (!fs.existsSync(rfChartFig)) fs.writeFileSync(rfChartFig, entryBuf);
         }
         console.log(`[GENERATE-LATEX] Unpacked ${mediaEntries.length} media files from source.docx as robust fallback.`);
       } catch (docxErr) {
@@ -205,7 +200,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // --- REHYDRATE IMAGES FROM DB (e.g. on Render container restarts) ---
+    // --- REHYDRATE IMAGES FROM DB (Lean metadata-first query to prevent OOM) ---
     try {
       const dbImages = await prisma.projectFile.findMany({
         where: {
@@ -220,15 +215,14 @@ export async function POST(req: Request) {
             { filename: { endsWith: '.eps' } },
             { filename: { endsWith: '.svg' } },
           ]
-        }
+        },
+        select: { id: true, filename: true, filePath: true }
       });
 
       if (dbImages && dbImages.length > 0) {
         if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
         const figuresSubDir = path.join(projectDir, 'figures');
         if (!fs.existsSync(figuresSubDir)) fs.mkdirSync(figuresSubDir, { recursive: true });
-        const assetsSubDir = path.join(projectDir, 'assets');
-        if (!fs.existsSync(assetsSubDir)) fs.mkdirSync(assetsSubDir, { recursive: true });
 
         for (const imgRec of dbImages) {
           const baseName = path.basename(imgRec.filename);
@@ -238,33 +232,35 @@ export async function POST(req: Request) {
 
           const rootPath = path.join(projectDir, baseName);
           const figPath = path.join(figuresSubDir, baseName);
-          const assetPath = path.join(assetsSubDir, baseName);
 
+          // Only fetch full heavy base64 content if file is genuinely missing from disk
           if (!fs.existsSync(rootPath) || !fs.existsSync(figPath)) {
+            const fullRec = await prisma.projectFile.findUnique({
+              where: { id: imgRec.id },
+              select: { content: true }
+            });
+
             let buf: Buffer | null = null;
-            if (imgRec.content && imgRec.content.startsWith('data:')) {
-              const commaIdx = imgRec.content.indexOf(',');
+            if (fullRec?.content && fullRec.content.startsWith('data:')) {
+              const commaIdx = fullRec.content.indexOf(',');
               if (commaIdx !== -1) {
-                buf = Buffer.from(imgRec.content.slice(commaIdx + 1), 'base64');
+                buf = Buffer.from(fullRec.content.slice(commaIdx + 1), 'base64');
               }
-            } else if (imgRec.content && /^[A-Za-z0-9+/=]+$/.test(imgRec.content.trim()) && imgRec.content.length > 100) {
-              buf = Buffer.from(imgRec.content.trim(), 'base64');
+            } else if (fullRec?.content && /^[A-Za-z0-9+/=]+$/.test(fullRec.content.trim()) && fullRec.content.length > 100) {
+              buf = Buffer.from(fullRec.content.trim(), 'base64');
             }
 
             if (buf && buf.length > 50) {
               if (!fs.existsSync(rootPath)) fs.writeFileSync(rootPath, buf);
               if (!fs.existsSync(figPath)) fs.writeFileSync(figPath, buf);
-              if (!fs.existsSync(assetPath)) fs.writeFileSync(assetPath, buf);
 
               if (baseName.startsWith('rf_fig_')) {
                 const chartAlias = baseName.replace(/^rf_fig_/, 'rf_chart_');
                 validCurrentFigureNames.add(chartAlias);
                 const cRoot = path.join(projectDir, chartAlias);
                 const cFig = path.join(figuresSubDir, chartAlias);
-                const cAsset = path.join(assetsSubDir, chartAlias);
                 if (!fs.existsSync(cRoot)) fs.writeFileSync(cRoot, buf);
                 if (!fs.existsSync(cFig)) fs.writeFileSync(cFig, buf);
-                if (!fs.existsSync(cAsset)) fs.writeFileSync(cAsset, buf);
               }
             }
           }
@@ -471,6 +467,7 @@ export async function POST(req: Request) {
 
       // Ensure derived collections are synchronized on modelToUse before mapping & assembly
       DeepDocumentParser.syncDerivedCollections(modelToUse);
+      LatexAssembler.resolveParentheticalCitations(modelToUse);
 
       // --- 1. TRY PARALLEL AI MODULAR MAPPING ---
       try {
@@ -714,6 +711,47 @@ export async function POST(req: Request) {
       console.log(`[GENERATE-LATEX] No content found. Using template main.tex directly...`);
       fullLatex = templateMainTex || "";
       usedOriginalTemplate = true;
+    }
+
+    // --- UNIVERSAL IN-TEXT CITATION LINKING & BIBLIOGRAPHY GUARANTEE (All Pipelines) ---
+    if (extractedComponents && Object.keys(extractedComponents).length > 0) {
+      const allDocRefs = ((structured as any)?.references || (modelToUse as any)?.references || [])
+        .map((r: any) => typeof r === 'string' ? r : r?.text || '')
+        .filter(Boolean);
+
+      if (allDocRefs.length > 0) {
+        // 1. Link in-text citations in all section files
+        for (const [fPath, fContent] of Object.entries(extractedComponents)) {
+          if (fPath.startsWith('sections/') && fPath.endsWith('.tex') && typeof fContent === 'string') {
+            extractedComponents[fPath] = LatexAssembler.linkCitationsInLatex(fContent, allDocRefs);
+          }
+        }
+
+        // 2. Ensure references/bibliography.tex exists in extractedComponents
+        if (!extractedComponents['references/bibliography.tex']) {
+          const det = ModularLatexAssembler.assemble((modelToUse || structured) as any, mapLegacyTemplateId(templateId), templateMainTex);
+          if (det.files['references/bibliography.tex']) {
+            extractedComponents['references/bibliography.tex'] = det.files['references/bibliography.tex'];
+          }
+          if (det.files['references/references.bib'] && !extractedComponents['references/references.bib']) {
+            extractedComponents['references/references.bib'] = det.files['references/references.bib'];
+            extractedComponents['references.bib'] = det.files['references/references.bib'];
+          }
+        }
+
+        // 3. Ensure \input{references/bibliography.tex} is in fullLatex before \end{document}
+        const hasBibInFullLatex = fullLatex.includes('references/bibliography.tex') ||
+          fullLatex.includes('\\bibliography{') ||
+          fullLatex.includes('\\begin{thebibliography}');
+        if (!hasBibInFullLatex) {
+          if (fullLatex.includes('\\end{document}')) {
+            fullLatex = fullLatex.replace(/\\end\{document\}/, '\\input{references/bibliography.tex}\n\n\\end{document}');
+          } else {
+            fullLatex += '\n\\input{references/bibliography.tex}\n\\end{document}\n';
+          }
+          console.log('[GENERATE-LATEX] Guaranteed \\input{references/bibliography.tex} in fullLatex before \\end{document}');
+        }
+      }
     }
 
     // --- REMAP FIGURE REFERENCES TO ACTUAL BINARY FILENAMES (Universal: AI Modular & Deterministic) ---
