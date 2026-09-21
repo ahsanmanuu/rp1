@@ -25,15 +25,21 @@ function normalizePath(p: string): string {
 const FALLBACK_1X1_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 const FALLBACK_1X1_PNG = Buffer.from(FALLBACK_1X1_PNG_B64, 'base64');
 
-// Valid 100x100 PNG (241 bytes) — prevents LaTeX graphics package division by 0 and aspect ratio crash
-const FALLBACK_100X100_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAIAAAD/gAIDAAAAuElEQVR4nO3QoRGAMAAAse6/WnUH6AgIBI4RKOpN7jJBxlybQ2Oufd0Pn2TJkpWTJUtWTpYsWTlZsmTlZMmSlZMlS1ZOlixZOVmyZOVkyZKVkyVLVk6WLFk5WbJk5WTJkpWTJUtWTpYsWTlZsmTlZMmSlZMlS1ZOlixZOVmyZOVkyZKVkyVLVk6WLFk5WbJk5WTJkpWTJUtWTpYsWTlZsmTlZMmSlZMlS1ZOlixZOVmyZOVk/c/i0AtqEJwK9dzsVwAAAABJRU5ErkJggg==';
+// Valid 100x100 PNG — prevents LaTeX graphics package division by 0 and aspect ratio crash
+const FALLBACK_100X100_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAIAAAD/gAIDAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAA40lEQVR4nO3QIQEAAAjAMPqnJQIVuN/01Wd5m3+KWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZgVmBWYFZ+591XyfjZB+68VYAAAAASUVORK5CYII=';
 const FALLBACK_100X100_PNG = Buffer.from(FALLBACK_100X100_PNG_B64, 'base64');
+
+// Valid 100x100 JPEG — immune to ASCII/CRLF translation on CGI compilers (e.g. TeXLive.net)
+const FALLBACK_100X100_JPG_B64 = '/9j/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCABkAGQDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAj/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AKVAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB//Z';
+const FALLBACK_100X100_JPG = Buffer.from(FALLBACK_100X100_JPG_B64, 'base64');
 
 export const PLACEHOLDER_PNG_FINGERPRINTS = [
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
+  'iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAIAAAD/gAIDAAAAuElEQVR4nO3QoRGAMAAAse6/WnUH6AgIBI4RKOpN7jJBxlybQ2Oufd0Pn2TJkpWTJUtWTpYsWTlZsmTlZMmSlZMlS1ZOlixZOVmyZOVkyZKVkyVLVk6WLFk5WbJk5WTJkpWTJUtWTpYsWTlZsmTlZMmSlZMlS1ZOlixZOVmyZOVkyZKVkyVLVk6WLFk5WbJk5WTJkpWTJUtWTpYsWTlZsmTlZMmSlZMlS1ZOlixZOVk/c/i0AtqEJwK9dzsVwAAAABJRU5ErkJggg==',
   FALLBACK_100X100_PNG_B64,
+  FALLBACK_100X100_JPG_B64,
 ];
 
 export function isPlaceholderContent(content: any): boolean {
@@ -1619,7 +1625,13 @@ export async function runHardenedPipeline(
             const projectDir = path.join(process.cwd(), 'public', 'uploads', 'projects', projectId);
             const isWin = process.platform === 'win32';
             const tectonicBin = isWin ? 'tectonic.exe' : 'tectonic';
-            let tectonicPath = path.join(process.cwd(), 'bin', tectonicBin);
+            const candidatePaths = [
+                path.join(process.cwd(), 'bin', tectonicBin),
+                path.join(__dirname, '..', '..', '..', 'bin', tectonicBin),
+                path.join(__dirname, '..', '..', 'bin', tectonicBin),
+                path.join(__dirname, '..', 'bin', tectonicBin),
+            ];
+            let tectonicPath = candidatePaths.find(p => fs.existsSync(p)) || candidatePaths[0];
 
             if (!fs.existsSync(tectonicPath)) {
                 // Check system PATH (e.g. /usr/bin/tectonic, /usr/local/bin/tectonic on Linux/Render)
@@ -2456,7 +2468,7 @@ export async function compileWithTexLive(files: FilePayload[], mainFile: string,
     const sortedFiles = [...files].sort((a,b) => (normalizePath(a.path) === normMain ? -1 : normalizePath(b.path) === normMain ? 1 : 0));
     
     const seenFilenames = new Set<string>();
-    sortedFiles.forEach(f => {
+    for (const f of sortedFiles) {
       const isBinary = isBinaryFile(f.path);
       const c = f.content;
       
@@ -2477,46 +2489,85 @@ export async function compileWithTexLive(files: FilePayload[], mainFile: string,
         const base = path.basename(finalName);
         // If root version already exists in sortedFiles or was already added, skip this duplicate
         if (seenFilenames.has(base.toLowerCase()) || sortedFiles.some(sf => normalizePath(sf.path) === base.toLowerCase())) {
-          return;
+          continue;
         }
         finalName = base;
       }
 
-      // Deduplicate filenames sent in filename[]
+      if (isBinary) {
+        let raw: any = c.startsWith('data:') ? Buffer.from(c.split(',')[1] || '', 'base64') : Buffer.from(c, 'base64');
+        if (raw.length < 50) {
+          raw = ext === 'png' ? FALLBACK_100X100_PNG : FALLBACK_100X100_JPG;
+        }
+
+        let uploadName = finalName;
+        let mimeType = 'application/octet-stream';
+
+        if (ext === 'png') {
+          // CRITICAL FIX: TeXLive.net uses a Perl CGI script (latexcgi) that writes filecontents[]
+          // in text mode, converting CRLF to LF. This strips 0x0D from the PNG 8-byte signature,
+          // causing libpng inside pdflatex to throw:
+          // "!pdfTeX error: pdflatex (file ...): libpng: internal error / libpng error: PNG file corrupted by ASCII conversion".
+          // JPEG and PDF formats are NOT subject to this check and compile cleanly on TeXLive.
+          // Convert all PNGs to JPEGs for TeXLive remote compilation:
+          uploadName = finalName.replace(/\.png$/i, '.jpg');
+          try {
+            raw = await sharp(raw)
+              .flatten({ background: '#ffffff' })
+              .jpeg({ quality: 90 })
+              .toBuffer();
+            mimeType = 'image/jpeg';
+          } catch (convErr: any) {
+            console.warn(`[TEXLIVE] PNG to JPG conversion failed for ${finalName}, using fallback JPG:`, convErr?.message);
+            raw = FALLBACK_100X100_JPG;
+            mimeType = 'image/jpeg';
+          }
+        } else if (ext === 'jpg' || ext === 'jpeg') {
+          mimeType = 'image/jpeg';
+        } else if (ext === 'pdf') {
+          mimeType = 'application/pdf';
+        }
+
+        // Deduplicate filenames sent in filename[]
+        const lowerName = uploadName.toLowerCase();
+        if (seenFilenames.has(lowerName)) {
+          continue;
+        }
+        seenFilenames.add(lowerName);
+
+        const filePart = typeof Blob !== 'undefined' ? new Blob([raw], { type: mimeType }) : raw;
+        fd.append('filecontents[]', filePart, uploadName);
+        fd.append('filename[]', uploadName);
+        continue;
+      }
+
+      // Deduplicate text filenames
       const lowerName = finalName.toLowerCase();
       if (seenFilenames.has(lowerName)) {
-        return;
+        continue;
       }
       seenFilenames.add(lowerName);
-
-      if (isBinary) {
-        // Best-effort image upload: send raw bytes as Blob part so texonline
-        // writes them to disk at `finalName`.
-        let raw = c.startsWith('data:') ? Buffer.from(c.split(',')[1] || '', 'base64') : Buffer.from(c, 'base64');
-        if (raw.length < 50) {
-          raw = FALLBACK_100X100_PNG;
-        }
-        const filePart = typeof Blob !== 'undefined' ? new Blob([raw], { type: 'application/octet-stream' }) : raw;
-        fd.append('filecontents[]', filePart, finalName);
-        fd.append('filename[]', finalName);
-        return;
-      }
       
       let text = c.startsWith('data:') ? Buffer.from(c.split(',')[1] || '', 'base64').toString('utf8') : c;
       if (ext === 'tex') {
-        // Rewrite \includegraphics with path prefixes to basename so flat CGI compiler finds them in root
+        // Revert any lingering \zimg tags back to \includegraphics
+        text = revertZimgToIncludegraphics(text);
+
+        // Rewrite \includegraphics:
+        // 1. Strip path prefixes to basename so flat CGI compiler finds them in root
+        // 2. Rewrite .png to .jpg to match converted image uploads
         text = text.replace(/\\includegraphics\s*(?:\[([^\]]*)\])?\s*\{([^}]+)\}/g, (match: string, opts: string, p: string) => {
-          const cleanP = p.trim();
+          let cleanP = p.trim();
           if (cleanP.includes('/') && !cleanP.startsWith('http')) {
-            const baseP = path.basename(cleanP);
-            return opts !== undefined ? `\\includegraphics[${opts}]{${baseP}}` : `\\includegraphics{${baseP}}`;
+            cleanP = path.basename(cleanP);
           }
-          return match;
+          cleanP = cleanP.replace(/\.png$/i, '.jpg');
+          return opts !== undefined ? `\\includegraphics[${opts}]{${cleanP}}` : `\\includegraphics{${cleanP}}`;
         });
       }
       fd.append('filecontents[]', text);
       fd.append('filename[]', finalName);
-    });
+    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 120000);
     try {
