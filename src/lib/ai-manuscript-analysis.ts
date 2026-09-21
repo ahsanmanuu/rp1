@@ -183,6 +183,7 @@ function normalizeTitleKey(s: string): string {
     .toLowerCase()
     .replace(/^[\s\d.\-–—:()\[\]]+/, '')
     .replace(/^(?:[ivxlcdm]+\.?)\s+/i, '')
+    .replace(/[\s:.\-–—()\[\]]+$/, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -1239,15 +1240,28 @@ export function applyStructureCorrections(
         if (!aiByNorm.has(norm)) aiByNorm.set(norm, i);
       });
 
-      // Match body headings to AI sections (exact norm OR artifact-stripped norm).
+      // Match body headings to AI sections (exact norm OR artifact-stripped norm OR canonical alphanumeric norm).
       const aiMatchedToBody = new Map<number, number>();
       const bodyUsed = new Set<number>();
       body.forEach((n, i) => {
         if (n.type !== 'heading' || !n.text) return;
         const norm = normalizeTitleKey(n.text);
         const strippedNorm = normalizeTitleKey(stripArtifacts(n.text));
-        const aiIdx = aiByNorm.get(norm) ?? (strippedNorm !== norm ? aiByNorm.get(strippedNorm) : undefined);
-        if (aiIdx !== undefined) {
+        let aiIdx = aiByNorm.get(norm) ?? (strippedNorm !== norm ? aiByNorm.get(strippedNorm) : undefined);
+        if (aiIdx === undefined) {
+          const canon = norm.replace(/[^a-z0-9]/g, '');
+          if (canon.length > 3) {
+            for (const [aiN, idx] of aiByNorm.entries()) {
+              if (aiMatchedToBody.has(idx)) continue;
+              const aiCanon = aiN.replace(/[^a-z0-9]/g, '');
+              if (aiCanon === canon || (canon.length > 6 && (aiCanon.includes(canon) || canon.includes(aiCanon)))) {
+                aiIdx = idx;
+                break;
+              }
+            }
+          }
+        }
+        if (aiIdx !== undefined && !aiMatchedToBody.has(aiIdx)) {
           aiMatchedToBody.set(aiIdx, i);
           bodyUsed.add(i);
         }
@@ -1310,6 +1324,24 @@ export function applyStructureCorrections(
           prevBodyIdx = m;
           return;
         }
+
+        // SECTION DUPLICATION FIX: Do NOT insert unmatched AI section if body already contains this heading!
+        const normTitle = normalizeTitleKey(s.title);
+        const canonTitle = normTitle.replace(/[^a-z0-9]/g, '');
+        const alreadyInBody = body.some(n => {
+          if (n.type !== 'heading' || !n.text) return false;
+          const nNorm = normalizeTitleKey(n.text);
+          const nCanon = nNorm.replace(/[^a-z0-9]/g, '');
+          return (
+            nNorm === normTitle ||
+            (canonTitle.length > 3 && nCanon === canonTitle) ||
+            (canonTitle.length > 6 && (nCanon.includes(canonTitle) || canonTitle.includes(nCanon)))
+          );
+        });
+        if (alreadyInBody) {
+          return;
+        }
+
         const anchor = prevBodyIdx;
         // Clamp inserted depth: a heading can never be deeper than one level
         // below its predecessor (no orphan subsubsections at the document top).
@@ -1338,6 +1370,23 @@ export function applyStructureCorrections(
       let inserted = 0;
       let removed = 0;
       const rebuilt: any[] = [];
+      const pushToRebuilt = (node: any) => {
+        if (node.type === 'heading' && rebuilt.length > 0) {
+          const last = rebuilt[rebuilt.length - 1];
+          if (last && last.type === 'heading') {
+            const normLast = normalizeTitleKey(last.text || '').replace(/[^a-z0-9]/g, '');
+            const normCurr = normalizeTitleKey(node.text || '').replace(/[^a-z0-9]/g, '');
+            if (normLast && normCurr && (normLast === normCurr || (normLast.length > 5 && (normLast.includes(normCurr) || normCurr.includes(normLast))))) {
+              if (node.id?.startsWith('h_ai_') || (node.level && (!last.level || node.level < last.level))) {
+                rebuilt[rebuilt.length - 1] = node;
+              }
+              return;
+            }
+          }
+        }
+        rebuilt.push(node);
+      };
+
       for (let i = 0; i < body.length; i++) {
         const n = body[i];
         if (isGarbageHeading(n) && !bodyUsed.has(i)) {
@@ -1345,19 +1394,25 @@ export function applyStructureCorrections(
           continue;
         }
         if (i === 0 && inserts.has(-1)) {
-          rebuilt.push(...inserts.get(-1)!);
-          inserted += inserts.get(-1)!.length;
+          for (const item of inserts.get(-1)!) {
+            pushToRebuilt(item);
+            inserted++;
+          }
         }
-        rebuilt.push(n);
+        pushToRebuilt(n);
         const ins = inserts.get(i);
         if (ins) {
-          rebuilt.push(...ins);
-          inserted += ins.length;
+          for (const item of ins) {
+            pushToRebuilt(item);
+            inserted++;
+          }
         }
       }
       if (inserts.has(-1) && rebuilt.length === 0) {
-        rebuilt.push(...inserts.get(-1)!);
-        inserted += inserts.get(-1)!.length;
+        for (const item of inserts.get(-1)!) {
+          pushToRebuilt(item);
+          inserted++;
+        }
       }
       if (inserted > 0 || removed > 0 || corrected > 0) {
         if (inserted > 0 || removed > 0) deepData.body = rebuilt;

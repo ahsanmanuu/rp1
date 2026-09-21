@@ -1720,7 +1720,19 @@ export class DeepDocumentParser {
                       if (lastHeadingLevel === 0 && level > 1 && /^(?:1(?:\.0)?\b|introduction|background|overview)/i.test(cleanText)) {
                           level = 1;
                       }
-                      result.body.push({ type: 'heading', level, text: cleanText || text });
+                      const finalHeadingText = cleanText || text;
+                      const lastNode = result.body[result.body.length - 1];
+                      if (lastNode && lastNode.type === 'heading') {
+                        const normPrev = (lastNode.text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                        const normCurr = finalHeadingText.toLowerCase().replace(/[^a-z0-9]/g, '');
+                        if (normPrev && normCurr && (normPrev === normCurr || (normPrev.length > 5 && (normPrev.includes(normCurr) || normCurr.includes(normPrev))))) {
+                          if (level < (lastNode.level || 99)) {
+                            lastNode.level = level;
+                          }
+                          continue;
+                        }
+                      }
+                      result.body.push({ type: 'heading', level, text: finalHeadingText });
                       lastHeadingLevel = level;
                     }
                   }
@@ -1742,6 +1754,13 @@ export class DeepDocumentParser {
                       .filter((n: any) => (n.type === 'figure' || n.type === 'chart' || n.type === 'image') && n.id)
                       .map((n: any) => String(n.id).toLowerCase())
                   );
+                  // Also track normalized chart IDs so chart_pending_1 and rf_chart_1
+                  // are recognized as the same chart (prevents duplicate emissions).
+                  const chartNumIds = new Set<string>();
+                  for (const id of emittedFigIds) {
+                    const chartNum = id.match(/(?:chart_pending_|rf_chart_)(\d+)/i);
+                    if (chartNum) chartNumIds.add(chartNum[1]);
+                  }
 
                   for (const pEl of entry.elements) {
                     const childImgs = Array.from(pEl.querySelectorAll('img')) as Element[];
@@ -1749,6 +1768,9 @@ export class DeepDocumentParser {
                       const src = (img.getAttribute('src') || img.getAttribute('data-src') || '').trim();
                       if (!src) continue;
                       if (emittedFigIds.has(src.toLowerCase())) continue; // Already emitted
+                      // Check if this is a renamed version of an already-emitted chart
+                      const srcChartNum = src.match(/(?:chart_pending_|rf_chart_)(\d+)/i);
+                      if (srcChartNum && chartNumIds.has(srcChartNum[1])) continue;
                       const isDeco = /logo|icon|banner|watermark|divider|spacer|signature|qrcode/i.test(src);
                       if (isDeco) continue;
                       const altText = img.getAttribute('alt') || img.getAttribute('title') || '';
@@ -1759,6 +1781,7 @@ export class DeepDocumentParser {
                         caption: altText || (isChart ? 'Chart' : 'Figure'),
                       } as any);
                       emittedFigIds.add(src.toLowerCase());
+                      if (srcChartNum) chartNumIds.add(srcChartNum[1]);
                     }
                   }
               }
@@ -2306,7 +2329,9 @@ export class DeepDocumentParser {
       const firstChar = cleanText.charAt(0);
       const isCapitalized = firstChar >= 'A' && firstChar <= 'Z';
       const isStopWord = STOPWORDS.has(cleanText.toLowerCase());
-      if (isCapitalized && !isStopWord && wordsCount <= 3 && !/^(?:where|and|or|if|then|else)$/i.test(cleanText)) {
+      const isProseLead = /^(?:step|case|example|note|input|output|recall|proof|remark|given|definition|phase|stage|condition|rule|law|theorem|lemma|proposition|corollary|where|and|or|if|then|else|question|hypothesis|such as|for example|as follows|method|algorithm|table|figure|fig)\b/i.test(cleanText);
+      const isBoldOrHeading = el.tagName.toLowerCase().startsWith('h') || el.querySelector('b, strong') !== null || /bold|heading|title/i.test(el.getAttribute('class') || '') || /bold/i.test(el.getAttribute('style') || '');
+      if (isCapitalized && !isStopWord && !isProseLead && isBoldOrHeading && wordsCount >= 1 && wordsCount <= 5) {
         return 3;
       }
     }
@@ -2422,8 +2447,17 @@ export class DeepDocumentParser {
       }
     }
 
-    // Priority 4: Stand-alone line heuristic: short, bold or high-cap, no trailing period
-    const isStandalone = (f.wordCount < 12 && (f.isBold || f.capRatio > 0.4) && !f.text.includes(','));
+    // Priority 4: Stand-alone line heuristic: short, bold, title-cased, no trailing punctuation
+    const trimmedText = f.text.trim();
+    const endsWithPunct = /[.;,?!]$/.test(trimmedText);
+    const isProseLead = /^(?:step|case|example|note|input|output|recall|proof|remark|given|definition|phase|stage|where|and|or|if|then|else|however|furthermore|moreover|therefore|thus|in addition)\b/i.test(trimmedText);
+    const words = trimmedText.split(/\s+/).filter(Boolean);
+    const isTitleCase = words.length > 0 && words.every(w => /^[A-Z]/.test(w) || STOPWORDS.has(w.toLowerCase()) || /^\d/.test(w));
+    const isStandalone = !endsWithPunct && !isProseLead && !trimmedText.includes(',') && f.wordCount >= 1 && f.wordCount < 10 && (
+      (f.isBold && (f.capRatio > 0.2 || isTitleCase)) ||
+      (f.capRatio > 0.85 && f.wordCount <= 6) ||
+      (isTitleCase && f.wordCount <= 6 && f.capRatio > 0.3)
+    );
     if (isStandalone) {
       return 2;
     }

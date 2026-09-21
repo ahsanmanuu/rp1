@@ -280,7 +280,34 @@ async function finishUpload(uploadId: string, res: any): Promise<void> {
 }
 
 function getFallbackPngBuffer(): Buffer {
-  return Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+  // 64x64 neutral gray PNG (valid non-zero geometry for LaTeX bounding box calculation)
+  return Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAQAAAAAYLlVAAAAOUlEQVR42u3OQQ0AMAgAMc6/6Wnho2HQTe5cAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwJcW54EAAe9dFv0AAAAASUVORK5CYII=',
+    'base64'
+  );
+}
+
+async function tryRescueEmfBuffer(buf: Buffer): Promise<Buffer | null> {
+  if (!buf || buf.length < 8) return null;
+  // Check if buffer is actually PNG
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+    return buf;
+  }
+  // Check if buffer is actually JPEG
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+    try {
+      return await sharp(buf).png().toBuffer();
+    } catch {
+      return buf;
+    }
+  }
+  // Check if buffer is WebP or GIF
+  if (buf.subarray(0, 4).toString() === 'RIFF' || buf.subarray(0, 3).toString() === 'GIF') {
+    try {
+      return await sharp(buf).png().toBuffer();
+    } catch {}
+  }
+  return null;
 }
 
 async function convertEmfToPngWindowsBatchAsync(emfBuffers: Buffer[]): Promise<(Buffer | null)[]> {
@@ -1498,6 +1525,17 @@ async function runUploadProcessing(uploadId: string) {
               ? `word/${chartImagePath.replace(/^\.\.\//, '')}`.replace(/\/+/g, '/')
               : `word/${pc.target.replace(/charts\/[^/]+$/, '')}${chartImagePath.replace(/^\.\.\//, '')}`.replace(/\/+/g, '/');
             if (isTrueChart) {
+              // For OOXML charts, still try to find a cached image in the chart rels first
+              try {
+                const imgEntry = zip.getEntry(resolvedPath);
+                if (imgEntry) {
+                  const rawBuf = imgEntry.getData();
+                  if (rawBuf && rawBuf.length >= 2000) {
+                    console.log(`[CHART] Found cached chart image: ${chartName} from ${resolvedPath}`);
+                    return { name: chartName, buffer: rawBuf };
+                  }
+                }
+              } catch {}
               chartImagePath = null;
             } else {
               try {
@@ -1528,20 +1566,89 @@ async function runUploadProcessing(uploadId: string) {
           }
 
           if (!chartImagePath) {
+            // Try OOXML chart XML rendering first
             if (isTrueChart) {
               const xmlPath = `word/${pc.target.replace(/^\.\.\//, '')}`.replace(/\/+/g, '/');
               const xmlEntry = zip.getEntry(xmlPath);
               if (xmlEntry) {
-                console.log(`[CHART] Extracting OOXML chart data for QuickChart conversion: ${xmlPath}`);
+                console.log(`[CHART] Extracting OOXML chart data for local SVG conversion: ${xmlPath}`);
                 const xmlContent = xmlEntry.getData().toString('utf8');
                 const pngBuf = await generateChartImageFromXml(xmlContent);
-                if (pngBuf) {
-                  console.log(`[CHART] Successfully generated QuickChart PNG for ${chartName}`);
+                if (pngBuf && pngBuf.length >= 500) {
+                  console.log(`[CHART] Successfully generated local SVG-to-PNG for ${chartName}`);
                   return { name: chartName, buffer: pngBuf };
                 }
               }
+              // Also try to find the chart's cached image via the chart rels
+              try {
+                const chartRelsPath = `word/charts/_rels/${pc.target.replace(/.*charts\//, '')}.rels`;
+                const chartRelsEntry = zip.getEntry(chartRelsPath);
+                if (chartRelsEntry) {
+                  const relsXml = chartRelsEntry.getData().toString('utf-8');
+                  const imgMatches = [...relsXml.matchAll(/Target="([^"]+)"/g)];
+                  for (const imgMatch of imgMatches) {
+                    const imgTarget = imgMatch[1];
+                    if (/\.(png|jpe?g|gif|bmp|tiff?)$/i.test(imgTarget)) {
+                      const mediaPath = `word/charts/${imgTarget.replace(/^\.\.\//, '')}`.replace(/\/+/g, '/');
+                      const mediaEntry = zip.getEntry(mediaPath);
+                      if (mediaEntry) {
+                        const buf = mediaEntry.getData();
+                        if (buf && buf.length >= 2000) {
+                          console.log(`[CHART] Recovered chart cached image from rels: ${mediaPath}`);
+                          return { name: chartName, buffer: buf };
+                        }
+                      }
+                    }
+                  }
+                }
+              } catch {}
             }
-            return { name: chartName, buffer: getFallbackPngBuffer() };
+
+            // BROAD MEDIA SEARCH: scan word/media/ for any image that might be the chart's
+            // cached preview. Many DOCX files store chart preview images as imageN.png/jpg.
+            try {
+              const mediaEntries = zip.getEntries().filter((e: any) =>
+                e.entryName.startsWith('word/media/') && !e.isDirectory &&
+                /\.(png|jpe?g|gif|bmp)$/i.test(e.entryName)
+              );
+              // Try to match by chart index (chart_pending_0 -> media image near that index)
+              const chartNum = parseInt((pc.marker.match(/\d+/) || ['0'])[0]);
+              // Chart cached images often have names like image1.png, image2.png
+              // that correspond to the chart order in the document
+              for (const entry of mediaEntries) {
+                const entryNum = parseInt((entry.entryName.match(/(\d+)\.[^.]+$/) || ['', '0'])[1]);
+                if (entryNum > 0 && Math.abs(entryNum - (chartNum + 1)) <= 1) {
+                  const buf = entry.getData();
+                  if (buf && buf.length >= 5000) {
+                    // Verify this isn't already used as a regular figure
+                    const alreadyUsed = extractedImages.some((ei: any) =>
+                      ei.buffer && ei.buffer.length === buf.length
+                    );
+                    if (!alreadyUsed) {
+                      console.log(`[CHART] Recovered chart image from media scan: ${entry.entryName}`);
+                      return { name: chartName, buffer: buf };
+                    }
+                  }
+                }
+              }
+            } catch {}
+
+            // Generate a visible placeholder chart image via Sharp instead of invisible 1x1 PNG
+            try {
+              const placeholderSvg = Buffer.from(
+                `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="300" viewBox="0 0 600 300">` +
+                `<rect width="600" height="300" fill="#f8fafc" stroke="#cbd5e1" stroke-width="2" rx="8"/>` +
+                `<text x="300" y="130" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="600" fill="#475569">Chart</text>` +
+                `<text x="300" y="165" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#94a3b8">Original chart data could not be extracted</text>` +
+                `<text x="300" y="195" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#94a3b8">Replace this image with your chart file</text>` +
+                `</svg>`
+              );
+              const placeholderPng = await sharp(placeholderSvg).png().toBuffer();
+              console.log(`[CHART] Generated visible placeholder for ${chartName}`);
+              return { name: chartName, buffer: placeholderPng };
+            } catch {
+              return { name: chartName, buffer: getFallbackPngBuffer() };
+            }
           }
           return null;
         }, 4);
@@ -1571,23 +1678,36 @@ async function runUploadProcessing(uploadId: string) {
       const emfTasks = extractedImages.filter((img: any) => img.needsEmfConversion);
       if (emfTasks.length > 0) {
         console.log(`[PERF] Batch converting ${emfTasks.length} EMF images...`);
-        const batchResults = await convertEmfToPngWindowsBatchAsync(emfTasks.map(t => t.buffer));
-        for (let i = 0; i < emfTasks.length; i++) {
-          const pngBuf = batchResults[i];
-          if (pngBuf) {
-            emfTasks[i].buffer = pngBuf;
-            emfTasks[i].name = emfTasks[i].name.replace(/\.emf$/i, '.png');
-            emfTasks[i].isStructural = false;
-            emfTasks[i].needsEmfConversion = false;
-            console.log(`[IMAGE] Successfully batch converted EMF: ${emfTasks[i].name}`);
+        // First try direct rescue (in case EMF contains PNG/JPEG/WebP magic bytes)
+        for (const t of emfTasks) {
+          const rescued = await tryRescueEmfBuffer(t.buffer);
+          if (rescued) {
+            t.buffer = rescued;
+            t.name = t.name.replace(/\.emf$/i, '.png');
+            t.isStructural = false;
+            t.needsEmfConversion = false;
+            console.log(`[IMAGE] Successfully rescued disguised image from EMF: ${t.name}`);
           }
-          
-          if (!pngBuf) {
-            emfTasks[i].buffer = getFallbackPngBuffer();
-            emfTasks[i].name = emfTasks[i].name.replace(/\.emf$/i, '.png');
-            emfTasks[i].isStructural = false;
-            emfTasks[i].needsEmfConversion = false;
-            console.log(`[CHART] Generated placeholder fallback for failed EMF: ${emfTasks[i].name}`);
+        }
+
+        const remainingEmf = emfTasks.filter((t: any) => t.needsEmfConversion);
+        if (remainingEmf.length > 0) {
+          const batchResults = await convertEmfToPngWindowsBatchAsync(remainingEmf.map((t: any) => t.buffer));
+          for (let i = 0; i < remainingEmf.length; i++) {
+            const pngBuf = batchResults[i];
+            if (pngBuf) {
+              remainingEmf[i].buffer = pngBuf;
+              remainingEmf[i].name = remainingEmf[i].name.replace(/\.emf$/i, '.png');
+              remainingEmf[i].isStructural = false;
+              remainingEmf[i].needsEmfConversion = false;
+              console.log(`[IMAGE] Successfully batch converted EMF: ${remainingEmf[i].name}`);
+            } else {
+              remainingEmf[i].buffer = getFallbackPngBuffer();
+              remainingEmf[i].name = remainingEmf[i].name.replace(/\.emf$/i, '.png');
+              remainingEmf[i].isStructural = false;
+              remainingEmf[i].needsEmfConversion = false;
+              console.log(`[CHART] Generated placeholder fallback for failed EMF: ${remainingEmf[i].name}`);
+            }
           }
         }
       }

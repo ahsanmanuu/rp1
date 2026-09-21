@@ -576,9 +576,15 @@ export async function POST(req: Request) {
               return result;
             };
 
+            const hasAiSections = Object.keys(extractedComponents).some(p => p.startsWith('sections/'));
             const assembled = ModularLatexAssembler.assemble(modelToUse, mapLegacyTemplateId(templateId), templateMainTex);
             for (const [filePath, content] of Object.entries(assembled.files)) {
               if (!extractedComponents[filePath]) {
+                // SECTION DUPLICATION FIX: If AI already produced section files, do NOT backfill
+                // deterministic sections as new files (differing filenames duplicate the entire document!)
+                if (filePath.startsWith('sections/') && hasAiSections) {
+                  continue;
+                }
                 extractedComponents[filePath] = content;
               } else if (
                 filePath.startsWith('sections/') &&
@@ -783,11 +789,12 @@ export async function POST(req: Request) {
       const chartBins = chartBinariesOnDisk.length > 0
         ? chartBinariesOnDisk
         : (modelBodyChartIds.length > 0 ? modelBodyChartIds : binaryNames)
-            .filter(n => /^(rf_chart_|chart_pending_)/i.test(n) || /chart/i.test(n))
+            .filter(n => /^(rf_chart_|chart_pending_)/i.test(n))
             .sort((a, b) => numIn(a) - numIn(b));
 
       const figBinariesOnDisk = binaryNames
         .filter(n => !/logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer/i.test(n))
+        .filter(n => !/^(?:rf_chart_|chart_pending_|chart)/i.test(n))
         .filter(n => /^rf_fig_\d+\./i.test(n) || /\.(png|jpe?g|webp|gif|svg|eps|pdf)$/i.test(n))
         .sort((a, b) => numIn(a) - numIn(b));
 
@@ -795,6 +802,7 @@ export async function POST(req: Request) {
         ? figBinariesOnDisk
         : (modelBodyFigIds.length > 0 ? modelBodyFigIds : binaryNames)
             .filter(n => !/logo|icon|banner|watermark|divider|spacer|signature|qrcode|header|footer/i.test(n))
+            .filter(n => !/^(?:rf_chart_|chart_pending_|chart)/i.test(n))
             .filter(n => /^rf_fig_\d+\./i.test(n) || /\.(png|jpe?g|webp|gif|svg|eps)$/i.test(n))
             .sort((a, b) => numIn(a) - numIn(b));
 
@@ -803,7 +811,7 @@ export async function POST(req: Request) {
         const refToTargetMap = new Map<string, string>();
         let fi = 0, ci = 0;
         const incRe = /\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/g;
-        const isChartRef = (r: string) => /chart_pending|rf_chart/i.test(r) || /chart/i.test(r);
+        const isChartRef = (r: string) => /chart_pending|rf_chart/i.test(r);
 
         const resolveTarget = (ref: string): string | null => {
           const r = String(ref).trim();

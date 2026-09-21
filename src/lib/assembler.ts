@@ -472,6 +472,41 @@ export class LatexAssembler {
     const headerInputs = new Set<string>(); // dedupe \input{...} lines in main.tex
     let frontMatterDone = false; // true once the first real section heading is seen
 
+    // PRE-BUILD back-matter title map so the body loop can detect and skip
+    // headings that belong to the dedicated back-matter pass (Bug fix:
+    // prevents the same section appearing in BOTH sections/*.tex AND
+    // metadata/*.tex, which caused duplicate sections in the rendered PDF).
+    const backMatterTitles: Record<string, string> = {
+      'funding': 'metadata/funding.tex',
+      'funding statement': 'metadata/funding.tex',
+      'funding information': 'metadata/funding.tex',
+      'conflict of interest': 'metadata/conflict_of_interest.tex',
+      'conflicts of interest': 'metadata/conflict_of_interest.tex',
+      'competing interests': 'metadata/conflict_of_interest.tex',
+      'data availability': 'metadata/data_availability.tex',
+      'data availability statement': 'metadata/data_availability.tex',
+      'availability of data': 'metadata/data_availability.tex',
+      'authors contributions': 'metadata/authors_contributions.tex',
+      'author contributions': 'metadata/authors_contributions.tex',
+      'ethics approval': 'metadata/ethics.tex',
+      'ethical approval': 'metadata/ethics.tex',
+      'ethics statement': 'metadata/ethics.tex',
+      'declarations': 'metadata/declarations.tex',
+      'consent to participate': 'metadata/consent.tex',
+      'consent for publication': 'metadata/consent.tex',
+      'informed consent': 'metadata/consent.tex',
+      'acknowledgements': 'metadata/acknowledgements.tex',
+      'acknowledgments': 'metadata/acknowledgements.tex',
+      'acknowledgement': 'metadata/acknowledgements.tex',
+      'supplementary material': 'metadata/supplementary.tex',
+      'supplementary materials': 'metadata/supplementary.tex',
+      'abbreviations': 'metadata/abbreviations.tex',
+    };
+    const normalizeBackMatter = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+)+/i, '').trim();
+    // Track which back-matter headings should be skipped in the body loop
+    // (they'll be handled exclusively by the back-matter pass below).
+    const backMatterSkippedNodeIndices = new Set<number>();
+
     const flushSection = () => {
       if (currentSectionNodes.length === 0) return;
       const dedupedNodes: any[] = [];
@@ -487,6 +522,28 @@ export class LatexAssembler {
                 (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley)\b/i.test(pText) && pText.length < 60) ||
                 (pNorm.length > 5 && normalizedTitle && (pNorm === normalizedTitle || normalizedTitle.includes(pNorm)))) {
               continue;
+            }
+          }
+          if (n.type === 'heading') {
+            const last = dedupedNodes[dedupedNodes.length - 1];
+            if (last && last.type === 'heading') {
+              const normLast = normalize(last.text || '');
+              const normN = normalize(n.text || '');
+              if (normLast && normN && (normLast === normN || (normLast.length > 4 && (normLast.includes(normN) || normN.includes(normLast))))) {
+                // Duplicate consecutive heading! Prefer the one with explicit level or longer text.
+                if ((n.level && (!last.level || n.level < last.level)) || (n.text && n.text.length > (last.text || '').length)) {
+                  dedupedNodes[dedupedNodes.length - 1] = n;
+                }
+                continue;
+              }
+            }
+            // Also skip if this heading repeats the section's title (which is already the first heading in this section file)
+            if (dedupedNodes.length > 0 && dedupedNodes[0]?.type === 'heading') {
+              const normFirst = normalize(dedupedNodes[0].text || '');
+              const normN = normalize(n.text || '');
+              if (normFirst && normN && (normFirst === normN || (normFirst.length > 5 && (normFirst.includes(normN) || normN.includes(normFirst))))) {
+                continue;
+              }
             }
           }
           if (n.type === 'equation' && dedupedNodes.length > 0) {
@@ -551,6 +608,10 @@ export class LatexAssembler {
     };
 
     (doc.body || []).forEach((node, nodeIdx) => {
+        // SECTION DUPLICATION FIX: Skip nodes that were marked for the
+        // dedicated back-matter pass (prevents double-emission).
+        if (backMatterSkippedNodeIndices.has(nodeIdx)) return;
+
         const text = (node.text || '').trim();
         const norm = normalize(text);
         if (!norm && node.type !== 'figure' && node.type !== 'table' && node.type !== 'algorithm' && node.type !== 'equation' && node.type !== 'list' && node.type !== 'figure-group' && node.type !== 'chart') return;
@@ -650,6 +711,25 @@ export class LatexAssembler {
               .replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '')
               .replace(/[:.\s]*$/, '')
               .trim();
+
+            // SECTION DUPLICATION FIX: If this heading matches a back-matter
+            // title, flush the current section and SKIP this heading + its
+            // following paragraphs in the body loop. The back-matter pass
+            // below will emit them into a dedicated metadata/*.tex file.
+            const bmNorm = normalizeBackMatter(text);
+            if (backMatterTitles[bmNorm]) {
+                flushSection();
+                // Mark this heading and all following non-heading nodes as
+                // belonging to the back-matter pass so they're skipped here.
+                backMatterSkippedNodeIndices.add(nodeIdx);
+                let bm = nodeIdx + 1;
+                while (bm < (doc.body || []).length && doc.body[bm].type !== 'heading') {
+                    backMatterSkippedNodeIndices.add(bm);
+                    bm++;
+                }
+                return;
+            }
+
             const isLevel1 = (node.level === 1) || FORCED_L1_ASSEMBLER.has(normHeading);
             if (isLevel1) {
                 flushSection();
@@ -703,33 +783,9 @@ export class LatexAssembler {
 
     // --- 5. FULL BACK-MATTER ASSEMBLY ---
 
-    // Declarations: scan body for back-matter sections and extract into dedicated files
-    const backMatterTitles: Record<string, string> = {
-      'funding': 'metadata/funding.tex',
-      'funding statement': 'metadata/funding.tex',
-      'funding information': 'metadata/funding.tex',
-      'conflict of interest': 'metadata/conflict_of_interest.tex',
-      'conflicts of interest': 'metadata/conflict_of_interest.tex',
-      'competing interests': 'metadata/conflict_of_interest.tex',
-      'data availability': 'metadata/data_availability.tex',
-      'data availability statement': 'metadata/data_availability.tex',
-      'availability of data': 'metadata/data_availability.tex',
-      'authors contributions': 'metadata/authors_contributions.tex',
-      'author contributions': 'metadata/authors_contributions.tex',
-      'ethics approval': 'metadata/ethics.tex',
-      'ethical approval': 'metadata/ethics.tex',
-      'ethics statement': 'metadata/ethics.tex',
-      'declarations': 'metadata/declarations.tex',
-      'consent to participate': 'metadata/consent.tex',
-      'consent for publication': 'metadata/consent.tex',
-      'informed consent': 'metadata/consent.tex',
-      'acknowledgements': 'metadata/acknowledgements.tex',
-      'acknowledgments': 'metadata/acknowledgements.tex',
-      'acknowledgement': 'metadata/acknowledgements.tex',
-      'supplementary material': 'metadata/supplementary.tex',
-      'supplementary materials': 'metadata/supplementary.tex',
-      'abbreviations': 'metadata/abbreviations.tex',
-    };
+    // Declarations: scan body for back-matter sections and extract into dedicated files.
+    // backMatterTitles map was pre-built above (before the body loop) so the
+    // body loop could detect and skip these headings to prevent duplication.
     const normalizeSection = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
     const emittedBackMatter = new Set<string>();
 
@@ -2452,6 +2508,36 @@ export class ModularLatexAssembler {
       .replace(/[\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070*†‡\d]+$/g, '')
       .trim();
 
+    const backMatterTitles: Record<string, string> = {
+      'funding': 'metadata/funding.tex',
+      'funding statement': 'metadata/funding.tex',
+      'funding information': 'metadata/funding.tex',
+      'conflict of interest': 'metadata/conflict_of_interest.tex',
+      'conflicts of interest': 'metadata/conflict_of_interest.tex',
+      'competing interests': 'metadata/conflict_of_interest.tex',
+      'data availability': 'metadata/data_availability.tex',
+      'data availability statement': 'metadata/data_availability.tex',
+      'availability of data': 'metadata/data_availability.tex',
+      'authors contributions': 'metadata/authors_contributions.tex',
+      'author contributions': 'metadata/authors_contributions.tex',
+      'ethics approval': 'metadata/ethics.tex',
+      'ethical approval': 'metadata/ethics.tex',
+      'ethics statement': 'metadata/ethics.tex',
+      'declarations': 'metadata/declarations.tex',
+      'consent to participate': 'metadata/consent.tex',
+      'consent for publication': 'metadata/consent.tex',
+      'informed consent': 'metadata/consent.tex',
+      'acknowledgements': 'metadata/acknowledgements.tex',
+      'acknowledgments': 'metadata/acknowledgements.tex',
+      'acknowledgement': 'metadata/acknowledgements.tex',
+      'supplementary material': 'metadata/supplementary.tex',
+      'supplementary materials': 'metadata/supplementary.tex',
+      'abbreviations': 'metadata/abbreviations.tex',
+    };
+    const normalizeBackMatter = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+)+/i, '').trim();
+    // Track which back-matter headings should be skipped in the body loop
+    const backMatterSkippedNodeIndices = new Set<number>();
+
     let currentSectionNodes: any[] = [];
     let currentSectionTitle = "introduction";
     let sectionIdx = 1;
@@ -2479,6 +2565,27 @@ export class ModularLatexAssembler {
               if ((/\b(?:mdpi|springer|elsevier|ieee|acm|wiley)\b/i.test(pText) && pText.length < 60) ||
                   (pNorm.length > 5 && normalizedTitle && (pNorm === normalizedTitle || normalizedTitle.includes(pNorm)))) {
                 continue;
+              }
+            }
+            // SECTION DUPLICATION FIX: deduplicate consecutive identical headings
+            if (n.type === 'heading') {
+              const last = dedupedNodes[dedupedNodes.length - 1];
+              if (last && last.type === 'heading') {
+                const normLast = normalize(last.text || '');
+                const normN = normalize(n.text || '');
+                if (normLast && normN && (normLast === normN || (normLast.length > 4 && (normLast.includes(normN) || normN.includes(normLast))))) {
+                  if ((n.level && (!last.level || n.level < last.level)) || (n.text && n.text.length > (last.text || '').length)) {
+                    dedupedNodes[dedupedNodes.length - 1] = n;
+                  }
+                  continue;
+                }
+              }
+              if (dedupedNodes.length > 0 && dedupedNodes[0]?.type === 'heading') {
+                const normFirst = normalize(dedupedNodes[0].text || '');
+                const normN = normalize(n.text || '');
+                if (normFirst && normN && (normFirst === normN || (normFirst.length > 5 && (normFirst.includes(normN) || normN.includes(normFirst))))) {
+                  continue;
+                }
               }
             }
             if (n.type === 'equation') {
@@ -2544,6 +2651,10 @@ export class ModularLatexAssembler {
     // (FORCED_L1_ASSEMBLER and isCanonicalSectionL1 are declared above before isAcademicPreambleOrAuthor)
 
     nodes.forEach((node: any, nodeIdx: number) => {
+        // SECTION DUPLICATION FIX: Skip nodes that were marked for the
+        // dedicated back-matter pass (prevents double-emission).
+        if (backMatterSkippedNodeIndices.has(nodeIdx)) return;
+
         const text = (node.text || "").trim();
         const norm = normalize(text);
         const isStructural = ['figure', 'figure-group', 'table', 'algorithm', 'equation', 'image', 'chart', 'list'].includes(node.type);
@@ -2656,6 +2767,23 @@ export class ModularLatexAssembler {
               .replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '')
               .replace(/[:.\s]*$/, '')
               .trim();
+
+            // SECTION DUPLICATION FIX: If this heading matches a back-matter
+            // title, flush the current section and SKIP this heading + its
+            // following paragraphs in the body loop. The back-matter pass
+            // below will emit them into a dedicated metadata/*.tex file.
+            const bmNorm = normalizeBackMatter(text);
+            if (backMatterTitles[bmNorm]) {
+                flushSection();
+                backMatterSkippedNodeIndices.add(nodeIdx);
+                let bm = nodeIdx + 1;
+                while (bm < (nodes || []).length && nodes[bm].type !== 'heading') {
+                    backMatterSkippedNodeIndices.add(bm);
+                    bm++;
+                }
+                return;
+            }
+
             const isLevel1 = (node.level === 1) || isCanonicalSectionL1(normHeading);
             if (isLevel1) {
                 flushSection();
@@ -2730,11 +2858,53 @@ export class ModularLatexAssembler {
     // Figures are rendered INLINE within their sections at the correct position.
     // Note: equation.tex is generated for reference only, equations must remain inline.
 
-    // --- 4. ACKNOWLEDGEMENTS (standard academic: after body, BEFORE bibliography) ---
-    if (doc.acknowledgements) {
-      const ackContent = `\\section*{Acknowledgements}\n${LatexAssembler.escape(doc.acknowledgements, mathBlocks)}`;
+    // --- 4. BACK-MATTER SECTIONS (Funding, Conflict of Interest, Declarations, Data Availability, Acknowledgements, etc.) ---
+    // Emitted after body sections and BEFORE bibliography.
+    const emittedBackMatterFiles = new Set<string>();
+
+    // First, emit any back-matter sections captured from the document body nodes
+    const backMatterGroups = new Map<string, { title: string; nodes: any[] }>();
+    for (let i = 0; i < nodes.length; i++) {
+      if (nodes[i].type === 'heading') {
+        const bmNorm = normalizeBackMatter(nodes[i].text || '');
+        const targetFile = backMatterTitles[bmNorm];
+        if (targetFile) {
+          const groupNodes: any[] = [];
+          let j = i + 1;
+          while (j < nodes.length && nodes[j].type !== 'heading') {
+            groupNodes.push(nodes[j]);
+            j++;
+          }
+          if (!backMatterGroups.has(targetFile)) {
+            backMatterGroups.set(targetFile, { title: nodes[i].text || '', nodes: groupNodes });
+          } else {
+            backMatterGroups.get(targetFile)!.nodes.push(...groupNodes);
+          }
+        }
+      }
+    }
+
+    for (const [targetFile, group] of backMatterGroups.entries()) {
+      const bodyText = group.nodes.map(n => LatexAssembler.assembleNode(n, mathBlocks)).join('\n\n').trim();
+      const safeTitle = group.title.replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+)+/i, '').replace(/[:.\s]*$/, '').trim();
+      const content = `\\section*{${LatexAssembler.escape(safeTitle || 'Acknowledgements', mathBlocks)}}\n${bodyText || ''}\n`;
+      files[targetFile] = content;
+      if (!headerInputs.has(`\\input{${targetFile}}`)) {
+        headerInputs.add(`\\input{${targetFile}}`);
+        header.push(`\\input{${targetFile}}`);
+      }
+      emittedBackMatterFiles.add(targetFile);
+    }
+
+    // Fallback for doc.acknowledgements if not already emitted from body nodes
+    if (doc.acknowledgements && !emittedBackMatterFiles.has('metadata/acknowledgements.tex')) {
+      const ackContent = `\\section*{Acknowledgements}\n${LatexAssembler.escape(doc.acknowledgements, mathBlocks)}\n`;
       files['metadata/acknowledgements.tex'] = ackContent;
-      header.push("\\input{metadata/acknowledgements.tex}");
+      if (!headerInputs.has('\\input{metadata/acknowledgements.tex}')) {
+        headerInputs.add('\\input{metadata/acknowledgements.tex}');
+        header.push('\\input{metadata/acknowledgements.tex}');
+      }
+      emittedBackMatterFiles.add('metadata/acknowledgements.tex');
     }
 
     // --- 5. BIBLIOGRAPHY ---

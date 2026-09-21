@@ -1209,13 +1209,12 @@ export async function runHardenedPipeline(
                     return { ...f, path: newPath, content: `data:${mime};base64,${processedBuffer.toString('base64')}` };
                 } catch (e) {
                     console.error('[OMEGA] Normalization fail, dropping corrupt asset:', f.path, e);
-                    // Return a 1x1 transparent PNG instead of a corrupt file that crashes the compiler
-                    const transparent1x1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+                    // Return a valid 100x100 PNG fallback instead of a corrupt file that crashes the compiler
                     const newPath = f.path.replace(/\.[^.]+$/, `.png`);
                     if (newPath !== f.path) {
                         renames[f.path] = newPath;
                     }
-                    return { ...f, path: newPath, content: `data:image/png;base64,${transparent1x1}` };
+                    return { ...f, path: newPath, content: `data:image/png;base64,${FALLBACK_100X100_PNG_B64}` };
                 }
             }
             return f;
