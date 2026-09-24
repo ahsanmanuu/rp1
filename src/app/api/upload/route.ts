@@ -995,15 +995,45 @@ async function runUploadProcessing(uploadId: string) {
       // Guarantee only figures with legitimate captions or explicit references exist as body nodes
       if (figureNames.length > 0 && Array.isArray(deepData.body)) {
         const presentFigIds = new Set<string>();
+        const presentFigIndices = new Set<number>();
+        const normId = (s: string) => String(s || '').replace(/\\/g, '/').replace(/^.*[\/\\]/, '').toLowerCase().trim();
+        const extractIdx = (s: string): number | null => {
+          const m = normId(s).match(/(?:rf_fig_|rf_chart_|image|fig|img|chart)[-_]?(\d+)/i);
+          return m ? parseInt(m[1], 10) : null;
+        };
+
+        const registerId = (idStr: string) => {
+          if (!idStr) return;
+          const clean = normId(idStr);
+          presentFigIds.add(clean);
+          const idx = extractIdx(clean);
+          if (idx !== null) presentFigIndices.add(idx);
+        };
+
         for (const n of deepData.body) {
-          if (n.id) presentFigIds.add(String(n.id).toLowerCase());
+          if (n.id) registerId(String(n.id));
           if (n.images && Array.isArray(n.images)) {
-            for (const img of n.images) if (img.src) presentFigIds.add(String(img.src).toLowerCase());
+            for (const img of n.images) if (img.src) registerId(String(img.src));
           }
         }
         for (const fig of figureManifest) {
           const fName = String(fig?.name || '').trim();
-          if (!fName || presentFigIds.has(fName.toLowerCase())) continue;
+          if (!fName) continue;
+          const cleanName = normId(fName);
+          const fIdx = extractIdx(cleanName);
+          if (presentFigIds.has(cleanName) || (fIdx !== null && presentFigIndices.has(fIdx))) {
+            // Already present: update caption if manifest has a richer caption and existing is default
+            if (fig.caption && typeof fig.caption === 'string' && fig.caption.trim()) {
+              const targetNode = deepData.body.find((n: any) =>
+                (n.type === 'figure' || n.type === 'chart' || n.type === 'figure-group') &&
+                (normId(n.id) === cleanName || (fIdx !== null && extractIdx(n.id) === fIdx))
+              );
+              if (targetNode && (!targetNode.caption || /^(?:Figure|Chart|Fig\b\.?)\s*$/i.test(targetNode.caption.trim()))) {
+                targetNode.caption = fig.caption.trim();
+              }
+            }
+            continue;
+          }
           const isDeco = /logo|icon|bullet|spacer|divider|signature|qrcode|header|footer/i.test(fName);
           if (isDeco) continue;
 
@@ -1018,7 +1048,7 @@ async function runUploadProcessing(uploadId: string) {
             id: fName,
             caption: caption || (isChart ? 'Chart' : 'Figure')
           });
-          presentFigIds.add(fName.toLowerCase());
+          registerId(fName);
         }
       }
 
@@ -1390,6 +1420,10 @@ async function runUploadProcessing(uploadId: string) {
 
       // NOW SERIALIZE — single serialization after ALL DOM mutations (math + alternateContent + chart markers)
       finalXml = dom.serialize();
+      if (finalXml.includes('w:type="column"') || finalXml.includes('w:type="page"') || finalXml.includes('<w:cr/>')) {
+        finalXml = finalXml.replace(/<w:br\s+[^>]*w:type=["'](?:column|page)["'][^>]*\/?>/gi, '<w:br/><w:br/>');
+        finalXml = finalXml.replace(/<w:cr\s*\/?>/gi, '<w:br/>');
+      }
       zip.updateFile('word/document.xml', Buffer.from(finalXml));
       const zipBuffer = zip.toBuffer();
       zip = new AdmZip(zipBuffer);

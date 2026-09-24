@@ -511,7 +511,12 @@ export class DeepDocumentParser {
       .replace(/[\u202F\u00A0]/g, ' ').trim();
     if (!cleanHtml) return result;
 
-    let dom: JSDOM; try { dom = new JSDOM(cleanHtml); } catch { return result; }
+    // Universal email-author boundary disentanglement:
+    // If an email address is glued to a capitalized author name (e.g. "...@domain.comMala Kalra"),
+    // inject a <br /> between the email and the author name so soft-return splitting separates them.
+    const normalizedHtml = cleanHtml.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})([A-Z][a-z]+)/g, '$1<br />$2');
+
+    let dom: JSDOM; try { dom = new JSDOM(normalizedHtml); } catch { return result; }
     const doc = dom.window.document;
 
     // Break apart <p> elements that contain <br> so that Title/Author/Affiliation on soft-returns are evaluated independently.
@@ -581,6 +586,13 @@ export class DeepDocumentParser {
       let parent = el.parentElement;
       while (parent) {
         const parentTag = parent.tagName.toLowerCase();
+        // UNIVERSAL FIX: Discard any descendant of <table> (unless it is a nested <table> itself).
+        // A table element formats all its own rows and cells (td, th, p, strong, math, etc.).
+        // Letting table cells leak into allSignificant causes table contents to be re-processed
+        // as independent document headings, equations, and corrupts reference parsing.
+        if (parentTag === 'table' && tag !== 'table') {
+          return false;
+        }
         if (['table', 'figure', 'ul', 'ol', 'pre', 'blockquote', 'p'].includes(parentTag)) {
           if (allSignificantRaw.includes(parent)) {
             // Check if parent p was kept - only discard child if parent p was kept with prose caption
@@ -693,21 +705,32 @@ export class DeepDocumentParser {
       if (pendingGroup.length === 1) {
         groupedBody.push(pendingGroup[0]);
       } else {
-        // Determine overall main caption for the entire group
+        // Determine overall main caption for the entire group:
+        // Prefer the most descriptive, non-generic caption from the group
         let overallCaption = '';
-        for (const n of pendingGroup) {
-          if (n.caption && /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\b/i.test(n.caption)) {
-            overallCaption = n.caption;
-            break;
-          }
-        }
-        if (!overallCaption) {
-          overallCaption = pendingGroup.map(n => n.caption).filter(Boolean)[0] || 'Group of Figures';
+        const realCaps = pendingGroup
+          .map(n => n.caption?.trim() || '')
+          .filter(c => c.length > 0 && !/^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\s*$/i.test(c));
+
+        if (realCaps.length > 0) {
+          const prefixed = realCaps.find(c => /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\b/i.test(c) && c.length > 10);
+          overallCaption = prefixed || realCaps.sort((a, b) => b.length - a.length)[0];
+        } else {
+          overallCaption = 'Figure';
         }
 
-        const images = pendingGroup.map(n => ({
+        // If overallCaption contains subfigure markers like (a), (b), extract per-image subcaptions
+        let groupSubCaps: string[] = [];
+        if (/\(\s*[a-z]\s*\)/i.test(overallCaption)) {
+          const parts = overallCaption.split(/\s*(?:\(\s*[a-z]\s*\))\s*/gi).map(p => p.trim()).filter(Boolean);
+          if (parts.length - 1 >= pendingGroup.length) {
+            groupSubCaps = parts.slice(1);
+          }
+        }
+
+        const images = pendingGroup.map((n, idx) => ({
           src: String(n.id || n.url || '').replace(/\\/g, '/'),
-          caption: (n as any).subCaption || (n.caption !== overallCaption ? n.caption : '') || ''
+          caption: (n as any).subCaption || groupSubCaps[idx] || (n.caption !== overallCaption && !/^(?:Figure|Chart|Fig\b\.?)\s*$/i.test(n.caption || '') ? n.caption : '') || ''
         }));
 
         const groupNode: ContentNode = {
@@ -726,6 +749,10 @@ export class DeepDocumentParser {
     for (const node of result.body) {
       const isImg = node.type === 'figure' || node.type === 'image';
       const isEmptyPara = node.type === 'paragraph' && (!node.text || !node.text.trim());
+      const isSubfigPara = node.type === 'paragraph' && (
+        /^\s*(?:\([a-z0-9]\)\s*)+$/i.test(node.text || '') ||
+        /^\s*(?:\([a-z0-9]\)[^()]{0,40}\s*){2,}$/i.test(node.text || '')
+      );
 
       if (isImg) {
         const imgSrc = normImgSrc(node.id || (node as any).url || '');
@@ -734,8 +761,8 @@ export class DeepDocumentParser {
           continue;
         }
         pendingGroup.push(node);
-      } else if (isEmptyPara) {
-        // Keep accumulating (skip empty paragraph)
+      } else if (isEmptyPara || isSubfigPara) {
+        // Keep accumulating (skip empty paragraph or subfigure label lines)
       } else {
         flushPendingGroup();
         groupedBody.push(node);
@@ -938,6 +965,7 @@ export class DeepDocumentParser {
 
     let foundAbstract = false;
     let foundRefs = false;
+    const seenSectionTitles = new Set<string>();
 
     for (let i = 0; i < elements.length; i++) {
       const el = elements[i];
@@ -972,7 +1000,8 @@ export class DeepDocumentParser {
       const refHeaderText = lower.replace(/&lt;[\s\S]*?&gt;/gi, ' ').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
       const isLitReviewNotRef = /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:literature\s+review|literature\s+survey|review\s+of\s+literature|survey\s+of\s+literature)\b/i.test(refHeaderText);
       const isRefGuideline = /\b(?:within|content|main|guideline|style|how to|instruction|write|cite|citation|guidance|prepare)\b/i.test(refHeaderText);
-      const isRefHeader = !isLitReviewNotRef && !isRefGuideline && (
+      const isInsideTable = tagName === 'table' || tagName === 'td' || tagName === 'th' || Boolean(el.closest && el.closest('table'));
+      const isRefHeader = !isInsideTable && !isLitReviewNotRef && !isRefGuideline && (
         /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:references?|bibliography|works\s+cited|literature\s+cited|references\s*(?:and|&)\s*notes|reference\s+list)(?:\s*[:.\-–—]|\s*<[^>]*>)*$/i.test(refHeaderText) ||
         ((tagName.startsWith('h') || el.querySelector('strong, b') !== null) && /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:references?|bibliography|works\s+cited|literature\s+cited)\b/i.test(refHeaderText)) ||
         (refHeaderText.length < 60 && /^(?:[\dIVXLCDM\.\s]+)?(?:references?|bibliography|works\s+cited|literature\s+cited)(?:\s*(?:and|&|source|notes|material|cited|list|section|chapter)\b.*|[.:\s]*(?:[\d.]{1,4})?)$/i.test(refHeaderText))
@@ -1104,7 +1133,29 @@ export class DeepDocumentParser {
             /^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(f.text.trim()) ||
             /\b(?:librarian|deputy librarian|assistant professor|associate professor|lecturer|department|dept|university|institute)\b/i.test(f.text)
           );
-          const isSectionHeading = !isCaptionText && !isAuthorAffilText && (
+          const rawSecTitle = f.text.trim();
+          const normSecTitle = rawSecTitle.toLowerCase().replace(/^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]*/i, '').trim();
+          const isDuplicateSection = seenSectionTitles.has(normSecTitle);
+          const isListElement = ['ol', 'ul', 'li'].includes(tagName) || Boolean(el.closest && el.closest('ol, ul'));
+
+          const checkHasPrecedingImage = (elem: Element | null): boolean => {
+            if (!elem) return false;
+            let prevSib = elem.previousElementSibling;
+            while (prevSib && !prevSib.textContent?.trim() && !prevSib.querySelector('img') && !['img', 'figure', 'table'].includes(prevSib.tagName.toLowerCase())) {
+              prevSib = prevSib.previousElementSibling;
+            }
+            if (!prevSib) {
+              if (elem.parentElement && ['ol', 'ul', 'div'].includes(elem.parentElement.tagName.toLowerCase())) {
+                return checkHasPrecedingImage(elem.parentElement);
+              }
+              return false;
+            }
+            const prevTag = prevSib.tagName.toLowerCase();
+            return prevTag === 'img' || prevTag === 'figure' || Boolean(prevSib.querySelector('img'));
+          };
+          const isDirectlyBelowImage = checkHasPrecedingImage(el);
+
+          const isSectionHeading = !isCaptionText && !isAuthorAffilText && !isListElement && !isDirectlyBelowImage && !isDuplicateSection && (
             isNumberedHeading ||
             isStandardSectionName ||
             (foundAbstract && (detectedLvl !== null || tagName.startsWith('h'))) ||
@@ -1133,6 +1184,7 @@ export class DeepDocumentParser {
 
           if (isSectionHeading) {
               nextRole = 'section';
+              if (normSecTitle.length > 2) seenSectionTitles.add(normSecTitle);
           } else if (!foundAbstract && f.text.length > 5 && f.text.length < 500
               && !/ieee|journal|transactions|vol\.|no\.|arxiv|preprint|copyright|issn/i.test(f.text)) {
 
@@ -2125,7 +2177,7 @@ export class DeepDocumentParser {
                 const isFrontMatterImage = !hasSeenFirstSectionOrAbstract;
                 const isFooterImage = hasSeenReferences;
                 const isBodyRegion = hasSeenFirstSectionOrAbstract && !hasSeenReferences;
-                const isExplicitSrcDeco = /logo|icon|header|banner|bullet|background|watermark|divider|spacer|signature|qr|qrcode|footer|license|badge|cc[-_]by|creative\s*commons/i.test(src);
+                const isExplicitSrcDeco = !src.startsWith('data:') && /logo|icon|header|banner|bullet|background|watermark|divider|spacer|signature|qr|qrcode|footer|license|badge|cc[-_]by|creative\s*commons/i.test(src);
                 const decoHint = isExplicitAltDeco || isExplicitSrcDeco || (!isBodyRegion && !groupCaption && (isFrontMatterImage || isFooterImage));
                 if (decoHint) {
                   (result as any)._decorativeImages = (result as any)._decorativeImages || new Set<string>();
@@ -2280,15 +2332,36 @@ export class DeepDocumentParser {
           else if (entry.role === 'list') {
                   const items: string[] = [];
                   for (const listEl of entry.elements) {
+                      if (consumedCaptions.has(listEl) || Array.from(consumedCaptions).some(c => c === listEl || c.contains(listEl) || listEl.contains(c))) continue;
                       const tag = listEl.tagName.toLowerCase();
                       if (tag === 'ul' || tag === 'ol') {
-                          items.push(...Array.from<Element>(listEl.querySelectorAll('li')).map((li) => li.textContent?.trim() || '').filter(Boolean));
+                          const lis = Array.from<Element>(listEl.querySelectorAll('li')).filter(li => !consumedCaptions.has(li));
+                          items.push(...lis.map((li) => li.textContent?.trim() || '').filter(Boolean));
                       } else {
                           const t = listEl.textContent?.trim() || '';
                           if (t) items.push(t);
                       }
                   }
-              result.body.push({ type: 'list', items, listType: 'itemize' });
+              // Filter out items that match consumed captions
+              const validItems = items.filter(it => {
+                const clean = it.replace(/\s+/g, ' ').trim();
+                return clean.length > 0 && !consumedCaptionTexts.has(clean) &&
+                  !Array.from(consumedCaptionTexts).some(ct => ct && (clean === ct || (clean.startsWith(ct) && clean.length < ct.length + 20)));
+              });
+              if (validItems.length === 1) {
+                const single = validItems[0];
+                const isCaptionLike = /^(?:Figure|Fig\b|Table|Tab\b|Chart|Graph|Plot|Diagram|Performance of|Graphical Representation|Comparison of)\b/i.test(single) ||
+                  (single.length < 80 && !single.endsWith('.') && !single.includes(','));
+                if (isCaptionLike) {
+                  if (!consumedCaptionTexts.has(single)) {
+                    result.body.push({ type: 'paragraph', text: single });
+                  }
+                  continue;
+                }
+              }
+              if (validItems.length > 0) {
+                result.body.push({ type: 'list', items: validItems, listType: 'itemize' });
+              }
           }
           else if (entry.role === 'reference') {
               hasSeenReferences = true;
@@ -2484,12 +2557,23 @@ export class DeepDocumentParser {
     });
     if (authorMatch) return null;
 
+    // Guard: Subfigure labels (e.g. "(a)   (b)", "(a) Original (b) Enhanced") are not section headings
+    if (/^\s*(?:\([a-z0-9]\)\s*)+$/i.test(f.text) || /^\s*(?:\([a-z0-9]\)\s*[\w\s.,-]{0,40}\s*){2,}$/i.test(f.text)) {
+      return null;
+    }
+
     // Priority 1: Numerical/Alpha Hierarchical Numbering Ground Truth (1., 1.1, 1.1.1, A., A.1, I., I.1, [1], (A))
     // Author numbering ALWAYS takes absolute precedence over generic canonical dictionaries
     const isNumbered = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(f.text);
     if (isNumbered) {
       const prefixMatch = f.text.match(/^(?:\s*(?:(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[A-Za-z])(?:\.(?:\d+|[ivxlcdm]+|[A-Za-z]))*)(?:\]|\))?(?:\.?[.:\s)]+))/i);
       if (prefixMatch && isValidSectionPrefix(prefixMatch[1], prefixMatch[0])) {
+        const afterPrefix = f.text.substring(prefixMatch[0].length).trim();
+        // A valid section heading MUST have a real title following the numbering prefix
+        if (!afterPrefix || afterPrefix.length < 2 || !/[a-zA-Z]{2,}/.test(afterPrefix) || /^\([a-z0-9]\)/i.test(afterPrefix)) {
+          return null;
+        }
+
         const cleanPrefix = prefixMatch[1];
         const parts = cleanPrefix.split('.');
         const level = Math.min(3, parts.length);
@@ -2614,7 +2698,14 @@ export class DeepDocumentParser {
     const noDelimMatch = trimmed.match(/^\s*(?:Table|Tab\b\.?)\s*[\d.\-:A-Za-z]+\s+([a-zA-Z]+)/i);
     if (noDelimMatch) {
       const firstWord = noDelimMatch[1].toLowerCase();
-      return /^(?:shows?|presents?|illustrates?|compares?|depicts?|displays?|demonstrates?|summarizes?|lists?|reports?|plots?|gives?|provides?|represents?|outlines?|describes?|highlights?|overviews?|contains?|yields?|produces?|indicates?|details?|tabulates?|is|are|was|were|uses?|used)$/.test(firstWord);
+      if (/^(?:shows?|presents?|illustrates?|compares?|depicts?|displays?|demonstrates?|summarizes?|lists?|reports?|plots?|gives?|provides?|represents?|outlines?|describes?|highlights?|overviews?|contains?|yields?|produces?|indicates?|details?|tabulates?|portrays?|evaluates?|reveals?|reflects?|corresponds?|includes?|expresses?|exhibits?|is|are|was|were|uses?|used)$/.test(firstWord)) {
+        return true;
+      }
+    }
+
+    // Universal: Any text without delimiter that has multi-sentence prose, citations, or excessive length is body prose
+    if (trimmed.length > 80 || /\.\s+[A-Z]/.test(trimmed) || /\[\d+\]/.test(trimmed) || /\b(?:Figure|Fig\b\.?)\s*\d/i.test(trimmed)) {
+      return true;
     }
     return false;
   }
@@ -2631,7 +2722,14 @@ export class DeepDocumentParser {
     const noDelimMatch = trimmed.match(/^\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo)\s*[\d.\-:A-Za-z]+\s+([a-zA-Z]+)/i);
     if (noDelimMatch) {
       const firstWord = noDelimMatch[1].toLowerCase();
-      return /^(?:shows?|presents?|illustrates?|compares?|depicts?|displays?|demonstrates?|summarizes?|lists?|reports?|plots?|gives?|provides?|represents?|outlines?|describes?|highlights?|overviews?|contains?|yields?|produces?|indicates?|details?|tabulates?|is|are|was|were|uses?|used)$/.test(firstWord);
+      if (/^(?:shows?|presents?|illustrates?|compares?|depicts?|displays?|demonstrates?|summarizes?|lists?|reports?|plots?|gives?|provides?|represents?|outlines?|describes?|highlights?|overviews?|contains?|yields?|produces?|indicates?|details?|tabulates?|portrays?|evaluates?|reveals?|reflects?|corresponds?|includes?|expresses?|exhibits?|is|are|was|were|uses?|used)$/.test(firstWord)) {
+        return true;
+      }
+    }
+
+    // Universal: Any text without delimiter that has multi-sentence prose, citations, or excessive length is body prose
+    if (trimmed.length > 80 || /\.\s+[A-Z]/.test(trimmed) || /\[\d+\]/.test(trimmed) || /\b(?:Table|Tab\b\.?)\s*\d/i.test(trimmed)) {
+      return true;
     }
     return false;
   }
@@ -2800,6 +2898,61 @@ export class DeepDocumentParser {
       next = next?.nextElementSibling || null;
       prev = prev?.previousElementSibling || null;
     }
+
+    // UNIVERSAL: Fallback for tables whose title/caption does not use an explicit "Table N:" prefix
+    // (standard in IEEE, ACM, Springer templates where table title is a short paragraph directly above).
+    if (type === 'table') {
+      let cand = blockEl.previousElementSibling || el.previousElementSibling;
+      while (cand && !cand.textContent?.trim() && !['table', 'img', 'figure'].includes(cand.tagName.toLowerCase())) {
+        cand = cand.previousElementSibling;
+      }
+      if (cand && !processed.has(cand)) {
+        const rawT = (cand.textContent || '').replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+        const words = rawT.split(/\s+/).filter(Boolean);
+        const normClean = rawT.toLowerCase().replace(/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+\s*/i, '').replace(/[.:\s]+$/, '').trim();
+        const isList = ['ol', 'ul', 'li'].includes(cand.tagName.toLowerCase()) || Boolean(cand.querySelector('li'));
+        const isCanonicalL1 = !isList && this.FORCED_LEVEL1.has(normClean);
+        const isProse = rawT.endsWith('.') && words.length > 8 && !/^[A-Z]/.test(rawT);
+        const isRealTitle = rawT.length >= 3 && rawT.length <= 160 && !isCanonicalL1 && !isProse && words.length <= 18 &&
+          !/^(?:abstract|introduction|background|methodology|proposed|results|discussion|conclusion|references|acknowledg)\b/i.test(normClean);
+        if (isRealTitle || isList) {
+          processed.add(cand);
+          cand.querySelectorAll('*').forEach(c => processed.add(c));
+          if (consumedTexts) consumedTexts.add(rawT);
+          return this.cleanCaption(rawT);
+        }
+      }
+    }
+
+    // UNIVERSAL: Fallback for figures whose caption does not use an explicit "Figure N:" prefix
+    // (e.g. diagrams or figures with short title/captions directly below).
+    if (type === 'figure') {
+      let cand = blockEl.nextElementSibling || el.nextElementSibling;
+      while (cand && !cand.textContent?.trim() && !['table', 'img', 'figure'].includes(cand.tagName.toLowerCase())) {
+        cand = cand.nextElementSibling;
+      }
+      // If cand is a subfigure label line (e.g. "(a)  (b)", "(e)  (f)"), advance past it to find the real figure caption!
+      while (cand && (/^\s*(?:\([a-z0-9]\)\s*)+$/i.test((cand.textContent || '').trim()) || !cand.textContent?.trim())) {
+        cand = cand.nextElementSibling;
+      }
+      if (cand && !processed.has(cand)) {
+        const rawT = (cand.textContent || '').replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+        const words = rawT.split(/\s+/).filter(Boolean);
+        const normClean = rawT.toLowerCase().replace(/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+\s*/i, '').replace(/[.:\s]+$/, '').trim();
+        const isList = ['ol', 'ul', 'li'].includes(cand.tagName.toLowerCase()) || Boolean(cand.querySelector('li'));
+        const isCanonicalL1 = !isList && this.FORCED_LEVEL1.has(normClean);
+        const isProse = rawT.endsWith('.') && words.length > 12 && !/^[A-Z]/.test(rawT);
+        const isRealTitle = rawT.length >= 3 && rawT.length <= 500 && !isCanonicalL1 && !isProse && words.length <= 60 &&
+          !/^(?:abstract|introduction|literature review|related work|background|methodology|experiments|results|discussion|conclusion|references|acknowledg)\b/i.test(normClean);
+        if (isRealTitle || isList) {
+          processed.add(cand);
+          cand.querySelectorAll('*').forEach(c => processed.add(c));
+          if (consumedTexts) consumedTexts.add(rawT);
+          return this.cleanCaption(rawT);
+        }
+      }
+    }
+
     return '';
   }
 
@@ -3002,6 +3155,12 @@ export class DeepDocumentParser {
     if (/^\s*\[\d+\]/.test(text) && text.length > 40) return false;
     if (/\b(?:et\s+al|vol\.|pp\.|doi:|proceedings|journal|conference)\b/i.test(text)) return false;
 
+    // Subfigure indicator lines (e.g. "(a)   (b)", "(c)   (d)", "(a) Glaucoma (b) Normal")
+    // are figure labels, NEVER mathematical display equations
+    if (/^\s*(?:\([a-z0-9]\)\s*)+$/i.test(text) || /^\s*(?:\([a-z0-9]\)\s*[\w\s.,-]{0,40}\s*){2,}$/i.test(text)) {
+      return false;
+    }
+
     // 1. Exclude lines that are clearly normal headings, captions, or list items
     if (/^(?:figure|fig\.|table|tab\.|algorithm|algo\.|section|chapter|appendix)/i.test(text)) return false;
 
@@ -3083,7 +3242,9 @@ export class DeepDocumentParser {
     const mathSymbolDensity = f.wordCount > 0 ? mathSymbolCount / f.wordCount : 0;
 
     // Case A: Highly symbolic line (very high math symbol density, e.g. "x_i = y_i + z_i")
-    if (mathSymbolCount >= 3 && mathSymbolDensity > 0.3 && f.wordCount < 20) {
+    // MUST contain at least one actual mathematical operator or relation symbol (parens alone are NOT equations)
+    const realMathOps = (text.match(/[=+\-*/^\\∑∫√²³α-ωΑ-Ωθλπμσδφψωηρ<>~≈≠≤≥_]/g) || []).length;
+    if (mathSymbolCount >= 3 && realMathOps >= 1 && mathSymbolDensity > 0.3 && f.wordCount < 20) {
       return true;
     }
 

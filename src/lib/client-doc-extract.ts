@@ -437,9 +437,18 @@ export async function extractClientDocx(file: File): Promise<ClientDocxEnvelope>
     const docEntry = zip.file('word/document.xml');
     if (docEntry) {
       let docXml = await docEntry.async('text');
+      let modifiedXml = false;
+      if (docXml.includes('w:type="column"') || docXml.includes('w:type="page"') || docXml.includes('<w:cr/>')) {
+        docXml = docXml.replace(/<w:br\s+[^>]*w:type=["'](?:column|page)["'][^>]*\/?>/gi, '<w:br/><w:br/>');
+        docXml = docXml.replace(/<w:cr\s*\/?>/gi, '<w:br/>');
+        modifiedXml = true;
+      }
       if (docXml.includes('AlternateContent')) {
         docXml = docXml.replace(/<mc:AlternateContent[\s\S]*?<mc:Fallback>([\s\S]*?)<\/mc:Fallback>[\s\S]*?<\/mc:AlternateContent>/gi, '$1');
         docXml = docXml.replace(/<AlternateContent[\s\S]*?<Fallback>([\s\S]*?)<\/Fallback>[\s\S]*?<\/AlternateContent>/gi, '$1');
+        modifiedXml = true;
+      }
+      if (modifiedXml) {
         zip.file('word/document.xml', docXml);
         processedArrayBuffer = await zip.generateAsync({ type: 'arraybuffer' });
       }
