@@ -1,4 +1,3 @@
-import { Inter, Newsreader, Outfit, JetBrains_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { NextAuthProvider } from "@/components/Auth/NextAuthProvider";
@@ -10,35 +9,6 @@ import SecurityBlockOverlay from "@/components/SecurityBlockOverlay";
 import AiCapWarning from "@/components/AiCapWarning";
 import { Heartbeat } from "@/components/Heartbeat";
 import ConditionalMonacoSetup from "@/components/ConditionalMonacoSetup";
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-  weight: ["400", "500", "600", "700"],
-});
-
-const outfit = Outfit({
-  subsets: ["latin"],
-  variable: "--font-outfit",
-  display: "swap",
-  weight: ["400", "500", "600", "700", "800"],
-});
-
-const jetbrains = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-  display: "swap",
-  weight: ["400", "500"],
-});
-
-const newsreader = Newsreader({
-  subsets: ["latin"],
-  variable: "--font-newsreader",
-  display: "swap",
-  style: ["normal", "italic"],
-  weight: ["400", "700"],
-});
 
 export async function generateMetadata() {
   const logoUrl = '/logo.png';
@@ -59,8 +29,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${outfit.variable} ${jetbrains.variable} ${newsreader.variable}`} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,700;1,6..72,400;1,6..72,700&family=Outfit:wght@400;500;600;700;800&display=swap"
+        />
         <script dangerouslySetInnerHTML={{ __html: `
           (function(){
             var lastReload = 0;

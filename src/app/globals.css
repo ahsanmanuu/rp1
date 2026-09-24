@@ -439,6 +439,10 @@
   }
 
 :root {
+  --font-inter: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-outfit: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-newsreader: 'Newsreader', Georgia, Cambria, 'Times New Roman', Times, serif;
   --font-body: var(--font-inter);
   --font-heading: var(--font-inter);
   --font-headline: var(--font-outfit), var(--font-inter), sans-serif;
