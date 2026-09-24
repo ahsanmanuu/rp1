@@ -191,7 +191,16 @@ export class PipelineGC {
       // 5. Sweep orphaned temp dirs (background non-blocking)
       this.flushTempDirs().catch(() => {});
 
-      // 6. Signal V8 GC if available
+      // 6. Flush Sharp libvips native C++ image cache if loaded
+      try {
+        const sharp = require('sharp');
+        if (sharp && typeof sharp.cache === 'function') {
+          sharp.cache(false);
+          sharp.cache({ memory: 16, items: 10, files: 0 });
+        }
+      } catch {}
+
+      // 7. Signal V8 GC if available
       if (typeof global !== 'undefined' && typeof (global as any).gc === 'function') {
         try { (global as any).gc(); } catch {}
       }

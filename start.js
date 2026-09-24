@@ -18,6 +18,11 @@ if (typeof dns.setDefaultResultOrder === 'function') {
   dns.setDefaultResultOrder('ipv4first');
 }
 
+// Enforce container memory boundaries & enable V8 garbage collection hooks
+if (!process.env.NODE_OPTIONS || !process.env.NODE_OPTIONS.includes('--max-old-space-size')) {
+  process.env.NODE_OPTIONS = ((process.env.NODE_OPTIONS || '') + ' --max-old-space-size=384 --expose-gc').trim();
+}
+
 // Setup file logger
 const logPath = path.resolve(process.cwd(), 'startup.log');
 fs.writeFileSync(logPath, `[Startup Started at ${new Date().toISOString()}]\n`);

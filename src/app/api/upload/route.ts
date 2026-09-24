@@ -4,6 +4,7 @@ import path from 'path';
 import sharp from 'sharp';
 import { randomBytes } from 'crypto';
 import { getClient } from '@/lib/prisma';
+import { PipelineGC } from '@/lib/pipeline-gc';
 
 // Configure Sharp for low-resource environments (Render 512MB limit)
 sharp.concurrency(1);
@@ -617,6 +618,7 @@ export const runtime = "nodejs";
 
 async function runUploadProcessing(uploadId: string) {
   backgroundRunning.add(uploadId);
+  let createdProjectId: string | null = null;
   try {
     // Ensure PB text/editor field limits are raised before any createMany.
     // After a server restart the in-memory cache resets; this is cheap after
@@ -641,6 +643,7 @@ async function runUploadProcessing(uploadId: string) {
       select: { uploadId: true, fileName: true, size: true, templateId: true, userId: true, email: true, name: true, phase: true, projectId: true, attempts: true },
     });
     if (!job) throw new Error('Upload job not found');
+    if (job.projectId) createdProjectId = job.projectId;
 
     // ── CLIENT-EXTRACTED ENVELOPE (durable text payload) ──────────────────
     // Browser-extracted DOCX: the DB rawBytes hold the text envelope, never a
@@ -2247,6 +2250,7 @@ async function runUploadProcessing(uploadId: string) {
     }
     if (resumeProjectId) {
       console.log(`[UPLOAD-RESUME] Adopting checkpointed project ${resumeProjectId} (previous worker died after project creation).`);
+      createdProjectId = resumeProjectId;
     }
 
     const project = resumeProjectId
@@ -2272,6 +2276,7 @@ async function runUploadProcessing(uploadId: string) {
         chartCount: Math.max(0, Math.floor(deepData.stats?.chartCount || 0)),
       }
     });
+    createdProjectId = project.id;
     if (!resumeProjectId) await writeCheckpoint(uploadId, { projectId: project.id });
 
     // Store complete untruncated source document to local project directory on disk
@@ -2329,7 +2334,10 @@ async function runUploadProcessing(uploadId: string) {
           if (!imgBuf && (img as any).stagedPath && fs.existsSync((img as any).stagedPath)) {
             try { imgBuf = fs.readFileSync((img as any).stagedPath); } catch {}
           }
-          if (imgBuf && imgBuf.length > 0) {
+          // Only store base64 in DB for lightweight assets (< 128KB).
+          // Larger images are already durably persisted to disk (public/uploads/projects/{id}/...)
+          // and will be loaded directly from disk on demand, preventing DB OOM spikes on Render.
+          if (imgBuf && imgBuf.length > 0 && imgBuf.length <= 131072) {
             content = `data:${mime};base64,${imgBuf.toString('base64')}`;
           }
         }
@@ -2346,7 +2354,7 @@ async function runUploadProcessing(uploadId: string) {
             filename: `figures/${img.name}`,
             filePath: `/uploads/projects/${project.id}/figures/${img.name.replace(/\\/g, '/')}`,
             fileType: 'image',
-            content
+            content: '' // Disk backed: avoid duplicating heavy base64 blobs in DB
           });
         }
       }
@@ -2414,6 +2422,9 @@ async function runUploadProcessing(uploadId: string) {
     return { success: false, error: error.message || 'Internal Server Error' };
   } finally {
     backgroundRunning.delete(uploadId);
+    if (createdProjectId) {
+      PipelineGC.autoFree({ projectId: createdProjectId }).catch(() => {});
+    }
   }
 }
 

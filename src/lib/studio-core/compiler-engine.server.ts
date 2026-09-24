@@ -12,6 +12,9 @@ import { PDFDocument } from 'pdf-lib';
 import * as fs from 'fs';
 import * as path from 'path';
 import sharp from 'sharp';
+// Restrict Sharp libvips native C++ memory footprint for container environments (Render 512MB limit)
+sharp.concurrency(1);
+sharp.cache({ memory: 16, items: 10, files: 0 });
 import { PipelineGC } from '@/lib/pipeline-gc';
 import { applyFinalSanitizationSieve } from '@/lib/latex';
 import { preprocessProjectFiles } from '@/lib/studio-core/latex-preprocessor';
@@ -1121,11 +1124,28 @@ export async function runHardenedPipeline(
     // Strategy Selection — declared here so the optimizeAssets closure below can reference it.
     const useGhostMode = config.ghostMode;
     const optimizeAssets = async (assets: FilePayload[]) => {
-        // Process all assets in parallel — avoids sequential image decode/encode bottleneck
-        const results = await Promise.all(assets.map(async (f) => {
-            if (isBinaryFile(f.path) && f.content.startsWith('data:image')) {
+        // Sequential memoized asset optimization — prevents concurrent native C++ libvips
+        // bitmap decompression spikes from breaching Render's 512MB container limit.
+        const results: FilePayload[] = [];
+        const processedCache = new Map<string, { newPath: string; content: string }>();
 
-                // ── NON-GHOST (Latexify Studio) ─────────────────────────────────────
+        for (const f of assets) {
+            if (isBinaryFile(f.path) && f.content.startsWith('data:image')) {
+                // Deduplicate: if an identical image was already processed, reuse its transformed payload
+                const cacheKey = `${f.content.length}:${f.content.slice(0, 80)}`;
+                const cached = processedCache.get(cacheKey);
+                if (cached) {
+                    const ext = f.path.split('.').pop()?.toLowerCase() || '';
+                    const cachedExt = cached.newPath.split('.').pop()?.toLowerCase() || '';
+                    const newPath = ext === cachedExt ? f.path : f.path.replace(/\.[^.]+$/, `.${cachedExt}`);
+                    if (newPath !== f.path) {
+                        renames[f.path] = newPath;
+                    }
+                    results.push({ ...f, path: newPath, content: cached.content });
+                    continue;
+                }
+
+                // ── NON-GHOST (Latexify Studio / Doc2Latex) ──────────────────────────
                 // Transcode non-standard formats to standard PNG, preserve standard formats verbatim.
                 if (!useGhostMode) {
                     const ext = f.path.split('.').pop()?.toLowerCase() || '';
@@ -1146,7 +1166,10 @@ export async function runHardenedPipeline(
                                 renames[f.path] = newPath;
                                 console.log(`[OMEGA] Non-Ghost Asset Transformed: ${f.path} -> ${newPath}`);
                             }
-                            return { ...f, path: newPath, content: `data:image/png;base64,${processedBuffer.toString('base64')}` };
+                            const resContent = `data:image/png;base64,${processedBuffer.toString('base64')}`;
+                            processedCache.set(cacheKey, { newPath, content: resContent });
+                            results.push({ ...f, path: newPath, content: resContent });
+                            continue;
                         } catch (e) {
                             console.error('[OMEGA] Non-Ghost normalization fail:', f.path, e);
                         }
@@ -1160,12 +1183,15 @@ export async function runHardenedPipeline(
                                     : rawMime;
                     if (canonMime && canonMime !== rawMime) {
                         const rest = f.content.indexOf(',');
-                        return { ...f, content: `data:${canonMime};base64,${f.content.slice(rest + 1)}` };
+                        const resContent = `data:${canonMime};base64,${f.content.slice(rest + 1)}`;
+                        results.push({ ...f, content: resContent });
+                    } else {
+                        results.push(f);
                     }
-                    return f;
+                    continue;
                 }
 
-                // ── GHOST MODE (Migrator / Doc2Latex) ────────────────────────────────
+                // ── GHOST MODE (Migrator) ───────────────────────────────────────────
                 const b64 = f.content.split(',')[1] || f.content;
                 const buffer = Buffer.from(b64, 'base64');
                 const ext = f.path.split('.').pop()?.toLowerCase() || '';
@@ -1173,7 +1199,8 @@ export async function runHardenedPipeline(
                 try {
                     // FAST PASSTHROUGH for vector graphics (PDF and EPS are native; SVG needs transcoding)
                     if (['pdf', 'eps'].includes(ext)) {
-                        return f;
+                        results.push(f);
+                        continue;
                     }
 
                     const meta = await sharp(buffer).metadata();
@@ -1182,13 +1209,13 @@ export async function runHardenedPipeline(
                     let finalExt = ext;
                     let mime = `image/${ext === 'pdf' ? 'pdf' : ext === 'jpg' || ext === 'jpeg' ? 'jpeg' : ext}`;
 
-                    const targetQuality = 40;
                     const targetDim = 600;
 
                     // FAST PASSTHROUGH: If image is already optimized, skip expensive sharp pipeline
                     if (meta.width && meta.height && meta.width <= targetDim && meta.height <= targetDim && 
                         !meta.hasAlpha && (ext === 'jpg' || ext === 'jpeg') && buffer.length < 102400) {
-                        return f;
+                        results.push(f);
+                        continue;
                     }
 
                     const isNonStandard = ['webp', 'avif', 'gif', 'tiff', 'tif', 'bmp', 'svg', 'heic', 'heif'].includes(ext);
@@ -1219,7 +1246,9 @@ export async function runHardenedPipeline(
                         renames[f.path] = newPath;
                         console.log(`[OMEGA] Asset Transformed: ${f.path} -> ${newPath}`);
                     }
-                    return { ...f, path: newPath, content: `data:${mime};base64,${processedBuffer.toString('base64')}` };
+                    const resContent = `data:${mime};base64,${processedBuffer.toString('base64')}`;
+                    processedCache.set(cacheKey, { newPath, content: resContent });
+                    results.push({ ...f, path: newPath, content: resContent });
                 } catch (e) {
                     console.error('[OMEGA] Normalization fail, dropping corrupt asset:', f.path, e);
                     // Return a valid 100x100 PNG fallback instead of a corrupt file that crashes the compiler
@@ -1227,11 +1256,19 @@ export async function runHardenedPipeline(
                     if (newPath !== f.path) {
                         renames[f.path] = newPath;
                     }
-                    return { ...f, path: newPath, content: `data:image/png;base64,${FALLBACK_100X100_PNG_B64}` };
+                    results.push({ ...f, path: newPath, content: `data:image/png;base64,${FALLBACK_100X100_PNG_B64}` });
                 }
+            } else {
+                results.push(f);
             }
-            return f;
-        }));
+        }
+
+        // Immediately release Sharp libvips native memory and trigger V8 GC
+        try { sharp.cache(false); sharp.cache({ memory: 16, items: 10, files: 0 }); } catch {}
+        if (typeof (global as any).gc === 'function') {
+            try { (global as any).gc(); } catch {}
+        }
+
         return results;
     };
 
@@ -1439,14 +1476,14 @@ export async function runHardenedPipeline(
     });
 
     // Build fullAssets for ghost inking (real binary data before proxy replacement)
-    // Preserve original (non-normalized) paths for proper matching in inkGhostPdf
-    const fullAssets: FilePayload[] = activeFiles.map(f => {
+    // Only allocate when useGhostMode is active to eliminate duplicate in-memory image clones
+    const fullAssets: FilePayload[] = useGhostMode ? activeFiles.map(f => {
         const isBinary = isBinaryFile(f.path);
         return {
             path: f.path,
             content: isBinary ? (realBinaryCache[normalizePath(f.path)] || f.content) : f.content
         };
-    });
+    }) : [];
 
     // ── PROPRIETARY PACKAGE STUB INJECTOR ───────────────────────────────────
     // Many journal cls files (Wiley USG, Springer, etc.) ship companion .sty
@@ -1565,46 +1602,50 @@ export async function runHardenedPipeline(
     }
 
     // ────────────────────────────────────────────────────────────────────────
-    // NUCLEAR 31.0: MONOLITHIC COLLAPSE FOR ULTRA-LARGE PROJECTS
-    const monolithContent = flattenProject(activeFiles, cleanMain);
-    monoFiles = activeFiles.map(f => {
-        const isBinary = isBinaryFile(f.path);
-        if (isBinary) {
-            return {
-                path: f.path,
-                content: realBinaryCache[normalizePath(f.path)] || f.content
-            };
+    // NUCLEAR 31.0: LAZY MONOLITHIC COLLAPSE FOR ULTRA-LARGE PROJECTS
+    // Defer generation of monoFiles and remoteFiles until a remote strategy actually executes.
+    // This avoids creating 2 additional duplicated file/image payloads in memory during local Tectonic compiles.
+    const getMonoFiles = (): FilePayload[] => {
+        if (monoFiles.length > 0) return monoFiles;
+        const monolithContent = flattenProject(activeFiles, cleanMain);
+        monoFiles = activeFiles.map(f => {
+            const isBinary = isBinaryFile(f.path);
+            if (isBinary) {
+                return {
+                    path: f.path,
+                    content: realBinaryCache[normalizePath(f.path)] || f.content
+                };
+            }
+            return f;
+        }).filter(f => {
+            const ext = f.path.split('.').pop()?.toLowerCase() || '';
+            if (ext === 'tex') {
+                return normalizePath(f.path) === normalizePath(cleanMain);
+            }
+            return /^(cls|sty|bib|bst|cfg|clo|def|fd|ldf|tikz|lua|png|jpg|jpeg|webp|gif|pdf|eps|svg)$/i.test(ext);
+        });
+        
+        const monoMainIdx = monoFiles.findIndex(f => normalizePath(f.path) === normalizePath(cleanMain));
+        if (monoMainIdx !== -1) {
+            monoFiles[monoMainIdx].content = monolithContent;
+        } else {
+            monoFiles.push({ path: cleanMain, content: monolithContent });
         }
-        return f;
-    }).filter(f => {
-        const ext = f.path.split('.').pop()?.toLowerCase() || '';
-        if (ext === 'tex') {
-            return normalizePath(f.path) === normalizePath(cleanMain);
-        }
-        return /^(cls|sty|bib|bst|cfg|clo|def|fd|ldf|tikz|lua|png|jpg|jpeg|webp|gif|pdf|eps|svg)$/i.test(ext);
-    });
-    
-    const monoMainIdx = monoFiles.findIndex(f => normalizePath(f.path) === normalizePath(cleanMain));
-    if (monoMainIdx !== -1) {
-        monoFiles[monoMainIdx].content = monolithContent;
-    } else {
-        monoFiles.push({ path: cleanMain, content: monolithContent });
-    }
+        return monoFiles;
+    };
 
-    // ── GHOSTLESS REMOTE FILE SET ───────────────────────────────────────────────
-    // Remote engines (YtoTech / TexLive) do NOT return the `ghost.trc` markers
-    // that `inkGhostPdf` needs, so ghost-mode image inking is impossible there
-    // and figures would collapse to placeholders. For the remote strategies we
-    // therefore revert `\zimg` back to plain `\includegraphics` so the real
-    // image bytes (uploaded alongside the source) render directly in the PDF.
-    // The LOCAL tectonic strategy below keeps the full ghost-mode path intact.
-    remoteFiles = monoFiles.map(f => {
-        const ext = f.path.split('.').pop()?.toLowerCase() || '';
-        if (useGhostMode && ext === 'tex') {
-            return { ...f, content: revertZimgToIncludegraphics(f.content) };
-        }
-        return f;
-    });
+    const getRemoteFiles = (): FilePayload[] => {
+        if (remoteFiles.length > 0) return remoteFiles;
+        const mf = getMonoFiles();
+        remoteFiles = mf.map(f => {
+            const ext = f.path.split('.').pop()?.toLowerCase() || '';
+            if (useGhostMode && ext === 'tex') {
+                return { ...f, content: revertZimgToIncludegraphics(f.content) };
+            }
+            return f;
+        });
+        return remoteFiles;
+    };
 
     // ── BIBLIOGRAPHY DETECTION (shared across strategies) ─────────────────────
     const mainFileObj = activeFiles.find(f => normalizePath(f.path) === normalizePath(cleanMain));
@@ -1718,7 +1759,7 @@ export async function runHardenedPipeline(
                     await fs.promises.mkdir(path.dirname(tempP), { recursive: true });
                     await fs.promises.writeFile(tempP, newBuffer);
 
-                    // For binary image files: multi-location deployment in temp dir
+                    // For binary image files: multi-location deployment in temp dir using copyFile (zero memory duplication)
                     if (isBinary) {
                         const baseName = path.basename(f.path);
                         const altLocations = [
@@ -1731,7 +1772,7 @@ export async function runHardenedPipeline(
                             if (altP !== tempP) {
                                 try {
                                     await fs.promises.mkdir(path.dirname(altP), { recursive: true });
-                                    await fs.promises.writeFile(altP, newBuffer);
+                                    await fs.promises.copyFile(tempP, altP);
                                 } catch {}
                             }
                         }
@@ -1752,7 +1793,7 @@ export async function runHardenedPipeline(
                     } catch {}
                 }));
 
-                // Non-blocking asynchronous sync of files to physical project upload dir
+                // Non-blocking asynchronous sync of files to physical project upload dir via stream/copyFile
                 (async () => {
                     try {
                         for (const f of activeFiles) {
@@ -1760,15 +1801,13 @@ export async function runHardenedPipeline(
                             if (/fallback_figure\.png$/i.test(f.path) || (f as any)._isSynthesized) {
                                 continue;
                             }
-                            const isBinary = isBinaryFile(f.path);
                             const fullP = path.join(projectDir, f.path);
-                            await fs.promises.mkdir(path.dirname(fullP), { recursive: true }).catch(() => {});
-                            const realContent = realBinaryCache?.[normalizePath(f.path)] ?? f.content;
-                            const buf = isBinary
-                                ? Buffer.from(realContent.startsWith('data:') ? (realContent.split(',')[1] || '') : realContent, 'base64')
-                                : Buffer.from(realContent || '', 'utf8');
-                            if (buf.length > 0) {
-                                await fs.promises.writeFile(fullP, buf).catch(() => {});
+                            if (fs.existsSync(fullP)) continue; // Already on disk! Skip duplicate writes
+
+                            const tempP = path.join(compileTempDir, f.path);
+                            if (fs.existsSync(tempP)) {
+                                await fs.promises.mkdir(path.dirname(fullP), { recursive: true }).catch(() => {});
+                                await fs.promises.copyFile(tempP, fullP).catch(() => {});
                             }
                         }
                     } catch {}
@@ -1842,14 +1881,28 @@ export async function runHardenedPipeline(
                     if (useOnlyCached) tectonicArgs.push('-C');
                     tectonicArgs.push('-Z', 'continue-on-errors', '--synctex', mainRelative);
 
+                    // Aggressive Pre-compile Memory Sweep: flush libvips native caches and trigger V8 GC
+                    // so the child process (tectonic) has maximum available memory headroom within the container limit.
+                    try { sharp.cache(false); sharp.cache({ memory: 16, items: 10, files: 0 }); } catch {}
+                    if (typeof (global as any).gc === 'function') {
+                        try { (global as any).gc(); } catch {}
+                    }
+
                     const { stdout, stderr } = await execFileAsync(
                         tectonicPath,
                         tectonicArgs,
                         { cwd: compileTempDir, timeout: currentTimeout }
                     );
                     logOutput = (stdout || '') + (stderr || '');
+
+                    if (typeof (global as any).gc === 'function') {
+                        try { (global as any).gc(); } catch {}
+                    }
                     break; // Success!
                 } catch (e: any) {
+                    if (typeof (global as any).gc === 'function') {
+                        try { (global as any).gc(); } catch {}
+                    }
                     logOutput = (e.stdout || '') + (e.stderr || '');
                     
                     // ── NUCLEAR AUTO-HEALER: Multi-Error Recovery ──
@@ -2083,9 +2136,9 @@ export async function runHardenedPipeline(
             cleanupTempDir();
             return { pdfBase64: null, log: `Tectonic finished but no PDF was found.\n${logOutput}` };
         } },
-        { name: 'YTOTECH_MONO_GHOST', fn: () => compileWithYtoTech(engine, monoFiles, cleanMain) },
+        { name: 'YTOTECH_MONO_GHOST', fn: () => compileWithYtoTech(engine, getMonoFiles(), cleanMain) },
 
-        { name: 'TEXLIVE_MONO_GHOST', fn: () => compileWithTexLive(monoFiles, cleanMain, engine) },
+        { name: 'TEXLIVE_MONO_GHOST', fn: () => compileWithTexLive(getMonoFiles(), cleanMain, engine) },
         { name: 'YTOTECH_PRISTINE', fn: () => compileWithYtoTech(engine, pristineFiles, cleanMain) },
         { name: useGhostMode ? 'YTOTECH_GHOST' : 'YTOTECH_FULL', fn: () => compileWithYtoTech(engine, activeFiles, finalMain) },
         { name: useGhostMode ? 'TEXLIVE_GHOST' : 'TEXLIVE_FULL', fn: () => compileWithTexLive(activeFiles, finalMain, engine) },
@@ -2153,7 +2206,7 @@ export async function runHardenedPipeline(
                 // native bibliography environments (\begin{thebibliography}, \printbibliography, etc.)
                 const hasNativeHeading = /\\(?:begin\{thebibliography\}|section\*?\{References\}|section\*?\{Bibliography\}|chapter\*?\{Bibliography\}|printbibliography)/i.test(mainContent) || mainContent.includes(BIB_HEADING_MARKER);
                 if (!bibHeadingInjected && hasBibliography && !hasNativeHeading && finalPdf && !(await bibliographyHeadingPresent(finalPdf))) {
-                    injectBibliographyHeading([activeFiles, monoFiles, pristineFiles], cleanMain);
+                    injectBibliographyHeading([activeFiles, getMonoFiles(), pristineFiles], cleanMain);
                     bibHeadingInjected = true;
                     console.log(`[PIPELINE] Bibliography heading missing in PDF — injecting and recompiling (Tectonic pass 2)`);
                     continue;
@@ -2175,13 +2228,13 @@ export async function runHardenedPipeline(
     }
 
     // ── PHASE 2: REMOTE FALLBACK ─────────────────────────────────────────────
-    const remoteBibFiles = monoFiles.filter(f => f.path.toLowerCase().endsWith('.bib'));
+    const remoteBibFiles = getMonoFiles().filter(f => f.path.toLowerCase().endsWith('.bib'));
     if (hasCitations || hasBibliography) {
         console.log(`[PIPELINE] Remote fallback with bibliography: .bib files=[${remoteBibFiles.map(f => f.path).join(', ')}], main includes \\bibliography=${hasBibliography}`);
     }
     const remoteStrategies = [
-        { name: 'YTOTECH', fn: () => compileWithYtoTech(selectedEngine, remoteFiles, cleanMain) },
-        { name: 'TEXLIVE', fn: () => compileWithTexLive(remoteFiles, cleanMain, selectedEngine) }
+        { name: 'YTOTECH', fn: () => compileWithYtoTech(selectedEngine, getRemoteFiles(), cleanMain) },
+        { name: 'TEXLIVE', fn: () => compileWithTexLive(getRemoteFiles(), cleanMain, selectedEngine) }
     ];
 
     for (const strat of remoteStrategies) {
@@ -2335,23 +2388,25 @@ export async function runDoc2LatexCompiler(
             const diskImages = await collectDiskImages(uploadsDir);
             for (const item of diskImages) {
               const name = item.filename;
+              const nameLower = name.toLowerCase();
+              if (!missingImageBases.includes(nameLower)) continue;
+
               const ext = (path.extname(name).toLowerCase().replace(/^\./, '') || 'png');
               const mime = ext === 'jpg' ? 'jpeg' : ext;
               const content = `data:image/${mime};base64,${item.buffer.toString('base64')}`;
 
-              const targets = Array.from(new Set([name, `assets/${name}`, `figures/${name}`, item.relPath]));
-              for (const targetPath of targets) {
-                const targetLower = targetPath.toLowerCase();
-                const existing = (files as any[]).find((f) => String(f?.path || '').toLowerCase() === targetLower);
-                if (existing) {
-                  if (!existing.content || isPlaceholderContent(existing.content) || String(existing.content).length < 200) {
-                    existing.content = content;
-                  }
-                } else {
-                  (files as any[]).push({ path: targetPath, content });
+              // Inject single authoritative path (e.g. figures/${name} or name) rather than 4 duplicate entries
+              const targetPath = item.relPath || `figures/${name}`;
+              const targetLower = targetPath.toLowerCase();
+              const existing = (files as any[]).find((f) => String(f?.path || '').toLowerCase() === targetLower);
+              if (existing) {
+                if (!existing.content || isPlaceholderContent(existing.content) || String(existing.content).length < 200) {
+                  existing.content = content;
                 }
+              } else {
+                (files as any[]).push({ path: targetPath, content });
               }
-              presentValidImages.add(name.toLowerCase());
+              presentValidImages.add(nameLower);
             }
           }
 
@@ -2378,21 +2433,23 @@ export async function runDoc2LatexCompiler(
               for (const row of dbFiles) {
                 if (!row.content || isPlaceholderContent(row.content)) continue;
                 const cleanName = path.basename(row.filename);
+                const cleanLower = cleanName.toLowerCase();
+                if (!stillMissing.includes(cleanLower)) continue;
+
                 const ext = (path.extname(cleanName).toLowerCase().replace(/^\./, '') || 'png');
                 const dataUrl = formatBinaryDataUrl(row.content, ext);
                 
-                const targets = Array.from(new Set([cleanName, `assets/${cleanName}`, `figures/${cleanName}`, row.filename.replace(/\\/g, '/')]));
-                for (const targetPath of targets) {
-                  const lower = targetPath.toLowerCase();
-                  const existing = (files as any[]).find((f) => String(f?.path || '').toLowerCase() === lower);
-                  if (existing) {
-                    if (!existing.content || isPlaceholderContent(existing.content) || String(existing.content).length < 200) {
-                      existing.content = dataUrl;
-                    }
-                  } else {
-                    (files as any[]).push({ path: targetPath, content: dataUrl });
+                const targetPath = row.filename.replace(/\\/g, '/');
+                const lower = targetPath.toLowerCase();
+                const existing = (files as any[]).find((f) => String(f?.path || '').toLowerCase() === lower);
+                if (existing) {
+                  if (!existing.content || isPlaceholderContent(existing.content) || String(existing.content).length < 200) {
+                    existing.content = dataUrl;
                   }
+                } else {
+                  (files as any[]).push({ path: targetPath, content: dataUrl });
                 }
+                presentValidImages.add(cleanLower);
               }
             } catch (dbErr) {
               console.warn('[DOC2LATEX] DB figure recovery fallback:', dbErr);
@@ -2929,9 +2986,10 @@ export async function hardenedDiscovery(projectId: string | null, files: FilePay
   // frontend session or found on disk.
   try {
     const { prisma } = require('@/lib/prisma');
+    // Lean metadata-first query: exclude heavy binary base64 content to prevent heap exhaustion on Render
     const allDbFiles = await prisma.projectFile.findMany({
       where: { projectId },
-      select: { filename: true, content: true, fileType: true }
+      select: { id: true, filename: true, fileType: true }
     });
     if (allDbFiles && allDbFiles.length > 0) {
       let addedCount = 0;
@@ -2943,8 +3001,17 @@ export async function hardenedDiscovery(projectId: string | null, files: FilePay
         const ext = dbFile.fileType || fileExt;
         const isBinary = /^(png|jpg|jpeg|webp|gif|pdf|eps|otf|ttf|woff|woff2|tfm|pfb|afm|heic|heif|tiff|tif|bmp|avif|svg)$/i.test(ext);
 
-        let fileContent = dbFile.content || '';
-        if (isBinary && (!fileContent || isPlaceholderContent(fileContent) || fileContent.length < 200)) {
+        const existingIdx = normalized.findIndex(f => normalizePath(f.path) === normPath);
+        if (existingIdx !== -1) {
+          // If session already has valid binary content, avoid loading from disk/DB
+          const currentContent = normalized[existingIdx].content;
+          if (currentContent && currentContent.length > 200 && !isPlaceholderContent(currentContent)) {
+            continue;
+          }
+        }
+
+        let fileContent = '';
+        if (isBinary) {
           try {
             const cleanBase = path.basename(dbFile.filename);
             const candidates = [
@@ -2964,17 +3031,36 @@ export async function hardenedDiscovery(projectId: string | null, files: FilePay
               }
             }
           } catch {}
+
+          if (!fileContent) {
+            // Fallback: fetch heavy base64 only if binary is genuinely missing from disk
+            try {
+              const fullRec = await prisma.projectFile.findUnique({
+                where: { id: dbFile.id },
+                select: { content: true }
+              });
+              fileContent = fullRec?.content || '';
+            } catch {}
+          }
+        } else {
+          // Text file: fetch content only if not in session
+          if (!sessionPaths.has(normPath)) {
+            try {
+              const fullRec = await prisma.projectFile.findUnique({
+                where: { id: dbFile.id },
+                select: { content: true }
+              });
+              fileContent = fullRec?.content || '';
+            } catch {}
+          }
         }
+
         if (!fileContent && !isBinary) continue;
 
-        const existingIdx = normalized.findIndex(f => normalizePath(f.path) === normPath);
         if (existingIdx !== -1) {
-          // If session has a dummy/empty binary payload, upgrade it to real DB/disk binary content
+          // If session had a dummy/empty binary payload, upgrade it to real disk/DB content
           if (isBinary && fileContent && fileContent.length > 50) {
-            const currentContent = normalized[existingIdx].content;
-            if (isPlaceholderContent(currentContent) || !currentContent || currentContent.length < 200) {
-              normalized[existingIdx].content = fileContent;
-            }
+            normalized[existingIdx].content = fileContent;
           }
           continue;
         }
