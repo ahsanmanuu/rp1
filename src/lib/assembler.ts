@@ -593,7 +593,7 @@ export class LatexAssembler {
         return;
       }
       const sectionContent = dedupedNodes.map((n, idx) => {
-        const assembled = LatexAssembler.assembleNode(n, mathBlocks);
+        const assembled = LatexAssembler.assembleNode(isTwoColumn ? { ...n, twoColumn: true } as any : n, mathBlocks);
         if (!assembled) return '';
         // If consecutive structural float nodes (e.g. table after table, or table after figure), insert spacer and FloatBarrier
         if (idx > 0 && ['table', 'figure', 'figure-group', 'chart'].includes(n.type) && ['table', 'figure', 'figure-group', 'chart'].includes(dedupedNodes[idx - 1]?.type)) {
@@ -1101,7 +1101,7 @@ export class LatexAssembler {
           'statements and declarations', 'declarations'
         ];
         const unnumbered = unnumberedList.some(u => normalizedFinal === u || normalizedFinal.startsWith(u));
-        const barrier = (level === 1) ? '\\FloatBarrier\n' : '';
+        const barrier = (level <= 2) ? '\\FloatBarrier\n' : '';
         return `\n${barrier}\\${cmd}${isStarred || unnumbered ? '*' : ''}{${LatexAssembler.escapeText(finalText, mathBlocks)}}\n`;
       }
 
@@ -1142,12 +1142,19 @@ export class LatexAssembler {
             const entry = mathBlocks[idx];
             const raw = typeof entry === 'string' ? entry : (entry?.latex || "");
             
+            const inner = raw.trim().replace(/^\$+|\$+$/g, '').trim().replace(/^\\begin\{equation\}|\\end\{equation\}$/g, '').trim();
+            // Short inline math check: < 30 chars and doesn't contain complex operators or multiline, and no explicit equation label in text
+            const hasExplicitEqNum = /(?:\(\d+\)|\[\d+\])/.test(text);
+            const isShortInline = inner.length < 30 && !/(?:\\frac|\\sum|\\int|\\prod|\\begin\{|\\\\)/.test(inner) && !hasExplicitEqNum;
+            if (isShortInline) {
+                return `\n\n$${inner}$\n\n`;
+            }
+
             let assembledEq = '';
             // 🛡️ DEDUP: If mathBlock already has equation env, emit bare (no extra wrapper)
             if (raw.includes('\\begin{equation') || raw.includes('\\begin{align') || raw.includes('\\[')) {
                 assembledEq = raw;
             } else {
-                const inner = raw.trim().replace(/^\$+|\$+$/g, '').trim().replace(/^\\begin\{equation\}|\\end\{equation\}$/g, '').trim();
                 assembledEq = `\\begin{equation}\n${inner}\n\\end{equation}`;
             }
 
@@ -1291,10 +1298,12 @@ export class LatexAssembler {
         }
 
         const activeEnv = envWrapper || (labelStr ? 'equation' : 'equation*');
+        const breakScope = lines.length >= 4 ? '{\\allowdisplaybreaks\n' : '';
+        const breakScopeEnd = lines.length >= 4 ? '\n}' : '';
         if (lines.length > 1 && activeEnv !== 'display' && !activeEnv.startsWith('align')) {
-            return `\n\\begin{${activeEnv}}\n\\begin{aligned}\n${lines.join(' \\\\\n')}\n\\end{aligned}\n${labelStr}\\end{${activeEnv}}\n`;
+            return `\n${breakScope}\\begin{${activeEnv}}\n\\begin{aligned}\n${lines.join(' \\\\\n')}\n\\end{aligned}\n${labelStr}\\end{${activeEnv}}${breakScopeEnd}\n`;
         } else if (lines.length > 1 && activeEnv.startsWith('align')) {
-            return `\n\\begin{${activeEnv}}\n${lines.join(' \\\\\n')}\n${labelStr}\\end{${activeEnv}}\n`;
+            return `\n${breakScope}\\begin{${activeEnv}}\n${lines.join(' \\\\\n')}\n${labelStr}\\end{${activeEnv}}${breakScopeEnd}\n`;
         } else if (activeEnv === 'display') {
             return `\n\\[\n${finalContent}\n${labelStr}\\]\n`;
         } else {
@@ -1438,9 +1447,11 @@ export class LatexAssembler {
     // Balanced column spec:
     // If a column has long prose (> 25 chars), allocate >{\raggedright\arraybackslash}X.
     // If the table has few columns (<= 3) and text > 15, allocate X.
-    // Keep data/numerical columns (<= 15 chars) as 'c' so tabularx doesn't compress data into narrow slivers.
+    const isTwoColMode = (node as any).twoColumn === true;
+    const xThreshold = isTwoColMode ? 18 : 25;
     const specsList = colMaxLen.map((len) => {
-      if (len > 25) return '>{\\raggedright\\arraybackslash}X';
+      if (isTwoColMode && totalGridCols >= 4) return '>{\\raggedright\\arraybackslash}X';
+      if (len > xThreshold) return '>{\\raggedright\\arraybackslash}X';
       if (len > 15 && totalGridCols <= 3) return '>{\\raggedright\\arraybackslash}X';
       return 'c';
     });
@@ -1541,8 +1552,8 @@ export class LatexAssembler {
     const captionLine = caption ? `\\caption{${caption}}\n` : `\\caption{}\n`;
 
     // Force tabularx line-wrapping for all multi-column or text-bearing tables to prevent right-margin overflow
-    const isTwoColMode = (node as any).twoColumn === true;
-    const twoColWide = isTwoColMode && (totalGridCols >= 5 || (totalGridCols >= 4 && colMaxLen.some(l => l > 30)) || colMaxLen.some(l => l > 50));
+    const totalEstimatedWidth = colMaxLen.reduce((a, b) => a + b, 0);
+    const twoColWide = isTwoColMode && (totalGridCols >= 5 || (totalGridCols >= 4 && colMaxLen.some(l => l > 30)) || colMaxLen.some(l => l > 50) || totalEstimatedWidth > 80);
     const tableEnv = twoColWide ? 'table*' : 'table';
     const tablePlacement = '[!htbp]';
     const tabularEnv = 'tabularx';
@@ -1550,12 +1561,16 @@ export class LatexAssembler {
     const widthParam = `{${targetWidth}}`;
     const activeSpec = fullSpec;
 
-    // In two-column mode, reduce padding and font size for tables with multiple columns to prevent margin overflow
+    // In two-column mode, reduce padding and font size for tables with multiple columns or wide content to prevent margin overflow
     const colSepCmd = (isTwoColMode && totalGridCols >= 3) ? '\\setlength{\\tabcolsep}{3pt}\n' : (totalGridCols >= 5 ? '\\setlength{\\tabcolsep}{4pt}\n' : '');
-    const fontSizeCmd = (isTwoColMode && totalGridCols >= 4) ? '{\\footnotesize\n' : ((isTwoColMode && totalGridCols >= 3) ? '{\\small\n' : (totalGridCols >= 6 ? '{\\small\n' : ''));
+    const fontSizeCmd = (isTwoColMode && (totalGridCols >= 4 || totalEstimatedWidth > 60))
+      ? '{\\footnotesize\n'
+      : ((isTwoColMode && totalGridCols >= 3) ? '{\\small\n' : (totalGridCols >= 6 ? '{\\small\n' : ''));
     const fontSizeEnd = fontSizeCmd ? '\n}' : '';
+    const hasWrappedCells = specsList.some(s => s.includes('X'));
+    const extraRowHeightCmd = hasWrappedCells ? '\\setlength{\\extrarowheight}{2pt}\n' : '';
 
-    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n${captionLine}\\label{${labelKey}}\n${colSepCmd}${fontSizeCmd}\\renewcommand{\\arraystretch}{1.2}\n\\begin{adjustbox}{max width=${targetWidth}}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}\n\\end{adjustbox}${fontSizeEnd}\n\\end{${tableEnv}}\n`;
+    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n${captionLine}\\label{${labelKey}}\n${colSepCmd}${extraRowHeightCmd}${fontSizeCmd}\\renewcommand{\\arraystretch}{1.2}\n\\begin{adjustbox}{max width=${targetWidth}}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}\n\\end{adjustbox}${fontSizeEnd}\n\\end{${tableEnv}}\n`;
   }
 
 
@@ -1575,10 +1590,17 @@ export class LatexAssembler {
     if (images.length === 1) {
       const single = images[0];
       const fileId = (single.src || 'figure').replace(/^assets\//, '');
-      const rawCap = single.caption || '';
+      const rawCap = single.caption || (node as any).caption || '';
       const cleanedCap = LatexAssembler.cleanFigureCaption(rawCap);
       const cap = cleanedCap ? `\\caption{${LatexAssembler.escapeText(cleanedCap, mathBlocks)}}\n` : '';
-      return `\n\\begin{figure}[htbp]\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${fileId}}\n${cap}\\end{figure}\n`;
+      const twoCol = (node as any).twoColumn === true;
+      const isWideCaption = /(?:architecture|framework|overview|pipeline|schematic|workflow|system model|block diagram|sub-?figure|comparison of|benchmark|horizontal|full-?width)/i.test(rawCap);
+      const isWide = (node as any).isWide === true || (node as any).widthHint === 'wide' || isWideCaption;
+      const useFigureStar = twoCol && isWide;
+      const figEnv = useFigureStar ? 'figure*' : 'figure';
+      const placement = '[!htbp]';
+      const imgWidth = useFigureStar ? '0.85\\textwidth' : (twoCol ? '\\columnwidth' : '0.85\\linewidth');
+      return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=${imgWidth},max height=0.7\\textheight,keepaspectratio]{${fileId}}\n${cap}\\end{${figEnv}}\n`;
     }
 
     // Two-column templates (IEEE/ACM) use figure* to span both columns
@@ -1653,7 +1675,7 @@ export class LatexAssembler {
     const labelSuffix = Math.random().toString(36).substring(2, 7);
 
     return [
-      `\n\\begin{${figEnv}}[htbp]`,
+      `\n\\begin{${figEnv}}[\\!htbp]`.replace('[\\!', '[!'),
       `\\centering`,
       subfigures.join('\n\\hfill\n'),
       capLine,
@@ -2107,13 +2129,20 @@ export class LatexAssembler {
       }
     }
 
-    // 🌐 URL wrapping for bibitems — ensures long URLs break at hyphens/slashes in printed PDF
-    if (options?.isBibItem) {
-      text = text.replace(
-        /(https?:\/\/[^\s,;.]+(?:\.[^\s,;.]+)*)|(www\.[^\s,;]+)|(\bdoi:\s*10\.\d{4,}[^\s,;.]+)/gi,
-        (match) => `\\url{${match.trim()}}`
-      );
-    }
+    // 🌐 URL wrapping — ensures long URLs break cleanly at hyphens/slashes in printed PDF via xurl
+    text = text.replace(
+      /(?<!\\(?:url|href)\{[^{}]*)\b(https?:\/\/[^\s<>"'{}|\\^`]+|ftp:\/\/[^\s<>"'{}|\\^`]+|www\.[a-zA-Z0-9\-]+(?:\.[a-zA-Z0-9\-]+)+[^\s<>"'{}|\\^`]*|doi:\s*10\.\d{4,}[^\s<>"'{}|\\^`]+)/gi,
+      (match) => {
+        let u = match.trim();
+        let trailing = '';
+        const punctMatch = u.match(/([.,;:?!)]+)$/);
+        if (punctMatch) {
+          trailing = punctMatch[1];
+          u = u.substring(0, u.length - trailing.length);
+        }
+        return `\\url{${u}}${trailing}`;
+      }
+    );
 
     // 2. PRIMARY ESCAPE (General LaTeX characters)
     let sanitized = text.replace(/[\u200B\u200C\u200D\uFEFF]/g, "");
@@ -2339,7 +2368,6 @@ export class ModularLatexAssembler {
     pkgReg.add("amsfonts");
     pkgReg.add("amssymb");
     pkgReg.add("mathrsfs");
-    preamble.push("\\allowdisplaybreaks");
     preamble.push("\\emergencystretch 3em");
     
     pkgReg.add("graphicx", "export");
@@ -2813,7 +2841,7 @@ export class ModularLatexAssembler {
           return;
         }
 
-        const sectionContent = dedupedNodes.map(n => LatexAssembler.assembleNode({ ...n, sectionStyle: mapping.sectionStyle } as any, mathBlocks)).join("\n\n");
+        const sectionContent = dedupedNodes.map(n => LatexAssembler.assembleNode({ ...n, sectionStyle: mapping.sectionStyle, twoColumn: isTwoColumn ? true : (n as any).twoColumn } as any, mathBlocks)).join("\n\n");
         const safeTitle = slugifySectionTitle(currentSectionTitle, 40);
         let fileName = `sections/${sectionIdx.toString().padStart(2, '0')}_${safeTitle}.tex`;
         let fileSuffix = 2;
@@ -3029,26 +3057,26 @@ export class ModularLatexAssembler {
         // Save individual components to dedicated folders (grouped for UI and modular generation)
         if (node.type === 'table') {
             modularTabIdx++;
-            const content = LatexAssembler.assembleTable(node, mathBlocks);
+            const content = LatexAssembler.assembleTable({ ...node, twoColumn: isTwoColumn ? true : (node as any).twoColumn }, mathBlocks);
             files[`tables/table_${nodeIdx}.tex`] = "% Required Packages: \\usepackage{booktabs}, \\usepackage{multirow}, \\usepackage{tabularx}\n\n" + content;
             files[`floats/tables/${modularTabIdx}.tex`] = content;
         } else if (node.type === 'figure' || node.type === 'image' || node.type === 'chart') {
             modularFigIdx++;
-            const content = LatexAssembler.assembleNode({ ...node, labelIdx: nodeIdx } as any, mathBlocks);
+            const content = LatexAssembler.assembleNode({ ...node, labelIdx: nodeIdx, twoColumn: isTwoColumn ? true : (node as any).twoColumn } as any, mathBlocks);
             files[`figures/figure_${nodeIdx}.tex`] = "% Required Packages: \\usepackage{graphicx}, \\usepackage{float}\n\n" + content;
             files[`floats/figures/${modularFigIdx}.tex`] = content;
         } else if (node.type === 'figure-group') {
             modularFigIdx++;
-            const content = LatexAssembler.assembleFigureGroup(node as any, mathBlocks);
+            const content = LatexAssembler.assembleFigureGroup({ ...node, twoColumn: isTwoColumn ? true : (node as any).twoColumn } as any, mathBlocks);
             files[`figures/figure_${nodeIdx}.tex`] = "% Required Packages: \\usepackage{graphicx}, \\usepackage{float}\n\n" + content;
             files[`floats/figures/${modularFigIdx}.tex`] = content;
         } else if (node.type === 'algorithm') {
             modularAlgoIdx++;
-            const content = LatexAssembler.assembleAlgorithm(node, mathBlocks);
+            const content = LatexAssembler.assembleAlgorithm({ ...node, twoColumn: isTwoColumn ? true : (node as any).twoColumn }, mathBlocks);
             files[`algorithms/algo_${nodeIdx}.tex`] = "% Required Packages: \\usepackage{algorithm}, \\usepackage{algpseudocode}\n\n" + content;
             files[`floats/algorithms/${modularAlgoIdx}.tex`] = content;
         } else if (node.type === 'equation') {
-            const content = LatexAssembler.assembleNode(node as any, mathBlocks);
+            const content = LatexAssembler.assembleNode({ ...node, twoColumn: isTwoColumn ? true : (node as any).twoColumn } as any, mathBlocks);
             if (content && content.trim().length > 0) {
               files[`equations/eq_${nodeIdx}.tex`] = "% Required Packages: \\usepackage{amsmath}, \\usepackage{amssymb}, \\usepackage{amsfonts}\n\n" + content;
             }
@@ -3088,7 +3116,7 @@ export class ModularLatexAssembler {
     }
 
     for (const [targetFile, group] of backMatterGroups.entries()) {
-      const bodyText = group.nodes.map(n => LatexAssembler.assembleNode(n, mathBlocks)).join('\n\n').trim();
+      const bodyText = group.nodes.map(n => LatexAssembler.assembleNode(isTwoColumn ? { ...n, twoColumn: true } as any : n, mathBlocks)).join('\n\n').trim();
       const safeTitle = group.title.replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+)+/i, '').replace(/[:.\s]*$/, '').trim();
       const content = `\\section*{${LatexAssembler.escape(safeTitle || 'Acknowledgements', mathBlocks)}}\n${bodyText || ''}\n`;
       files[targetFile] = content;

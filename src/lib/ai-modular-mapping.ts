@@ -513,7 +513,6 @@ function defaultPreamble(templateId: string): string[] {
     '\\usepackage{amsfonts}',
     '\\usepackage{amssymb}',
     '\\usepackage{mathrsfs}',
-    '\\allowdisplaybreaks',
     '\\emergencystretch 3em',
     '\\usepackage{graphicx}',
     '\\usepackage{xcolor}',
@@ -673,7 +672,9 @@ function composeMainTex(
     if (!preText.includes('\\date')) preamble.push('\\date{}');
   }
 
+  const isTwoColumn = isIeee || isAcm || /\btwocolumn\b/i.test(preText) || /\bsigconf\b/i.test(preText) || /\bIEEEtran\b/.test(preText);
   const body: string[] = ['\\begin{document}'];
+  if (isTwoColumn) body.push('\\sloppy');
 
   if (isElsevier) {
     body.push('\\begin{frontmatter}');

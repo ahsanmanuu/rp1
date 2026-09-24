@@ -2450,8 +2450,24 @@ export class DeepDocumentParser {
     const prevEl = targetEl.previousElementSibling;
     if (prevEl) {
       const prevText = (prevEl.textContent || '').trim();
-      if (prevText.length > 30 && !/[.?!:;]$/.test(prevText)) {
+      if (prevText.length > 0 && !/[.?!]$/.test(prevText)) {
         // Previous element is an unclosed sentence/paragraph - continuation fragment, not a heading
+        return null;
+      }
+    }
+
+    // Proximity check: if next sibling is a figure, image, table, or has caption lead, this line is likely a caption label
+    const nextEl = targetEl.nextElementSibling;
+    if (nextEl) {
+      const nextTagName = (nextEl.tagName || '').toLowerCase();
+      const nextText = (nextEl.textContent || '').trim();
+      if (
+        nextTagName === 'figure' ||
+        nextTagName === 'table' ||
+        nextTagName === 'img' ||
+        (nextEl as any).querySelector?.('img, table, figure') ||
+        /^(?:figure|fig\b|table|tab\b|chart|algorithm)\s*\d/i.test(nextText)
+      ) {
         return null;
       }
     }
@@ -2464,7 +2480,24 @@ export class DeepDocumentParser {
       'hyperparameter tuning', 'support vector machine', 'random forest', 'decision tree',
       'deep neural network', 'convolutional neural network', 'recurrent neural network',
       'linear regression', 'logistic regression', 'naive bayes', 'k-nearest neighbors',
-      'gradient boosting', 'cross entropy', 'standard deviation', 'confidence interval'
+      'gradient boosting', 'cross entropy', 'standard deviation', 'confidence interval',
+      'roc curve', 'auc score', 'f1 score', 'f-measure', 'root mean squared error',
+      'principal component analysis', 'natural language processing', 'reinforcement learning',
+      'transfer learning', 'data augmentation', 'loss curve', 'epoch', 'learning curves',
+      'ablation study', 'baseline model', 'ground truth', 'sample size', 'p-value',
+      'statistical significance', 'sensitivity analysis', 'receiver operating characteristic',
+      'area under curve', 'k-fold cross validation', 'cross-validation', 'grid search',
+      'random search', 'gradient descent', 'stochastic gradient descent', 'adam optimizer',
+      'weight decay', 'dropout rate', 'batch normalization', 'layer normalization',
+      'attention mechanism', 'multi-head attention', 'transformer architecture',
+      'encoder decoder', 'embedding layer', 'latent space', 'cosine similarity',
+      'euclidean distance', 'silhouette score', 'clustering coefficient',
+      'inclusion criteria', 'exclusion criteria', 'patient cohort', 'control group',
+      'experimental group', 'study design', 'ethical approval', 'informed consent',
+      'clinical trial', 'sample preparation', 'experimental setup', 'boundary conditions',
+      'finite element analysis', 'signal to noise ratio', 'frequency response',
+      'transfer function', 'degrees of freedom', 'time complexity', 'space complexity',
+      'computational cost'
     ]);
     if (DOMAIN_LABEL_STOPWORDS.has(normClean)) {
       return null;
@@ -2477,10 +2510,10 @@ export class DeepDocumentParser {
 
     const words = trimmedText.split(/\s+/).filter(Boolean);
     const isTitleCase = words.length > 0 && words.every(w => /^[A-Z]/.test(w) || STOPWORDS.has(w.toLowerCase()) || /^\d/.test(w));
-    const isStandalone = !endsWithPunct && !isProseLead && !trimmedText.includes(',') && f.wordCount >= 2 && f.wordCount < 10 && (
-      (f.isBold && (f.capRatio > 0.2 || isTitleCase)) ||
-      (f.capRatio > 0.85 && f.wordCount <= 6) ||
-      (isTitleCase && f.wordCount <= 6 && f.capRatio > 0.3)
+    // Tightened standalone heuristic: require bold font, no sentence-trailing punctuation, reasonable length
+    const isStandalone = !endsWithPunct && !isProseLead && !trimmedText.includes(',') && f.isBold && f.wordCount >= 2 && f.wordCount < 10 && (
+      (f.capRatio > 0.2 || isTitleCase) ||
+      (f.capRatio > 0.85 && f.wordCount <= 6)
     );
     if (isStandalone) {
       return 2;
