@@ -68,6 +68,7 @@ const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/;
 // Narrow AFFIL_KEYWORDS: remove generic words (research, systems, lab, group, etc.)
 const AFFIL_KEYWORDS = /(?:^|\b|\d|_|\W)(?:department|dept|university|institute|college|school|center|centre|organization|institution|corporation|inc|co\.|ltd|association|academy|laboratory|lab|division|faculty|campus|polytechnic|univ|inst|state|national)\b/i;
 const CHART_KEYWORD_RE = /\b(?:chart|plot|graph|histogram|heatmap|scatter\s*plot|bar\s*chart|box\s*plot|pie\s*chart|line\s*chart|roc\s*curve|precision-recall\s*curve|confusion\s*matrix|pareto)\b/i;
+const normImgSrc = (s: string) => String(s || '').replace(/\\/g, '/').replace(/^.*[\/\\]/, '').toLowerCase();
 
 // ── UNIVERSAL FRONT-MATTER / AUTHOR-LINE GUARD ───────────────────────────────
 // Word/PDF author blocks are frequently styled as Heading paragraphs
@@ -393,9 +394,14 @@ export class DeepDocumentParser {
             const isParamAssign = /^[A-Za-z][A-Za-z0-9\s_]{0,35}\s*=\s*[\d.,+\-eE%]+\s*$/.test(clean)
                                 || /^[A-Z]{1,6}\s*=\s*[\d.,+\-eE%]+\s*$/.test(clean);
 
+            // Check if we're inside a table context: if the last emitted node is a table,
+            // this equation-looking line is likely a table cell's content
+            const lastBodyNode = result.body[result.body.length - 1];
+            const isInsideTableContext = lastBodyNode && lastBodyNode.type === 'table';
+
             // Require AT LEAST TWO distinct math signals (or explicit equation number with relational operator)
             const signalCount = (hasGreek ? 1 : 0) + (hasMultiOps ? 1 : 0) + (hasMathFn ? 1 : 0) + (hasSubSuper ? 1 : 0) + (hasRelOp ? 1 : 0);
-            const isRealEquation = !isParamAssign && !isProseHeavy && !isTableDataRow && (
+            const isRealEquation = !isParamAssign && !isProseHeavy && !isTableDataRow && !isInsideTableContext && (
               signalCount >= 2 || (hasEqNum && hasRelOp && opCount >= 1)
             );
             if (isRealEquation && clean.length < 140) {
@@ -411,8 +417,12 @@ export class DeepDocumentParser {
           const isNumberedHeading = prefixMatch !== null && isValidSectionPrefix(prefixMatch[1], prefixMatch[0]) && cleanLine.length < 120 && !cleanLine.endsWith('.');
           // Support Title Case AND ALL CAPS headings (e.g. "RESULTS AND DISCUSSION", "EXPERIMENTAL SETUP")
           const isShortTitleCase = cleanLine.length < 80 && cleanLine.length > 3 && !cleanLine.endsWith('.') && !cleanLine.includes(',') && 
+            // Must not be a single ALL-CAPS word under 6 chars (likely table header or acronym)
+            !(cleanLine.split(' ').length === 1 && /^[A-Z]{1,6}$/.test(cleanLine)) &&
+            // Must not be a numeric/metric value line
+            !/^\d/.test(cleanLine) &&
             (cleanLine.split(' ').every(w => /^[A-Z]/.test(w) || STOPWORDS.has(w.toLowerCase())) ||
-             (/^[A-Z0-9\s_\-&:\(\)]+$/.test(cleanLine) && cleanLine.split(' ').length <= 8));
+             (/^[A-Z0-9\s_\-&:\(\)]+$/.test(cleanLine) && cleanLine.split(' ').length <= 8 && cleanLine.split(' ').length >= 2));
           
           const isPdfAuthorAffil = isFrontMatterNoise(cleanLine);
 
@@ -668,6 +678,16 @@ export class DeepDocumentParser {
     const groupedBody: ContentNode[] = [];
     let pendingGroup: ContentNode[] = [];
 
+    // Collect all image sources already inside existing figure-group nodes
+    const groupedSrcs = new Set<string>();
+    for (const node of result.body) {
+      if (node.type === 'figure-group' && Array.isArray((node as any).images)) {
+        for (const img of (node as any).images) {
+          if (img.src) groupedSrcs.add(normImgSrc(img.src));
+        }
+      }
+    }
+
     const flushPendingGroup = () => {
       if (pendingGroup.length === 0) return;
       if (pendingGroup.length === 1) {
@@ -708,6 +728,11 @@ export class DeepDocumentParser {
       const isEmptyPara = node.type === 'paragraph' && (!node.text || !node.text.trim());
 
       if (isImg) {
+        const imgSrc = normImgSrc(node.id || (node as any).url || '');
+        if (imgSrc && groupedSrcs.has(imgSrc)) {
+          // Skip this node — it is already contained within an existing figure-group
+          continue;
+        }
         pendingGroup.push(node);
       } else if (isEmptyPara) {
         // Keep accumulating (skip empty paragraph)
@@ -727,6 +752,7 @@ export class DeepDocumentParser {
       const allImageSrcs = new Set<string>();
       const imgAltMap = new Map<string, string>();
       const decorativeImages = ((result as any)._decorativeImages as Set<string>) || new Set<string>();
+      const emittedImageSrcs = ((result as any)._emittedImageSrcs as Set<string>) || new Set<string>();
       for (const img of allImgElements) {
         const src = (img.getAttribute('src') || img.getAttribute('data-src') || '').trim();
         const alt = (img.getAttribute('alt') || img.getAttribute('title') || '').trim();
@@ -739,39 +765,50 @@ export class DeepDocumentParser {
         }
       }
 
-      const normFigId = (s: string) => String(s || '').replace(/\\/g, '/').replace(/^.*[\/\\]/, '').toLowerCase();
       const presentFigureIds = new Set<string>();
-      for (const n of result.body) {
-        if (n.type === 'figure' || n.type === 'chart' || n.type === 'image') {
-          if (n.id) presentFigureIds.add(normFigId(n.id));
-        } else if (n.type === 'figure-group' && Array.isArray((n as any).images)) {
-          for (const img of (n as any).images) {
-            if (img.src) presentFigureIds.add(normFigId(img.src));
-          }
-        }
-      }
-
-      // Also check for figures that already have captions from Phase 1
-      // by matching on src patterns (handle ID format mismatches)
       const figSrcPrefixes = new Set<string>();
+      const chartNumIds = new Set<string>();
+
       for (const n of result.body) {
         if (n.type === 'figure' || n.type === 'chart' || n.type === 'image') {
           if (n.id) {
-            const normId = normFigId(n.id);
-            // Extract the base filename prefix for matching
+            const normId = normImgSrc(n.id);
+            presentFigureIds.add(normId);
             const prefix = normId.replace(/\.\w+$/, '');
             figSrcPrefixes.add(prefix);
+            const cMatch = normId.match(/(?:chart_pending_|rf_chart_|chart_)(\d+)/i);
+            if (cMatch) chartNumIds.add(cMatch[1]);
+          }
+        } else if (n.type === 'figure-group' && Array.isArray((n as any).images)) {
+          if (n.id) {
+            const normId = normImgSrc(n.id);
+            presentFigureIds.add(normId);
+            figSrcPrefixes.add(normId.replace(/\.\w+$/, ''));
+          }
+          for (const img of (n as any).images) {
+            if (img.src) {
+              const normId = normImgSrc(img.src);
+              presentFigureIds.add(normId);
+              figSrcPrefixes.add(normId.replace(/\.\w+$/, ''));
+              const cMatch = normId.match(/(?:chart_pending_|rf_chart_|chart_)(\d+)/i);
+              if (cMatch) chartNumIds.add(cMatch[1]);
+            }
           }
         }
       }
 
       let autoFigIdx = 1;
       for (const src of allImageSrcs) {
-        const normSrc = normFigId(src);
-        // Skip if already present in result.body (exact match or prefix match)
+        const normSrc = normImgSrc(src);
+        const srcChartMatch = normSrc.match(/(?:chart_pending_|rf_chart_|chart_)(\d+)/i);
+        const isChartNumberMatch = srcChartMatch && chartNumIds.has(srcChartMatch[1]);
+
+        // Skip if already present in result.body (exact match, prefix match, global emitted set, or chart number)
         const isAlreadyPresent = presentFigureIds.has(normSrc) ||
+          emittedImageSrcs.has(normSrc) ||
+          isChartNumberMatch ||
           // Check prefix match for ID format mismatches (e.g., "rf_fig_1.png" vs "fig_1.png")
-          [...figSrcPrefixes].some(prefix => normSrc.startsWith(prefix) || normSrc.endsWith(prefix));
+          [...figSrcPrefixes].some(prefix => prefix.length > 2 && (normSrc.startsWith(prefix) || normSrc.endsWith(prefix)));
         if (isAlreadyPresent || decorativeImages.has(normSrc)) continue;
 
         const alt = imgAltMap.get(src) || '';
@@ -782,6 +819,8 @@ export class DeepDocumentParser {
           caption: alt || (isChart ? `Chart ${autoFigIdx++}` : `Figure ${autoFigIdx++}`)
         } as any);
         presentFigureIds.add(normSrc);
+        emittedImageSrcs.add(normSrc);
+        if (srcChartMatch) chartNumIds.add(srcChartMatch[1]);
       }
     } catch (reconcileErr) {
       console.warn('[PARSER] Figure reconciliation pass skipped:', reconcileErr);
@@ -984,15 +1023,21 @@ export class DeepDocumentParser {
           const hasMathBlock = /MATHBLOCKX\d+XMARKER/i.test(f.text);
           const mathSymbolCount = (f.text.match(/[=+\-*/^\\∑∫√²³α-ωΑ-Ωθλπμσδφψωηρ<>~≈≠≤≥_()\[\]{}]/g) || []).length;
           const firstRowText = (el.querySelector('tr')?.textContent || '').trim();
-          const hasTableHeaders = /\b(?:parameter|value|description|method|type|name|property|metric|score|unit|variable|dataset|model|accuracy|result|feature|category)\b/i.test(firstRowText);
-          const isSingleRowMath = rows.length === 1 && !hasTableHeaders && (hasMathBlock || (mathSymbolCount >= 3 && f.text.includes('=')));
+          const hasTableHeaders = /\b(?:parameter|value|description|method|type|name|property|metric|score|unit|variable|dataset|model|accuracy|result|feature|category|symbol|formula|expression|notation|definition|condition|constraint|equation|meaning|specification|label|column|row|item|measure|index|range|bound|step|operation|operator|function|criteria|factor|component|element|dimension|attribute|field|input|output|quantity|coefficient|constant|weight|threshold|limit|status)\b/i.test(firstRowText);
           
-          if (isSingleRowMath || (rows.length <= 2 && hasMathBlock && !hasTableHeaders)) {
+          // Count actual data columns: a real table has multiple columns with different content
+          const firstRowCols = el.querySelector('tr')?.querySelectorAll('td, th')?.length || 0;
+          const hasMultipleDataColumns = firstRowCols >= 2;
+
+          // Only reclassify as equation if there's truly only 1 column and NO table headers
+          const isSingleRowMath = rows.length === 1 && !hasTableHeaders && !hasMultipleDataColumns &&
+            (hasMathBlock || (mathSymbolCount >= 3 && f.text.includes('=')));
+          
+          if (isSingleRowMath || (rows.length <= 2 && hasMathBlock && !hasTableHeaders && !hasMultipleDataColumns && firstRowCols <= 1)) {
               nextRole = 'equation';
           } else {
               let isTableAlgo = ALGO_LABEL_PATTERN.test(firstRowText);
               if (!isTableAlgo) {
-                  const firstRowCols = el.querySelector('tr')?.querySelectorAll('td, th')?.length || 0;
                   const hasStrongAlgoKeywords = /\b(?:input|output|require|ensure)\s*[:=]|(?:\bfor\b.*\bdo\b)|(?:\bwhile\b.*\bdo\b)|(?:\bif\b.*\bthen\b)/i.test(f.text);
                   let isMostlyCode = false;
                   if (!hasStrongAlgoKeywords) {
@@ -1040,7 +1085,14 @@ export class DeepDocumentParser {
       }
       else if (!f.text.includes('\t') && !f.text.includes('|') &&
         !(/^\s*(?:Fig(?:ure)?|Chart|Diagram|Photo|Image|Table|Tab\b\.?|Algorithm|Alg\.?|Graph)\.?\s*(?:(?:\(|\b)(?:[\dIVXLCDM]+(?:\.[\dIVXLCDM]+)*|[a-zA-Z])(?:\)|\b))?[:.\-–—\s]/i.test(f.text.trim()) && !DeepDocumentParser.isFigureCaptionProse(f.text.trim()) && !DeepDocumentParser.isTableCaptionProse(f.text.trim())) &&
-        (tagName.startsWith('h') || this.detectHeading(el, f.text, manifest) !== null || (tagName === 'p' && f.wordCount <= 12 && f.wordCount >= 1 && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 && !f.text.endsWith('.') && f.text.length < 120 && f.text.length > 2))) {
+        (tagName.startsWith('h') || this.detectHeading(el, f.text, manifest) !== null || (
+          tagName === 'p' && f.wordCount <= 12 && f.wordCount >= 1 &&
+          el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 &&
+          !f.text.endsWith('.') && !f.text.endsWith(':') && !f.text.endsWith(';') &&
+          f.text.length < 120 && f.text.length > 2 &&
+          !/^(?:step|case|example|note|input|output|recall|proof|remark|definition|where|phase|stage|condition|rule|theorem|lemma|proposition|corollary)\b/i.test(f.text.trim()) &&
+          !/^(?:Fig(?:ure)?|Table|Tab|Algorithm|Equation|Chart)\b/i.test(f.text.trim())
+        ))) {
           const detectedLvl = this.detectHeading(el, f.text, manifest);
           const isNumberedHeading = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(f.text);
           const isStandardSectionName = /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:introduction|related\s+work|related\s+works|literature\s+review|literature\s+survey|review\s+of\s+literature|survey\s+of\s+literature|background|methodology|methods|materials\s+and\s+methods|conclusion|conclusions|abstract|acknowledgments|acknowledgements|references|bibliography|overview|implementation|proposed|experimental|experiments|results|discussion|system)/i.test(f.text);
@@ -1334,6 +1386,9 @@ export class DeepDocumentParser {
       let lastHeadingLevel = 0;
       let hasSeenFirstSectionOrAbstract = false;
       let hasSeenReferences = false;
+
+      const emittedImageSrcs = new Set<string>();
+      (result as any)._emittedImageSrcs = emittedImageSrcs;
 
       for (let i = 0; i < manifest.length; i++) {
           const entry = manifest[i];
@@ -1650,17 +1705,35 @@ export class DeepDocumentParser {
                         result.body.push({ type: 'paragraph', text, componentRole: 'frontmatter' });
                       }
                     } else {
-                    // Emit the short heading as a level-2 subsection
-                    result.body.push({ type: 'heading', level: 2, text: embeddedHeading });
-                    lastHeadingLevel = 2;
-                    // Emit body text (everything after the colon) as a paragraph
-                    const sepIdx = text.indexOf(embeddedHeading);
-                    const afterHeading = sepIdx !== -1
-                      ? text.substring(sepIdx + embeddedHeading.length).replace(/^\s*[:.]+\s*/, '').trim()
-                      : '';
-                    if (afterHeading.length > 0) {
-                      result.body.push({ type: 'paragraph', text: afterHeading });
-                    }
+                      // Check for duplicate heading before emitting embedded heading
+                      const lastNode = result.body[result.body.length - 1];
+                      let isDup = false;
+                      if (lastNode && lastNode.type === 'heading') {
+                        const normPrev = (lastNode.text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                        const normCurr = embeddedHeading.toLowerCase().replace(/[^a-z0-9]/g, '');
+                        if (normPrev && normCurr && (normPrev === normCurr || (normPrev.length > 5 && (normPrev.includes(normCurr) || normCurr.includes(normPrev))))) {
+                          isDup = true;
+                        }
+                      }
+                      if (!isDup) {
+                        // Enforce hierarchy: level can be at most lastHeadingLevel + 1
+                        let embLevel = 2;
+                        if (lastHeadingLevel === 0) {
+                          embLevel = 1;
+                        } else if (embLevel > lastHeadingLevel + 1) {
+                          embLevel = lastHeadingLevel + 1;
+                        }
+                        result.body.push({ type: 'heading', level: embLevel, text: embeddedHeading });
+                        lastHeadingLevel = embLevel;
+                      }
+                      // Emit body text (everything after the colon) as a paragraph
+                      const sepIdx = text.indexOf(embeddedHeading);
+                      const afterHeading = sepIdx !== -1
+                        ? text.substring(sepIdx + embeddedHeading.length).replace(/^\s*[:.]+\s*/, '').trim()
+                        : '';
+                      if (afterHeading.length > 0) {
+                        result.body.push({ type: 'paragraph', text: afterHeading });
+                      }
                     }
                   } else {
                     let cleanText = text.trim();
@@ -1705,6 +1778,11 @@ export class DeepDocumentParser {
                       if (lastHeadingLevel === 0 && level > 1 && /^(?:1(?:\.0)?\b|introduction|background|overview)/i.test(cleanText)) {
                           level = 1;
                       }
+                      // Enforce hierarchy: level can be at most lastHeadingLevel + 1
+                      // (e.g., cannot jump from section to subsubsection without subsection)
+                      if (lastHeadingLevel > 0 && level > lastHeadingLevel + 1) {
+                          level = lastHeadingLevel + 1;
+                      }
                       const finalHeadingText = cleanText || text;
                       const lastNode = result.body[result.body.length - 1];
                       if (lastNode && lastNode.type === 'heading') {
@@ -1734,15 +1812,8 @@ export class DeepDocumentParser {
                   // UNIVERSAL IMAGE RESCUE: If this paragraph contains any <img> elements
                   // (e.g. inline Mammoth output or prose followed by an image), emit each image
                   // as a figure node so it is preserved and referenced in the LaTeX code!
-                  const emittedFigIds = new Set<string>(
-                    result.body
-                      .filter((n: any) => (n.type === 'figure' || n.type === 'chart' || n.type === 'image') && n.id)
-                      .map((n: any) => String(n.id).toLowerCase())
-                  );
-                  // Also track normalized chart IDs so chart_pending_1 and rf_chart_1
-                  // are recognized as the same chart (prevents duplicate emissions).
                   const chartNumIds = new Set<string>();
-                  for (const id of emittedFigIds) {
+                  for (const id of emittedImageSrcs) {
                     const chartNum = id.match(/(?:chart_pending_|rf_chart_)(\d+)/i);
                     if (chartNum) chartNumIds.add(chartNum[1]);
                   }
@@ -1752,7 +1823,8 @@ export class DeepDocumentParser {
                     for (const img of childImgs) {
                       const src = (img.getAttribute('src') || img.getAttribute('data-src') || '').trim();
                       if (!src) continue;
-                      if (emittedFigIds.has(src.toLowerCase())) continue; // Already emitted
+                      const normSrc = normImgSrc(src);
+                      if (emittedImageSrcs.has(normSrc)) continue; // Already emitted
                       // Check if this is a renamed version of an already-emitted chart
                       const srcChartNum = src.match(/(?:chart_pending_|rf_chart_)(\d+)/i);
                       if (srcChartNum && chartNumIds.has(srcChartNum[1])) continue;
@@ -1765,7 +1837,7 @@ export class DeepDocumentParser {
                         id: src,
                         caption: altText || (isChart ? 'Chart' : 'Figure'),
                       } as any);
-                      emittedFigIds.add(src.toLowerCase());
+                      emittedImageSrcs.add(normSrc);
                       if (srcChartNum) chartNumIds.add(srcChartNum[1]);
                     }
                   }
@@ -1888,6 +1960,9 @@ export class DeepDocumentParser {
               
                   if (chartMatch) {
                       const src = chartMatch[1] + '.png';
+                      const normSrc = normImgSrc(src);
+                      if (emittedImageSrcs.has(normSrc)) continue;
+                      emittedImageSrcs.add(normSrc);
                       let figCaption = entry.caption;
                       if (!figCaption) {
                           let sib = el0.nextElementSibling;
@@ -2033,10 +2108,11 @@ export class DeepDocumentParser {
                 const img = imgs[idx];
                 const src = img.getAttribute('src') || img.getAttribute('data-src') || '';
                 if (!src) continue;
-                const alreadyInBody = result.body.some((n: any) =>
+                const normSrc = normImgSrc(src);
+                const alreadyInBody = emittedImageSrcs.has(normSrc) || result.body.some((n: any) =>
                   (n.type === 'figure' || n.type === 'chart' || n.type === 'image' || n.type === 'figure-group') &&
-                  (String(n.id || '').toLowerCase() === src.toLowerCase() ||
-                   (n.images && n.images.some((im: any) => String(im.src || '').toLowerCase() === src.toLowerCase())))
+                  (normImgSrc(n.id) === normSrc ||
+                   (n.images && n.images.some((im: any) => normImgSrc(im.src) === normSrc)))
                 );
                 if (alreadyInBody) continue;
 
@@ -2082,6 +2158,9 @@ export class DeepDocumentParser {
                 if (anyChart) {
                   result.stats.chartCount += validImgs.filter(vi => vi.isChart).length;
                 }
+                for (const vi of validImgs) {
+                  emittedImageSrcs.add(normImgSrc(vi.src));
+                }
                 result.body.push({
                   type: 'figure-group',
                   id: validImgs[0].src,
@@ -2090,6 +2169,7 @@ export class DeepDocumentParser {
                 } as any);
               } else if (validImgs.length === 1) {
                 const single = validImgs[0];
+                emittedImageSrcs.add(normImgSrc(single.src));
                 const figCap = groupCaption || single.caption || (single.isChart ? 'Chart' : 'Figure');
                 if (single.isChart) {
                   result.stats.chartCount++;
