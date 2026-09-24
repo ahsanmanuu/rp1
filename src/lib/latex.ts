@@ -24,6 +24,8 @@ const GREEK_MAP: Record<string, string> = {
 
 export function breakLongWords(tex: string): string {
   if (!tex) return '';
+  // Wrap bare HTTP(S) URLs in \url{...} so LaTeX can wrap them without margin overflow
+  tex = tex.replace(/(?<!\\(?:url|href)\s*\{)(https?:\/\/[^\s\)\],;]+)/gi, '\\url{$1}');
   let result = '';
   let i = 0;
   const len = tex.length;
@@ -49,12 +51,16 @@ export function breakLongWords(tex: string): string {
     if (wordBuffer.length > 25) {
       const activeProtected = commandStack.some(s => protectedCmds.has(s.cmd));
       if (!activeProtected && !inComment && !inMath) {
-        let broken = '';
-        for (let j = 0; j < wordBuffer.length; j += 10) {
-          if (j > 0) broken += '\\-';
-          broken += wordBuffer.slice(j, j + 10);
+        if (/^https?:\/\//i.test(wordBuffer) || /^www\./i.test(wordBuffer)) {
+          wordBuffer = `\\url{${wordBuffer}}`;
+        } else {
+          let broken = '';
+          for (let j = 0; j < wordBuffer.length; j += 10) {
+            if (j > 0) broken += '\\-';
+            broken += wordBuffer.slice(j, j + 10);
+          }
+          wordBuffer = broken;
         }
-        wordBuffer = broken;
       }
     }
     result += wordBuffer;

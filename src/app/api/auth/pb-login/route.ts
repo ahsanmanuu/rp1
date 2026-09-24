@@ -44,6 +44,14 @@ export async function POST(req: NextRequest) {
     }
 
     const cleanEmail = email.trim().toLowerCase();
+
+    // 1. Ensure PocketBase is running and responsive before attempting login
+    const { ensureAndStartPocketBase, isPocketBaseHealthy } = await import("@/lib/pb-starter");
+    if (!(await isPocketBaseHealthy())) {
+      console.log("[AUTH pb-login] PocketBase is offline, auto-starting process before login attempt...");
+      await ensureAndStartPocketBase();
+    }
+
     const pb = createPb();
 
     let authData;
@@ -53,8 +61,9 @@ export async function POST(req: NextRequest) {
     } catch (e: any) {
       lastAuthErr = e;
       if (isTransientAuthError(e)) {
-        console.warn(`[AUTH pb-login] authWithPassword failed transiently, retrying once:`, e?.message || e);
-        await new Promise(r => setTimeout(r, 500));
+        console.warn(`[AUTH pb-login] authWithPassword failed transiently, ensuring PB alive and retrying once:`, e?.message || e);
+        await ensureAndStartPocketBase();
+        await new Promise(r => setTimeout(r, 600));
         try {
           authData = await pb.collection("users").authWithPassword(cleanEmail, password);
           lastAuthErr = null;
@@ -65,63 +74,108 @@ export async function POST(req: NextRequest) {
     }
 
     if (!authData) {
-      let userExists = false;
-      if (lastAuthErr?.status === 400) {
+      const { pbAdmin } = await import("@/lib/pb");
+      let admPb: any = null;
+      try {
+        admPb = await pbAdmin();
+      } catch (admErr: any) {
+        console.warn("[AUTH pb-login] pbAdmin connection attempt failed:", admErr?.message || admErr);
+      }
+
+      let matchedUser: any = null;
+      if (admPb) {
+        // Try exact email match
         try {
-          const { pbAdmin } = await import("@/lib/pb");
-          const admPb = await pbAdmin();
-          const matchedUser = await admPb.collection("users").getFirstListItem(`email = "${cleanEmail}"`).catch(() => null);
+          matchedUser = await admPb.collection("users").getFirstListItem(`email = "${cleanEmail}"`);
+        } catch {}
 
-          const dbUser = await prisma.user.findFirst({
-            where: { email: cleanEmail }
-          }).catch(() => null);
+        // If not found, try case-insensitive ~ match (e.g. if registered with capital letters)
+        if (!matchedUser) {
+          try {
+            matchedUser = await admPb.collection("users").getFirstListItem(`email ~ "${cleanEmail}"`);
+          } catch {}
+        }
 
-          userExists = !!matchedUser || !!dbUser;
+        // If user was found with different casing in PocketBase, try authenticating with the exact stored email:
+        if (matchedUser && matchedUser.email && matchedUser.email !== cleanEmail) {
+          try {
+            authData = await pb.collection("users").authWithPassword(matchedUser.email, password);
+            lastAuthErr = null;
+            // Normalize email in PocketBase to lowercased cleanEmail for future logins
+            await admPb.collection("users").update(matchedUser.id, { email: cleanEmail }).catch(() => {});
+          } catch (casingAuthErr: any) {
+            lastAuthErr = casingAuthErr;
+          }
+        }
+      }
 
-          if (matchedUser) {
-            console.log(`[AUTH pb-login] Re-synchronizing auth state & password for user ${matchedUser.id} (${cleanEmail}).`);
-            try {
+      // If still not authenticated, check local SQLite dev.db (which holds bcrypt password hashes)
+      if (!authData) {
+        try {
+          const { verifyUserInLocalDb } = await import("@/lib/localDbSync");
+          const isDevDbValid = await verifyUserInLocalDb(cleanEmail, password);
+          if (isDevDbValid && admPb) {
+            console.log(`[AUTH pb-login] User ${cleanEmail} verified via local SQLite dev.db. Syncing to PocketBase...`);
+            if (matchedUser) {
               await admPb.collection("users").update(matchedUser.id, {
-                email: cleanEmail,
                 password,
                 passwordConfirm: password,
                 verified: true,
               });
-              authData = await pb.collection("users").authWithPassword(cleanEmail, password);
-              lastAuthErr = null;
-            } catch (updateErr: any) {
-              console.warn("[AUTH pb-login] Admin update retry warning:", updateErr?.message || updateErr);
-            }
-          } else if (dbUser) {
-            console.log(`[AUTH pb-login] Auto-provisioning missing PocketBase user record for registered user ${dbUser.id} (${cleanEmail}).`);
-            try {
-              const createdRecord = await admPb.collection("users").create({
-                id: dbUser.id,
+            } else {
+              matchedUser = await admPb.collection("users").create({
                 email: cleanEmail,
                 password,
                 passwordConfirm: password,
                 verified: true,
                 emailVisibility: true,
-                name: dbUser.name || cleanEmail.split("@")[0],
-                points: dbUser.points ?? 50,
-                theme: dbUser.theme || "dark",
-                membership: dbUser.membership || "free",
-                role: dbUser.role || "user",
+                name: cleanEmail.split("@")[0],
+                points: 50,
+                theme: "dark",
+                membership: "free",
+                role: "user",
                 status: "active",
               });
-              try { await admPb.collection("users").update(createdRecord.id, { verified: true }); } catch {}
-              authData = await pb.collection("users").authWithPassword(cleanEmail, password);
-              lastAuthErr = null;
-            } catch (createErr: any) {
-              console.warn("[AUTH pb-login] Auto-provisioning PB user failed:", createErr?.message || createErr);
             }
+            authData = await pb.collection("users").authWithPassword(cleanEmail, password);
+            lastAuthErr = null;
           }
-        } catch (healErr: any) {
-          console.warn("[AUTH pb-login] Self-healing attempt failed:", healErr?.message || healErr);
+        } catch (devDbErr: any) {
+          console.warn("[AUTH pb-login] dev.db verification warning:", devDbErr?.message || devDbErr);
         }
       }
 
+      // If STILL not authenticated, determine if user exists anywhere:
       if (!authData) {
+        let userExists = !!matchedUser;
+
+        if (!userExists && admPb) {
+          try {
+            const list = await admPb.collection("users").getList(1, 1, {
+              filter: `email = "${cleanEmail}" || email ~ "${cleanEmail}"`,
+            });
+            if (list.items.length > 0) userExists = true;
+          } catch {}
+        }
+
+        if (!userExists) {
+          try {
+            const { userExistsInLocalDb } = await import("@/lib/localDbSync");
+            if (userExistsInLocalDb(cleanEmail)) {
+              userExists = true;
+            }
+          } catch {}
+        }
+
+        // Check if PocketBase was completely offline
+        const pbHealthyNow = await isPocketBaseHealthy();
+        if (!pbHealthyNow) {
+          return NextResponse.json(
+            { error: "Authentication service is temporarily unavailable. Please try again later." },
+            { status: 503 }
+          );
+        }
+
         return NextResponse.json(
           { error: userExists ? "Invalid password. Please check your credentials." : "No account found with this email address." },
           { status: 400 }
@@ -197,6 +251,8 @@ export async function POST(req: NextRequest) {
       // a login without it cannot stay authenticated. Retry once before failing.
       console.warn("[AUTH pb-login] Session persist failed, retrying:", sessionErr.message);
       try {
+        const { refreshAdminAuth } = await import("@/lib/pb");
+        const freshAdm = await refreshAdminAuth();
         await prisma.userSession.create({
           data: {
             userId,
@@ -208,13 +264,30 @@ export async function POST(req: NextRequest) {
             lastActiveAt: new Date(),
             expiresAt,
           },
+          _pb: freshAdm,
         });
       } catch (sessionErr2: any) {
-        console.error("[AUTH pb-login] Session persist failed twice:", sessionErr2.message);
-        return NextResponse.json(
-          { error: "Failed to establish a session. Please try again." },
-          { status: 500 }
-        );
+        // Ultimate fallback: write directly to PocketBase user_sessions collection
+        try {
+          const directClient = (pb && pb.authStore.isValid) ? pb : await (await import("@/lib/pb")).pbAdmin();
+          await directClient.collection("user_sessions").create({
+            userId,
+            sessionToken,
+            machineId: clientMachineId,
+            ipAddress,
+            location,
+            userAgent,
+            lastActiveAt: new Date().toISOString().replace('T', ' '),
+            expiresAt: expiresAt.toISOString().replace('T', ' '),
+          }, { requestKey: null });
+          console.log("[AUTH pb-login] Session persisted via direct PocketBase client fallback.");
+        } catch (sessionErr3: any) {
+          console.error("[AUTH pb-login] Session persist failed after all fallbacks:", sessionErr3.message);
+          return NextResponse.json(
+            { error: "Failed to establish a session. Please try again." },
+            { status: 500 }
+          );
+        }
       }
     }
 

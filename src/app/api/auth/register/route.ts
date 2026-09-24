@@ -32,67 +32,58 @@ export async function POST(req: Request) {
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = name ? name.trim() : null;
 
-    // 1. Strict Duplicate Checks in PocketBase / Prisma DB
-    const existingUserByEmail = await prisma.user.findUnique({
-      where: { email: cleanEmail }
-    });
-    if (existingUserByEmail) {
-      return NextResponse.json(
-        { error: "A user with this email address is already registered." },
-        { status: 400 }
-      );
+    // Ensure PocketBase is running and responsive
+    const { ensureAndStartPocketBase, isPocketBaseHealthy } = await import("@/lib/pb-starter");
+    if (!(await isPocketBaseHealthy())) {
+      console.log("[Register API] PocketBase offline, starting process...");
+      await ensureAndStartPocketBase();
     }
 
-    if (cleanName) {
-      const existingUserByName = await prisma.user.findFirst({
-        where: { name: cleanName }
-      });
-      if (existingUserByName) {
-        return NextResponse.json(
-          { error: "A user with this scholar name is already registered." },
-          { status: 400 }
-        );
-      }
-    }
+    const { pbAdmin } = await import("@/lib/pb");
+    const { ensurePbUserCollectionFields } = await import("@/lib/pb-sync");
+    const admPb = await pbAdmin().catch(() => createPb());
 
-    const pb = createPb();
-
-    // 2. Strict Duplicate Checks in PocketBase
-    try {
-      const existingPbUser = await pb.collection("users").getFirstListItem(`email = "${cleanEmail}"`);
-      if (existingPbUser) {
-        return NextResponse.json(
-          { error: "A user with this email address is already registered." },
-          { status: 400 }
-        );
-      }
-    } catch {
-      // Not found is expected behavior
-    }
-
-    if (cleanName) {
+    // 1. Strict Duplicate Checks in PocketBase
+    if (admPb) {
       try {
-        const existingPbUserByName = await pb.collection("users").getFirstListItem(`name = "${cleanName}"`);
-        if (existingPbUserByName) {
+        const existingPbUser = await admPb.collection("users").getFirstListItem(`email = "${cleanEmail}" || email ~ "${cleanEmail}"`);
+        if (existingPbUser) {
           return NextResponse.json(
-            { error: "A user with this scholar name is already registered." },
+            { error: "A user with this email address is already registered." },
             { status: 400 }
           );
         }
       } catch {
         // Not found is expected behavior
       }
+
+      if (cleanName) {
+        try {
+          const existingPbUserByName = await admPb.collection("users").getFirstListItem(`name = "${cleanName}"`);
+          if (existingPbUserByName) {
+            return NextResponse.json(
+              { error: "A user with this scholar name is already registered." },
+              { status: 400 }
+            );
+          }
+        } catch {
+          // Not found is expected behavior
+        }
+      }
+    }
+
+    // 2. Duplicate Checks in Local DB (dev.db)
+    const { userExistsInLocalDb } = await import("@/lib/localDbSync");
+    if (userExistsInLocalDb(cleanEmail)) {
+      return NextResponse.json(
+        { error: "A user with this email address is already registered." },
+        { status: 400 }
+      );
     }
 
     // 3. Find the free AI Cap plan
     const freePlan = await prisma.aiCapPlan.findFirst({ where: { name: 'free' } }).catch(() => null);
 
-    // 4. Create User in PocketBase (using pbAdmin for guaranteed creation)
-    const { pbAdmin } = await import("@/lib/pb");
-    const { ensurePbUserCollectionFields } = await import("@/lib/pb-sync");
-    await ensurePbUserCollectionFields().catch(() => {});
-
-    const admPb = await pbAdmin().catch(() => pb);
     let record: any = null;
     try {
       const userPayload: Record<string, any> = {
@@ -198,6 +189,15 @@ export async function POST(req: Request) {
       });
     } catch (prismaErr: any) {
       console.warn("[Register API] Failed to upsert user in Prisma (non-fatal):", prismaErr?.message);
+    }
+
+    // 4c. Sync password to local SQLite dev.db for reliable dual-database persistence
+    try {
+      const bcrypt = (await import("bcryptjs")).default;
+      const { syncUserPasswordToLocalDb } = await import("@/lib/localDbSync");
+      syncUserPasswordToLocalDb(cleanEmail, bcrypt.hashSync(password, 10));
+    } catch (localSyncErr: any) {
+      console.warn("[Register API] Local SQLite password sync warning (non-fatal):", localSyncErr?.message);
     }
 
     // 5. Log Initial Session Activity with Geo Location

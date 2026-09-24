@@ -1,6 +1,10 @@
 import path from "path";
 import fs from "fs";
 import bcrypt from "bcryptjs";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+const Database = require("better-sqlite3");
 
 export function syncUserPasswordToLocalDb(email: string, passwordHash: string) {
   try {
@@ -9,24 +13,22 @@ export function syncUserPasswordToLocalDb(email: string, passwordHash: string) {
       console.log("[LocalDbSync] Local SQLite database not found at", dbPath);
       return;
     }
-    // Dynamic require better-sqlite3
-    const Database = require("better-sqlite3");
     const db = new Database(dbPath);
     
-    // Update or Insert user in SQLite dev.db
-    const user = db.prepare("SELECT id FROM User WHERE email = ?").get(email);
+    // Update or Insert user in SQLite dev.db (case-insensitive email matching)
+    const user = db.prepare("SELECT id FROM User WHERE LOWER(email) = LOWER(?)").get(email);
     if (user) {
-      db.prepare("UPDATE User SET password = ?, updatedAt = ? WHERE email = ?").run(
+      db.prepare("UPDATE User SET password = ?, updatedAt = ? WHERE id = ?").run(
         passwordHash,
         new Date().toISOString(),
-        email
+        user.id
       );
       console.log(`[LocalDbSync] Updated user password in local SQLite for: ${email}`);
     } else {
       // Create user in SQLite if not exist
       db.prepare("INSERT INTO User (id, email, password, points, theme, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
         "local-" + Math.random().toString(36).substring(2),
-        email,
+        email.toLowerCase(),
         passwordHash,
         50,
         "indigo",
@@ -51,18 +53,18 @@ export function syncAdminPasswordToLocalDb(email: string, passwordHash: string) 
     const Database = require("better-sqlite3");
     const db = new Database(dbPath);
     
-    const admin = db.prepare("SELECT id FROM admin_users WHERE email = ?").get(email);
+    const admin = db.prepare("SELECT id FROM admin_users WHERE LOWER(email) = LOWER(?)").get(email);
     if (admin) {
-      db.prepare("UPDATE admin_users SET passwordHash = ?, updatedAt = ? WHERE email = ?").run(
+      db.prepare("UPDATE admin_users SET passwordHash = ?, updatedAt = ? WHERE id = ?").run(
         passwordHash,
         new Date().toISOString(),
-        email
+        admin.id
       );
       console.log(`[LocalDbSync] Updated admin password in local SQLite for: ${email}`);
     } else {
       db.prepare("INSERT INTO admin_users (id, email, passwordHash, role, isActive, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
         "local-admin-" + Math.random().toString(36).substring(2),
-        email,
+        email.toLowerCase(),
         passwordHash,
         "editor",
         1,
@@ -77,20 +79,34 @@ export function syncAdminPasswordToLocalDb(email: string, passwordHash: string) 
   }
 }
 
+export function userExistsInLocalDb(email: string): boolean {
+  try {
+    const dbPath = path.resolve(process.cwd(), "prisma/dev.db");
+    if (!fs.existsSync(dbPath)) return false;
+    const Database = require("better-sqlite3");
+    const db = new Database(dbPath, { readonly: true });
+    const user = db.prepare("SELECT id FROM User WHERE LOWER(email) = LOWER(?)").get(email);
+    db.close();
+    return !!user;
+  } catch {
+    return false;
+  }
+}
+
 export async function verifyUserInLocalDb(email: string, password: string): Promise<boolean> {
   try {
     const dbPath = path.resolve(process.cwd(), "prisma/dev.db");
-    if (!fs.existsSync(dbPath)) return true; // Default to true if local DB is not present
+    if (!fs.existsSync(dbPath)) return false;
     
     const Database = require("better-sqlite3");
     const db = new Database(dbPath);
-    const user = db.prepare("SELECT password FROM User WHERE email = ?").get(email);
+    const user = db.prepare("SELECT password FROM User WHERE LOWER(email) = LOWER(?)").get(email);
     db.close();
     
     if (!user || !user.password) return false;
     return await bcrypt.compare(password, user.password);
   } catch {
-    return true; // Ignore failures if sqlite fails
+    return false;
   }
 }
 
@@ -101,7 +117,7 @@ export async function verifyAdminInLocalDb(email: string, password: string): Pro
     
     const Database = require("better-sqlite3");
     const db = new Database(dbPath);
-    const admin = db.prepare("SELECT passwordHash FROM admin_users WHERE email = ?").get(email);
+    const admin = db.prepare("SELECT passwordHash FROM admin_users WHERE LOWER(email) = LOWER(?)").get(email);
     db.close();
     
     if (!admin || !admin.passwordHash) return false;
@@ -122,7 +138,7 @@ export function getAdminFromLocalDb(email: string): { email: string; passwordHas
 
     const Database = require("better-sqlite3");
     const db = new Database(dbPath);
-    const admin = db.prepare("SELECT email, passwordHash, role, isActive FROM admin_users WHERE email = ?").get(email);
+    const admin = db.prepare("SELECT email, passwordHash, role, isActive FROM admin_users WHERE LOWER(email) = LOWER(?)").get(email);
     db.close();
 
     if (!admin || !admin.passwordHash) return null;
@@ -136,3 +152,4 @@ export function getAdminFromLocalDb(email: string): { email: string; passwordHas
     return null;
   }
 }
+

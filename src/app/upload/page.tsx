@@ -10,7 +10,7 @@ import {
   AlertTriangle, BookOpen, FileCheck, Table, Hash, Info, Printer, 
   Share2, ShieldCheck, FileText, Download, CheckCircle2, 
   Sparkles, Sigma, Image as ImageIcon, Clock, ChevronRight,
-  Trash2, Layers
+  Trash2, Layers, Search, X
 } from "lucide-react";
 import { TEMPLATE_REGISTRY } from "@/lib/templates/registry";
 import { motion, AnimatePresence } from "framer-motion";
@@ -805,10 +805,12 @@ function UploadContent() {
   };
 
   const [customTemplates, setCustomTemplates] = useState<any[]>([]);
+  const [templateSearchQuery, setTemplateSearchQuery] = useState("");
+  const [templateCategoryFilter, setTemplateCategoryFilter] = useState("all");
 
   // Define allTemplates combining builtins and custom
   const allTemplates = [
-    ...TEMPLATE_REGISTRY.filter(t => t.category === 'Journal' || t.category === 'Conference' || t.id === 'blank'),
+    ...TEMPLATE_REGISTRY.filter(t => t.category === 'Journal' || t.category === 'Conference' || t.id === 'blank' || t.category === 'Thesis'),
     ...customTemplates.map(t => ({
       id: t.id,
       label: t.name,
@@ -819,6 +821,30 @@ function UploadContent() {
       isCustom: true
     }))
   ];
+
+  const filteredTemplates = allTemplates.filter(tpl => {
+    const cat = (tpl.category || '').toLowerCase();
+    const filter = templateCategoryFilter.toLowerCase();
+    const matchesCategory = filter === 'all' || 
+      (filter === 'custom' && tpl.isCustom) ||
+      cat === filter;
+
+    if (!matchesCategory) return false;
+
+    if (!templateSearchQuery.trim()) return true;
+
+    const query = templateSearchQuery.toLowerCase().trim();
+    const label = (tpl.label || '').toLowerCase();
+    const id = (tpl.id || '').toLowerCase();
+    const desc = (tpl.desc || '').toLowerCase();
+    const publisher = (tpl.publisher || '').toLowerCase();
+
+    return label.includes(query) || 
+           id.includes(query) || 
+           desc.includes(query) || 
+           publisher.includes(query) || 
+           cat.includes(query);
+  });
 
   const [wasVerified, setWasVerified] = useState(false);
 
@@ -1464,12 +1490,103 @@ function UploadContent() {
               style={{ position: 'sticky', top: '112px' }}
             >
               <div className="card glass-card" style={{ padding: '1.5rem', borderRadius: '32px', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 160px)', background: 'var(--report-bg)', border: '1px solid var(--card-border)', backdropFilter: 'blur(10px)' }}>
-                <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
-                  <div style={{ width: '50px', height: '50px', background: 'var(--accent-primary)', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem', color: '#fff', boxShadow: '0 8px 20px -4px rgba(0, 104, 95, 0.3)' }}>
-                    <Sparkles size={24} />
+                <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
+                  <div style={{ width: '48px', height: '48px', background: 'var(--accent-primary)', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem', color: '#fff', boxShadow: '0 8px 20px -4px rgba(0, 104, 95, 0.3)' }}>
+                    <Sparkles size={22} />
                   </div>
-                  <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--report-text)', marginBottom: '0.5rem', letterSpacing: '-0.02em' }}>Select Template</h3>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--muted-text)', fontWeight: 500 }}>Target your extraction to a specific journal or conference format.</p>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--report-text)', marginBottom: '0.35rem', letterSpacing: '-0.02em' }}>Select Template</h3>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--muted-text)', fontWeight: 500, margin: 0 }}>Target your extraction to a specific journal or conference format.</p>
+                </div>
+
+                {/* Real-time Template Search & Filter */}
+                <div style={{ marginBottom: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <Search size={15} style={{ position: 'absolute', left: '0.85rem', color: 'var(--muted-text)', pointerEvents: 'none' }} />
+                    <input
+                      type="text"
+                      value={templateSearchQuery}
+                      onChange={(e) => setTemplateSearchQuery(e.target.value)}
+                      placeholder="Search templates (e.g. IEEE, ACM, Nature, Springer)..."
+                      style={{
+                        width: '100%',
+                        padding: '0.6rem 2.25rem 0.6rem 2.35rem',
+                        fontSize: '0.85rem',
+                        borderRadius: '12px',
+                        border: '1px solid var(--card-border)',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        color: 'var(--report-text)',
+                        outline: 'none',
+                        transition: 'border-color 0.2s, box-shadow 0.2s',
+                        boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.05)'
+                      }}
+                      onFocus={(e) => {
+                        e.target.style.borderColor = 'var(--accent-primary)';
+                        e.target.style.boxShadow = '0 0 0 3px rgba(0, 104, 95, 0.15)';
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = 'var(--card-border)';
+                        e.target.style.boxShadow = 'inset 0 1px 2px rgba(0,0,0,0.05)';
+                      }}
+                    />
+                    {templateSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setTemplateSearchQuery('')}
+                        title="Clear search"
+                        style={{
+                          position: 'absolute',
+                          right: '0.75rem',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: 'var(--muted-text)',
+                          padding: '3px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: '50%'
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Filter Pills */}
+                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    {[
+                      { id: 'all', label: 'All' },
+                      { id: 'journal', label: 'Journals' },
+                      { id: 'conference', label: 'Conferences' },
+                      { id: 'thesis', label: 'Thesis' },
+                      { id: 'custom', label: 'Custom' },
+                    ].map(tab => {
+                      const isActive = templateCategoryFilter === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setTemplateCategoryFilter(tab.id)}
+                          style={{
+                            padding: '0.25rem 0.65rem',
+                            fontSize: '0.72rem',
+                            fontWeight: isActive ? 700 : 500,
+                            borderRadius: '999px',
+                            border: isActive ? '1px solid var(--accent-primary)' : '1px solid var(--card-border)',
+                            background: isActive ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.03)',
+                            color: isActive ? '#fff' : 'var(--muted-text)',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          {tab.label}
+                        </button>
+                      );
+                    })}
+                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--muted-text)', fontWeight: 600 }}>
+                      {filteredTemplates.length} {filteredTemplates.length === 1 ? 'template' : 'templates'}
+                    </span>
+                  </div>
                 </div>
 
                 {error && (
@@ -1496,24 +1613,52 @@ function UploadContent() {
                 )}
                 
                 <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', paddingRight: '0.75rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {allTemplates.map(tpl => (
-                    <TemplateCard 
-                      key={tpl.id}
-                      id={tpl.id} 
-                      name={tpl.label} 
-                      desc={tpl.desc} 
-                      projectId={projectData.id} 
-                      router={router} 
-                      onError={setError}
-                      isCustom={tpl.isCustom}
-                      projectData={projectData}
-                      onDelete={() => {
-                         authFetch('/api/templates', { cache: 'no-store' })
-                           .then(res => res.json())
-                           .then(data => setCustomTemplates(data.templates || []));
-                      }}
-                    />
-                  ))}
+                  {filteredTemplates.length > 0 ? (
+                    filteredTemplates.map(tpl => (
+                      <TemplateCard 
+                        key={tpl.id}
+                        id={tpl.id} 
+                        name={tpl.label} 
+                        desc={tpl.desc} 
+                        projectId={projectData.id} 
+                        router={router} 
+                        onError={setError}
+                        isCustom={tpl.isCustom}
+                        projectData={projectData}
+                        onDelete={() => {
+                           authFetch('/api/templates', { cache: 'no-store' })
+                             .then(res => res.json())
+                             .then(data => setCustomTemplates(data.templates || []));
+                        }}
+                      />
+                    ))
+                  ) : (
+                    <div style={{ textAlign: 'center', padding: '2.5rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                      <BookOpen size={28} style={{ color: 'var(--muted-text)', opacity: 0.5 }} />
+                      <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--report-text)', margin: 0 }}>No matching templates</p>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--muted-text)', margin: 0 }}>No templates match &quot;{templateSearchQuery}&quot;</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTemplateSearchQuery('');
+                          setTemplateCategoryFilter('all');
+                        }}
+                        style={{
+                          marginTop: '0.5rem',
+                          padding: '0.35rem 0.85rem',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          borderRadius: '10px',
+                          border: '1px solid var(--accent-primary)',
+                          background: 'rgba(0, 104, 95, 0.1)',
+                          color: 'var(--accent-primary)',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Reset filters
+                      </button>
+                    </div>
+                  )}
                 </div>
                 
                 <div style={{ marginTop: '2.5rem', paddingTop: '2rem', borderTop: '1px solid var(--card-border)', textAlign: 'center' }}>

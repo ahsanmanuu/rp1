@@ -1,5 +1,6 @@
 import { getTemplateById, mapLegacyTemplateId as mapTpl } from './templates/registry';
 import { formatLatexCode } from './studio-core/formatting-utils';
+import { FORCED_LEVEL1_SECTIONS, isCanonicalL1Heading, normalizeHeadingTitle } from './academic-sections';
 
 /**
  * PackageRegistry: Centralized LaTeX package management
@@ -130,6 +131,21 @@ export class LatexAssembler {
     else if (isMdpi) docClass = "\\documentclass[journal,article,submit,moreauthors,pdftex]{mdpi}";
     else if (isSciFile) docClass = "\\documentclass{scifile}";
 
+    // Two-column detection: based on template ID, metadata mapping, or native preamble content
+    const tpl = getTemplateById(mapTpl(templateId));
+    const isTwoColumn = isIeee || isAcm || (
+      tpl?.mapping?.columnLayout === 'double'
+    ) || (
+      typeof templateMainTex === 'string' && (
+        /\btwocolumn\b/i.test(templateMainTex) ||
+        /\bsigconf\b/i.test(templateMainTex) ||
+        /\bIEEEtran\b/.test(templateMainTex) ||
+        /\breprint\b/i.test(templateMainTex)
+      )
+    ) || (
+      nativePreamble.some(p => /\btwocolumn\b/i.test(p) || /\bsigconf\b/i.test(p) || /\bIEEEtran\b/.test(p) || /\breprint\b/i.test(p))
+    );
+
     // --- 1. PREAMBLE GENERATION ---
     const preamble = [
       "\\nonstopmode",
@@ -213,6 +229,15 @@ export class LatexAssembler {
       "}{}",
       "\\catcode`\\@=12",
     ];
+
+    if ((docClass.includes('{article}') || !docClass) && !nativePreamble.length) {
+      preamble.push(
+        "\\@ifpackageloaded{geometry}{}{\\usepackage[margin=1in]{geometry}}",
+        "\\tolerance=1000",
+        "\\hfuzz=2pt",
+        "\\hbadness=2000"
+      );
+    }
 
     preamble.push(
       "\\usepackage{iftex,microtype}",
@@ -347,42 +372,58 @@ export class LatexAssembler {
       cleanOrgsLA.forEach((o, i) => preamble.push(`\\affil[${i+1}]{${o}}`));
       const corresponding = doc.authors.find(a => a.isCorresponding);
       if (corresponding?.email) preamble.push(`\\affil[*]{Corresponding author: ${LatexAssembler.escape(corresponding.email, [])}}`);
-      preamble.push("\\date{}");
+      if (!isIeee && !isAcm) preamble.push("\\date{}");
     }
 
     const header = ["\\begin{document}"];
+    if (isTwoColumn) header.push("\\sloppy");
     if (templateId.includes('scifile')) header.push("\\baselineskip24pt");
 
-    // --- 3. MAKETITLE (must come before abstract/keywords for standard article class) ---
-    if (isAcm || isSciRep) {
-      // ACM/SciRep: maketitle after abstract env
-    } else if (!isElsevier) {
-      header.push("\\maketitle");
-    }
+    // --- 3. ABSTRACT, KEYWORDS & MAKETITLE (Properly ordered per document class) ---
+    const cleanAbstract = (doc.abstract || "").replace(/^[\s:.\-–—−\u2013\u2014]+/, '').trim();
+    const abstractEsc = cleanAbstract ? LatexAssembler.escape(cleanAbstract, mathBlocks) : '';
+    const kwText = (doc.keywords || [])
+      .map((k: string) => k.replace(/^[\s:.\-–—−\u2013\u2014]+/, '').trim())
+      .filter(Boolean)
+      .map((k: string) => LatexAssembler.escape(k, mathBlocks))
+      .join(isElsevier ? ' \\sep ' : ', ');
 
-    // --- 3b. ABSTRACT & KEYWORDS ---
-    if (doc.abstract) {
+    if (abstractEsc) {
       const env = templateId.includes('scifile') ? 'quote' : 'abstract';
-      const abstractContent = `\\begin{${env}}\n${LatexAssembler.escape(doc.abstract, mathBlocks)}\n\\end{${env}}`;
-      files['sections/abstract.tex'] = abstractContent;
-      header.push("\\input{sections/abstract.tex}");
+      files['sections/abstract.tex'] = `\\begin{${env}}\n${abstractEsc}\n\\end{${env}}`;
     }
-    
-    const kwText = doc.keywords.map(k => LatexAssembler.escape(k, mathBlocks)).join(isElsevier ? ' \\sep ' : ', ');
     if (kwText) {
       let kwContent = "";
       if (isIeee) kwContent = `\\begin{IEEEkeywords}\n${kwText}\n\\end{IEEEkeywords}`;
       else if (isElsevier) kwContent = `\\begin{keyword}\n${kwText}\n\\end{keyword}`;
       else if (isAcm || isSciRep) kwContent = `\\keywords{${kwText}}`;
       else kwContent = `\\noindent\\textbf{Keywords:} ${kwText}`;
-      
       files['metadata/keywords.tex'] = kwContent;
-      header.push("\\input{metadata/keywords.tex}");
     }
 
-    // ACM/SciRep: maketitle AFTER keywords
-    if (isAcm || isSciRep) {
+    if (isElsevier) {
+      // Elsevier: handled in frontmatter
+    } else if (isAcm || isSciRep) {
+      // ACM/SciRep: abstract & keywords MUST appear before \maketitle
+      if (abstractEsc) header.push("\\input{sections/abstract.tex}");
+      if (kwText) header.push("\\input{metadata/keywords.tex}");
       header.push("\\maketitle");
+    } else if (isIeee) {
+      // IEEE: abstract and keywords wrapped inside \IEEEtitleabstractindextext{} before \maketitle
+      const ieeeAbstract = abstractEsc ? `\\begin{abstract}\n${abstractEsc}\n\\end{abstract}` : '';
+      const ieeeKeywords = kwText ? `\\begin{IEEEkeywords}\n${kwText}\n\\end{IEEEkeywords}` : '';
+      if (ieeeAbstract || ieeeKeywords) {
+        preamble.push(`\\IEEEtitleabstractindextext{\n${ieeeAbstract}\n${ieeeKeywords}\n}`);
+        header.push("\\maketitle");
+        header.push("\\IEEEdisplaynontitleabstractindextext");
+      } else {
+        header.push("\\maketitle");
+      }
+    } else {
+      // Standard article / generic: \maketitle first, then abstract & keywords
+      header.push("\\maketitle");
+      if (abstractEsc) header.push("\\input{sections/abstract.tex}");
+      if (kwText) header.push("\\input{metadata/keywords.tex}");
     }
 
     // --- 4. BODY CONTENT & SECTION SPLITTING ---
@@ -417,31 +458,11 @@ export class LatexAssembler {
       (/\b(?:university|polytechnic|college|institute|department|faculty|school of|laboratory|centre for|center for|hospital|foundation|academy)\b/i.test(probe) && probe.length < 100) ||
       (/\b(?:librarian|professor|scholar|fellow|lecturer|assistant|associate|researcher)\b/i.test(probe) && probe.length < 80);
     // Canonical section names — same set as FORCED_L1 in assembleNode
-    const FORCED_L1_ASSEMBLER = new Set([
-      'abstract','introduction','background','related work','literature review',
-      'methodology','proposed method','proposed approach','proposed framework',
-      'experimental setup','experiments','results','results and discussion',
-      'discussion','conclusion','conclusions','acknowledgements','acknowledgments',
-      'references','bibliography','appendix','future work',
-      'system model','system overview','problem formulation',
-      'problem statement','performance evaluation','evaluation','simulation results',
-      'comparison','related works','materials and methods','methods',
-      // Universal literature survey variants (no bias to any specific document)
-      'literature survey','literature review/survey','survey','literature review and survey',
-      'existing literature','literature',
-    ]);
+    // Canonical section names — shared unified set
+    const FORCED_L1_ASSEMBLER = FORCED_LEVEL1_SECTIONS;
 
     const isCanonicalSectionTitle = (p: string, n: string): boolean => {
-      const cleanP = p.toLowerCase().replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '').replace(/[:.\s]*$/, '').trim();
-      const cleanN = n.toLowerCase().replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '').replace(/[:.\s]*$/, '').trim();
-      if (FORCED_L1_ASSEMBLER.has(cleanP) || FORCED_L1_ASSEMBLER.has(cleanN)) return true;
-      for (const canon of FORCED_L1_ASSEMBLER) {
-        if ((cleanP.startsWith(canon + ' ') || cleanP.startsWith(canon + ':') || cleanP.startsWith(canon + ' -')) ||
-            (cleanN.startsWith(canon + ' ') || cleanN.startsWith(canon + ':') || cleanN.startsWith(canon + ' -'))) {
-          return true;
-        }
-      }
-      return false;
+      return isCanonicalL1Heading(p) || isCanonicalL1Heading(n);
     };
 
     const isAcademicPreambleOrAuthor = (probe: string, normText: string): boolean => {
@@ -454,16 +475,6 @@ export class LatexAssembler {
       if (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley|plos|biorxiv|medrxiv|arxiv|frontiers|nature)\b/i.test(probe) && probe.length < 60) return true;
       return false;
     };
-
-    // Two-column detection: based on template ID or native preamble content
-    const isTwoColumn = isIeee || isAcm || (
-      typeof templateMainTex === 'string' && (
-        /\btwocolumn\b/i.test(templateMainTex) ||
-        /\bsigconf\b/i.test(templateMainTex) ||
-        /\bIEEEtran\b/.test(templateMainTex) ||
-        /\breprint\b/i.test(templateMainTex)
-      )
-    );
 
     let currentSectionNodes: any[] = [];
     let currentSectionTitle = "introduction";
@@ -817,11 +828,11 @@ export class LatexAssembler {
     }
 
     // --- 6. BIBLIOGRAPHY ---
-    if (doc.references.length > 0) {
+    if ((doc.references || []).length > 0) {
       const bibItems: string[] = [];
       const seenKeys = new Set<string>();
 
-      doc.references.forEach((ref, idx) => {
+      (doc.references || []).forEach((ref, idx) => {
         const cleanRef = ref.replace(/^(?:\[\d+\][.:\s\t]*|\d+[.:\s\t]+)/, '');
         const escapedRef = LatexAssembler.escape(cleanRef, mathBlocks, { skipCitations: true, isBibItem: true });
         const primaryKey = `ref${idx + 1}`;
@@ -1059,43 +1070,27 @@ export class LatexAssembler {
         }
         
         // 🛡️ FORCED LEVEL-1: canonical academic section names always use \section
-        const FORCED_L1 = new Set([
-          'abstract','introduction','background','related work','related works','literature review','literature survey',
-          'methodology','proposed method','proposed approach','proposed framework','proposed methodology','proposed system',
-          'system architecture','system model','system design','system overview','problem formulation','problem statement',
-          'experimental setup','experiments','experimental results','results','results and discussion',
-          'discussion','performance evaluation','evaluation','simulation results','comparative analysis','comparison',
-          'conclusion','conclusions','conclusions and future work','conclusions and future works','conclusion and future work',
-          'conclusion and future scope','conclusion and recommendations','summary and conclusion','concluding remarks',
-          'future work','future works','future scope','recommendations',
-          'acknowledgements','acknowledgments','references','bibliography','appendix',
-          'declarations','ethics approval','ethical approval','ethics statement',
-          'conflict of interest','conflicts of interest','competing interests',
-          'funding','funding statement','funding information',
-          'data availability','data availability statement','availability of data',
-          'authors contributions','author contributions','contributors',
-          'supplementary material','supplementary materials','supplementary information',
-          'limitations','study limitations','abbreviations',
-          'consent to participate','consent for publication','informed consent',
-          'literature survey','literature review/survey','survey','literature review and survey',
-          'existing literature','literature',
-        ]);
+        // 🛡️ FORCED LEVEL-1: canonical academic section names always use \section
+        const FORCED_L1 = FORCED_LEVEL1_SECTIONS;
         const normalizedFinal = finalText.toLowerCase().replace(/^(?:\d+[\s\.]+|[ivxlcdm]+[\s\.]+|[a-g][\s\.]+)+/i, '').trim();
-        const isCanonicalL1Check = FORCED_L1.has(normalizedFinal) ||
-          /^(?:conclusion|conclusions|concluding|future work|future scope|literature review|literature survey|related works?|system model|system architecture|materials and methods|results and discussion|performance evaluation|declarations|acknowledg|data availability)\b/i.test(normalizedFinal);
+        const isCanonicalL1Check = isCanonicalL1Heading(normalizedFinal);
 
         const rawTrimmed = rawText.trim();
         const subSubMatch = rawTrimmed.match(/^(?:section|subsection|subsubsection)?\s*(\d+\.\d+\.\d+(?:\.\d+)*)/i);
         const subMatch = rawTrimmed.match(/^(?:section|subsection|subsubsection)?\s*(\d+\.\d+)/i);
-        let level = node.level || 1;
+        let level: number;
         if (subSubMatch) {
           level = 3;
         } else if (subMatch) {
           level = 2;
-        } else if (node.level === 2 || node.level === 3) {
-          level = node.level;
         } else if (isCanonicalL1Check) {
           level = 1;
+        } else if (node.level && [1, 2, 3].includes(node.level)) {
+          level = node.level;
+        } else {
+          // Contextual default when level is undefined and heading is non-canonical:
+          // Default to subsection (level 2) to preserve hierarchical depth instead of flattening all to section
+          level = 2;
         }
         
         const cmd = level === 1 ? 'section' : level === 2 ? 'subsection' : 'subsubsection';
@@ -1106,7 +1101,8 @@ export class LatexAssembler {
           'statements and declarations', 'declarations'
         ];
         const unnumbered = unnumberedList.some(u => normalizedFinal === u || normalizedFinal.startsWith(u));
-        return `\n\\${cmd}${isStarred || unnumbered ? '*' : ''}{${LatexAssembler.escapeText(finalText, mathBlocks)}}\n`;
+        const barrier = (level === 1) ? '\\FloatBarrier\n' : '';
+        return `\n${barrier}\\${cmd}${isStarred || unnumbered ? '*' : ''}{${LatexAssembler.escapeText(finalText, mathBlocks)}}\n`;
       }
 
       case 'paragraph': {
@@ -1177,9 +1173,12 @@ export class LatexAssembler {
         const rawId = String(node.id || "image").replace(/\\/g, '/');
         const fileId = rawId.replace(/^assets\//, '') || "image";
         const twoCol = (node as any).twoColumn === true;
-        const figEnv = twoCol ? 'figure*' : 'figure';
-        const placement = twoCol ? '[!htbp]' : '[H]';
-        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${fileId}}\n\\end{${figEnv}}\n\\FloatBarrier\n`;
+        const isWide = (node as any).isWide === true || (node as any).widthHint === 'wide';
+        const useFigureStar = twoCol && isWide;
+        const figEnv = useFigureStar ? 'figure*' : 'figure';
+        const placement = '[!htbp]';
+        const imgWidth = useFigureStar ? '0.85\\textwidth' : (twoCol ? '\\columnwidth' : '0.85\\linewidth');
+        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=${imgWidth},max height=0.7\\textheight,keepaspectratio]{${fileId}}\n\\end{${figEnv}}\n`;
       }
       case 'figure': {
         const rawId = String(node.id || 'figure').replace(/\\/g, '/');
@@ -1192,9 +1191,13 @@ export class LatexAssembler {
         const labelIdx = (node as any).labelIdx ?? Math.random().toString(36).substring(2, 7);
         const label = `fig:${String(labelIdx).replace(/[^a-z0-9]/gi, '_')}`;
         const twoCol = (node as any).twoColumn === true;
-        const figEnv = twoCol ? 'figure*' : 'figure';
-        const placement = twoCol ? '[!htbp]' : '[H]';
-        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${fileId}}\n${captionLine}\\label{${label}}\n\\end{${figEnv}}\n\\FloatBarrier\n`;
+        const isWideCaption = /(?:architecture|framework|overview|pipeline|schematic|workflow|system model|block diagram|sub-?figure|comparison of|benchmark|horizontal|full-?width)/i.test(rawCaption);
+        const isWide = (node as any).isWide === true || (node as any).widthHint === 'wide' || isWideCaption;
+        const useFigureStar = twoCol && isWide;
+        const figEnv = useFigureStar ? 'figure*' : 'figure';
+        const placement = '[!htbp]';
+        const imgWidth = useFigureStar ? '0.85\\textwidth' : (twoCol ? '\\columnwidth' : '0.85\\linewidth');
+        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=${imgWidth},max height=0.7\\textheight,keepaspectratio]{${fileId}}\n${captionLine}\\label{${label}}\n\\end{${figEnv}}\n`;
       }
       case 'chart': {
         const rawId = String(node.id || 'chart').replace(/\\/g, '/');
@@ -1207,9 +1210,13 @@ export class LatexAssembler {
         const labelIdx = (node as any).labelIdx ?? Math.random().toString(36).substring(2, 7);
         const label = `chart:${String(labelIdx).replace(/[^a-z0-9]/gi, '_')}`;
         const twoCol = (node as any).twoColumn === true;
-        const figEnv = twoCol ? 'figure*' : 'figure';
-        const placement = twoCol ? '[!htbp]' : '[H]';
-        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=0.9\\linewidth,max height=0.7\\textheight,keepaspectratio]{${fileId}}\n${captionLine}\\label{${label}}\n\\end{${figEnv}}\n\\FloatBarrier\n`;
+        const isWideCaption = /(?:comparison|benchmark|timeline|distribution|overview|multi-panel)/i.test(rawCaption);
+        const isWide = (node as any).isWide === true || (node as any).widthHint === 'wide' || isWideCaption;
+        const useFigureStar = twoCol && isWide;
+        const figEnv = useFigureStar ? 'figure*' : 'figure';
+        const placement = '[!htbp]';
+        const imgWidth = useFigureStar ? '0.85\\textwidth' : (twoCol ? '\\columnwidth' : '0.85\\linewidth');
+        return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=${imgWidth},max height=0.7\\textheight,keepaspectratio]{${fileId}}\n${captionLine}\\label{${label}}\n\\end{${figEnv}}\n`;
       }
       case 'figure-group':
         return LatexAssembler.assembleFigureGroup(node, mathBlocks);
@@ -1243,6 +1250,12 @@ export class LatexAssembler {
             finalContent = finalContent.substring(0, trailingNumMatch.index).trim();
             const labelVal = trailingNumMatch[1] || trailingNumMatch[2] || trailingNumMatch[3] || trailingNumMatch[4] || trailingNumMatch[5];
             labelStr = `\\label{eq:${labelVal}}\n`;
+        } else if ((node as any).labelIdx !== undefined && (node as any).labelIdx !== null) {
+            labelStr = `\\label{eq:${(node as any).labelIdx}}\n`;
+        }
+
+        if ((node as any).inline === true) {
+            return `$${finalContent}$`;
         }
 
         // SUPPRESS PHANTOM EMPTY EQUATION: If no math content remains after stripping label/number, drop it!
@@ -1271,7 +1284,13 @@ export class LatexAssembler {
         finalContent = LatexAssembler.sanitizeMathToLatex(finalContent);
 
         const lines = finalContent.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
-        const activeEnv = envWrapper || 'equation';
+        // If equation is very short (< 40 chars), single-line, has no relation operator and no label, treat as inline math
+        const isShortSimpleExpr = lines.length === 1 && finalContent.length < 40 && !labelStr && !envWrapper && !/[=<>\le\ge\approx\sim\equiv]/.test(finalContent);
+        if (isShortSimpleExpr) {
+            return `$${finalContent}$`;
+        }
+
+        const activeEnv = envWrapper || (labelStr ? 'equation' : 'equation*');
         if (lines.length > 1 && activeEnv !== 'display' && !activeEnv.startsWith('align')) {
             return `\n\\begin{${activeEnv}}\n\\begin{aligned}\n${lines.join(' \\\\\n')}\n\\end{aligned}\n${labelStr}\\end{${activeEnv}}\n`;
         } else if (lines.length > 1 && activeEnv.startsWith('align')) {
@@ -1523,11 +1542,11 @@ export class LatexAssembler {
 
     // Force tabularx line-wrapping for all multi-column or text-bearing tables to prevent right-margin overflow
     const isTwoColMode = (node as any).twoColumn === true;
-    const twoColWide = isTwoColMode && (totalGridCols >= 3 || colMaxLen.some(l => l > 25));
+    const twoColWide = isTwoColMode && (totalGridCols >= 5 || (totalGridCols >= 4 && colMaxLen.some(l => l > 30)) || colMaxLen.some(l => l > 50));
     const tableEnv = twoColWide ? 'table*' : 'table';
-    const tablePlacement = twoColWide ? '[!htbp]' : (isTwoColMode ? '[!htbp]' : '[H]');
+    const tablePlacement = '[!htbp]';
     const tabularEnv = 'tabularx';
-    const targetWidth = twoColWide ? '\\textwidth' : '\\linewidth';
+    const targetWidth = twoColWide ? '\\textwidth' : (isTwoColMode ? '\\columnwidth' : '\\linewidth');
     const widthParam = `{${targetWidth}}`;
     const activeSpec = fullSpec;
 
@@ -1536,7 +1555,7 @@ export class LatexAssembler {
     const fontSizeCmd = (isTwoColMode && totalGridCols >= 4) ? '{\\footnotesize\n' : ((isTwoColMode && totalGridCols >= 3) ? '{\\small\n' : (totalGridCols >= 6 ? '{\\small\n' : ''));
     const fontSizeEnd = fontSizeCmd ? '\n}' : '';
 
-    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n${captionLine}\\label{${labelKey}}\n${colSepCmd}${fontSizeCmd}\\renewcommand{\\arraystretch}{1.2}\n\\begin{adjustbox}{max width=${targetWidth}}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}\n\\end{adjustbox}${fontSizeEnd}\n\\end{${tableEnv}}\n\\FloatBarrier\n`;
+    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n${captionLine}\\label{${labelKey}}\n${colSepCmd}${fontSizeCmd}\\renewcommand{\\arraystretch}{1.2}\n\\begin{adjustbox}{max width=${targetWidth}}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}\n\\end{adjustbox}${fontSizeEnd}\n\\end{${tableEnv}}\n`;
   }
 
 
@@ -1639,7 +1658,7 @@ export class LatexAssembler {
       subfigures.join('\n\\hfill\n'),
       capLine,
       `\\label{fig:group_${labelSuffix}}`,
-      `\\end{${figEnv}}\n\\FloatBarrier\n`,
+      `\\end{${figEnv}}\n`,
     ].filter(Boolean).join('\n');
   }
 
@@ -2284,11 +2303,13 @@ export class ModularLatexAssembler {
     const isNature = tpl?.assetFolder === 'nature';
 
     const isTwoColumn = isIeee || isAcm || (
-      typeof (tpl as any)?.templateMainTex === 'string' && (
-        /\btwocolumn\b/i.test((tpl as any).templateMainTex) ||
-        /\bsigconf\b/i.test((tpl as any).templateMainTex) ||
-        /\bIEEEtran\b/.test((tpl as any).templateMainTex) ||
-        /\breprint\b/i.test((tpl as any).templateMainTex)
+      tpl?.mapping?.columnLayout === 'double'
+    ) || (
+      typeof actualTemplateMainTex === 'string' && (
+        /\btwocolumn\b/i.test(actualTemplateMainTex) ||
+        /\bsigconf\b/i.test(actualTemplateMainTex) ||
+        /\bIEEEtran\b/.test(actualTemplateMainTex) ||
+        /\breprint\b/i.test(actualTemplateMainTex)
       )
     ) || (
       nativePreamble.some(p => /\btwocolumn\b/i.test(p) || /\bsigconf\b/i.test(p) || /\bIEEEtran\b/.test(p) || /\breprint\b/i.test(p))
@@ -2556,10 +2577,11 @@ export class ModularLatexAssembler {
       const corresponding = (doc.authors || []).find(a => a.isCorresponding);
       if (corresponding?.email) stdLines.push(`\\affil[*]{Corresponding author: ${LatexAssembler.escape(corresponding.email, [])}}`);
       files['metadata/authors.tex'] = stdLines.join('\n');
-      metadataDeclarations.push("\\date{}");
+      if (!isIeee && !isAcm) metadataDeclarations.push("\\date{}");
     }
 
     const header = ["\\begin{document}"];
+    if (isTwoColumn) header.push("\\sloppy");
     if (authorStyle === 'science') header.push("\\baselineskip24pt");
 
     // Build abstract & keywords content
@@ -2647,36 +2669,12 @@ export class ModularLatexAssembler {
           (withoutHonorific.length > 5 && (normText.includes(aWithoutHonorific) || aWithoutHonorific.includes(withoutHonorific)));
       });
     };
-    const FORCED_L1_ASSEMBLER = new Set([
-      'abstract', 'introduction', 'background', 'related work', 'related works', 'literature review', 'literature survey',
-      'methodology', 'methods', 'materials and methods', 'proposed method', 'proposed methodology', 'proposed approach',
-      'proposed system', 'system architecture', 'system model', 'system design', 'system overview', 'problem formulation',
-      'problem statement', 'experimental setup', 'experiments', 'experimental results', 'results', 'results and discussion',
-      'discussion', 'performance evaluation', 'evaluation', 'simulation results', 'comparative analysis', 'comparison',
-      'conclusion', 'conclusions', 'conclusions and future work', 'conclusions and future works', 'conclusion and future work',
-      'conclusion and future scope', 'conclusion and recommendations', 'summary and conclusion', 'concluding remarks',
-      'future work', 'future works', 'future scope', 'recommendations',
-      'acknowledgements', 'acknowledgments', 'references', 'bibliography', 'appendix',
-      'declarations', 'conflict of interest', 'conflicts of interest', 'competing interests',
-      'funding', 'funding statement', 'data availability', 'data availability statement',
-      'author contributions', 'authors contributions', 'ethical approval', 'ethics statement',
-      'literature review/survey', 'survey', 'literature review and survey', 'existing literature', 'literature'
-    ]);
+    const FORCED_L1_ASSEMBLER = FORCED_LEVEL1_SECTIONS;
     const isCanonicalSectionL1 = (h: string): boolean => {
-      if (FORCED_L1_ASSEMBLER.has(h)) return true;
-      return /^(?:conclusion|conclusions|concluding|future work|future scope|literature review|literature survey|related works?|system model|system architecture|materials and methods|results and discussion|performance evaluation|declarations|acknowledg|data availability)\b/i.test(h);
+      return isCanonicalL1Heading(h);
     };
     const isCanonicalSectionTitle = (p: string, n: string): boolean => {
-      const cleanP = p.toLowerCase().replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '').replace(/[:.\s]*$/, '').trim();
-      const cleanN = n.toLowerCase().replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-g][.\s]+)+/i, '').replace(/[:.\s]*$/, '').trim();
-      if (isCanonicalSectionL1(cleanP) || isCanonicalSectionL1(cleanN)) return true;
-      for (const canon of FORCED_L1_ASSEMBLER) {
-        if ((cleanP.startsWith(canon + ' ') || cleanP.startsWith(canon + ':') || cleanP.startsWith(canon + ' -')) ||
-            (cleanN.startsWith(canon + ' ') || cleanN.startsWith(canon + ':') || cleanN.startsWith(canon + ' -'))) {
-          return true;
-        }
-      }
-      return false;
+      return isCanonicalL1Heading(p) || isCanonicalL1Heading(n);
     };
     const isDesignationLine = (probe: string): boolean =>
       (/^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of|head of department|researcher|research scholar|phd scholar|scholar|librarian|bibliographer|fellow|senior research fellow|technical assistant|mr\.|ms\.|mrs\.|md)\b/i.test(probe) && probe.length < 80) ||

@@ -20,7 +20,7 @@
  */
 
 import PocketBase from 'pocketbase';
-import { createPb, pbAdmin, mapRecord, mapList } from './pb';
+import { createPb, pbAdmin, refreshAdminAuth, mapRecord, mapList } from './pb';
 
 type WhereClause = Record<string, any>;
 
@@ -256,7 +256,7 @@ function collectionProxy(collectionName: string) {
       get(_, method: string) {
         return async (args: any = {}) => {
           const pb = args._pb || (await getClient());
-          const col = pb.collection(collectionName);
+          let col = pb.collection(collectionName);
 
           if (method === 'aggregate') {
             try {
@@ -407,10 +407,23 @@ function collectionProxy(collectionName: string) {
 
             // ──────────────────────────────────────────────
             case 'create': {
-              const r = await col.create(mapWriteData(args?.data), {
-                requestKey: null,
-              });
-              return mapRecord(r as any);
+              try {
+                const r = await col.create(mapWriteData(args?.data), {
+                  requestKey: null,
+                });
+                return mapRecord(r as any);
+              } catch (createErr: any) {
+                if (!args._pb && (createErr?.status === 400 || createErr?.status === 401 || createErr?.status === 403)) {
+                  try {
+                    const freshPb = await refreshAdminAuth();
+                    const r = await freshPb.collection(collectionName).create(mapWriteData(args?.data), {
+                      requestKey: null,
+                    });
+                    return mapRecord(r as any);
+                  } catch {}
+                }
+                throw createErr;
+              }
             }
 
             // ──────────────────────────────────────────────
@@ -523,8 +536,16 @@ function collectionProxy(collectionName: string) {
                 });
                 return mapRecord(r as any);
               } catch (e: any) {
-                // Race condition: another request created the record between our check and create
-                if (e?.status === 400 && attempt < 2) continue;
+                // Race condition or stale token: refresh and retry
+                if ((e?.status === 400 || e?.status === 401 || e?.status === 403) && attempt < 2) {
+                  if (!args._pb) {
+                    try {
+                      const freshPb = await refreshAdminAuth();
+                      col = freshPb.collection(collectionName);
+                    } catch {}
+                  }
+                  continue;
+                }
                 if (e?.status === 404) return null;
                 throw e;
               }
@@ -625,26 +646,16 @@ function collectionProxy(collectionName: string) {
 }
 
 /** Get a PocketBase admin client with caching and fallback. */
-let _cachedClient: PocketBase | null = null;
 export async function getClient(): Promise<PocketBase> {
-  if (_cachedClient) {
-    if (_cachedClient.authStore && _cachedClient.authStore.isValid) return _cachedClient;
-    _cachedClient = null;
-  }
   try {
-    const client = await pbAdmin();
-    _cachedClient = client;
-    return client;
+    return await pbAdmin();
   } catch (err: any) {
     console.warn('[pb-adapter] PocketBase admin auth failed, retrying once in 600ms...', err?.message || err);
     await new Promise(r => setTimeout(r, 600));
     try {
-      const retryClient = await pbAdmin();
-      _cachedClient = retryClient;
-      return retryClient;
+      return await pbAdmin();
     } catch (retryErr: any) {
       console.error('[pb-adapter] PocketBase admin client offline after retry, using fallback client:', retryErr?.message || retryErr);
-      // Don't cache unauthenticated fallback — retry pbAdmin on next call
       return createPb();
     }
   }

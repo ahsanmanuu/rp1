@@ -1,5 +1,6 @@
 import { JSDOM } from 'jsdom';
 import { countCitationsFromHtml, mergeCitations } from './citationCounting';
+import { FORCED_LEVEL1_SECTIONS, isCanonicalL1Heading } from './academic-sections';
 
 export interface AuthorInfo {
   name: string;
@@ -201,33 +202,7 @@ interface LineFeatures {
 }
 
 export class DeepDocumentParser {
-  private static readonly FORCED_LEVEL1 = new Set([
-    'abstract','introduction','background','related work','related works','literature review','literature','existing literature',
-    'literature survey','literature review/survey','survey','literature review and survey',
-    'methodology','methods','materials and methods','proposed method','proposed approach','proposed framework','proposed methodology','proposed system','experimental framework and findings',
-    'system architecture','system model','system design','system overview','problem formulation','problem statement',
-    'experiments','experimental setup','experimental results','results','discussion','results and discussion',
-    'evaluation','performance evaluation','simulation results','simulation','comparative analysis','comparison',
-    'conclusion','conclusions','conclusions and future scope','conclusions and future work','conclusions and future works',
-    'conclusion and future work','conclusion and future scope','conclusion and future works','conclusion and recommendations',
-    'summary and conclusion','concluding remarks','future work','future works','future scope','future directions',
-    'summary',
-    'anomaly detection','logic failure anomaly detection',
-    'acknowledgements','acknowledgments','acknowledgement','acknowledgment',
-    'references','bibliography','appendix','appendices',
-    // Universal major paper-specific sections
-    'statements and declarations','declarations and statements',
-    'pretrained models and transfer learning','pretrained model and transfer learning','transfer learning and pretrained models',
-    // Back-matter declarations
-    'declarations','ethics approval','ethical approval','ethics statement',
-    'conflict of interest','conflicts of interest','competing interests',
-    'funding','funding statement','funding information',
-    'data availability','data availability statement','availability of data',
-    'authors contributions','author contributions','contributors',
-    'supplementary material','supplementary materials','supplementary information',
-    'limitations','study limitations','abbreviations',
-    'consent to participate','consent for publication','informed consent'
-  ]);
+  private static readonly FORCED_LEVEL1 = FORCED_LEVEL1_SECTIONS;
 
   /**
    * Determines if a text line is an algorithm body step (not prose).
@@ -467,13 +442,13 @@ export class DeepDocumentParser {
               }
               if (!headingText) headingText = cleanLine;
 
-              // Hierarchy state machine: the first heading is always a main section.
-              // Allow explicit multi-part prefixes (e.g. 3.2.1) to set level 3 directly.
-              if (lastPdfHeadingLevel === 0) {
-                  level = 1;
-              } else if (prefixMatch && prefixMatch[1].includes('.')) {
+              // Hierarchy state machine: allow explicit multi-part prefixes (e.g. 1.2 or 3.2.1)
+              // to set level directly BEFORE the first-heading override.
+              if (prefixMatch && prefixMatch[1].includes('.')) {
                   // Explicit dot count in prefix gives authoritative level (e.g. 1.2 -> 2, 1.2.3 -> 3)
                   level = Math.min(3, prefixMatch[1].split('.').length);
+              } else if (lastPdfHeadingLevel === 0) {
+                  level = 1;
               } else if (level > lastPdfHeadingLevel + 1) {
                   level = lastPdfHeadingLevel + 1;
               }
@@ -2462,15 +2437,47 @@ export class DeepDocumentParser {
     }
 
     // Priority 3: Canonical Academic Section Names (always level 1 fallback when unnumbered & untagged)
-    if (this.FORCED_LEVEL1.has(normClean)) return 1;
+    if (this.FORCED_LEVEL1.has(normClean) || isCanonicalL1Heading(normClean)) return 1;
 
     // Priority 4: Stand-alone line heuristic: short, bold, title-cased, no trailing punctuation
     const trimmedText = f.text.trim();
-    const endsWithPunct = /[.;,?!]$/.test(trimmedText);
+    const endsWithPunct = /[.;,?!:–—]$/.test(trimmedText);
     const isProseLead = /^(?:step|case|example|note|input|output|recall|proof|remark|given|definition|phase|stage|where|and|or|if|then|else|however|furthermore|moreover|therefore|thus|in addition)\b/i.test(trimmedText);
+    const isCaptionLead = /^(?:figure|fig\b|table|tab\b|chart|algorithm|algo\b|listing|eq\b|equation)\b/i.test(trimmedText);
+    if (isCaptionLead) return null;
+
+    // Check if element has previous sibling that looks like unfinished sentence
+    const prevEl = targetEl.previousElementSibling;
+    if (prevEl) {
+      const prevText = (prevEl.textContent || '').trim();
+      if (prevText.length > 30 && !/[.?!:;]$/.test(prevText)) {
+        // Previous element is an unclosed sentence/paragraph - continuation fragment, not a heading
+        return null;
+      }
+    }
+
+    // Domain metric/label stopwords that are often capitalized but are not sections
+    const DOMAIN_LABEL_STOPWORDS = new Set([
+      'precision and recall', 'mean squared error', 'true positive rate', 'false positive rate',
+      'confusion matrix', 'training set', 'testing set', 'validation set', 'learning rate',
+      'batch size', 'loss function', 'accuracy and loss', 'feature extraction', 'data preprocessing',
+      'hyperparameter tuning', 'support vector machine', 'random forest', 'decision tree',
+      'deep neural network', 'convolutional neural network', 'recurrent neural network',
+      'linear regression', 'logistic regression', 'naive bayes', 'k-nearest neighbors',
+      'gradient boosting', 'cross entropy', 'standard deviation', 'confidence interval'
+    ]);
+    if (DOMAIN_LABEL_STOPWORDS.has(normClean)) {
+      return null;
+    }
+
+    // Single-word title-case lines should not become headings unless in canonical academic L1 set
+    if (f.wordCount === 1 && !this.FORCED_LEVEL1.has(normClean)) {
+      return null;
+    }
+
     const words = trimmedText.split(/\s+/).filter(Boolean);
     const isTitleCase = words.length > 0 && words.every(w => /^[A-Z]/.test(w) || STOPWORDS.has(w.toLowerCase()) || /^\d/.test(w));
-    const isStandalone = !endsWithPunct && !isProseLead && !trimmedText.includes(',') && f.wordCount >= 1 && f.wordCount < 10 && (
+    const isStandalone = !endsWithPunct && !isProseLead && !trimmedText.includes(',') && f.wordCount >= 2 && f.wordCount < 10 && (
       (f.isBold && (f.capRatio > 0.2 || isTitleCase)) ||
       (f.capRatio > 0.85 && f.wordCount <= 6) ||
       (isTitleCase && f.wordCount <= 6 && f.capRatio > 0.3)

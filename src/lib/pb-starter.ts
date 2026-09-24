@@ -15,8 +15,11 @@ function log(msg: string, err: any = null) {
   console.log(line.trim());
 }
 
-let pbProcessInstance: ChildProcess | null = null;
-let starterPromise: Promise<boolean> | null = null;
+const globalForStarter = globalThis as unknown as {
+  _pbProcessInstance?: ChildProcess | null;
+  _starterPromise?: Promise<boolean> | null;
+};
+
 
 export async function isPocketBaseHealthy(pbUrl: string = 'http://127.0.0.1:8090'): Promise<boolean> {
   try {
@@ -109,13 +112,14 @@ export async function ensureAndStartPocketBase(): Promise<boolean> {
     return true;
   }
 
-  if (starterPromise) return starterPromise;
+  if (globalForStarter._starterPromise) return globalForStarter._starterPromise;
 
-  starterPromise = (async () => {
+  globalForStarter._starterPromise = (async () => {
     try {
       const binaryPath = await ensureBinary();
       if (!binaryPath) {
         log(`No PocketBase binary available. Expecting external instance at ${pbUrl}`);
+        globalForStarter._starterPromise = null;
         return false;
       }
 
@@ -150,25 +154,34 @@ export async function ensureAndStartPocketBase(): Promise<boolean> {
         } catch {}
       }
 
+      // Superuser upsert changes tokenKey, invalidating all existing admin tokens
+      try {
+        const { clearAdminCache } = await import('./pb');
+        clearAdminCache();
+      } catch {}
+
       log(`Spawning PocketBase process from ${binaryPath}...`);
-      pbProcessInstance = spawn(binaryPath, ['serve', '--http=127.0.0.1:8090', `--dir=${pbDataDir}`, `--migrationsDir=${migrationsDir}`], {
+      globalForStarter._pbProcessInstance = spawn(binaryPath, ['serve', '--http=127.0.0.1:8090', `--dir=${pbDataDir}`, `--migrationsDir=${migrationsDir}`], {
         stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env },
       });
 
-      pbProcessInstance.stdout?.on('data', (d) => {
+      globalForStarter._pbProcessInstance.stdout?.on('data', (d) => {
         const str = d.toString();
         if (process.env.DEBUG_PB) process.stdout.write(`[PB] ${str}`);
       });
-      pbProcessInstance.stderr?.on('data', (d) => {
+      globalForStarter._pbProcessInstance.stderr?.on('data', (d) => {
         const str = d.toString();
         if (process.env.DEBUG_PB) process.stderr.write(`[PB-ERR] ${str}`);
       });
 
-      pbProcessInstance.on('exit', (code) => {
+      globalForStarter._pbProcessInstance.on('exit', (code) => {
         log(`PocketBase process exited with code ${code}. Cleaning up reference.`);
-        pbProcessInstance = null;
-        starterPromise = null;
+        globalForStarter._pbProcessInstance = null;
+        globalForStarter._starterPromise = null;
+        try {
+          import('./pb').then(m => m.clearAdminCache()).catch(() => {});
+        } catch {}
       });
 
       // Poll health endpoint for up to 15 seconds
@@ -181,13 +194,14 @@ export async function ensureAndStartPocketBase(): Promise<boolean> {
       }
 
       log('PocketBase spawned but health check timed out after 15s.');
+      globalForStarter._starterPromise = null;
       return false;
     } catch (err: any) {
       log('Error during ensureAndStartPocketBase:', err);
-      starterPromise = null;
+      globalForStarter._starterPromise = null;
       return false;
     }
   })();
 
-  return starterPromise;
+  return globalForStarter._starterPromise;
 }

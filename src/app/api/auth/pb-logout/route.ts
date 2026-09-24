@@ -5,7 +5,11 @@ import { prisma } from "@/lib/prisma";
 const AUTH_COOKIE_NAMES = ['pb_token', 'admin_session', 'next-auth.session-token', '__Secure-next-auth.session-token'];
 
 export async function POST(req: Request) {
-  const cookieStore = await cookies();
+  let cookieStore: any = null;
+  try {
+    cookieStore = await cookies();
+  } catch {}
+
   const response = NextResponse.json({ success: true }, {
     headers: { "Cache-Control": "no-store, max-age=0, must-revalidate" },
   });
@@ -13,7 +17,7 @@ export async function POST(req: Request) {
   // 1. Purging the auth cookies must NEVER be blocked by slow DB/PB work below —
   //    it happens first and unconditionally so sign-out can never hang.
   AUTH_COOKIE_NAMES.forEach(c => {
-    try { cookieStore.delete(c); } catch {}
+    try { cookieStore?.delete(c); } catch {}
     response.cookies.set(c, "", {
       path: "/",
       expires: new Date(0),
@@ -28,7 +32,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const authHeader = req.headers.get("authorization");
     const headerToken = authHeader ? authHeader.replace(/^Bearer\s+/i, "").trim() : null;
-    const token = cookieStore.get('pb_token')?.value || body?.token || headerToken;
+    const token = cookieStore?.get('pb_token')?.value || body?.token || headerToken;
 
     if (token) {
       // Delete session from Prisma (PB adapter)

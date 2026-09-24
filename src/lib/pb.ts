@@ -39,6 +39,20 @@ export function createPb() {
   return new PocketBase(PB_URL);
 }
 
+/**
+ * Server-side client that ensures PocketBase is healthy and running before returning.
+ */
+export async function getPb(): Promise<PocketBase> {
+  if (typeof window === 'undefined') {
+    const { isPocketBaseHealthy, ensureAndStartPocketBase } = await import('./pb-starter');
+    if (!(await isPocketBaseHealthy(PB_URL))) {
+      await ensureAndStartPocketBase();
+    }
+  }
+  return new PocketBase(PB_URL);
+}
+
+
 const recordCache = new Map<string, { record: any; expiry: number }>();
 const recordAuthPromises = new Map<string, Promise<any>>();
 
@@ -224,6 +238,25 @@ export function clearAdminCache() {
   globalForPb._adminPb = null;
   globalForPb._adminAuthPromise = null;
   globalForPb._adminPbFailureAt = null;
+  globalForPb._pbReachabilityCache = null;
+  if (typeof window === 'undefined') {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const os = require('os');
+      const pbDataDir = process.env.PB_DATA_DIR || path.join(process.cwd(), 'pb_data');
+      const tokenCandidates = [
+        path.join(pbDataDir, 'admin_token.json'),
+        path.join(os.tmpdir(), 'rp1_admin_token.json'),
+        path.join(process.cwd(), 'pb_data', 'admin_token.json')
+      ];
+      for (const tokenPath of tokenCandidates) {
+        if (fs.existsSync(tokenPath)) {
+          try { fs.unlinkSync(tokenPath); } catch {}
+        }
+      }
+    } catch {}
+  }
 }
 
 /**
