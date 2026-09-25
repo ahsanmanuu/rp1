@@ -8,8 +8,8 @@ function getOrigin(req: Request): string {
   const forwardedProto = req.headers.get("x-forwarded-proto");
   const proto = forwardedProto ? forwardedProto.split(",")[0].trim() : "http";
   let origin = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "";
-  if (!origin || !origin.startsWith("http")) {
-    origin = host ? `${proto}://${host}` : "http://localhost:3000";
+  if (!origin || !origin.startsWith("http") || (origin.includes("localhost") && host && !host.includes("localhost"))) {
+    origin = host ? `${proto}://${host}` : origin || "http://localhost:3000";
   }
   if (origin.endsWith("/")) origin = origin.slice(0, -1);
   return origin;

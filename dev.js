@@ -8,6 +8,10 @@ if (typeof dns.setDefaultResultOrder === 'function') {
   dns.setDefaultResultOrder('ipv4first');
 }
 
+// Bind to 0.0.0.0 so dev server is accessible across networks and sandboxes
+process.env.HOSTNAME = process.env.HOSTNAME || '0.0.0.0';
+process.env.HOST = process.env.HOST || '0.0.0.0';
+
 const PB_URL = process.env.POCKETBASE_URL || 'http://127.0.0.1:8090';
 const pbBinary = process.platform === 'win32' ? 'pocketbase.exe' : './pocketbase';
 let pbProcess = null;
@@ -51,7 +55,23 @@ async function startPocketBase() {
     return;
   }
 
-  if (!fs.existsSync(pbBinary)) {
+  const isWindows = process.platform === 'win32';
+  if (fs.existsSync(pbBinary)) {
+    if (!isWindows) {
+      try { fs.chmodSync(pbBinary, 0o755); } catch {}
+    }
+  } else if (!isWindows) {
+    try {
+      console.log('\x1b[33mPocketBase binary missing on Linux. Downloading...\x1b[0m');
+      const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
+      const version = '0.27.0';
+      const url = `https://github.com/pocketbase/pocketbase/releases/download/v${version}/pocketbase_${version}_linux_${arch}.zip`;
+      execSync(`curl -fsSL -o pocketbase.zip "${url}" && unzip -o pocketbase.zip && chmod +x pocketbase && rm -f pocketbase.zip`, { stdio: 'inherit' });
+    } catch (e) {
+      console.log(`\x1b[33mPocketBase auto-download failed (${e.message}) — start it manually\x1b[0m`);
+      return;
+    }
+  } else {
     console.log(`\x1b[33mPocketBase binary not found at ${pbBinary} — start it manually\x1b[0m`);
     return;
   }
@@ -60,6 +80,18 @@ async function startPocketBase() {
   const migrationsDir = path.resolve(process.cwd(), 'pb_migrations');
   fs.mkdirSync(pbDataDir, { recursive: true });
   fs.mkdirSync(migrationsDir, { recursive: true });
+
+  // Ensure superuser exists for local dev
+  const adminEmail = process.env.POCKETBASE_ADMIN_EMAIL || 'admin@latexify.io';
+  let cliPassword = process.env.POCKETBASE_ADMIN_PASSWORD;
+  if (cliPassword === 'admin123456') cliPassword = undefined;
+  const activePassword = cliPassword || 'Sczone@123';
+  try {
+    const upsertCmd = isWindows
+      ? `"${pbBinary}" superuser upsert ${adminEmail} ${activePassword} --dir="${pbDataDir}"`
+      : `chmod +x "${pbBinary}" && "${pbBinary}" superuser upsert ${adminEmail} ${activePassword} --dir="${pbDataDir}"`;
+    execSync(upsertCmd, { stdio: 'ignore' });
+  } catch {}
 
   console.log('\x1b[32mStarting PocketBase...\x1b[0m');
   pbProcess = spawn(pbBinary, ['serve', '--http=0.0.0.0:8090', `--dir=${pbDataDir}`, `--migrationsDir=${migrationsDir}`], {

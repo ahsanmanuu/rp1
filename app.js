@@ -154,9 +154,9 @@ async function startApp() {
       proxyReq.end();
     });
 
-    // Bind Proxy Server to Passenger target socket/port
-    proxyServer.listen(passengerTarget, () => {
-      console.log(`[app.js] Passenger proxy listening on target ${passengerTarget} -> 127.0.0.1:${standalonePort}`);
+    // Bind Proxy Server to Passenger target socket/port (0.0.0.0 for external access)
+    proxyServer.listen(passengerTarget, '0.0.0.0', () => {
+      console.log(`[app.js] Passenger proxy listening on target 0.0.0.0:${passengerTarget} -> 127.0.0.1:${standalonePort}`);
     });
 
   } else {

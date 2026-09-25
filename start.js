@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { execSync, spawn } from 'child_process';
 import dns from 'dns';
@@ -12,6 +13,12 @@ try {
 } catch (e) {
   console.error('Failed to chdir in start.js:', e);
 }
+
+// Enforce 0.0.0.0 binding for public external access across VPS, Daytona, Render & Docker
+process.env.HOSTNAME = process.env.HOSTNAME || '0.0.0.0';
+process.env.HOST = process.env.HOST || '0.0.0.0';
+process.env.PRISMA_TELEMETRY_DISABLE = '1';
+process.env.CHECKPOINT_DISABLE = '1';
 
 // Force IPv4-first resolution to prevent ENETUNREACH errors on environments without IPv6 routing
 if (typeof dns.setDefaultResultOrder === 'function') {
@@ -160,7 +167,12 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'production';
 async function ensurePocketBaseBinary() {
   const isWindows = process.platform === 'win32';
   const pbBinary = isWindows ? 'pocketbase.exe' : './pocketbase';
-  if (fs.existsSync(pbBinary)) return pbBinary;
+  if (fs.existsSync(pbBinary)) {
+    if (!isWindows) {
+      try { fs.chmodSync(pbBinary, 0o755); } catch {}
+    }
+    return pbBinary;
+  }
 
   if (isWindows) {
     log('Windows detected — cannot auto-download PocketBase. Skipping.');
@@ -222,7 +234,8 @@ async function ensureTectonicBinary() {
   try {
     fs.mkdirSync(binDir, { recursive: true });
     const version = '0.15.0';
-    const tarUrl = `https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%40${version}/tectonic-${version}-x86_64-unknown-linux-gnu.tar.gz`;
+    const arch = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
+    const tarUrl = `https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%40${version}/tectonic-${version}-${arch}-unknown-linux-gnu.tar.gz`;
     const tmpTar = path.join(os.tmpdir(), `tectonic-${version}.tar.gz`);
 
     const resp = await fetch(tarUrl);
@@ -525,6 +538,11 @@ async function launchNextJsServer() {
       if (fs.existsSync(srcStatic)) {
         try { fs.cpSync(srcStatic, destStatic, { recursive: true, force: true }); } catch (e) {}
       }
+
+      // Force 0.0.0.0 host binding so standalone server listens on all network interfaces
+      process.env.HOSTNAME = '0.0.0.0';
+      process.env.HOST = '0.0.0.0';
+      process.env.PORT = String(port);
 
       await import('./.next/standalone/server.js');
       return;

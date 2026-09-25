@@ -1,0 +1,22 @@
+# Daytona Workspace & Sandbox Configuration for Latexify
+# Documentation: https://www.daytona.io/docs
+id: latexify
+name: Latexify Daytona Sandbox
+
+build:
+  devcontainer:
+    filePath: .devcontainer/devcontainer.json
+
+ports:
+  - 3000 # Next.js Web App
+  - 8090 # PocketBase Backend & Admin UI
+
+env:
+  PORT: "3000"
+  HOSTNAME: "0.0.0.0"
+  POCKETBASE_URL: "http://127.0.0.1:8090"
+
+commands:
+  setup: bash scripts/daytona-setup.sh
+  start: bash scripts/daytona-start.sh
+  dev: bash scripts/daytona-start.sh --dev

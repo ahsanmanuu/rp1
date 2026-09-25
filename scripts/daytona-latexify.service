@@ -1,0 +1,23 @@
+[Unit]
+Description=Latexify Web App & PocketBase (Daytona Linux VPS)
+After=network.target
+
+[Service]
+Type=simple
+# Change User and WorkingDirectory to match your Daytona sandbox or VPS environment
+User=root
+WorkingDirectory=/workspaces/rp
+ExecStartPre=/usr/bin/env bash -c "chmod +x ./pocketbase bin/tectonic 2>/dev/null || true"
+ExecStart=/usr/bin/env node --max-old-space-size=1024 --expose-gc start.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOSTNAME=0.0.0.0
+Environment=POCKETBASE_URL=http://127.0.0.1:8090
+
+# Standard limits for Next.js + PocketBase + Tectonic compilation
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

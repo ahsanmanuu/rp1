@@ -1,0 +1,33 @@
+{
+  "name": "Latexify Daytona Sandbox",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "forwardPorts": [3000, 8090],
+  "portsAttributes": {
+    "3000": {
+      "label": "Latexify Web App",
+      "onAutoForward": "openBrowser"
+    },
+    "8090": {
+      "label": "PocketBase Admin",
+      "onAutoForward": "silent"
+    }
+  },
+  "postCreateCommand": "bash scripts/daytona-setup.sh",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      },
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss",
+        "James-Yu.latex-workshop"
+      ]
+    }
+  },
+  "remoteEnv": {
+    "PORT": "3000",
+    "HOSTNAME": "0.0.0.0",
+    "POCKETBASE_URL": "http://127.0.0.1:8090"
+  }
+}

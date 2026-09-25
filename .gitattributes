@@ -1,1 +1,28 @@
+# Auto-detect text files and normalize line endings
+* text=auto
+
+# Enforce LF line endings for all shell scripts, system services, and configuration
+*.sh text eol=lf
+*.service text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.css text eol=lf
+*.md text eol=lf
 .cpanel.yml text eol=lf
+.env.example text eol=lf
+.gitignore text eol=lf
+
+# Force binary for binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.db binary
+*.exe binary

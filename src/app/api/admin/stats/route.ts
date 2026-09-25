@@ -553,7 +553,8 @@ export async function GET(req: NextRequest) {
       const path = await import("path");
 
       let latexStatus = "online";
-      const localTectonicExists = fs.existsSync(path.join(process.cwd(), 'bin', 'tectonic.exe'));
+      const tectonicBin = process.platform === 'win32' ? 'tectonic.exe' : 'tectonic';
+      const localTectonicExists = fs.existsSync(path.join(process.cwd(), 'bin', tectonicBin)) || fs.existsSync(path.join(process.cwd(), 'bin', 'tectonic'));
       
       let cloudReachable = false;
       const currentMs = Date.now();
