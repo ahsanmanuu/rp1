@@ -478,6 +478,8 @@ export async function extractClientDocx(file: File): Promise<ClientDocxEnvelope>
   );
 
   let html = result.value || '';
+  // Disentangle glued email-author boundary (e.g. "...@domain.ac.inMala Kalra" -> "...@domain.ac.in<br />Mala Kalra")
+  html = html.replace(/([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-z]{2,10}(?:\.[a-z]{2,10})*)([A-Z][a-z]+)/gi, '$1<br />$2');
 
   // FALLBACK: JSZip-based extraction for VML/chart/AlternateContent images
   // that mammoth silently drops. This mirrors the server-side heavy path

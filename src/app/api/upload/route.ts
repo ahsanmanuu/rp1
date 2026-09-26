@@ -1010,25 +1010,32 @@ async function runUploadProcessing(uploadId: string) {
           if (idx !== null) presentFigIndices.add(idx);
         };
 
-        for (const n of deepData.body) {
+        const existingFigureNodes = deepData.body.filter((n: any) =>
+          n.type === 'figure' || n.type === 'chart' || n.type === 'figure-group' || n.type === 'image'
+        );
+
+        existingFigureNodes.forEach((n: any, idx: number) => {
           if (n.id) registerId(String(n.id));
+          presentFigIndices.add(idx + 1);
           if (n.images && Array.isArray(n.images)) {
             for (const img of n.images) if (img.src) registerId(String(img.src));
           }
-        }
-        for (const fig of figureManifest) {
+        });
+
+        for (let mIdx = 0; mIdx < figureManifest.length; mIdx++) {
+          const fig = figureManifest[mIdx];
           const fName = String(fig?.name || '').trim();
           if (!fName) continue;
           const cleanName = normId(fName);
-          const fIdx = extractIdx(cleanName);
-          if (presentFigIds.has(cleanName) || (fIdx !== null && presentFigIndices.has(fIdx))) {
-            // Already present: update caption if manifest has a richer caption and existing is default
+          const fIdx = extractIdx(cleanName) ?? (mIdx + 1);
+          if (presentFigIds.has(cleanName) || presentFigIndices.has(fIdx) || existingFigureNodes.length >= figureManifest.length) {
+            // Already present: update caption if manifest has a richer caption and existing is default/empty
             if (fig.caption && typeof fig.caption === 'string' && fig.caption.trim()) {
               const targetNode = deepData.body.find((n: any) =>
-                (n.type === 'figure' || n.type === 'chart' || n.type === 'figure-group') &&
+                (n.type === 'figure' || n.type === 'chart' || n.type === 'figure-group' || n.type === 'image') &&
                 (normId(n.id) === cleanName || (fIdx !== null && extractIdx(n.id) === fIdx))
-              );
-              if (targetNode && (!targetNode.caption || /^(?:Figure|Chart|Fig\b\.?)\s*$/i.test(targetNode.caption.trim()))) {
+              ) || (fIdx <= existingFigureNodes.length ? existingFigureNodes[fIdx - 1] : null);
+              if (targetNode && (!targetNode.caption || /^(?:Figure|Chart|Fig\b\.?)\s*(?:\d+)?$/i.test(targetNode.caption.trim()))) {
                 targetNode.caption = fig.caption.trim();
               }
             }

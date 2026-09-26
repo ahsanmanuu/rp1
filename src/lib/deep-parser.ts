@@ -64,7 +64,7 @@ export interface StructuredDocument {
   };
 }
 
-const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/;
+const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-z]{2,10}(?:\.[a-z]{2,10})*(?=[A-Z\s,;:/()<>\[\]{}]|$)/i;
 // Narrow AFFIL_KEYWORDS: remove generic words (research, systems, lab, group, etc.)
 const AFFIL_KEYWORDS = /(?:^|\b|\d|_|\W)(?:department|dept|university|institute|college|school|center|centre|organization|institution|corporation|inc|co\.|ltd|association|academy|laboratory|lab|division|faculty|campus|polytechnic|univ|inst|state|national)\b/i;
 const CHART_KEYWORD_RE = /\b(?:chart|plot|graph|histogram|heatmap|scatter\s*plot|bar\s*chart|box\s*plot|pie\s*chart|line\s*chart|roc\s*curve|precision-recall\s*curve|confusion\s*matrix|pareto)\b/i;
@@ -514,7 +514,7 @@ export class DeepDocumentParser {
     // Universal email-author boundary disentanglement:
     // If an email address is glued to a capitalized author name (e.g. "...@domain.comMala Kalra"),
     // inject a <br /> between the email and the author name so soft-return splitting separates them.
-    const normalizedHtml = cleanHtml.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})([A-Z][a-z]+)/g, '$1<br />$2');
+    const normalizedHtml = cleanHtml.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,10}(?:\.[a-z]{2,10})*)([A-Z][a-z]+)/gi, '$1<br />$2');
 
     let dom: JSDOM; try { dom = new JSDOM(normalizedHtml); } catch { return result; }
     const doc = dom.window.document;
@@ -1040,7 +1040,7 @@ export class DeepDocumentParser {
           nextRole = 'keywords';
       }
       else if (
-          tagName !== 'table' && (
+          tagName !== 'table' && !Boolean(el.closest && el.closest('table, td, th')) && (
             (/^\s*(?:MATHBLOCKX\d+XMARKER)(?:\s*(?:MATHBLOCKX\d+XMARKER|(?:\(\d+(?:\.\d+)*\)|\[\d+(?:\.\d+)*\])|[,.:;()\[\]\s*-]))*$/i.test(f.text)) ||
             this.detectEquation(f)
           )
@@ -1119,7 +1119,7 @@ export class DeepDocumentParser {
           el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 &&
           !f.text.endsWith('.') && !f.text.endsWith(':') && !f.text.endsWith(';') &&
           f.text.length < 120 && f.text.length > 2 &&
-          !/^(?:step|case|example|note|input|output|recall|proof|remark|definition|where|phase|stage|condition|rule|theorem|lemma|proposition|corollary)\b/i.test(f.text.trim()) &&
+          !/^(?:step|case|example|note|input|output|recall|proof|remark|definition|where|phase|stage|condition|rule|theorem|lemma|proposition|corollary|epoch|acc|accuracy|sen|sensitivity|spec|specificity|prec|precision|rec|recall|f1|f-score|tp|tn|fp|fn|auc|iou|dice|loss|val_loss|val_acc|lr|batch|dataset|layer|optimizer|train|test|val|validation|metric|value|description|parameter|unit|score|std|mean|total)\b/i.test(f.text.trim()) &&
           !/^(?:Fig(?:ure)?|Table|Tab|Algorithm|Equation|Chart)\b/i.test(f.text.trim())
         ))) {
           const detectedLvl = this.detectHeading(el, f.text, manifest);
@@ -1155,11 +1155,12 @@ export class DeepDocumentParser {
           };
           const isDirectlyBelowImage = checkHasPrecedingImage(el);
 
-          const isSectionHeading = !isCaptionText && !isAuthorAffilText && !isListElement && !isDirectlyBelowImage && !isDuplicateSection && (
+          const isTableMetricWord = /^(?:epoch|acc|accuracy|sen|sensitivity|spec|specificity|prec|precision|rec|recall|f1|f-score|tp|tn|fp|fn|auc|iou|dice|loss|val_loss|val_acc|lr|batch|dataset|layer|optimizer|train|test|val|validation|metric|value|description|parameter|unit|score|std|mean|total)$/i.test(f.text.trim());
+          const isSectionHeading = !isCaptionText && !isAuthorAffilText && !isListElement && !isDirectlyBelowImage && !isDuplicateSection && !isTableMetricWord && (
             isNumberedHeading ||
             isStandardSectionName ||
             (foundAbstract && (detectedLvl !== null || tagName.startsWith('h'))) ||
-            (tagName === 'p' && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 && (foundAbstract || isNumberedHeading || isStandardSectionName))
+            (tagName === 'p' && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 && (isNumberedHeading || isStandardSectionName || (foundAbstract && f.wordCount >= 2 && f.text.length >= 10)))
           );
 
           const isAlreadyTitleStarted = currentRole === 'title' || manifest.some(m => m.role === 'title');
@@ -1628,6 +1629,30 @@ export class DeepDocumentParser {
                   const emails = line.match(EMAIL_RE) || [];
                   if (lastAddedAut && emails[0] && !lastAddedAut.email) {
                     lastAddedAut.email = emails[0];
+                  }
+                  // Check if there is also an author name on this line after removing emails
+                  let remaining = line;
+                  for (const em of emails) {
+                    remaining = remaining.replace(em, ' ');
+                  }
+                  remaining = remaining.replace(/^[\s,;()\-–—]+|[\s,;()\-–—]+$/g, '').trim();
+                  if (remaining.length >= 3 && !AFFIL_KEYWORDS.test(remaining) && remaining.split(' ').length <= 7) {
+                    const subNames = remaining.split(/[,&]|\s+and\s+/i).map((n: string) => n.trim()).filter((n: string) => n.length > 2);
+                    for (const n of subNames) {
+                      const { cleanName, affilId } = cleanAuthorNameAndMarker(n);
+                      if (cleanName.length < 2 || AFFIL_KEYWORDS.test(cleanName) || cleanName.split(' ').length > 7) continue;
+                      let aut = result.authors.find(a => a.name.toLowerCase() === cleanName.toLowerCase());
+                      if (!aut) {
+                        aut = {
+                          name: cleanName,
+                          affiliationIds: affilId ? affilId.split(',').map(s => s.trim()).filter(Boolean) : [],
+                          affiliation: undefined,
+                          email: undefined
+                        };
+                        result.authors.push(aut);
+                      }
+                      lastAddedAut = aut;
+                    }
                   }
                 } else {
                   // Name(s) line
@@ -2399,9 +2424,13 @@ export class DeepDocumentParser {
                   const isNumberedRef = /^(?:\[\s*\d+\s*\]|\d+[\.\)\:\-\t\s]+|\(\s*\d+\s*\)|\[[\w\-]+\])\s*\S/.test(cleanText);
                   const isAuthorRef = DeepDocumentParser.isNewReferenceStart(cleanText, false);
 
-                  if (isNumberedRef || isAuthorRef) {
+                  // Reject table artifact items: short text without any bibliographic cues
+                  const textWithoutMarker = cleanText.replace(/^(?:\[\s*\d+\s*\]|\d+[\.\)\:\-\t\s]+|\(\s*\d+\s*\)|\[[\w\-]+\])\s*/, '').trim();
+                  const isTableArtifact = textWithoutMarker.length < 28 && !/\b(?:19|20)\d{2}\b|et\s+al|proceedings|journal|conference|doi|http|vol\.|pp\./i.test(cleanText);
+
+                  if ((isNumberedRef || isAuthorRef) && !isTableArtifact) {
                       result.references.push(cleanText);
-                  } else if (result.references.length > 0) {
+                  } else if (result.references.length > 0 && !isTableArtifact) {
                       result.references[result.references.length - 1] += " " + cleanText;
                   }
               });
@@ -2427,6 +2456,10 @@ export class DeepDocumentParser {
   private static isNewReferenceStart(line: string, isFirst: boolean): boolean {
     const trimmed = line.trim();
     if (trimmed.length < 5) return false;
+    const textWithoutNum = trimmed.replace(/^(?:\[\s*\d+\s*\]|\d+[\.\)\:\-\t\s]+|\(\s*\d+\s*\)|\[[\w\-]+\])\s*/, '').trim();
+    if (textWithoutNum.length < 20 && !/\b(?:19|20)\d{2}\b|et\s+al|proceedings|journal|conference|doi|http|vol\.|pp\./i.test(trimmed)) {
+      return false;
+    }
     if (isFirst) return true;
 
     // 1. Matches numeric prefix: [1], 1., 1), (1), [12], 12., 12), [Smith2020], [SMI20]
@@ -2902,12 +2935,18 @@ export class DeepDocumentParser {
     // UNIVERSAL: Fallback for tables whose title/caption does not use an explicit "Table N:" prefix
     // (standard in IEEE, ACM, Springer templates where table title is a short paragraph directly above).
     if (type === 'table') {
-      let cand = blockEl.previousElementSibling || el.previousElementSibling;
+      let cand: Element | null = blockEl.previousElementSibling || el.previousElementSibling;
+      let currBlock: Element | null = blockEl;
+      while (!cand && currBlock?.parentElement && ['div', 'section', 'article'].includes(currBlock.parentElement.tagName.toLowerCase())) {
+        currBlock = currBlock.parentElement;
+        cand = currBlock.previousElementSibling;
+      }
       while (cand && !cand.textContent?.trim() && !['table', 'img', 'figure'].includes(cand.tagName.toLowerCase())) {
         cand = cand.previousElementSibling;
       }
       if (cand && !processed.has(cand)) {
-        const rawT = (cand.textContent || '').replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+        let rawT = (cand.textContent || '').replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+        rawT = rawT.replace(/^[\u2022\u00b7*•\-]\s*/, '').trim();
         const words = rawT.split(/\s+/).filter(Boolean);
         const normClean = rawT.toLowerCase().replace(/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+\s*/i, '').replace(/[.:\s]+$/, '').trim();
         const isList = ['ol', 'ul', 'li'].includes(cand.tagName.toLowerCase()) || Boolean(cand.querySelector('li'));
@@ -2927,16 +2966,25 @@ export class DeepDocumentParser {
     // UNIVERSAL: Fallback for figures whose caption does not use an explicit "Figure N:" prefix
     // (e.g. diagrams or figures with short title/captions directly below).
     if (type === 'figure') {
-      let cand = blockEl.nextElementSibling || el.nextElementSibling;
+      let cand: Element | null = blockEl.nextElementSibling || el.nextElementSibling;
+      let currBlock: Element | null = blockEl;
+      while (!cand && currBlock?.parentElement && ['div', 'section', 'article'].includes(currBlock.parentElement.tagName.toLowerCase())) {
+        currBlock = currBlock.parentElement;
+        cand = currBlock.nextElementSibling;
+      }
       while (cand && !cand.textContent?.trim() && !['table', 'img', 'figure'].includes(cand.tagName.toLowerCase())) {
         cand = cand.nextElementSibling;
       }
-      // If cand is a subfigure label line (e.g. "(a)  (b)", "(e)  (f)"), advance past it to find the real figure caption!
-      while (cand && (/^\s*(?:\([a-z0-9]\)\s*)+$/i.test((cand.textContent || '').trim()) || !cand.textContent?.trim())) {
+      // If cand is a subfigure label line (e.g. "(a)  (b)", "(e)  (f)", "(a) Glaucoma (b) Normal"), advance past it!
+      while (cand && (/^\s*(?:\([a-z0-9]\)\s*)+$/i.test((cand.textContent || '').trim()) ||
+                     /^\s*(?:\([a-z0-9]\)\s*[\w\s.,-]{0,40}\s*){2,}$/i.test((cand.textContent || '').trim()) ||
+                     !cand.textContent?.trim())) {
         cand = cand.nextElementSibling;
       }
       if (cand && !processed.has(cand)) {
-        const rawT = (cand.textContent || '').replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+        let rawT = (cand.textContent || '').replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+        // Strip leading bullets (e.g. "• Sample Glaucoma and Normal images...")
+        rawT = rawT.replace(/^[\u2022\u00b7*•\-]\s*/, '').trim();
         const words = rawT.split(/\s+/).filter(Boolean);
         const normClean = rawT.toLowerCase().replace(/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+\s*/i, '').replace(/[.:\s]+$/, '').trim();
         const isList = ['ol', 'ul', 'li'].includes(cand.tagName.toLowerCase()) || Boolean(cand.querySelector('li'));
@@ -3147,6 +3195,13 @@ export class DeepDocumentParser {
                           .replace(/[0-9\s()\\[\]{}.,:;=+\-*\/^<>~≈≠≤≥_∑∫√²³α-ωΑ-Ωθλπμσδφψωηρ\u2212\u2013\u2014]/g, '')
                           .trim();
     if (cleanMath.length === 0 && text.includes('MATHBLOCKX')) return true;
+
+    // Tab-delimited rows or table cell data must NEVER be classified as display equations
+    if (text.includes('\t') || text.includes('|')) return false;
+    if (/^\s*\S+\s{2,}\S+\s{2,}\S+/.test(text)) return false;
+    if (/\b(?:TN|TP|FN|FP)\b/.test(text) && !text.includes('MATHBLOCKX') && !/\(\d+\)\s*$/.test(text) && !/^\s*(?:[A-Za-z]\s*=|Formula\b)/i.test(text)) {
+      return false;
+    }
 
     // Email addresses should never be classified as equations
     if (EMAIL_RE.test(text)) return false;

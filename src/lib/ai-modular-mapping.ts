@@ -735,6 +735,23 @@ function composeMainTex(
     if (m) referencedFloatPaths.add(m[1].trim());
   }
 
+  // Check if float figures are already rendered directly inside any section file (e.g. \includegraphics)
+  for (const f of floats) {
+    if (f.path.startsWith('floats/figures/')) {
+      const imgMatch = f.content?.match(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/);
+      if (imgMatch) {
+        const imgName = imgMatch[1].replace(/^.*[\/\\]/, '').toLowerCase().trim();
+        const alreadyInSections = sections.some(sec => {
+          const secContent = (sec.content || '').toLowerCase();
+          return secContent.includes(imgName);
+        });
+        if (alreadyInSections) {
+          referencedFloatPaths.add(f.path);
+        }
+      }
+    }
+  }
+
   // Any floats not inlined inside sections are included safely before references
   for (const f of floats) {
     if (!referencedFloatPaths.has(f.path)) {
@@ -929,8 +946,17 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
   // Initialized once globally across the full body so float numbering is consistent
   const nodeToFloatPath = new Map<any, string>();
   let figCnt = 0, tabCnt = 0, algoCnt = 0;
+  const seenFigureKeys = new Set<string>();
+  const seenTableKeys = new Set<string>();
   for (const n of body) {
     if (n.type === 'figure' || n.type === 'image' || n.type === 'chart' || n.type === 'figure-group') {
+      const figId = String(n.id || '').replace(/^.*[\/\\]/, '').toLowerCase().trim();
+      const figCap = String(n.caption || '').toLowerCase().trim();
+      const figKey = figId ? `${n.type}:${figId}` : (figCap ? `${n.type}:${figCap}` : '');
+      if (figKey && seenFigureKeys.has(figKey)) {
+        continue;
+      }
+      if (figKey) seenFigureKeys.add(figKey);
       figCnt++;
       const p = `floats/figures/${figCnt}.tex`;
       if (floatsRes.files.some(f => f.path === p)) {
@@ -944,6 +970,13 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
         console.log(`[AI-MODULAR] Backfilled missing figure float: ${p}`);
       }
     } else if (n.type === 'table') {
+      const tableText = (n.text || n.html || '').replace(/\s+/g, ' ').trim();
+      const tableCap = (n.caption || '').trim().toLowerCase();
+      const tableKey = tableText.length > 20 ? tableText.substring(0, 300) : (tableCap ? `caption:${tableCap}` : '');
+      if (tableKey && seenTableKeys.has(tableKey)) {
+        continue;
+      }
+      if (tableKey) seenTableKeys.add(tableKey);
       tabCnt++;
       const p = `floats/tables/${tabCnt}.tex`;
       if (floatsRes.files.some(f => f.path === p)) {

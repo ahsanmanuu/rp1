@@ -314,7 +314,7 @@ export class LatexAssembler {
         return `\\author{${name}}${email ? `\\email{${email}}` : ""}\n${orgLine}`;
       }
       if (isIeee) {
-        return `\\IEEEauthorblockN{${name}}\n\\IEEEauthorblockA{${affil}${email ? `\\\\\\email: ${email}` : ""}}`;
+        return `\\IEEEauthorblockN{${name}}\n\\IEEEauthorblockA{${affil}${email ? `\\\\email: ${email}` : ""}}`;
       }
       if (templateId.includes('scifile')) {
           const id = a.affiliationIds?.[0] || "1";
@@ -482,6 +482,8 @@ export class LatexAssembler {
     let figureCounter = 0; // Sequential auto-caption counter for unnamed figures
     const headerInputs = new Set<string>(); // dedupe \input{...} lines in main.tex
     let frontMatterDone = false; // true once the first real section heading is seen
+    const seenFiguresGlobal = new Set<string>();
+    const seenTablesGlobal = new Set<string>();
 
     // PRE-BUILD back-matter title map so the body loop can detect and skip
     // headings that belong to the dedicated back-matter pass (Bug fix:
@@ -524,6 +526,24 @@ export class LatexAssembler {
       for (const n of currentSectionNodes) {
           if (n.componentRole === 'frontmatter' || n.componentRole === 'author' || n.componentRole === 'affiliation' || n.componentRole === 'organization' || n.componentRole === 'title') {
             continue;
+          }
+          if (n.type === 'figure' || n.type === 'image' || n.type === 'chart' || n.type === 'figure-group') {
+            const figId = String(n.id || '').replace(/^.*[\/\\]/, '').toLowerCase().trim();
+            const figCap = String(n.caption || '').toLowerCase().trim();
+            const figKey = figId ? `${n.type}:${figId}` : (figCap ? `${n.type}:${figCap}` : '');
+            if (figKey && seenFiguresGlobal.has(figKey)) {
+              continue;
+            }
+            if (figKey) seenFiguresGlobal.add(figKey);
+          }
+          if (n.type === 'table') {
+            const tableText = (n.text || n.html || '').replace(/\s+/g, ' ').trim();
+            const tableCap = (n.caption || '').trim().toLowerCase();
+            const tableKey = tableText.length > 20 ? tableText.substring(0, 300) : (tableCap ? `caption:${tableCap}` : '');
+            if (tableKey && seenTablesGlobal.has(tableKey)) {
+              continue;
+            }
+            if (tableKey) seenTablesGlobal.add(tableKey);
           }
           if (n.type === 'paragraph') {
             const pText = (n.text || '').trim();
@@ -2759,6 +2779,8 @@ export class ModularLatexAssembler {
     let currentSectionNodes: any[] = [];
     let currentSectionTitle = "introduction";
     let sectionIdx = 1;
+    const seenFiguresGlobal = new Set<string>();
+    const seenTablesGlobal = new Set<string>();
 
     const flushSection = () => {
       if (currentSectionNodes.length === 0) return;
@@ -2766,6 +2788,24 @@ export class ModularLatexAssembler {
         for (const n of currentSectionNodes) {
             if (n.componentRole === 'frontmatter' || n.componentRole === 'author' || n.componentRole === 'affiliation' || n.componentRole === 'organization' || n.componentRole === 'title') {
               continue;
+            }
+            if (n.type === 'figure' || n.type === 'image' || n.type === 'chart' || n.type === 'figure-group') {
+              const figId = String(n.id || '').replace(/^.*[\/\\]/, '').toLowerCase().trim();
+              const figCap = String(n.caption || '').toLowerCase().trim();
+              const figKey = figId ? `${n.type}:${figId}` : (figCap ? `${n.type}:${figCap}` : '');
+              if (figKey && seenFiguresGlobal.has(figKey)) {
+                continue;
+              }
+              if (figKey) seenFiguresGlobal.add(figKey);
+            }
+            if (n.type === 'table') {
+              const tableText = (n.text || n.html || '').replace(/\s+/g, ' ').trim();
+              const tableCap = (n.caption || '').trim().toLowerCase();
+              const tableKey = tableText.length > 20 ? tableText.substring(0, 300) : (tableCap ? `caption:${tableCap}` : '');
+              if (tableKey && seenTablesGlobal.has(tableKey)) {
+                continue;
+              }
+              if (tableKey) seenTablesGlobal.add(tableKey);
             }
             if (n.type === 'paragraph') {
               const pText = (n.text || '').trim();
