@@ -483,11 +483,13 @@ function UploadContent() {
         const pollUploadId = uploadData.uploadId;
         const pollMaxWaitMs = 60 * 60 * 1000;
         const pollStartedAt = Date.now();
-        const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
+        const INACTIVITY_TIMEOUT_MS = 4 * 60 * 1000;
         const NOT_FOUND_RETRY_LIMIT = 60;
+        const GATEWAY_ERROR_RETRY_LIMIT = 10;
         let lastUpdatedAt: number | null = null;
         let lastActivityAt = Date.now();
         let notFoundStreak = 0;
+        let gatewayErrorStreak = 0;
         let pollStatus: any = null;
         let pollSettled = false;
 
@@ -513,6 +515,16 @@ function UploadContent() {
           await new Promise(r => setTimeout(r, 1500));
           try {
             const pollRes = await authFetch(`/api/upload/status?uploadId=${pollUploadId}`, { cache: 'no-store' });
+            if (pollRes.status >= 500) {
+              gatewayErrorStreak++;
+              setAnalysisStage(`Server processing… reconnecting (${gatewayErrorStreak}/${GATEWAY_ERROR_RETRY_LIMIT})`);
+              if (gatewayErrorStreak >= GATEWAY_ERROR_RETRY_LIMIT) {
+                throw new Error(`Server temporarily unavailable (${pollRes.status} Bad Gateway). The background processing service may have restarted or crashed. Please retry uploading.`);
+              }
+              await new Promise(r => setTimeout(r, Math.min(4000, 1500 + gatewayErrorStreak * 500)));
+              continue;
+            }
+            gatewayErrorStreak = 0;
             if (pollRes.status === 404) {
               notFoundStreak++;
               if (notFoundStreak >= NOT_FOUND_RETRY_LIMIT) {
@@ -548,7 +560,7 @@ function UploadContent() {
               lastUpdatedAt = serverUpdatedAt;
             }
           } catch (pollErr: any) {
-            if (pollErr?.message && /processing|restarted|stuck|upload again/i.test(pollErr.message)) throw pollErr;
+            if (pollErr?.message && /processing|restarted|stuck|upload again|temporarily unavailable|Bad Gateway/i.test(pollErr.message)) throw pollErr;
           }
         }
         if (!uploadData?.projectId) {

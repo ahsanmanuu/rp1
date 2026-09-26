@@ -120,11 +120,10 @@ async function pMap<T, R>(items: T[], fn: (item: T, idx: number) => Promise<R>, 
 // for transient in-run image staging (re-created from the DB bytes on any
 // re-kick), never for durable state.
 const PENDING_DIR = path.join(process.cwd(), 'tmp', 'uploads-pending');
-// Staleness window before a worker is suspected dead. Generous on purpose:
-// stages between progress milestones (chart QuickChart loop, sync assembly
-// string work, disk batch writes) can legitimately take several minutes for
-// huge documents. Recovery re-kicks the worker instead of failing outright.
-const PENDING_TTL_MS = 600 * 1000;
+// Staleness window before a worker is suspected dead.
+// Generous enough for normal operations, but responsive enough (45s) to recover
+// quickly if the server restarts or crashes.
+const PENDING_TTL_MS = 45 * 1000;
 // Max re-kicks per uploadId — after this the job is presumed impossible and
 // the client gets a definitive error instead of an infinite recovery loop.
 const MAX_BACKGROUND_KICKS = 3;
@@ -190,15 +189,23 @@ async function readStatus(uploadId: string): Promise<
   | { ok: false; reason: 'not_found' | 'error'; error?: string }
 > {
   try {
-    const pb = await getClient();
-    const res = await pb.collection('upload_jobs').getList(1, 1, {
-      filter: `uploadId = "${uploadId}"`,
-      // Explicitly scope the fields so multi-MB rawBytes is never pulled into
-      // the 2s status-poll response (the worker decodes it from the DB row).
-      fields: 'uploadId,fileName,size,templateId,userId,email,name,phase,stage,progress,message,projectId,recovering,recoverable,attempts,updated',
-      requestKey: null,
-    });
-    const row: any = res.items[0];
+    const fetchPromise = (async () => {
+      const pb = await getClient();
+      return await pb.collection('upload_jobs').getList(1, 1, {
+        filter: `uploadId = "${uploadId}"`,
+        // Explicitly scope the fields so multi-MB rawBytes is never pulled into
+        // the 2s status-poll response (the worker decodes it from the DB row).
+        fields: 'uploadId,fileName,size,templateId,userId,email,name,phase,stage,progress,message,projectId,recovering,recoverable,attempts,updated',
+        requestKey: null,
+      });
+    })();
+
+    const timeoutPromise = new Promise<null>((_, reject) =>
+      setTimeout(() => reject(new Error('Status query timed out')), 5000)
+    );
+
+    const res: any = await Promise.race([fetchPromise, timeoutPromise]);
+    const row: any = res?.items?.[0];
     if (!row) return { ok: false, reason: 'not_found' };
     return {
       ok: true,

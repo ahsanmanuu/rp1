@@ -79,6 +79,7 @@ export default function RootLayout({
                      str.indexOf('merchantid') !== -1 ||
                      str.indexOf('denying load of') !== -1 ||
                      str.indexOf('mutationobserver') !== -1 ||
+                     str.indexOf('failed to execute') !== -1 ||
                      str.indexOf('parameter 1 is not of type') !== -1 ||
                      str.indexOf("not of type 'node'") !== -1 ||
                      str.indexOf('disconnected port object') !== -1 ||
@@ -104,7 +105,7 @@ export default function RootLayout({
                   var isNode = false;
                   try {
                     isNode = (typeof Node !== 'undefined' && target instanceof Node) ||
-                             (target && typeof target.nodeType === 'number' && typeof target.nodeName === 'string');
+                             (target && typeof target.nodeType === 'number' && typeof target.cloneNode === 'function');
                   } catch(_) {}
                   if (!isNode) return;
                   try {

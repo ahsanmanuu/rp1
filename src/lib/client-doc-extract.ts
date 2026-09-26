@@ -243,8 +243,9 @@ async function fallbackZipImageExtraction(
 
   // If mammoth captured 0 figures but document.xml has images, allow blip fallback
   if (figures.length === 0 && mammothBlipTargets.size > 0) {
-    for (const [rid, tgt] of relsMap.entries()) {
-      if (mammothBlipTargets.has(tgt) || mammothBlipTargets.has(tgt.replace(/^.*\//, ''))) {
+    for (const [rid, rawTgt] of relsMap.entries()) {
+      const tgt = (rawTgt || '').replace(/\\/g, '/');
+      if (mammothBlipTargets.has(tgt) || mammothBlipTargets.has(tgt.replace(/^.*[\/\\]/, '')) || mammothBlipTargets.has(rawTgt)) {
         referencedRIds.add(rid);
       }
     }
@@ -280,10 +281,13 @@ async function fallbackZipImageExtraction(
   for (const fig of figures) {
     alreadyCaptured.add(fig.name);
   }
-  // When mammoth extracted figures, mark all its blip targets as already captured
+  // When mammoth successfully extracted figures, mark all its blip targets as already captured
   if (figures.length > 0) {
-    for (const tgt of mammothBlipTargets) {
+    for (const rawTgt of mammothBlipTargets) {
+      const tgt = (rawTgt || '').replace(/\\/g, '/');
+      alreadyCaptured.add(rawTgt);
       alreadyCaptured.add(tgt);
+      alreadyCaptured.add(tgt.replace(/^.*[\/\\]/, ''));
     }
   }
 
@@ -291,18 +295,22 @@ async function fallbackZipImageExtraction(
   const srcRegex = /src="([^"]*media\/[^"]+)"/gi;
   let srcMatch: RegExpExecArray | null;
   while ((srcMatch = srcRegex.exec(html))) {
-    const srcPath = srcMatch[1].replace(/^.*?word\//, 'word/');
+    const srcPath = srcMatch[1].replace(/\\/g, '/').replace(/^.*?word\//, 'word/');
     alreadyCaptured.add(srcPath);
+    alreadyCaptured.add(srcPath.replace(/^.*[\/\\]/, ''));
   }
 
-  // Also check for <img src="rf_fig_"> tags in the HTML
+  // Also check for <img src="rf_fig_"> tags in the HTML ONLY if figures actually contains it
   const rfFigRegex = /src="(rf_fig_\d+\.[^"]+)"/gi;
   let rfMatch: RegExpExecArray | null;
   while ((rfMatch = rfFigRegex.exec(html))) {
-    alreadyCaptured.add(rfMatch[1]);
+    const figName = rfMatch[1];
+    if (figures.some(f => f.name === figName && f.dataUrl)) {
+      alreadyCaptured.add(figName);
+    }
   }
 
-  console.log(`[DOCX-EXTRACT] JSZip: mammoth already captured ${alreadyCaptured.size} image(s): ${[...alreadyCaptured].join(', ')}`);
+  console.log(`[DOCX-EXTRACT] JSZip: mammoth successfully captured ${figures.length} image(s): ${figures.map(f => f.name).join(', ')}`);
 
   // 4. For each referenced rId, check if the target is an image we missed
   const IMAGE_EXTS = /\.(png|jpe?g|gif|bmp|tiff?|emf|wmf|svg)$/i;
@@ -310,13 +318,14 @@ async function fallbackZipImageExtraction(
   const newImgTags: string[] = [];
 
   for (const rid of referencedRIds) {
-    const target = relsMap.get(rid);
-    if (!target) continue;
+    const rawTarget = relsMap.get(rid);
+    if (!rawTarget) continue;
+    const target = (rawTarget || '').replace(/\\/g, '/');
 
     // Handle OOXML charts (.xml targets under charts/)
     const isChartXml = /charts\/chart\d+\.xml/i.test(target);
     if (isChartXml) {
-      const basename = target.replace(/^.*\//, '');
+      const basename = target.replace(/^.*[\/\\]/, '');
       const chartBase = basename.replace(/\.xml$/i, '');
       // Check if this chart already has a fallback captured
       if (!alreadyCaptured.has(basename) && !alreadyCaptured.has(chartBase)) {
@@ -330,9 +339,9 @@ async function fallbackZipImageExtraction(
             const relsXml = await relsEntry.async('string');
             const imgRel = relsXml.match(/Relationship[^>]*Type="[^"]*\/image"[^>]*Target="([^"]+)"/);
             if (imgRel && imgRel[1]) {
-              const relTarget = imgRel[1].replace(/^\.\.\//, '');
+              const relTarget = imgRel[1].replace(/\\/g, '/').replace(/^\.\.\//, '');
               const imgZipPath = `word/${relTarget}`;
-              const imgEntry = zip.file(imgZipPath);
+              const imgEntry = zip.file(imgZipPath) || zip.file(`word/media/${relTarget.replace(/^.*[\/\\]/, '')}`);
               if (imgEntry) {
                 const rawBytes = await imgEntry.async('uint8array');
                 if (rawBytes.length >= 2048) {
@@ -365,14 +374,14 @@ async function fallbackZipImageExtraction(
 
     if (!IMAGE_EXTS.test(target)) continue;
 
-    // Skip if already captured by mammoth
-    const basename = target.replace(/^.*\//, '');
+    // Skip if already captured by mammoth or previous entry
+    const basename = target.replace(/^.*[\/\\]/, '');
     if (alreadyCaptured.has(basename)) continue;
-    // Also check full path
     if (alreadyCaptured.has(target)) continue;
+    if (alreadyCaptured.has(rawTarget)) continue;
 
     const zipPath = target.startsWith('word/') ? target : `word/${target}`;
-    const entry = zip.file(zipPath);
+    const entry = zip.file(zipPath) || zip.file(`word/media/${basename}`);
     if (!entry) continue;
 
     try {
@@ -382,7 +391,7 @@ async function fallbackZipImageExtraction(
       if (isDeco) continue;
 
       const ext = extFromFilename(target);
-      // Skip EMF/WMF — they cannot be displayed as raster images
+      // Skip EMF/WMF — they cannot be displayed as raster images in browser
       if (ext === 'emf' || ext === 'wmf') {
         warnings.push(`Skipped vector image ${basename} (EMF/WMF not displayable in browser)`);
         continue;
@@ -394,6 +403,8 @@ async function fallbackZipImageExtraction(
       const name = isChartTarget ? `rf_chart_${figIdx++}.${ext}` : `rf_fig_${figIdx++}.${ext}`;
       const dataUrl = `data:${ct};base64,${bytesToBase64(rawBytes)}`;
       newFigures.push({ name, contentType: ct, dataUrl, isChart: isChartTarget, caption: basename });
+      alreadyCaptured.add(basename);
+      alreadyCaptured.add(target);
 
       // Inject an <img> tag so DeepDocumentParser can pick it up
       newImgTags.push(`<img src="${name}" alt="${basename}" />`);
@@ -405,7 +416,9 @@ async function fallbackZipImageExtraction(
   // 5. Merge new figures and inject <img> tags into the HTML
   figures.push(...newFigures);
 
-  console.log(`[DOCX-EXTRACT] JSZip fallback: extracted ${newFigures.length} additional figure(s) from ZIP (${warnings.filter(w => w.startsWith('Failed')).length} failed, ${warnings.filter(w => w.startsWith('Skipped')).length} skipped EMF/WMF)`);
+  const failedCount = warnings.filter(w => w.startsWith('Failed')).length;
+  const emfCount = warnings.filter(w => w.includes('EMF/WMF')).length;
+  console.log(`[DOCX-EXTRACT] JSZip fallback: extracted ${newFigures.length} additional figure(s) from ZIP (${failedCount} failed, ${emfCount} skipped EMF/WMF)`);
 
   if (newImgTags.length > 0) {
     // Inject before closing </body> or at end of HTML
@@ -467,10 +480,28 @@ export async function extractClientDocx(file: File): Promise<ClientDocxEnvelope>
         const isChart = /\b(?:chart|plot|graph|histogram|heatmap|scatter\s*plot|bar\s*chart|box\s*plot|pie\s*chart|line\s*chart|roc\s*curve|precision-recall\s*curve|confusion\s*matrix|pareto)\b/i.test(altText);
         const name = isChart ? `rf_chart_${figIdx++}.${ext}` : `rf_fig_${figIdx++}.${ext}`;
         try {
-          const imageBuffer: Uint8Array = await image.read();
-          figures.push({ name, contentType, dataUrl: `data:${contentType};base64,${bytesToBase64(imageBuffer)}`, isChart, caption: altText });
-        } catch (err) {
-          warnings.push(`Skipped unreadable image "${name}"`);
+          let b64 = '';
+          if (typeof (image as any).readAsBase64String === 'function') {
+            b64 = await (image as any).readAsBase64String();
+          } else if (typeof (image as any).readAsArrayBuffer === 'function') {
+            const ab = await (image as any).readAsArrayBuffer();
+            b64 = bytesToBase64(new Uint8Array(ab));
+          } else if (typeof (image as any).read === 'function') {
+            const res = await (image as any).read('base64');
+            if (typeof res === 'string') b64 = res;
+            else if (res instanceof Uint8Array) {
+              b64 = bytesToBase64(res);
+            } else if (typeof ArrayBuffer !== 'undefined' && res instanceof ArrayBuffer) {
+              b64 = bytesToBase64(new Uint8Array(res));
+            }
+          }
+          if (b64) {
+            figures.push({ name, contentType, dataUrl: `data:${contentType};base64,${b64}`, isChart, caption: altText });
+          } else {
+            warnings.push(`Empty image content for "${name}"`);
+          }
+        } catch (err: any) {
+          warnings.push(`Skipped unreadable image "${name}": ${err?.message || err}`);
         }
         return { src: name, alt: altText };
       }),
