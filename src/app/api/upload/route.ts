@@ -1207,12 +1207,22 @@ async function runUploadProcessing(uploadId: string) {
         // CRITICAL: marker name must match what deep-parser & assembler expect: MATHBLOCKX{n}XMARKER
         const marker = `MATHBLOCKX${index}XMARKER`;
 
-        const wrapper = dom.window.document.createElement('w:r');
+        const isBlockMath = isDisplay ||
+          String(node.tagName || "").toLowerCase().includes('omathpara') ||
+          (node.parentNode && ['w:body', 'body', 'w:tc', 'tc'].includes(String((node.parentNode as any).tagName || "").toLowerCase()));
+
+        const rEl = dom.window.document.createElement('w:r');
         const textNode = dom.window.document.createElement('w:t');
         textNode.textContent = marker;
-        wrapper.appendChild(textNode);
+        rEl.appendChild(textNode);
 
-        node.parentNode?.replaceChild(wrapper, node);
+        if (isBlockMath) {
+          const pEl = dom.window.document.createElement('w:p');
+          pEl.appendChild(rEl);
+          node.parentNode?.replaceChild(pEl, node);
+        } else {
+          node.parentNode?.replaceChild(rEl, node);
+        }
       });
 
       // SYNC: Update the zip with markers AND unwrapped oMathPara before mammoth reads it

@@ -357,7 +357,7 @@ export class LatexAssembler {
     } else if (isAcm) {
       preamble.push(...authorLines);
     } else if (isIeee) {
-      preamble.push(`\\author{\n${authorLines.join('\n\\and\n')}\n}`);
+      preamble.push(LatexAssembler.formatIeeeAuthors(doc.authors || [], orgs));
     } else {
       preamble.push(authorLines.join('\n'));
       // UNIVERSAL: Filter noise-only orgs (email-only, "Email:" prefix, etc.)
@@ -1068,6 +1068,66 @@ export class LatexAssembler {
     return cleaned;
   }
 
+  public static formatIeeeAuthors(authors: Array<{ name: any; affiliation?: string; affiliationIds?: string[]; email?: string }>, orgs: string[]): string {
+    if (!authors || authors.length === 0) return '\\author{\\IEEEauthorblockN{Author}\\IEEEauthorblockA{Institution}}';
+
+    // Map each author's affiliation
+    const resolvedAuthors = authors.map((a, idx) => {
+      const raw = typeof a.name === 'string' ? a.name : (a as any)?.text || 'Author';
+      const name = LatexAssembler.escape(raw, []);
+      let affil = "Institution";
+      if (a.affiliation && typeof a.affiliation === 'string' && a.affiliation.trim().length > 0) {
+        affil = LatexAssembler.escape(a.affiliation.trim(), []);
+      } else if (a.affiliationIds && a.affiliationIds.length > 0) {
+        const affilIdx = parseInt(a.affiliationIds[0]) - 1;
+        if (!isNaN(affilIdx) && orgs[affilIdx]) {
+          affil = orgs[affilIdx];
+        } else {
+          affil = orgs[idx] || orgs[0] || "Institution";
+        }
+      } else {
+        affil = orgs[idx] || orgs[0] || "Institution";
+      }
+      const email = a.email ? LatexAssembler.escape(a.email.trim(), []) : "";
+      return { name, affil, email };
+    });
+
+    if (resolvedAuthors.length > 3) {
+      // IEEE refmark style for > 3 authors to prevent horizontal overflow off page margin
+      const uniqueAffils: string[] = [];
+      const authorRefMarks = resolvedAuthors.map(a => {
+        let affIdx = uniqueAffils.indexOf(a.affil);
+        if (affIdx === -1) {
+          uniqueAffils.push(a.affil);
+          affIdx = uniqueAffils.length - 1;
+        }
+        return `${a.name}\\IEEEauthorrefmark{${affIdx + 1}}`;
+      });
+
+      const affilBlocks = uniqueAffils.map((aff, i) => {
+        const lines = aff.replace(/,\s*(?=[A-Z0-9])/g, ', ');
+        return `\\IEEEauthorblockA{\\IEEEauthorrefmark{${i + 1}}${lines}}`;
+      });
+
+      const emails = resolvedAuthors.map(a => a.email).filter(Boolean);
+      const emailLine = emails.length > 0
+        ? `\\IEEEauthorblockA{Email: ${emails.map(e => `\\texttt{${e}}`).join(', ')}}`
+        : '';
+
+      return `\\author{\\IEEEauthorblockN{${authorRefMarks.join(', ')}}\n${affilBlocks.join('\n')}${emailLine ? `\n${emailLine}` : ''}}`;
+    }
+
+    // <= 3 authors: side-by-side with parbox wrapping to constrain width
+    const boxWidth = resolvedAuthors.length === 1 ? '0.85\\linewidth' : resolvedAuthors.length === 2 ? '0.45\\linewidth' : '0.30\\linewidth';
+    const authorBlocks = resolvedAuthors.map(a => {
+      const affilLines = a.affil.replace(/,\s*(?=[A-Z0-9])/g, '\\\\\n');
+      const emailLine = a.email ? `\\\\\\texttt{${a.email}}` : '';
+      return `\\IEEEauthorblockN{${a.name}}\n\\IEEEauthorblockA{\\parbox[t]{${boxWidth}}{\\centering ${affilLines}${emailLine}}}`;
+    });
+
+    return `\\author{${authorBlocks.join(' \\and\n')}}`;
+  }
+
   public static assembleNode(node: ContentNode, mathBlocks: any[]): string {
     // AI-generated component override: validated fragments (structure-latex
     // pass) replace the deterministic output for that component. Fragments
@@ -1121,7 +1181,8 @@ export class LatexAssembler {
           'statements and declarations', 'declarations'
         ];
         const unnumbered = unnumberedList.some(u => normalizedFinal === u || normalizedFinal.startsWith(u));
-        const barrier = (level <= 2) ? '\\FloatBarrier\n' : '';
+        const isTwoColMode = (node as any).twoColumn === true;
+        const barrier = (!isTwoColMode && level === 1) ? '\\FloatBarrier\n' : '';
         return `\n${barrier}\\${cmd}${isStarred || unnumbered ? '*' : ''}{${LatexAssembler.escapeText(finalText, mathBlocks)}}\n`;
       }
 
@@ -1573,7 +1634,14 @@ export class LatexAssembler {
 
     // Force tabularx line-wrapping for all multi-column or text-bearing tables to prevent right-margin overflow
     const totalEstimatedWidth = colMaxLen.reduce((a, b) => a + b, 0);
-    const twoColWide = isTwoColMode && (totalGridCols >= 5 || (totalGridCols >= 4 && colMaxLen.some(l => l > 30)) || colMaxLen.some(l => l > 50) || totalEstimatedWidth > 80);
+    const rowCount = rows.length;
+    // In two-column mode, tables with >= 4 columns or text-heavy cells (> 40 chars) must span both columns (table*)
+    const twoColWide = isTwoColMode && (
+      totalGridCols >= 4 ||
+      (totalGridCols >= 3 && (totalEstimatedWidth > 40 || colMaxLen.some(l => l > 20))) ||
+      colMaxLen.some(l => l > 45) ||
+      totalEstimatedWidth > 60
+    );
     const tableEnv = twoColWide ? 'table*' : 'table';
     const tablePlacement = twoColWide ? '[!t]' : '[!htbp]';
     const tabularEnv = 'tabularx';
@@ -1581,16 +1649,17 @@ export class LatexAssembler {
     const widthParam = `{${targetWidth}}`;
     const activeSpec = fullSpec;
 
-    // In two-column mode, reduce padding and font size for tables with multiple columns or wide content to prevent margin overflow
+    // In two-column mode or tall tables, reduce padding and font size to prevent margin and page overflow
     const colSepCmd = (isTwoColMode && totalGridCols >= 3) ? '\\setlength{\\tabcolsep}{3pt}\n' : (totalGridCols >= 5 ? '\\setlength{\\tabcolsep}{4pt}\n' : '');
-    const fontSizeCmd = (isTwoColMode && (totalGridCols >= 4 || totalEstimatedWidth > 60))
+    const fontSizeCmd = (rowCount > 25 || (isTwoColMode && (totalGridCols >= 4 || totalEstimatedWidth > 60)))
       ? '{\\footnotesize\n'
-      : ((isTwoColMode && totalGridCols >= 3) ? '{\\small\n' : (totalGridCols >= 6 ? '{\\small\n' : ''));
+      : ((rowCount > 15 || (isTwoColMode && totalGridCols >= 3) || totalGridCols >= 6) ? '{\\small\n' : '');
     const fontSizeEnd = fontSizeCmd ? '\n}' : '';
     const hasWrappedCells = specsList.some(s => s.includes('X'));
     const extraRowHeightCmd = hasWrappedCells ? '\\setlength{\\extrarowheight}{2pt}\n' : '';
+    const arrayStretchVal = rowCount > 20 ? '1.05' : '1.2';
 
-    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n${captionLine}\\label{${labelKey}}\n${colSepCmd}${extraRowHeightCmd}${fontSizeCmd}\\renewcommand{\\arraystretch}{1.2}\n\\begin{adjustbox}{max width=${targetWidth}}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}\n\\end{adjustbox}${fontSizeEnd}\n\\end{${tableEnv}}\n`;
+    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n${captionLine}\\label{${labelKey}}\n${colSepCmd}${extraRowHeightCmd}${fontSizeCmd}\\renewcommand{\\arraystretch}{${arrayStretchVal}}\n\\begin{adjustbox}{max width=${targetWidth},max totalheight=0.82\\textheight,keepaspectratio}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}\n\\end{adjustbox}${fontSizeEnd}\n\\end{${tableEnv}}\n`;
   }
 
 
@@ -1668,15 +1737,16 @@ export class LatexAssembler {
       const subCap = (!isGeneric && cleanedSubCap.length > 150)
         ? cleanedSubCap.substring(0, cleanedSubCap.indexOf(' ', 120) || 120) + '...'
         : (isGeneric ? '' : cleanedSubCap);
+      const letter = String.fromCharCode(97 + (i % 26));
       const capLine = subCap
-        ? `  \\caption{${LatexAssembler.escapeText(subCap, mathBlocks)}}\n`
-        : '';
+        ? `\\\\[0.5ex]{\\footnotesize (${letter}) ${LatexAssembler.escapeText(subCap, mathBlocks)}}`
+        : `\\\\[0.5ex]{\\footnotesize (${letter})}`;
       return [
-        `\\begin{subfigure}[b]{${widthFrac}\\linewidth}`,
+        `\\begin{minipage}[b]{${widthFrac}\\linewidth}`,
         `  \\centering`,
         `  \\includegraphics[width=\\linewidth,max height=${maxSubH},keepaspectratio]{${fileId}}`,
-        capLine ? `${capLine}` : '',
-        `\\end{subfigure}`,
+        `  ${capLine}`,
+        `\\end{minipage}`,
       ].filter(Boolean).join('\n');
     });
 
@@ -2619,9 +2689,8 @@ export class ModularLatexAssembler {
       metadataDeclarations.push("\\setcopyright{none}", "\\acmDOI{}", "\\acmISBN{}", "\\acmConference[ArXiv]{Manuscript}{2026}{Source}");
       files['metadata/authors.tex'] = fullAuthorsStr;
     } else if (authorStyle === 'ieee') {
-      const cleanAuthors = authorLines.map(a => a.trim()).filter(Boolean);
       metadataDeclarations.push(`\\input{metadata/authors.tex}`);
-      files['metadata/authors.tex'] = `\\author{${cleanAuthors.join(' \\and ')}}`;
+      files['metadata/authors.tex'] = LatexAssembler.formatIeeeAuthors(validAuthors, orgs);
     } else if (isNature) {
       const cleanAuthors = authorLines.map(a => a.trim()).filter(Boolean);
       metadataDeclarations.push(`\\input{metadata/authors.tex}`);

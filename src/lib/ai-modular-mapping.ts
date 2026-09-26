@@ -1090,9 +1090,68 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
           const floatPath = nodeToFloatPath.get(fn);
           if (!floatPath) continue;
           const floatBase = floatPath.replace(/\.tex$/, '');
-          const hasRef = matchedFile.content.includes(floatPath) ||
+          let hasRef = matchedFile.content.includes(floatPath) ||
                          matchedFile.content.includes(floatBase) ||
                          (fn.id && matchedFile.content.includes(String(fn.id)));
+
+          // Check if float's image is already inlined in the section content
+          if (!hasRef && (fn.type === 'figure' || fn.type === 'image' || fn.type === 'chart')) {
+            const rawSrc = fn.src || (fn as any).url || '';
+            const filename = rawSrc ? rawSrc.replace(/^.*[\\\/]/, '').trim() : '';
+            if (filename && matchedFile.content.includes(filename)) {
+              hasRef = true;
+            }
+            const images = (fn as any).images as Array<{ src: string }> | undefined;
+            if (!hasRef && Array.isArray(images) && images.length > 0) {
+              const anyImgPresent = images.some(img => {
+                const f = img?.src ? img.src.replace(/^.*[\\\/]/, '').trim() : '';
+                return f && matchedFile.content.includes(f);
+              });
+              if (anyImgPresent) hasRef = true;
+            }
+          }
+
+          // Check if float's caption is already inlined in the section content
+          if (!hasRef) {
+            const cap = ((fn.caption || (fn as any).title || '') as string).trim();
+            const cleanCap = cap.replace(/^(?:Figure|Fig\.?|Table|Tab\.?|Algorithm)\s*[\dIVX\.\-A-Z]*[:.\-–—\s]*/i, '').trim();
+            if (cleanCap.length > 15) {
+              const capSnippet = cleanCap.substring(0, Math.min(35, cleanCap.length)).toLowerCase();
+              if (matchedFile.content.toLowerCase().includes(capSnippet)) {
+                hasRef = true;
+              }
+            }
+          }
+
+          // Check if algorithm is already inlined in the section content
+          if (!hasRef && fn.type === 'algorithm') {
+            const algoTitle = (((fn as any).title || fn.caption || '') as string).trim();
+            const cleanTitle = algoTitle.replace(/^(?:Algorithm|Alg\.?)\s*[\dIVX\.\-A-Z]*[:.\-–—\s]*/i, '').trim();
+            if (cleanTitle.length > 10) {
+              const titleSnippet = cleanTitle.substring(0, Math.min(30, cleanTitle.length)).toLowerCase();
+              if (matchedFile.content.toLowerCase().includes(titleSnippet)) {
+                hasRef = true;
+              }
+            }
+            if (!hasRef && (matchedFile.content.includes('\\begin{algorithm}') || matchedFile.content.includes('\\begin{algorithmic}'))) {
+              const numAlgosInSection = sectionFloatNodes.filter((n: any) => n.type === 'algorithm').length;
+              if (numAlgosInSection <= 1) {
+                hasRef = true;
+              }
+            }
+          }
+
+          // Check if table is already inlined in the section content
+          if (!hasRef && fn.type === 'table') {
+            const rawTableText = (fn.text || fn.html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+            if (rawTableText.length > 30) {
+              const tableSnippet = rawTableText.substring(0, Math.min(40, rawTableText.length)).toLowerCase();
+              if (matchedFile.content.toLowerCase().includes(tableSnippet)) {
+                hasRef = true;
+              }
+            }
+          }
+
           if (!hasRef) {
             const fnIdx = g.nodes.indexOf(fn);
             let prevNodeText = '';

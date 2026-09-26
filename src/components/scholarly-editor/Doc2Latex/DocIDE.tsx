@@ -782,23 +782,28 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       const monaco = monacoRef.current;
       const editor = editorRef.current;
 
-      // 1. Map compile errors to Monaco markers (squiggles)
-      const markers = errors
-        .filter(e => {
-          const ln = Number(e.line);
-          return !isNaN(ln) && ln >= 1 && ln <= model.getLineCount();
-        })
-        .map(e => {
-          const ln = Number(e.line) || 1;
-          return {
-            severity: e.type === 'error' ? monaco.MarkerSeverity.Error : monaco.MarkerSeverity.Warning,
-            message: e.message,
-            startLineNumber: ln,
-            startColumn: 1,
-            endLineNumber: ln,
-            endColumn: model.getLineMaxColumn(ln),
-          };
-        });
+      // 1. Map compile errors to Monaco markers (squiggles) for active file only
+      const activeErrors = errors.filter(e => {
+        const ln = Number(e.line);
+        if (isNaN(ln) || ln < 1 || ln > model.getLineCount()) return false;
+        if (!e.file) return activeFile.toLowerCase().endsWith('main.tex');
+        const errFile = e.file.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
+        const currentFile = activeFile.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
+        return errFile === currentFile || errFile.endsWith('/' + currentFile) || currentFile.endsWith('/' + errFile) || errFile.split('/').pop() === currentFile.split('/').pop();
+      });
+
+      const markers = activeErrors.map(e => {
+        const ln = Number(e.line) || 1;
+        return {
+          severity: e.type === 'error' ? monaco.MarkerSeverity.Error : monaco.MarkerSeverity.Warning,
+          message: e.message,
+          startLineNumber: ln,
+          startColumn: 1,
+          endLineNumber: ln,
+          endColumn: model.getLineMaxColumn(ln),
+        };
+      });
+
       // --- CUSTOM LINTER: Text after \end{document} ---
       if (activeFile.endsWith('.tex')) {
         const lineCount = model.getLineCount();
@@ -833,27 +838,15 @@ export default function DocIDE({ projectId }: { projectId: string }) {
 
       // 2. Whole-line background error decorations
       const oldDecorations = editor.errorDecorations || [];
-      const activeErrors = errors.filter(e => {
-        if (!e.line || e.line <= 0) return false;
-        if (!e.file) return true;
-        const errFile = e.file.toLowerCase().split('/').pop();
-        const currentFile = activeFile.toLowerCase().split('/').pop();
-        return errFile === currentFile;
-      });
-      const newDecorations = activeErrors
-        .filter(e => {
-          const ln = Number(e.line);
-          return !isNaN(ln) && ln >= 1 && ln <= model.getLineCount();
-        })
-        .map(e => ({
-          range: { startLineNumber: Number(e.line), startColumn: 1, endLineNumber: Number(e.line), endColumn: 1 },
-          options: {
-            isWholeLine: true,
-            className: 'monaco-error-line',
-            marginClassName: 'monaco-error-margin',
-            hoverMessage: { value: e.message }
-          }
-        }));
+      const newDecorations = activeErrors.map(e => ({
+        range: { startLineNumber: Number(e.line), startColumn: 1, endLineNumber: Number(e.line), endColumn: 1 },
+        options: {
+          isWholeLine: true,
+          className: 'monaco-error-line',
+          marginClassName: 'monaco-error-margin',
+          hoverMessage: { value: e.message }
+        }
+      }));
       editor.errorDecorations = editor.deltaDecorations(oldDecorations, newDecorations);
     }
   }, [errors, activeFile]);
@@ -1311,7 +1304,25 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     };
   }, [isResizingSidebar, isResizingPdf, handleMouseMove, handleMouseUp]);
 
-  const jumpToLine = (line: number) => {
+  const jumpToLine = async (line: number, file?: string) => {
+    if (file) {
+      const cleanTarget = file.replace(/\\/g, '/').replace(/^\.\//, '').trim();
+      const matched = files.find(f => {
+        const p = f.path.replace(/\\/g, '/').replace(/^\.\//, '').trim();
+        return p === cleanTarget || p.endsWith('/' + cleanTarget) || cleanTarget.endsWith('/' + p) || p.split('/').pop() === cleanTarget.split('/').pop();
+      });
+      if (matched && matched.path !== activeFile) {
+        await switchTab(matched.path);
+        setTimeout(() => {
+          if (editorRef.current) {
+            editorRef.current.revealLineInCenter(line);
+            editorRef.current.setPosition({ lineNumber: line, column: 1 });
+            editorRef.current.focus();
+          }
+        }, 250);
+        return;
+      }
+    }
     if (!editorRef.current) return;
     editorRef.current.revealLineInCenter(line);
     editorRef.current.setPosition({ lineNumber: line, column: 1 });
@@ -1609,6 +1620,8 @@ export default function DocIDE({ projectId }: { projectId: string }) {
 
       if (result.success) {
         await renderPdf();
+        const parsedErrors = result.errors || parseLog(result.log || '');
+        setErrors(parsedErrors);
         setCompileLog(prev => prev + '> SUCCESS: PDF Generated.\n' + (result.log || ''));
         toast.success("Manuscript Compiled Successfully", { icon: '✨' });
       } else if (result.pdfUrl || result.pdfBase64) {

@@ -391,9 +391,34 @@ export function parseLog(log: string): DiagnosticError[] {
   const seenKeys = new Set<string>();
   const lines = (log || '').split('\n');
 
+  // Maintain active file stack
+  const fileStack: string[] = [];
+
+  const sanitizeFilePath = (raw: string): string => {
+    return raw.replace(/\\/g, '/').replace(/^\.\//, '').trim();
+  };
+
+  const getCurrentFile = (): string | undefined => {
+    for (let i = fileStack.length - 1; i >= 0; i--) {
+      const f = fileStack[i];
+      if (!f.includes('/texmf') && !f.includes('/share/tex') && (f.endsWith('.tex') || f.endsWith('.bib') || f.endsWith('.cls') || f.endsWith('.sty'))) {
+        return sanitizeFilePath(f);
+      }
+    }
+    return fileStack.length > 0 ? sanitizeFilePath(fileStack[fileStack.length - 1]) : undefined;
+  };
+
   lines.forEach((rawLine, idx) => {
     const line = rawLine.trim();
     if (!line) return;
+
+    // Track file openings: e.g. "(./sections/01_introduction.tex" or "(main.tex"
+    const openMatches = Array.from(rawLine.matchAll(/\(([^\s()<>]+\.(?:tex|cls|sty|bib|bbl|aux|cfg|def|dtx|ins|fd))/gi));
+    for (const m of openMatches) {
+      if (m[1]) {
+        fileStack.push(m[1]);
+      }
+    }
 
     // Pattern 1: Classic LaTeX error "! Error message"
     if (line.startsWith('!')) {
@@ -410,10 +435,12 @@ export function parseLog(log: string): DiagnosticError[] {
         }
       }
 
-      const key = `err:${errorLineNum}:${errorMsg}`;
+      const currentFile = getCurrentFile();
+      const key = `err:${currentFile || ''}:${errorLineNum}:${errorMsg}`;
       if (!seenKeys.has(key)) {
         seenKeys.add(key);
         errors.push({ 
+          file: currentFile,
           line: errorLineNum, 
           type: 'error', 
           message: errorMsg, 
@@ -432,11 +459,12 @@ export function parseLog(log: string): DiagnosticError[] {
       const inner = rest.match(/^(.*?):(\d+):\s*(.*)/);
       const lineNum = inner ? parseInt(inner[2]) : 0;
       const msg = inner ? inner[3].trim() : rest.trim();
-      const key = `warn:${lineNum}:${msg}`;
+      const file = inner ? sanitizeFilePath(inner[1]) : getCurrentFile();
+      const key = `warn:${file || ''}:${lineNum}:${msg}`;
       if (!seenKeys.has(key)) {
         seenKeys.add(key);
         errors.push({
-          file:    inner ? inner[1].replace(/^\.\//,'') : undefined,
+          file,
           line:    lineNum,
           type:    'warning',
           message: msg,
@@ -451,11 +479,12 @@ export function parseLog(log: string): DiagnosticError[] {
       const inner = rest.match(/^(.*?):(\d+):\s*(.*)/);
       const lineNum = inner ? parseInt(inner[2]) : 0;
       const msg = inner ? inner[3].trim() : rest.trim();
-      const key = `err:${lineNum}:${msg}`;
+      const file = inner ? sanitizeFilePath(inner[1]) : getCurrentFile();
+      const key = `err:${file || ''}:${lineNum}:${msg}`;
       if (!seenKeys.has(key)) {
         seenKeys.add(key);
         errors.push({
-          file:    inner ? inner[1].replace(/^\.\//,'') : undefined,
+          file,
           line:    lineNum,
           type:    'error',
           message: msg,
@@ -466,15 +495,16 @@ export function parseLog(log: string): DiagnosticError[] {
     }
 
     // Pattern 3: Legacy file:line:msg
-    const match = line.match(/^(.*?):(\d+):\s*(.*)/);
+    const match = line.match(/^([^:]+\.(?:tex|bib|cls|sty|txt)):(\d+):\s*(.*)/i);
     if (match) {
       const lineNum = parseInt(match[2]);
       const msg = match[3].trim();
-      const key = `err:${lineNum}:${msg}`;
+      const file = sanitizeFilePath(match[1]);
+      const key = `err:${file}:${lineNum}:${msg}`;
       if (!seenKeys.has(key)) {
         seenKeys.add(key);
         errors.push({
-          file:    match[1].replace(/^\.\//,''),
+          file,
           line:    lineNum,
           type:    'error',
           message: msg,
@@ -487,14 +517,15 @@ export function parseLog(log: string): DiagnosticError[] {
     // Pattern 4: LaTeX Warning: ... on input line 42
     if (line.includes('LaTeX Warning:') || (line.includes('Package') && line.includes('Warning:'))) {
       const lineMatch = line.match(/line\s+(\d+)/i);
-      const fileMatch = rawLine.match(/\((.*?)\)/);
+      const fileMatch = rawLine.match(/\(([^()\s]+\.(?:tex|cls|sty|bib))\)/);
       const lineNum = lineMatch ? parseInt(lineMatch[1]) : 0;
       const msg = line.split(':').pop()?.trim() || line;
-      const key = `warn:${lineNum}:${msg}`;
+      const file = fileMatch ? sanitizeFilePath(fileMatch[1]) : getCurrentFile();
+      const key = `warn:${file || ''}:${lineNum}:${msg}`;
       if (!seenKeys.has(key)) {
         seenKeys.add(key);
         errors.push({
-          file:    fileMatch ? fileMatch[1].split('/').pop() : undefined,
+          file,
           line:    lineNum,
           type:    'warning',
           message: msg,
@@ -509,11 +540,22 @@ export function parseLog(log: string): DiagnosticError[] {
       if (!seenKeys.has(key)) {
         seenKeys.add(key);
         errors.push({
+          file: getCurrentFile(),
           line: 0,
           type: 'warning',
           message: `Detected phantom artifact in output: ${line.substring(0, 50)}...`,
           raw: line
         });
+      }
+    }
+
+    // Track closings at the end of the line
+    const closeParensCount = (rawLine.match(/\)/g) || []).length;
+    const openParensCount = (rawLine.match(/\(/g) || []).length;
+    if (closeParensCount > openParensCount && fileStack.length > 0) {
+      const pops = Math.min(closeParensCount - openParensCount, fileStack.length);
+      for (let p = 0; p < pops; p++) {
+        fileStack.pop();
       }
     }
   });

@@ -1049,6 +1049,11 @@ export class DeepDocumentParser {
           nextRole = 'equation';
       }
       else if (tagName === 'table') {
+          const tableImgs = Array.from(el.querySelectorAll('img'));
+          const textWithoutImgs = f.text.replace(/CHARTIMGX\w+XEND/g, '').replace(/\s+/g, ' ').trim();
+          if (tableImgs.length >= 1 && (tableImgs.length >= 2 || textWithoutImgs.length < 250 || /^(?:Fig|Figure|Chart|Image|\([a-z]\))/i.test(textWithoutImgs))) {
+              nextRole = 'figure';
+          } else {
           const rows = Array.from(el.querySelectorAll('tr'));
           const hasMathBlock = /MATHBLOCKX\d+XMARKER/i.test(f.text);
           const mathSymbolCount = (f.text.match(/[=+\-*/^\\∑∫√²³α-ωΑ-Ωθλπμσδφψωηρ<>~≈≠≤≥_()\[\]{}]/g) || []).length;
@@ -1081,6 +1086,7 @@ export class DeepDocumentParser {
               }
               nextRole = isTableAlgo ? 'algorithm' : 'table';
           }
+      }
       }
       else if (this.detectTableCandidate(f, el)) {
           nextRole = 'table';
@@ -2147,29 +2153,44 @@ export class DeepDocumentParser {
               // Extract sub-captions if multiple images are side-by-side
               let subCaptions: string[] = [];
               if (imgs.length > 1) {
-                let nextSib = el0.nextElementSibling;
-                while (nextSib && !nextSib.textContent?.trim() && !nextSib.querySelector('img') && !['table', 'img', 'figure'].includes(nextSib.tagName.toLowerCase())) {
-                  nextSib = nextSib.nextElementSibling;
+                // Check table cells if this is a table housing multiple subfigures
+                if (el0.tagName.toLowerCase() === 'table') {
+                  const cellTexts = Array.from(el0.querySelectorAll('td, th'))
+                    .map((c: any) => (c.textContent || '').trim())
+                    .filter((t: string) => t.length > 0 && !t.includes('CHARTIMGX') && (/\([a-zA-Z0-9]\)/.test(t) || t.length < 100));
+                  if (cellTexts.length === imgs.length) {
+                    subCaptions = cellTexts.map((p: string) => p.replace(/[,;.]\s*$/, '').trim());
+                  }
                 }
-                if (nextSib && ['p', 'div', 'ol', 'ul'].includes(nextSib.tagName.toLowerCase())) {
-                  const sibText = nextSib.textContent?.trim() || '';
-                  let parts: string[] = [];
-                  
-                  if (/\(\s*[a-z]\s*\)/i.test(sibText)) {
-                    parts = sibText.split(/\s*(?:\(\s*[a-z]\s*\))\s*/gi).map((p: string) => p.trim()).filter(Boolean);
-                  } else if (/\b[a-z]\s*\)/i.test(sibText)) {
-                    parts = sibText.split(/\s*(?:\b[a-z]\s*\))\s*/gi).map((p: string) => p.trim()).filter(Boolean);
-                  } else if (/\b[a-z]\s*\.\s+/i.test(sibText)) {
-                    parts = sibText.split(/\s*(?:\b[a-z]\s*\.)\s+/gi).map((p: string) => p.trim()).filter(Boolean);
-                  }
 
-                  if (parts.length !== imgs.length) {
-                    parts = sibText.split(/\s{2,}|\t+/).map((p: string) => p.trim()).filter(Boolean);
+                if (subCaptions.length === 0) {
+                  let nextSib = el0.nextElementSibling;
+                  while (nextSib && !nextSib.textContent?.trim() && !nextSib.querySelector('img') && !['table', 'img', 'figure'].includes(nextSib.tagName.toLowerCase())) {
+                    nextSib = nextSib.nextElementSibling;
                   }
+                  if (nextSib && ['p', 'div', 'ol', 'ul'].includes(nextSib.tagName.toLowerCase())) {
+                    const sibText = nextSib.textContent?.trim() || '';
+                    let parts: string[] = [];
+                    
+                    if (/\(\s*[a-z]\s*\)/i.test(sibText)) {
+                      parts = sibText.split(/\s*(?:\(\s*[a-z]\s*\))\s*/gi).map((p: string) => p.trim()).filter(Boolean);
+                    } else if (/\b[a-z]\s*\)/i.test(sibText)) {
+                      parts = sibText.split(/\s*(?:\b[a-z]\s*\))\s*/gi).map((p: string) => p.trim()).filter(Boolean);
+                    } else if (/\b[a-z]\s*\.\s+/i.test(sibText)) {
+                      parts = sibText.split(/\s*(?:\b[a-z]\s*\.)\s+/gi).map((p: string) => p.trim()).filter(Boolean);
+                    }
 
-                  if (parts.length === imgs.length) {
-                    subCaptions = parts.map((p: string) => p.replace(/[,;.]\s*$/, '').trim());
-                    consumedCaptions.add(nextSib);
+                    if (parts.length !== imgs.length && parts.length !== imgs.length + 1) {
+                      parts = sibText.split(/\s{2,}|\t+/).map((p: string) => p.trim()).filter(Boolean);
+                    }
+
+                    if (parts.length === imgs.length) {
+                      subCaptions = parts.map((p: string) => p.replace(/[,;.]\s*$/, '').trim());
+                      consumedCaptions.add(nextSib);
+                    } else if (parts.length === imgs.length + 1) {
+                      subCaptions = parts.slice(1).map((p: string) => p.replace(/[,;.]\s*$/, '').trim());
+                      consumedCaptions.add(nextSib);
+                    }
                   }
                 }
 
@@ -2182,7 +2203,9 @@ export class DeepDocumentParser {
                   } else if (/\b[a-z]\s*\)/i.test(capText)) {
                     parts = capText.split(/\s*(?:\b[a-z]\s*\))\s*/gi).map((p: string) => p.trim()).filter(Boolean);
                   }
-                  if (parts.length - 1 === imgs.length) {
+                  if (parts.length === imgs.length) {
+                    subCaptions = parts.map((p: string) => p.replace(/[,;.]\s*$/, '').trim());
+                  } else if (parts.length - 1 === imgs.length) {
                     subCaptions = parts.slice(1).map((p: string) => p.replace(/[,;.]\s*$/, '').trim());
                   }
                 }
@@ -2398,6 +2421,19 @@ export class DeepDocumentParser {
                           }
                       }
                   }
+              }
+              // Deduplicate any preceding standalone algorithm caption paragraph
+              if (result.body.length > 0) {
+                const prevNode = result.body[result.body.length - 1];
+                if (prevNode && prevNode.type === 'paragraph' && typeof prevNode.text === 'string') {
+                  const pTrim = prevNode.text.trim();
+                  if (ALGO_LABEL_PATTERN.test(pTrim) || (titleText && titleText !== 'Algorithm' && pTrim.includes(titleText) && pTrim.length < 120)) {
+                    if (titleText === 'Algorithm' || !titleText) {
+                      titleText = pTrim.replace(ALGO_LABEL_PATTERN, '').replace(/^[:.\-\s]+/, '').trim() || pTrim;
+                    }
+                    result.body.pop();
+                  }
+                }
               }
               
               result.body.push({ type: 'algorithm', title: titleText, items: steps.length ? steps : [titleText] } as any);
@@ -2695,25 +2731,28 @@ export class DeepDocumentParser {
     const prevEl = targetEl.previousElementSibling;
     if (prevEl) {
       const prevText = (prevEl.textContent || '').trim();
-      if (prevText.length > 0 && !/[.?!]$/.test(prevText)) {
-        // Previous element is an unclosed sentence/paragraph - continuation fragment, not a heading
-        return null;
+      if (prevText.length > 0 && !/[.?!:\]\)"'\u201D\u2019]$/.test(prevText) && !prevText.includes('MATHBLOCKX')) {
+        // Only reject as continuation fragment if previous line ended mid-clause and current line is not bold/heading-like
+        if (/[a-z,]$/.test(prevText) && !(f.isBold || f.wordCount <= 6)) {
+          return null;
+        }
       }
     }
 
-    // Proximity check: if next sibling is a figure, image, table, or has caption lead, this line is likely a caption label
+    // Proximity check: only reject if the current line actually looks like a caption itself
     const nextEl = targetEl.nextElementSibling;
     if (nextEl) {
-      const nextTagName = (nextEl.tagName || '').toLowerCase();
-      const nextText = (nextEl.textContent || '').trim();
-      if (
-        nextTagName === 'figure' ||
-        nextTagName === 'table' ||
-        nextTagName === 'img' ||
-        (nextEl as any).querySelector?.('img, table, figure') ||
-        /^(?:figure|fig\b|table|tab\b|chart|algorithm)\s*\d/i.test(nextText)
-      ) {
-        return null;
+      const isCaptionLikeText = /^(?:figure|fig\b|table|tab\b|chart|algorithm|algo\b|image|photo|diagram|listing)\s*(?:[\dIVXLCDM]+|[a-zA-Z])?[:.\-–—\s]/i.test(trimmedText);
+      if (isCaptionLikeText) {
+        const nextTagName = (nextEl.tagName || '').toLowerCase();
+        if (
+          nextTagName === 'figure' ||
+          nextTagName === 'table' ||
+          nextTagName === 'img' ||
+          (nextEl as any).querySelector?.('img, table, figure')
+        ) {
+          return null;
+        }
       }
     }
 
@@ -2905,8 +2944,8 @@ export class DeepDocumentParser {
           // is within a reasonable distance from the caption). This prevents double-counting
           // while still allowing captions to be found even if the position mapping is slightly off.
           const thisPos = typePositions.get(el);
-          const belongsToFar = (capOrdinal !== null && farPos !== undefined && capOrdinal === farPos && i < 10) ||
-                               (capOrdinal !== null && thisPos !== undefined && Math.abs(capOrdinal - thisPos) >= 2);
+          // Only skip if the caption matches a different far element that is directly adjacent (i < 2)
+          const belongsToFar = (capOrdinal !== null && farPos !== undefined && capOrdinal === farPos && farPos !== thisPos && i < 2);
           if (!belongsToFar) {
             processed.add(candidate);
             if (consumedTexts) consumedTexts.add(t);
