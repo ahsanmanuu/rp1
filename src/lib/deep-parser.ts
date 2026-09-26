@@ -1116,12 +1116,18 @@ export class DeepDocumentParser {
       else if (!f.text.includes('\t') && !f.text.includes('|') &&
         !(/^\s*(?:Fig(?:ure)?|Chart|Diagram|Photo|Image|Table|Tab\b\.?|Algorithm|Alg\.?|Graph)\.?\s*(?:(?:\(|\b)(?:[\dIVXLCDM]+(?:\.[\dIVXLCDM]+)*|[a-zA-Z])(?:\)|\b))?[:.\-–—\s]/i.test(f.text.trim()) && !DeepDocumentParser.isFigureCaptionProse(f.text.trim()) && !DeepDocumentParser.isTableCaptionProse(f.text.trim())) &&
         (tagName.startsWith('h') || this.detectHeading(el, f.text, manifest) !== null || (
-          tagName === 'p' && f.wordCount <= 12 && f.wordCount >= 1 &&
-          el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 &&
-          !f.text.endsWith('.') && !f.text.endsWith(':') && !f.text.endsWith(';') &&
-          f.text.length < 120 && f.text.length > 2 &&
-          !/^(?:step|case|example|note|input|output|recall|proof|remark|definition|where|phase|stage|condition|rule|theorem|lemma|proposition|corollary|epoch|acc|accuracy|sen|sensitivity|spec|specificity|prec|precision|rec|recall|f1|f-score|tp|tn|fp|fn|auc|iou|dice|loss|val_loss|val_acc|lr|batch|dataset|layer|optimizer|train|test|val|validation|metric|value|description|parameter|unit|score|std|mean|total)\b/i.test(f.text.trim()) &&
-          !/^(?:Fig(?:ure)?|Table|Tab|Algorithm|Equation|Chart)\b/i.test(f.text.trim())
+          ['p', 'ol', 'ul', 'li'].includes(tagName) && (
+            (f.wordCount <= 12 && f.wordCount >= 1 &&
+             el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 &&
+             !f.text.endsWith('.') && !f.text.endsWith(':') && !f.text.endsWith(';') &&
+             f.text.length < 120 && f.text.length > 2 &&
+             !/^(?:step|case|example|note|input|output|recall|proof|remark|definition|where|phase|stage|condition|rule|theorem|lemma|proposition|corollary|epoch|acc|accuracy|sen|sensitivity|spec|specificity|prec|precision|rec|recall|f1|f-score|tp|tn|fp|fn|auc|iou|dice|loss|val_loss|val_acc|lr|batch|dataset|layer|optimizer|train|test|val|validation|metric|value|description|parameter|unit|score|std|mean|total)\b/i.test(f.text.trim()) &&
+             !/^(?:Fig(?:ure)?|Table|Tab|Algorithm|Equation|Chart)\b/i.test(f.text.trim())) ||
+            /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:introduction|related\s+work|related\s+works|literature\s+review|literature\s+survey|review\s+of\s+literature|survey\s+of\s+literature|background|methodology|methods|materials\s+and\s+methods|conclusion|conclusions|abstract|acknowledgments|acknowledgements|references|bibliography|overview|implementation|proposed|experimental|experiments|results|discussion|system)/i.test(f.text) ||
+            /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(f.text) ||
+            DeepDocumentParser.FORCED_LEVEL1.has(f.text.trim().toLowerCase().replace(/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i, '').replace(/[.:\s]*$/, '').trim()) ||
+            CANONICAL_SECTION_WHITELIST.some(c => f.text.trim().toLowerCase().replace(/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i, '').replace(/[.:\s]*$/, '').trim().startsWith(c))
+          )
         ))) {
           const detectedLvl = this.detectHeading(el, f.text, manifest);
           const isNumberedHeading = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(f.text);
@@ -1137,7 +1143,10 @@ export class DeepDocumentParser {
           const rawSecTitle = f.text.trim();
           const normSecTitle = rawSecTitle.toLowerCase().replace(/^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]*/i, '').trim();
           const isDuplicateSection = seenSectionTitles.has(normSecTitle);
-          const isListElement = ['ol', 'ul', 'li'].includes(tagName) || Boolean(el.closest && el.closest('ol, ul'));
+          const isCanonicalHeading = isStandardSectionName || isNumberedHeading ||
+            DeepDocumentParser.FORCED_LEVEL1.has(normSecTitle) ||
+            CANONICAL_SECTION_WHITELIST.some(c => normSecTitle === c || normSecTitle.startsWith(c));
+          const isListElement = (['ol', 'ul', 'li'].includes(tagName) || Boolean(el.closest && el.closest('ol, ul'))) && !isCanonicalHeading;
 
           const checkHasPrecedingImage = (elem: Element | null): boolean => {
             if (!elem) return false;
@@ -1160,6 +1169,7 @@ export class DeepDocumentParser {
           const isSectionHeading = !isCaptionText && !isAuthorAffilText && !isListElement && !isDirectlyBelowImage && !isDuplicateSection && !isTableMetricWord && (
             isNumberedHeading ||
             isStandardSectionName ||
+            isCanonicalHeading ||
             (foundAbstract && (detectedLvl !== null || tagName.startsWith('h'))) ||
             (tagName === 'p' && el.querySelector('strong, b') !== null && this.getStrongTextRatio(el) > 0.8 && (isNumberedHeading || isStandardSectionName || (foundAbstract && f.wordCount >= 2 && f.text.length >= 10)))
           );
@@ -1226,10 +1236,12 @@ export class DeepDocumentParser {
           } else {
               if (isCaptionText) {
                   nextRole = 'paragraph';
-              } else if (isAuthorAffilText || looksLikeAuthor) {
+              } else if (isAuthorAffilText && !foundAbstract) {
                   nextRole = 'author';
-              } else if (isAffilOrDesignation || isLocationAffil) {
+              } else if ((isAffilOrDesignation || isLocationAffil) && !foundAbstract) {
                   nextRole = 'affiliation';
+              } else if (looksLikeAuthor && !foundAbstract) {
+                  nextRole = 'author';
               } else {
                   nextRole = 'paragraph';
               }
@@ -1529,6 +1541,9 @@ export class DeepDocumentParser {
               }
           }
           else if (entry.role === 'author') {
+              if (hasSeenFirstSectionOrAbstract) {
+                continue;
+              }
               // Check if entry elements contain a table (front-matter author grid)
               const tableEl = entry.elements.find((e: any) => e.tagName?.toLowerCase() === 'table' || (e.querySelector && e.querySelector('table')));
               if (tableEl) {
