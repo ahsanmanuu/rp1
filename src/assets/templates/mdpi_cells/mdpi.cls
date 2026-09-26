@@ -8,6 +8,10 @@
 \RequirePackage{abstract}
 \RequirePackage{titlesec}
 \RequirePackage{fancyhdr}
+\RequirePackage{authblk}
+\renewcommand\Authfont{\bfseries\large}
+\renewcommand\Affilfont{\itshape\small}
+\setlength{\affilsep}{1em}
 
 \pagestyle{fancy}
 \fancyhf{}

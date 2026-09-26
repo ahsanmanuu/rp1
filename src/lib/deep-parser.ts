@@ -1869,7 +1869,29 @@ export class DeepDocumentParser {
                       const low = cleanText.toLowerCase();
                       return low === c || low.includes(c) || low.startsWith(c + ' ');
                     });
-                    if (!isCanonicalSec && (isAuthorNameMatch || isFrontMatterNoise(cleanText) || (/^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(cleanText) && cleanText.length < 80))) {
+                    const isAcademicDesignationOrAuthor = (str: string): boolean => {
+                      const s = str.trim();
+                      if (s.length > 120) return false;
+                      return /^(?:dr\.?|prof\.?|professor|mr\.?|ms\.?|mrs\.?|md\.?|ph\.?d\.?|engr\.?)\b/i.test(s) ||
+                        /\b(?:deputy librarian|librarian|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of|head of department|researcher|research scholar|phd scholar|scholar|fellow|senior research fellow|technical assistant)\b/i.test(s) ||
+                        /\b(?:university|college|institute|department of|faculty of|school of|laboratory|centre for|center for|hospital|polytechnic|academy)\b/i.test(s) ||
+                        /^(?:email|e-mail|mail|orcid|corresponding author|phone|tel)\b/i.test(s) ||
+                        /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(s);
+                    };
+                    const isPreambleNoiseHeading = !isCanonicalSec && (
+                      isAuthorNameMatch ||
+                      isFrontMatterNoise(cleanText) ||
+                      isAcademicDesignationOrAuthor(cleanText) ||
+                      (!hasSeenFirstSectionOrAbstract && cleanText.length < 80 && !/^(?:\d+|[ivxlcdm]+)\b/i.test(cleanText) && !/^(?:introduction|background|overview|abstract|keywords)\b/i.test(cleanText) && !cleanText.includes('='))
+                    );
+                    if (isPreambleNoiseHeading) {
+                      // If it's an author name that was not yet in result.authors, capture it!
+                      if (/^(?:dr\.?|prof\.?|professor|mr\.?|ms\.?|mrs\.?)\b/i.test(cleanText) && cleanText.length < 60) {
+                        const strippedName = cleanText.replace(/^(?:dr\.?|prof\.?|professor|mr\.?|ms\.?|mrs\.?)\s*/i, '').trim();
+                        if (strippedName.length > 3 && !result.authors.some(a => String(a.name || '').includes(strippedName))) {
+                          result.authors.push({ name: strippedName });
+                        }
+                      }
                       if (hasSeenFirstSectionOrAbstract && cleanText.length > 100) {
                         result.body.push({ type: 'paragraph', text: withCitations });
                       } else {
@@ -1923,8 +1945,17 @@ export class DeepDocumentParser {
                     }
                   }
               } else {
+                  const isAcademicDesignationOrAuthor = (str: string): boolean => {
+                    const s = str.trim();
+                    if (s.length > 120) return false;
+                    return /^(?:dr\.?|prof\.?|professor|mr\.?|ms\.?|mrs\.?|md\.?|ph\.?d\.?|engr\.?)\b/i.test(s) ||
+                      /\b(?:deputy librarian|librarian|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of|head of department|researcher|research scholar|phd scholar|scholar|fellow|senior research fellow|technical assistant)\b/i.test(s) ||
+                      /\b(?:university|college|institute|department of|faculty of|school of|laboratory|centre for|center for|hospital|polytechnic|academy)\b/i.test(s) ||
+                      /^(?:email|e-mail|mail|orcid|corresponding author|phone|tel)\b/i.test(s) ||
+                      /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(s);
+                  };
                   const isNoise = !hasSeenFirstSectionOrAbstract &&
-                    (isFrontMatterNoise(text) || (/^(?:dr\.|prof\.|professor|mr\.|ms\.|mrs\.|md)\b/i.test(text.trim()) && text.trim().length < 80) ||
+                    (isFrontMatterNoise(text) || isAcademicDesignationOrAuthor(text.trim()) ||
                      (/\b(?:mdpi|springer|elsevier|ieee|acm|wiley)\b/i.test(text.trim()) && text.trim().length < 60));
                   if (isNoise) {
                     result.body.push({ type: 'paragraph', text: withCitations, componentRole: 'frontmatter' });

@@ -284,19 +284,33 @@ function buildVerdictCompact(doc: Record<string, any>): Record<string, any> {
   };
 }
 
+function resolveMathBlocksInText(str: string, mathBlocks: any[]): string {
+  if (!str || !str.includes('MATHBLOCKX')) return str;
+  return str.replace(/MATHBLOCKX(\d+)XMARKER/gi, (_m, idxStr) => {
+    const mb = mathBlocks[parseInt(idxStr)];
+    if (!mb) return '';
+    const raw = typeof mb === 'string' ? mb : (mb?.latex || mb?.tex || mb?.raw || '');
+    return raw || '';
+  });
+}
+
 /**
  * Build a text window for a specific chunk of sections.
  * Guarantees complete section content without truncation for that chunk.
  */
 function chunkTextWindow(
   chunkNodes: any[],
-  docText: string
+  docText: string,
+  mathBlocks: any[] = []
 ): string {
   const chunkText = chunkNodes
     .map((n: any) => {
       if (n.type === 'heading') return `\n${'#'.repeat(Number(n.level) || 1)} ${n.text}\n`;
-      if (n.type === 'equation') return `\n[Equation: ${n.latex || n.text || ''}]\n`;
-      if (n.text) return n.text;
+      if (n.type === 'equation') {
+        const rawEq = resolveMathBlocksInText(n.latex || n.text || '', mathBlocks).trim();
+        return `\n[Equation: ${rawEq}]\n`;
+      }
+      if (n.text) return resolveMathBlocksInText(n.text, mathBlocks);
       if (n.caption) return `[Caption: ${n.caption}]`;
       if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') {
         const cap = n.caption || '';
@@ -370,7 +384,9 @@ function splitIntoSections(nodes: any[]): string[] {
     }
     let text = '';
     if (node.type === 'heading') text = `\n${'#'.repeat(Number(node.level) || 1)} ${node.text}\n`;
-    else if (node.type === 'equation') text = `\n[Equation: ${node.latex || node.text || ''}]\n`;
+    else if (node.type === 'equation') {
+      text = `\n[Equation: ${node.latex || node.text || ''}]\n`;
+    }
     else if (node.text) text = node.text;
     else if (node.caption) text = `[Caption: ${node.caption}]`;
     else if (node.type === 'figure' || node.type === 'image' || node.type === 'chart') {
@@ -521,7 +537,7 @@ function defaultPreamble(templateId: string): string[] {
     '\\usepackage{multirow}',
     '\\usepackage{array}',
     '\\usepackage{tabularx}',
-    '\\usepackage{adjustbox}',
+    '\\usepackage[export]{adjustbox}',
     '\\usepackage{float}',
     '\\usepackage{algorithm}',
     '\\usepackage{algpseudocode}',
@@ -554,7 +570,7 @@ function defaultPreamble(templateId: string): string[] {
 }
 
 function stripFloatInputsToExisting(content: string, existingFloats: Set<string>): string {
-  return content.replace(/\\input\s*\{floats\/(?:figures|tables|algorithms)\/\d+\.tex\}/g, (m) => {
+  return content.replace(/\\input\s*\{floats\/(?:figures|tables|algorithms|equations)\/\d+\.tex\}/g, (m) => {
     const pathMatch = m.match(/\\input\s*\{([^}]+)\}/);
     return pathMatch && existingFloats.has(pathMatch[1]) ? m : '';
   });
@@ -635,11 +651,41 @@ function composeMainTex(
   const isElsevier = templateId.includes('elsevier');
   const isAcm = templateId.includes('acm');
   const isIeee = templateId.includes('ieee');
+  const isStandardArticle = !isElsevier && !isAcm && !isIeee && !templateId.includes('lncs') && !templateId.includes('springer') && !templateId.includes('scirep');
 
   const preText = preamble.join('\n');
   if (!preText.includes('\\graphicspath')) preamble.push(...GRAPHICS_PATH_LINES);
   if (!preText.includes('placeins')) preamble.push('\\usepackage{placeins}');
-  if (!preText.includes('adjustbox')) preamble.push('\\usepackage{adjustbox}');
+  if (!preText.includes('adjustbox')) preamble.push('\\usepackage[export]{adjustbox}');
+  if (!preText.includes('tabularx')) preamble.push('\\usepackage{tabularx}');
+  if (!preText.includes('booktabs')) preamble.push('\\usepackage{booktabs}');
+  if (!preText.includes('amsmath')) preamble.push('\\usepackage{amsmath,amssymb,amsfonts}');
+  if ((isStandardArticle || templateId.includes('mdpi')) && !preText.includes('authblk')) {
+    preamble.push(
+      '\\usepackage{authblk}',
+      '\\renewcommand\\Authfont{\\bfseries\\large}',
+      '\\renewcommand\\Affilfont{\\itshape\\small}',
+      '\\setlength{\\affilsep}{1em}'
+    );
+  }
+  if (isIeee) {
+    preamble.push(
+      "\\catcode`\\@=11",
+      "\\@ifundefined{abstract}{}{%",
+      "  \\renewenvironment{abstract}{%",
+      "    \\par\\noindent\\textbf{\\textit{Abstract}}---\\ignorespaces",
+      "  }{\\par\\vspace{0.8em}}",
+      "}",
+      "\\@ifundefined{IEEEkeywords}{%",
+      "  \\newenvironment{IEEEkeywords}{\\par\\noindent\\textbf{\\textit{Index Terms}}---\\ignorespaces}{\\par\\vspace{0.8em}}",
+      "}{%",
+      "  \\renewenvironment{IEEEkeywords}{%",
+      "    \\par\\noindent\\textbf{\\textit{Index Terms}}---\\ignorespaces",
+      "  }{\\par\\vspace{0.8em}}",
+      "}",
+      "\\catcode`\\@=12"
+    );
+  }
   if (isIeee && !preText.includes('stfloats') && !preText.includes('dblfloatfix')) {
     preamble.push('\\usepackage{stfloats}');
   }
@@ -694,17 +740,10 @@ function composeMainTex(
     for (const f of otherMetas) body.push(`\\input{${f.path}}`);
     body.push('\\maketitle');
   } else if (isIeee) {
-    // In IEEE (IEEEtran), two-column abstract & index terms must be declared in \IEEEtitleabstractindextext BEFORE \maketitle
-    if (abstractFile || keywordsFile) {
-      body.push('\\IEEEtitleabstractindextext{%');
-      if (abstractFile) body.push(`  \\input{${abstractFile.path}}`);
-      if (keywordsFile) body.push(`  \\input{${keywordsFile.path}}`);
-      body.push('}');
-    }
+    // In IEEE (IEEEtran), \maketitle followed directly by abstract and index terms
     body.push('\\maketitle');
-    if (abstractFile || keywordsFile) {
-      body.push('\\IEEEdisplaynontitleabstractindextext');
-    }
+    if (abstractFile) body.push(`\\input{${abstractFile.path}}`);
+    if (keywordsFile) body.push(`\\input{${keywordsFile.path}}`);
     for (const f of otherMetas) body.push(`\\input{${f.path}}`);
   } else {
     // Standard article & LNCS
@@ -853,8 +892,13 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
   const figureFiles = Array.from(combinedFigSet);
 
   // Build text from body nodes or fullText
-  const bodyText = body.map((n: any) => n.text || n.caption || '').join('\n');
-  const docText = [structured.fullText, bodyText].filter(Boolean).join('\n').trim();
+  const mathBlocksPre = structured.mathBlocks || [];
+  const bodyText = body.map((n: any) => {
+    if (n.text) return resolveMathBlocksInText(n.text, mathBlocksPre);
+    if (n.caption) return resolveMathBlocksInText(n.caption, mathBlocksPre);
+    return '';
+  }).join('\n');
+  const docText = resolveMathBlocksInText([structured.fullText, bodyText].filter(Boolean).join('\n').trim(), mathBlocksPre);
   const textWindow = balancedWindow(docText.length > 0 ? docText : structured.abstract || '');
 
   const verdict = buildVerdictCompact(structured);
@@ -872,9 +916,12 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
   const fullTextForPasses = (() => {
     const bodyTextFull = body.map((n: any) => {
       if (n.type === 'heading') return `\n${'#'.repeat(Number(n.level) || 1)} ${n.text}\n`;
-      if (n.type === 'equation') return `\n[Equation: ${n.latex || n.text || ''}]\n`;
-      if (n.text) return n.text;
-      if (n.caption) return `[Caption: ${n.caption}]`;
+      if (n.type === 'equation') {
+        const rawEq = resolveMathBlocksInText(n.latex || n.text || '', mathBlocksPre).trim();
+        return `\n[Equation: ${rawEq}]\n`;
+      }
+      if (n.text) return resolveMathBlocksInText(n.text, mathBlocksPre);
+      if (n.caption) return `[Caption: ${resolveMathBlocksInText(n.caption, mathBlocksPre)}]`;
       if (n.type === 'figure' || n.type === 'image' || n.type === 'chart') {
         const cap = n.caption || '';
         const fname = n.name || n.id || '';
@@ -991,13 +1038,15 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
 
   // ── Deterministic Content Backfill: Guarantee 100% section coverage & content fidelity ──
   const mathBlocks = structured.mathBlocks || [];
+  const isTwoColumn = templateId.includes('ieee') || templateId.includes('acm') || /\btwocolumn\b/i.test(templateMainTex || '') || /\bIEEEtran\b/.test(templateMainTex || '');
 
   // Map body nodes to existing float files to avoid duplicate inline float environments
   // Initialized once globally across the full body so float numbering is consistent
   const nodeToFloatPath = new Map<any, string>();
-  let figCnt = 0, tabCnt = 0, algoCnt = 0;
+  let figCnt = 0, tabCnt = 0, algoCnt = 0, eqCnt = 0;
   const seenFigureKeys = new Set<string>();
   const seenTableKeys = new Set<string>();
+  const seenEquationKeys = new Set<string>();
   for (const n of body) {
     if (n.type === 'figure' || n.type === 'image' || n.type === 'chart' || n.type === 'figure-group') {
       const figId = String(n.id || '').replace(/^.*[\/\\]/, '').toLowerCase().trim();
@@ -1013,8 +1062,8 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
         nodeToFloatPath.set(n, p);
       } else {
         const assembledNode = n.type === 'figure-group'
-          ? LatexAssembler.assembleFigureGroup(n, mathBlocks)
-          : LatexAssembler.assembleNode(n, mathBlocks);
+          ? LatexAssembler.assembleFigureGroup({ ...n, twoColumn: isTwoColumn }, mathBlocks)
+          : LatexAssembler.assembleNode({ ...n, twoColumn: isTwoColumn }, mathBlocks);
         floatsRes.files.push({ path: p, content: assembledNode });
         nodeToFloatPath.set(n, p);
         console.log(`[AI-MODULAR] Backfilled missing figure float: ${p}`);
@@ -1032,7 +1081,7 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
       if (floatsRes.files.some(f => f.path === p)) {
         nodeToFloatPath.set(n, p);
       } else {
-        const assembledNode = LatexAssembler.assembleTable(n, mathBlocks);
+        const assembledNode = LatexAssembler.assembleTable({ ...n, twoColumn: isTwoColumn }, mathBlocks);
         floatsRes.files.push({ path: p, content: assembledNode });
         nodeToFloatPath.set(n, p);
         console.log(`[AI-MODULAR] Backfilled missing table float: ${p}`);
@@ -1043,10 +1092,33 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
       if (floatsRes.files.some(f => f.path === p)) {
         nodeToFloatPath.set(n, p);
       } else {
-        const assembledNode = LatexAssembler.assembleAlgorithm(n, mathBlocks);
+        const assembledNode = LatexAssembler.assembleAlgorithm({ ...n, twoColumn: isTwoColumn }, mathBlocks);
         floatsRes.files.push({ path: p, content: assembledNode });
         nodeToFloatPath.set(n, p);
         console.log(`[AI-MODULAR] Backfilled missing algorithm float: ${p}`);
+      }
+    } else if (n.type === 'equation') {
+      const eqRaw = (n.latex || n.text || '').trim();
+      const cleanEq = eqRaw.replace(/\s+/g, ' ');
+      if (cleanEq.length > 0 && !seenEquationKeys.has(cleanEq)) {
+        seenEquationKeys.add(cleanEq);
+        eqCnt++;
+        const p = `floats/equations/${eqCnt}.tex`;
+        const eqAssetPath = `equations/eq_${eqCnt}.tex`;
+        let assembledNode = LatexAssembler.assembleNode(n, mathBlocks);
+        if (assembledNode && assembledNode.trim().length > 0) {
+          if (!floatsRes.files.some(f => f.path === p)) {
+            floatsRes.files.push({ path: p, content: assembledNode });
+          }
+          if (!floatsRes.files.some(f => f.path === eqAssetPath)) {
+            floatsRes.files.push({
+              path: eqAssetPath,
+              content: `% Required Packages: \\usepackage{amsmath}, \\usepackage{amssymb}, \\usepackage{amsfonts}\n\n${assembledNode}`
+            });
+          }
+          nodeToFloatPath.set(n, p);
+          console.log(`[AI-MODULAR] Backfilled missing equation float & asset: ${p}`);
+        }
       }
     }
   }
@@ -1056,7 +1128,7 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     if (floatPath) {
       return `\\input{${floatPath}}`;
     }
-    return LatexAssembler.assembleNode(n, mathBlocks);
+    return LatexAssembler.assembleNode({ ...n, twoColumn: isTwoColumn }, mathBlocks);
   };
 
   for (let idx = 0; idx < sectionGroups.length; idx++) {
@@ -1084,7 +1156,7 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
       } else {
         // Ensure any floats that belong to this section are inlined if AI omitted them!
         const sectionFloatNodes = g.nodes.filter((n: any) =>
-          n.type === 'figure' || n.type === 'image' || n.type === 'chart' || n.type === 'table' || n.type === 'algorithm'
+          n.type === 'figure' || n.type === 'image' || n.type === 'chart' || n.type === 'table' || n.type === 'algorithm' || n.type === 'equation'
         );
         for (const fn of sectionFloatNodes) {
           const floatPath = nodeToFloatPath.get(fn);
@@ -1147,6 +1219,18 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
             if (rawTableText.length > 30) {
               const tableSnippet = rawTableText.substring(0, Math.min(40, rawTableText.length)).toLowerCase();
               if (matchedFile.content.toLowerCase().includes(tableSnippet)) {
+                hasRef = true;
+              }
+            }
+          }
+
+          // Check if equation is already inlined in the section content
+          if (!hasRef && fn.type === 'equation') {
+            const eqRaw = (fn.latex || fn.text || '').replace(/\s+/g, ' ').trim();
+            const cleanEq = eqRaw.replace(/MATHBLOCKX\d+XMARKER/gi, '').trim();
+            if (cleanEq.length > 5) {
+              const eqSnippet = cleanEq.substring(0, Math.min(25, cleanEq.length));
+              if (matchedFile.content.includes(eqSnippet)) {
                 hasRef = true;
               }
             }

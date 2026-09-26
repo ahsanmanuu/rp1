@@ -491,6 +491,39 @@ export async function POST(req: Request) {
 
           // Hybrid fallback: Merge missing or truncated metadata/section files from deterministic assembly
           try {
+            // Document-wide float registry to guarantee 0% duplicate figures, charts, tables, algorithms
+            const normalizeFloatText = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+            const getImgBaseName = (src: string) => src.trim().replace(/^.*[\/\\]/, '').replace(/\.[a-zA-Z0-9]+$/, '').toLowerCase();
+
+            const globalIncludedImages = new Set<string>();
+            const globalIncludedLabels = new Set<string>();
+            const globalIncludedCaptions = new Set<string>();
+            const globalIncludedTables = new Set<string>();
+
+            // Pre-populate with everything in extractedComponents (both sections and float files)
+            for (const [fPath, fContent] of Object.entries(extractedComponents)) {
+              if (!fContent) continue;
+              const imgMatches = Array.from(fContent.matchAll(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/g));
+              for (const im of imgMatches) {
+                const bName = getImgBaseName(im[1]);
+                if (bName) globalIncludedImages.add(bName);
+              }
+              const labelMatches = Array.from(fContent.matchAll(/\\label\{([^}]+)\}/g));
+              for (const lm of labelMatches) {
+                const l = lm[1].trim();
+                if (l) globalIncludedLabels.add(l);
+              }
+              const capMatches = Array.from(fContent.matchAll(/\\caption\{([^}]+)\}/g));
+              for (const cm of capMatches) {
+                const clean = normalizeFloatText(cm[1].replace(/^(?:Figure|Fig\.?|Table|Tab\.?|Algorithm)\s*[\dIVX\.\-A-Z]*[:.\-–—\s]*/i, ''));
+                if (clean.length > 8) globalIncludedCaptions.add(clean.substring(0, 50));
+              }
+              if (fPath.startsWith('floats/tables/') || fPath.startsWith('tables/')) {
+                const cleanT = normalizeFloatText(fContent.replace(/\s+/g, ' '));
+                if (cleanT.length > 20) globalIncludedTables.add(cleanT.substring(0, 100));
+              }
+            }
+
             const rescueMissingFloats = (aiContent: string, detContent: string, currentFilePath?: string): string => {
               if (!detContent || !aiContent) return aiContent;
               const floatRegex = /\\begin\{(figure\*?|table\*?|algorithm\*?)\}(?:\[[^\]]*\])?[\s\S]*?\\end\{\1\}(?:\s*\\FloatBarrier)?/g;
@@ -499,54 +532,57 @@ export async function POST(req: Request) {
 
               while ((match = floatRegex.exec(detContent)) !== null) {
                 const floatBlock = match[0].trim();
-                
-                // 1. Check if already present in AI content (direct or via indirect \input{floats/...})
+
+                // 1. Image match check
                 const imgMatch = floatBlock.match(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/);
                 const imgFile = imgMatch ? imgMatch[1].trim() : null;
-                if (imgFile) {
-                  const imgBase = imgFile.replace(/^.*\//, '');
-                  if (result.includes(imgFile) || result.includes(imgBase)) continue;
-
-                  // Check if this section already inputs a float file that contains this image
-                  const floatInputMatch = result.match(/\\input\{(floats\/[^}]+)\}/g);
-                  if (floatInputMatch) {
-                    const alreadyReferenced = floatInputMatch.some(inp => {
-                      const floatPath = inp.match(/\\input\{([^}]+)\}/)?.[1];
-                      if (!floatPath) return false;
-                      const comp = extractedComponents[floatPath] || extractedComponents[`${floatPath}.tex`];
-                      return comp && (comp.includes(imgBase) || comp.includes(imgFile));
-                    });
-                    if (alreadyReferenced) continue;
-                  }
-
-                  // Check if ANY other section already includes this image
-                  const alreadyInOtherSection = Object.entries(extractedComponents).some(([fPath, fContent]) => {
-                    if (fPath === currentFilePath || !fContent) return false;
-                    if (fPath.startsWith('sections/')) {
-                      return fContent.includes(imgFile) || fContent.includes(imgBase);
-                    }
-                    return false;
-                  });
-                  if (alreadyInOtherSection) continue;
+                const imgBase = imgFile ? getImgBaseName(imgFile) : null;
+                if (imgBase && globalIncludedImages.has(imgBase)) {
+                  continue; // Figure/chart already exists in document! Never duplicate!
                 }
 
+                // 2. Label match check
                 const labelMatch = floatBlock.match(/\\label\{([^}]+)\}/);
                 const label = labelMatch ? labelMatch[1].trim() : null;
-                if (label) {
-                  if (result.includes(`\\label{${label}}`)) continue;
-                  const labelInOther = Object.entries(extractedComponents).some(([fPath, fContent]) => {
-                    if (fPath === currentFilePath || !fContent) return false;
-                    return fPath.startsWith('sections/') && fContent.includes(`\\label{${label}}`);
-                  });
-                  if (labelInOther) continue;
+                if (label && globalIncludedLabels.has(label)) {
+                  continue; // Label already exists in document! Never duplicate!
                 }
 
-                // 2. Find best inline placement right after referencing paragraph
-                let insertIdx = -1;
+                // 3. Caption match check
                 const capMatch = floatBlock.match(/\\caption\{([^}]+)\}/);
-                const caption = capMatch ? capMatch[1].trim() : '';
-                const numMatch = (caption + ' ' + (label || '') + ' ' + (imgFile || '')).match(/(?:figure|fig\.?|table|tab\.?|image|algorithm|alg\.?)[_:\s.-]*(\d+|[IVXLCDM]+)/i);
-                
+                const rawCap = capMatch ? capMatch[1].trim() : '';
+                const cleanCap = normalizeFloatText(rawCap.replace(/^(?:Figure|Fig\.?|Table|Tab\.?|Algorithm)\s*[\dIVX\.\-A-Z]*[:.\-–—\s]*/i, ''));
+                if (cleanCap.length > 8 && globalIncludedCaptions.has(cleanCap.substring(0, 50))) {
+                  continue; // Caption already exists in document! Never duplicate!
+                }
+
+                // 4. Table content snippet check
+                const isTable = /^\\begin\{table/i.test(floatBlock);
+                if (isTable) {
+                  const cleanBlock = normalizeFloatText(floatBlock.replace(/\s+/g, ' '));
+                  const snippet = cleanBlock.substring(0, 100);
+                  if (snippet.length > 20 && globalIncludedTables.has(snippet)) {
+                    continue; // Table already exists in document!
+                  }
+                }
+
+                // 5. Check if already referenced indirectly via \input{floats/...} in this section
+                const floatInputMatches = Array.from(result.matchAll(/\\input\{(floats\/[^}]+)\}/g));
+                let alreadyHandledByInput = false;
+                for (const fim of floatInputMatches) {
+                  const fPath = fim[1];
+                  const comp = extractedComponents[fPath] || extractedComponents[`${fPath}.tex`];
+                  if (!comp) continue;
+                  if (imgBase && getImgBaseName(comp).includes(imgBase)) { alreadyHandledByInput = true; break; }
+                  if (label && comp.includes(`\\label{${label}}`)) { alreadyHandledByInput = true; break; }
+                  if (cleanCap.length > 8 && normalizeFloatText(comp).includes(cleanCap.substring(0, 40))) { alreadyHandledByInput = true; break; }
+                }
+                if (alreadyHandledByInput) continue;
+
+                // Truly missing float: safely place it inline right after its referencing paragraph
+                let insertIdx = -1;
+                const numMatch = (rawCap + ' ' + (label || '') + ' ' + (imgFile || '')).match(/(?:figure|fig\.?|table|tab\.?|image|algorithm|alg\.?)[_:\s.-]*(\d+|[IVXLCDM]+)/i);
+
                 if (numMatch) {
                   const num = numMatch[1];
                   const isAlgo = /(?:algorithm|alg)/i.test(numMatch[0]);
@@ -567,6 +603,15 @@ export async function POST(req: Request) {
                   result = result.slice(0, insertIdx) + `\n${floatBlock}\n\n` + result.slice(insertIdx);
                 } else {
                   result = `${result.trim()}\n\n${floatBlock}\n`;
+                }
+
+                // Register into global sets so subsequent sections never rescue this same float!
+                if (imgBase) globalIncludedImages.add(imgBase);
+                if (label) globalIncludedLabels.add(label);
+                if (cleanCap.length > 8) globalIncludedCaptions.add(cleanCap.substring(0, 50));
+                if (isTable) {
+                  const cleanBlock = normalizeFloatText(floatBlock.replace(/\s+/g, ' '));
+                  if (cleanBlock.length > 20) globalIncludedTables.add(cleanBlock.substring(0, 100));
                 }
               }
 
@@ -615,6 +660,10 @@ export async function POST(req: Request) {
                 }
               } else if ((filePath.startsWith('floats/algorithms/') || filePath.startsWith('algorithms/')) && content && content.includes('\\begin{algorithm')) {
                 if (!extractedComponents[filePath] || !extractedComponents[filePath].includes('\\begin{algorithm') || extractedComponents[filePath].length < content.length * 0.4) {
+                  extractedComponents[filePath] = content;
+                }
+              } else if ((filePath.startsWith('floats/equations/') || filePath.startsWith('equations/')) && content && (content.includes('\\begin{equation') || content.includes('$') || content.includes('\\begin{align'))) {
+                if (!extractedComponents[filePath] || extractedComponents[filePath].length < content.length * 0.4) {
                   extractedComponents[filePath] = content;
                 }
               }

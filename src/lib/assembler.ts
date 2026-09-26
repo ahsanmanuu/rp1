@@ -615,8 +615,8 @@ export class LatexAssembler {
       const sectionContent = dedupedNodes.map((n, idx) => {
         const assembled = LatexAssembler.assembleNode(isTwoColumn ? { ...n, twoColumn: true } as any : n, mathBlocks);
         if (!assembled) return '';
-        // If consecutive structural float nodes (e.g. table after table, or table after figure), insert spacer and FloatBarrier
-        if (idx > 0 && ['table', 'figure', 'figure-group', 'chart'].includes(n.type) && ['table', 'figure', 'figure-group', 'chart'].includes(dedupedNodes[idx - 1]?.type)) {
+        // If consecutive structural float nodes (e.g. table after table, or table after figure), insert spacer (omit FloatBarrier in two-column mode to prevent blank pages)
+        if (!isTwoColumn && idx > 0 && ['table', 'figure', 'figure-group', 'chart'].includes(n.type) && ['table', 'figure', 'figure-group', 'chart'].includes(dedupedNodes[idx - 1]?.type)) {
           return `\\vspace{1em}\n\\FloatBarrier\n${assembled}`;
         }
         return assembled;
@@ -1651,15 +1651,17 @@ export class LatexAssembler {
 
     // In two-column mode or tall tables, reduce padding and font size to prevent margin and page overflow
     const colSepCmd = (isTwoColMode && totalGridCols >= 3) ? '\\setlength{\\tabcolsep}{3pt}\n' : (totalGridCols >= 5 ? '\\setlength{\\tabcolsep}{4pt}\n' : '');
-    const fontSizeCmd = (rowCount > 25 || (isTwoColMode && (totalGridCols >= 4 || totalEstimatedWidth > 60)))
-      ? '{\\footnotesize\n'
-      : ((rowCount > 15 || (isTwoColMode && totalGridCols >= 3) || totalGridCols >= 6) ? '{\\small\n' : '');
+    const fontSizeCmd = rowCount > 35
+      ? '{\\scriptsize\n'
+      : (rowCount > 25 || (isTwoColMode && (totalGridCols >= 4 || totalEstimatedWidth > 60)))
+        ? '{\\footnotesize\n'
+        : ((rowCount > 15 || (isTwoColMode && totalGridCols >= 3) || totalGridCols >= 6) ? '{\\small\n' : '');
     const fontSizeEnd = fontSizeCmd ? '\n}' : '';
     const hasWrappedCells = specsList.some(s => s.includes('X'));
     const extraRowHeightCmd = hasWrappedCells ? '\\setlength{\\extrarowheight}{2pt}\n' : '';
-    const arrayStretchVal = rowCount > 20 ? '1.05' : '1.2';
+    const arrayStretchVal = rowCount > 30 ? '0.95' : (rowCount > 20 ? '1.05' : '1.2');
 
-    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n${captionLine}\\label{${labelKey}}\n${colSepCmd}${extraRowHeightCmd}${fontSizeCmd}\\renewcommand{\\arraystretch}{${arrayStretchVal}}\n\\begin{adjustbox}{max width=${targetWidth},max totalheight=0.82\\textheight,keepaspectratio}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}\n\\end{adjustbox}${fontSizeEnd}\n\\end{${tableEnv}}\n`;
+    return `\n\\begin{${tableEnv}}${tablePlacement}\n\\centering\n${captionLine}\\label{${labelKey}}\n${colSepCmd}${extraRowHeightCmd}${fontSizeCmd}\\renewcommand{\\arraystretch}{${arrayStretchVal}}\n\\begin{adjustbox}{max width=${targetWidth},max totalheight=0.80\\textheight,keepaspectratio}\n\\begin{${tabularEnv}}${widthParam}{${activeSpec}}\n\\hline\n${tableRows}\n\\end{${tabularEnv}}\n\\end{adjustbox}${fontSizeEnd}\n\\end{${tableEnv}}\n`;
   }
 
 
@@ -2563,6 +2565,27 @@ export class ModularLatexAssembler {
       "\\catcode`\\@=12"
     );
 
+    if (isIeee) {
+      preamble.push(
+        "",
+        "% --- IEEE SAFE ABSTRACT & KEYWORDS ---",
+        "\\catcode`\\@=11",
+        "\\@ifundefined{abstract}{}{%",
+        "  \\renewenvironment{abstract}{%",
+        "    \\par\\noindent\\textbf{\\textit{Abstract}}---\\ignorespaces",
+        "  }{\\par\\vspace{0.8em}}",
+        "}",
+        "\\@ifundefined{IEEEkeywords}{%",
+        "  \\newenvironment{IEEEkeywords}{\\par\\noindent\\textbf{\\textit{Index Terms}}---\\ignorespaces}{\\par\\vspace{0.8em}}",
+        "}{%",
+        "  \\renewenvironment{IEEEkeywords}{%",
+        "    \\par\\noindent\\textbf{\\textit{Index Terms}}---\\ignorespaces",
+        "  }{\\par\\vspace{0.8em}}",
+        "}",
+        "\\catcode`\\@=12"
+      );
+    }
+
     const authorStyle = mapping.authorStyle || (isAcm ? 'acm' : isIeee ? 'ieee' : isElsevier ? 'elsevier' : isLncs ? 'standard' : 'standard');
     const needsAuthBlk = (authorStyle === 'standard' || authorStyle === 'nature' || authorStyle === 'science') && 
                          !isSciRep && !isNature && !isAcm && !isIeee && !isElsevier && !isLncs;
@@ -2781,16 +2804,17 @@ export class ModularLatexAssembler {
       if (files['metadata/keywords.tex']) header.push('\\input{metadata/keywords.tex}');
       header.push('\\maketitle');
     } else if (isIeee) {
-      // IEEE: abstract and keywords in \IEEEtitleabstractindextext, then \maketitle
-      const ieeeAbstract = abstractEsc ? `\\begin{abstract}\n${abstractEsc}\n\\end{abstract}` : '';
-      const ieeeKeywords = kwText ? `\\begin{IEEEkeywords}\n${kwText}\n\\end{IEEEkeywords}` : '';
-      
-      if (ieeeAbstract || ieeeKeywords) {
-        metadataDeclarations.push(`\\IEEEtitleabstractindextext{\n${ieeeAbstract}\n${ieeeKeywords}\n}`);
-        header.push('\\maketitle');
-        header.push('\\IEEEdisplaynontitleabstractindextext');
-      } else {
-        header.push('\\maketitle');
+      // IEEE: \maketitle followed directly by abstract and index terms
+      header.push('\\maketitle');
+      if (files['metadata/abstract.tex']) {
+        header.push('\\input{metadata/abstract.tex}');
+      } else if (abstractEsc) {
+        header.push(`\\begin{abstract}\n${abstractEsc}\n\\end{abstract}`);
+      }
+      if (files['metadata/keywords.tex']) {
+        header.push('\\input{metadata/keywords.tex}');
+      } else if (kwText) {
+        header.push(`\\begin{IEEEkeywords}\n${kwText}\n\\end{IEEEkeywords}`);
       }
     } else if (isNature) {
       header.push('\\maketitle');

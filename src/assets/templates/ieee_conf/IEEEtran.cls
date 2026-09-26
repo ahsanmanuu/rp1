@@ -9,6 +9,7 @@
 \long\def\IEEEauthorblockN#1{{\bfseries#1}\par}
 \long\def\IEEEauthorblockA#1{#1\par}
 \newenvironment{IEEEkeywords}{\par\noindent\textbf{Keywords:}}{\par}
+\renewenvironment{abstract}{\par\noindent\textbf{\textit{Abstract}}---\ignorespaces}{\par\vspace{0.8em}}
 \long\def\email#1{#1}
 \renewcommand{\maketitle}{%
   \twocolumn[{%
