@@ -64,7 +64,7 @@ export interface StructuredDocument {
   };
 }
 
-const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-z]{2,10}(?:\.[a-z]{2,10})*(?=[A-Z\s,;:/()<>\[\]{}]|$)/i;
+const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.(?:[a-z]{2,10}(?:\.[a-z]{2,10})*|[A-Z]{2,10}(?:\.[A-Z]{2,10})*)(?=[A-Z\s,;:/()<>\[\]{}]|$)/;
 // Narrow AFFIL_KEYWORDS: remove generic words (research, systems, lab, group, etc.)
 const AFFIL_KEYWORDS = /(?:^|\b|\d|_|\W)(?:department|dept|university|institute|college|school|center|centre|organization|institution|corporation|inc|co\.|ltd|association|academy|laboratory|lab|division|faculty|campus|polytechnic|univ|inst|state|national)\b/i;
 const CHART_KEYWORD_RE = /\b(?:chart|plot|graph|histogram|heatmap|scatter\s*plot|bar\s*chart|box\s*plot|pie\s*chart|line\s*chart|roc\s*curve|precision-recall\s*curve|confusion\s*matrix|pareto)\b/i;
@@ -514,7 +514,7 @@ export class DeepDocumentParser {
     // Universal email-author boundary disentanglement:
     // If an email address is glued to a capitalized author name (e.g. "...@domain.comMala Kalra"),
     // inject a <br /> between the email and the author name so soft-return splitting separates them.
-    const normalizedHtml = cleanHtml.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,10}(?:\.[a-z]{2,10})*)([A-Z][a-z]+)/gi, '$1<br />$2');
+    const normalizedHtml = cleanHtml.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.(?:[a-z]{2,10}(?:\.[a-z]{2,10})*|[A-Z]{2,10}(?:\.[A-Z]{2,10})*))([A-Z][a-z]+)/g, '$1<br />$2');
 
     let dom: JSDOM; try { dom = new JSDOM(normalizedHtml); } catch { return result; }
     const doc = dom.window.document;
