@@ -1222,7 +1222,7 @@ export class LatexAssembler {
         const isWide = (node as any).isWide === true || (node as any).widthHint === 'wide' || isWideCaption;
         const useFigureStar = twoCol && isWide;
         const figEnv = useFigureStar ? 'figure*' : 'figure';
-        const placement = '[!htbp]';
+        const placement = useFigureStar ? '[!t]' : '[!htbp]';
         const imgWidth = useFigureStar ? '0.85\\textwidth' : (twoCol ? '\\columnwidth' : '0.85\\linewidth');
         return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=${imgWidth},max height=0.7\\textheight,keepaspectratio]{${fileId}}\n${captionLine}\\label{${label}}\n\\end{${figEnv}}\n`;
       }
@@ -1241,7 +1241,7 @@ export class LatexAssembler {
         const isWide = (node as any).isWide === true || (node as any).widthHint === 'wide' || isWideCaption;
         const useFigureStar = twoCol && isWide;
         const figEnv = useFigureStar ? 'figure*' : 'figure';
-        const placement = '[!htbp]';
+        const placement = useFigureStar ? '[!t]' : '[!htbp]';
         const imgWidth = useFigureStar ? '0.85\\textwidth' : (twoCol ? '\\columnwidth' : '0.85\\linewidth');
         return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=${imgWidth},max height=0.7\\textheight,keepaspectratio]{${fileId}}\n${captionLine}\\label{${label}}\n\\end{${figEnv}}\n`;
       }
@@ -1575,7 +1575,7 @@ export class LatexAssembler {
     const totalEstimatedWidth = colMaxLen.reduce((a, b) => a + b, 0);
     const twoColWide = isTwoColMode && (totalGridCols >= 5 || (totalGridCols >= 4 && colMaxLen.some(l => l > 30)) || colMaxLen.some(l => l > 50) || totalEstimatedWidth > 80);
     const tableEnv = twoColWide ? 'table*' : 'table';
-    const tablePlacement = '[!htbp]';
+    const tablePlacement = twoColWide ? '[!t]' : '[!htbp]';
     const tabularEnv = 'tabularx';
     const targetWidth = twoColWide ? '\\textwidth' : (isTwoColMode ? '\\columnwidth' : '\\linewidth');
     const widthParam = `{${targetWidth}}`;
@@ -1618,7 +1618,7 @@ export class LatexAssembler {
       const isWide = (node as any).isWide === true || (node as any).widthHint === 'wide' || isWideCaption;
       const useFigureStar = twoCol && isWide;
       const figEnv = useFigureStar ? 'figure*' : 'figure';
-      const placement = '[!htbp]';
+      const placement = useFigureStar ? '[!t]' : '[!htbp]';
       const imgWidth = useFigureStar ? '0.85\\textwidth' : (twoCol ? '\\columnwidth' : '0.85\\linewidth');
       return `\n\\begin{${figEnv}}${placement}\n\\centering\n\\includegraphics[width=${imgWidth},max height=0.7\\textheight,keepaspectratio]{${fileId}}\n${cap}\\end{${figEnv}}\n`;
     }
@@ -1627,10 +1627,27 @@ export class LatexAssembler {
     const twoCol = (node as any).twoColumn === true;
     const figEnv = twoCol ? 'figure*' : 'figure';
 
-    // Width fraction per image
-    const n = Math.min(images.length, 4);
-    const widthFrac = n === 2 ? '0.48' : n === 3 ? '0.32' : '0.23';
+    // Width fraction and column layout per image group (e.g. 2x3 grid for 6 subfigures)
+    let colsPerRow = 3;
+    let widthFrac = '0.31';
+    if (images.length === 2) {
+      colsPerRow = 2;
+      widthFrac = '0.48';
+    } else if (images.length === 3) {
+      colsPerRow = 3;
+      widthFrac = '0.31';
+    } else if (images.length === 4) {
+      colsPerRow = 2;
+      widthFrac = '0.48';
+    } else if (images.length <= 6) {
+      colsPerRow = 3;
+      widthFrac = '0.31';
+    } else {
+      colsPerRow = 4;
+      widthFrac = '0.23';
+    }
 
+    const maxSubH = colsPerRow <= 2 ? '0.35\\textheight' : '0.25\\textheight';
     const subfigures = images.map((img, i) => {
       const fileId = (img.src || `figure_${i}`).replace(/^assets\//, '');
       // UNIVERSAL: Truncate very long subfigure captions (>150 chars) to avoid wall-of-text captions.
@@ -1654,7 +1671,6 @@ export class LatexAssembler {
       const capLine = subCap
         ? `  \\caption{${LatexAssembler.escapeText(subCap, mathBlocks)}}\n`
         : '';
-      const maxSubH = n <= 2 ? '0.4\\textheight' : '0.3\\textheight';
       return [
         `\\begin{subfigure}[b]{${widthFrac}\\linewidth}`,
         `  \\centering`,
@@ -1663,6 +1679,14 @@ export class LatexAssembler {
         `\\end{subfigure}`,
       ].filter(Boolean).join('\n');
     });
+
+    // Chunk subfigures into rows with explicit LaTeX row breaks (\\[1ex])
+    const rows: string[] = [];
+    for (let r = 0; r < subfigures.length; r += colsPerRow) {
+      const rowChunk = subfigures.slice(r, r + colsPerRow);
+      rows.push(rowChunk.join('\n\\hfill\n'));
+    }
+    const subfiguresBody = rows.join('\n\n\\\\[1ex]\\medskip\n\n');
 
     // UNIVERSAL CAPTION DEDUPLICATION:
     // The overall caption is often joined from multiple identical sub-captions like "cap and cap and cap".
@@ -1693,11 +1717,12 @@ export class LatexAssembler {
       ? `\\caption{${LatexAssembler.escapeText(overallCaption, mathBlocks)}}\n`
       : '';
     const labelSuffix = Math.random().toString(36).substring(2, 7);
+    const placement = twoCol ? '[!t]' : '[!htbp]';
 
     return [
-      `\n\\begin{${figEnv}}[\\!htbp]`.replace('[\\!', '[!'),
+      `\n\\begin{${figEnv}}${placement}`,
       `\\centering`,
-      subfigures.join('\n\\hfill\n'),
+      subfiguresBody,
       capLine,
       `\\label{fig:group_${labelSuffix}}`,
       `\\end{${figEnv}}\n`,
@@ -2503,7 +2528,15 @@ export class ModularLatexAssembler {
     });
     files['metadata/organizations.json'] = JSON.stringify(doc.organizations, null, 2);
     
-    const authorLines = (doc.authors || []).map((a, idx) => {
+    const NON_AUTHOR_NAME_RE = /^(?:dataset|abstract|keywords?|index\s+terms?|introduction|methodology|background|results|discussion|conclusion|references|table\s*\d+|figure\s*\d+|fig\s*\d+)$/i;
+
+    const validAuthors = (doc.authors || []).filter(a => {
+      const raw = typeof a.name === 'string' ? a.name : (a as any).text || '';
+      const clean = raw.replace(/[*\u2020\u2021\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070\d]/g, '').trim();
+      return clean.length >= 2 && !NON_AUTHOR_NAME_RE.test(clean) && !NON_AUTHOR_NAME_RE.test(raw.trim());
+    });
+
+    const authorLines = validAuthors.map((a, idx) => {
       const name = LatexAssembler.escape(typeof a.name === 'string' ? a.name : (a as any).text || 'Author', []);
 
       // Proper affiliation lookup (verbatim affiliation from author info takes priority)
@@ -2532,7 +2565,9 @@ export class ModularLatexAssembler {
         return `\\author{${name}}${email ? `\\email{${email}}` : ""}\n\\affiliation{\n  \\institution{${inst}}\n  \\city{${city}}\n  \\country{${country}}\n}`;
       }
       if (authorStyle === 'ieee') {
-        return `\\IEEEauthorblockN{${name}}\n\\IEEEauthorblockA{${affil}\\\\${email ? `email: ${email}` : ""}}`;
+        const affilFormatted = affil.replace(/,\s*(?=[A-Z0-9])/g, '\\\\\n');
+        const emailLine = email ? `\\\\${email}` : "";
+        return `\\IEEEauthorblockN{${name}}\n\\IEEEauthorblockA{${affilFormatted}${emailLine}}`;
       }
       if (authorStyle === 'science') {
           const id = a.affiliationIds && a.affiliationIds.length > 0 ? a.affiliationIds.join(',') : "1";
@@ -2577,7 +2612,7 @@ export class ModularLatexAssembler {
       } else {
         elsLines.push(`\\affiliation[aff1]{organization={Institution}, country={}}`);
       }
-      if ((doc.authors || []).some(a => a.isCorresponding)) elsLines.push("\\cortext[cor1]{Corresponding author}");
+      if (validAuthors.some(a => a.isCorresponding)) elsLines.push("\\cortext[cor1]{Corresponding author}");
       files['metadata/authors.tex'] = elsLines.join('\n');
     } else if (isAcm) {
       metadataDeclarations.push(`\\input{metadata/authors.tex}`);
@@ -2591,7 +2626,7 @@ export class ModularLatexAssembler {
       const cleanAuthors = authorLines.map(a => a.trim()).filter(Boolean);
       metadataDeclarations.push(`\\input{metadata/authors.tex}`);
       
-      const corresponding = (doc.authors || []).find(a => a.isCorresponding) || (doc.authors || []).find(a => a.email);
+      const corresponding = validAuthors.find(a => a.isCorresponding) || validAuthors.find(a => a.email);
       let thanksStr = "";
       if (corresponding?.email) {
         const emailEsc = LatexAssembler.escape(corresponding.email, []);
@@ -2622,7 +2657,7 @@ export class ModularLatexAssembler {
         return true;
       });
       cleanOrgs.forEach((o, i) => stdLines.push(`\\affil[${i+1}]{${o}}`));
-      const corresponding = (doc.authors || []).find(a => a.isCorresponding);
+      const corresponding = validAuthors.find(a => a.isCorresponding);
       if (corresponding?.email) stdLines.push(`\\affil[*]{Corresponding author: ${LatexAssembler.escape(corresponding.email, [])}}`);
       files['metadata/authors.tex'] = stdLines.join('\n');
       if (!isIeee && !isAcm) metadataDeclarations.push("\\date{}");

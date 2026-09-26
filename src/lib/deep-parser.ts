@@ -80,6 +80,7 @@ const normImgSrc = (s: string) => String(s || '').replace(/\\/g, '/').replace(/^
 // every ^-anchored regex before) before matching.
 const DESIGNATION_RE = /^(?:dr\.|prof\.|professor|deputy librarian|assistant professor|associate professor|visiting professor|lecturer|senior lecturer|dean|principal|head of|head of department|researcher|research scholar|phd scholar|scholar|librarian|bibliographer|fellow|senior research fellow|technical assistant|mr\.|ms\.|mrs\.|md)\b/i;
 const EMAIL_PREFIX_RE = /^(?:email|e-mail|mail|phone|tel|orcid|corresponding author)\b/i;
+export const NON_AUTHOR_NAME_RE = /^(?:dataset|datasets|data|abstract|keywords?|index\s*terms?|introduction|methods?|methodology|experiments?|results?|table|tables|fig(?:ure)?|figures|overview|proposed|paper|study|author|authors|references?|acknowledg(?:e)?ments?|conclusion|conclusions|discussion)\b/i;
 
 function stripFrontMatterPrefix(text: string): string {
   return text
@@ -309,7 +310,7 @@ export class DeepDocumentParser {
               const names = line.split(/[,;&]|\s+and\s+/i).map(n => n.trim()).filter(n => n.length > 2);
               names.forEach(n => {
                   const cleanName = n.replace(/[*\u2020\u2021\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u2070\d]/g, '').trim();
-                  if (cleanName.length > 2 && !AFFIL_KEYWORDS.test(cleanName) && cleanName.split(' ').length <= 7) {
+                  if (cleanName.length > 2 && !AFFIL_KEYWORDS.test(cleanName) && !NON_AUTHOR_NAME_RE.test(cleanName) && cleanName.split(' ').length <= 7) {
                       if (!result.authors.find(a => a.name === cleanName)) {
                           result.authors.push({ name: cleanName, affiliationIds: [] });
                       }
@@ -1348,6 +1349,30 @@ export class DeepDocumentParser {
       }
 
       if (nextRole === 'section' || nextRole === 'equation' || nextRole === 'table' || nextRole === 'figure') {
+          if (nextRole === 'figure') {
+            const lastManifest = manifest.length > 0 ? manifest[manifest.length - 1] : null;
+            if (lastManifest && lastManifest.role === 'figure') {
+              let hasInterveningCaptionOrHeading = false;
+              for (let k = lastManifest.endIdx + 1; k < i; k++) {
+                const midEl = elements[k];
+                const midTag = midEl.tagName.toLowerCase();
+                const midText = (midEl.textContent || '').trim();
+                const isHeading = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(midTag);
+                const isFigCap = /^\s*[\u200B\uFEFF\u00A0]*\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo|Graph)\.?\s*(?:(?:\(|\b)(?:\d+|[IVXLCDMivxlcdm]+|[a-zA-Z])(?:\)|\b))?(?:\s*[:.\-–—\s]|\s*$)\s*\S/i.test(midText);
+                if (isHeading || (isFigCap && midText.length <= 400)) {
+                  hasInterveningCaptionOrHeading = true;
+                  break;
+                }
+              }
+              if (!hasInterveningCaptionOrHeading) {
+                flush(i);
+                lastManifest.elements.push(el);
+                lastManifest.endIdx = i;
+                continue;
+              }
+            }
+          }
+
           flush(i);
           if (nextRole === 'table') {
             if (!foundAbstract && i < 15) {
@@ -1521,7 +1546,7 @@ export class DeepDocumentParser {
                     .replace(/\((?:\d+\s*pt|bold|italic|title\s*case)[^)]*\)/gi, '')
                     .replace(/^[\s,;()\-–—]+|[\s,;()\-–—]+$/g, '')
                     .trim();
-                  if (cleanName.length >= 2 && !AFFIL_KEYWORDS.test(cleanName) && cleanName.split(' ').length <= 7) {
+                  if (cleanName.length >= 2 && !AFFIL_KEYWORDS.test(cleanName) && !NON_AUTHOR_NAME_RE.test(cleanName) && cleanName.split(' ').length <= 7) {
                     const emails = cellText.match(EMAIL_RE) || [];
                     const affilLines = lines.slice(1).filter((l: string) => !EMAIL_RE.test(l));
                     const affilStr = affilLines.join(', ').replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
@@ -1609,7 +1634,7 @@ export class DeepDocumentParser {
                   const subNames = namePart.split(/[,&]|\s+and\s+/i).map((n: string) => n.trim()).filter((n: string) => n.length > 2);
                   for (const n of subNames) {
                     const { cleanName, affilId } = cleanAuthorNameAndMarker(n);
-                    if (cleanName.length < 2 || AFFIL_KEYWORDS.test(cleanName) || cleanName.split(' ').length > 7) continue;
+                    if (cleanName.length < 2 || AFFIL_KEYWORDS.test(cleanName) || NON_AUTHOR_NAME_RE.test(cleanName) || cleanName.split(' ').length > 7) continue;
                     let aut = result.authors.find(a => a.name.toLowerCase() === cleanName.toLowerCase());
                     if (!aut) {
                       aut = {
@@ -1636,11 +1661,11 @@ export class DeepDocumentParser {
                     remaining = remaining.replace(em, ' ');
                   }
                   remaining = remaining.replace(/^[\s,;()\-–—]+|[\s,;()\-–—]+$/g, '').trim();
-                  if (remaining.length >= 3 && !AFFIL_KEYWORDS.test(remaining) && remaining.split(' ').length <= 7) {
+                  if (remaining.length >= 3 && !AFFIL_KEYWORDS.test(remaining) && !NON_AUTHOR_NAME_RE.test(remaining) && remaining.split(' ').length <= 7) {
                     const subNames = remaining.split(/[,&]|\s+and\s+/i).map((n: string) => n.trim()).filter((n: string) => n.length > 2);
                     for (const n of subNames) {
                       const { cleanName, affilId } = cleanAuthorNameAndMarker(n);
-                      if (cleanName.length < 2 || AFFIL_KEYWORDS.test(cleanName) || cleanName.split(' ').length > 7) continue;
+                      if (cleanName.length < 2 || AFFIL_KEYWORDS.test(cleanName) || NON_AUTHOR_NAME_RE.test(cleanName) || cleanName.split(' ').length > 7) continue;
                       let aut = result.authors.find(a => a.name.toLowerCase() === cleanName.toLowerCase());
                       if (!aut) {
                         aut = {
@@ -1659,7 +1684,7 @@ export class DeepDocumentParser {
                   const subNames = line.split(/[,&]|\s+and\s+/i).map((n: string) => n.trim()).filter((n: string) => n.length > 2);
                   for (const n of subNames) {
                     const { cleanName, affilId } = cleanAuthorNameAndMarker(n);
-                    if (cleanName.length < 2 || AFFIL_KEYWORDS.test(cleanName) || cleanName.split(' ').length > 7) continue;
+                    if (cleanName.length < 2 || AFFIL_KEYWORDS.test(cleanName) || NON_AUTHOR_NAME_RE.test(cleanName) || cleanName.split(' ').length > 7) continue;
                     let aut = result.authors.find(a => a.name.toLowerCase() === cleanName.toLowerCase());
                     if (!aut) {
                       aut = {
@@ -2075,8 +2100,16 @@ export class DeepDocumentParser {
                   continue;
               }
 
-              const imgs: Element[] = Array.from(el0.querySelectorAll('img'));
-              if (imgs.length === 0 && el0.tagName.toLowerCase() === 'img') imgs.push(el0 as Element);
+              const imgs: Element[] = [];
+              for (const elItem of (entry.elements || [el0])) {
+                if (elItem.tagName.toLowerCase() === 'img') {
+                  imgs.push(elItem as Element);
+                } else {
+                  const subImgs = Array.from(elItem.querySelectorAll('img')) as Element[];
+                  if (subImgs.length > 0) imgs.push(...subImgs);
+                  else if (elItem.tagName.toLowerCase() === 'img') imgs.push(elItem as Element);
+                }
+              }
 
               // PAIR STANDALONE CAPTIONS: If el0 has no <img>, check adjacent sibling elements
               if (imgs.length === 0) {
@@ -2856,7 +2889,9 @@ export class DeepDocumentParser {
           // (i.e., the caption's ordinal matches the far element's position AND the far element
           // is within a reasonable distance from the caption). This prevents double-counting
           // while still allowing captions to be found even if the position mapping is slightly off.
-          const belongsToFar = capOrdinal !== null && farPos !== undefined && capOrdinal === farPos && i < 10;
+          const thisPos = typePositions.get(el);
+          const belongsToFar = (capOrdinal !== null && farPos !== undefined && capOrdinal === farPos && i < 10) ||
+                               (capOrdinal !== null && thisPos !== undefined && Math.abs(capOrdinal - thisPos) >= 2);
           if (!belongsToFar) {
             processed.add(candidate);
             if (consumedTexts) consumedTexts.add(t);

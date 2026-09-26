@@ -632,10 +632,17 @@ function composeMainTex(
     }
   }
   if (preamble.length === 0) preamble = defaultPreamble(templateId);
+  const isElsevier = templateId.includes('elsevier');
+  const isAcm = templateId.includes('acm');
+  const isIeee = templateId.includes('ieee');
+
   const preText = preamble.join('\n');
   if (!preText.includes('\\graphicspath')) preamble.push(...GRAPHICS_PATH_LINES);
   if (!preText.includes('placeins')) preamble.push('\\usepackage{placeins}');
   if (!preText.includes('adjustbox')) preamble.push('\\usepackage{adjustbox}');
+  if (isIeee && !preText.includes('stfloats') && !preText.includes('dblfloatfix')) {
+    preamble.push('\\usepackage{stfloats}');
+  }
   if (!preText.includes('subfigure')) {
     preamble.push(
       "\\catcode`\\@=11",
@@ -654,10 +661,6 @@ function composeMainTex(
       "\\catcode`\\@=12"
     );
   }
-
-  const isElsevier = templateId.includes('elsevier');
-  const isAcm = templateId.includes('acm');
-  const isIeee = templateId.includes('ieee');
 
   const titleFile = metadatas.find(f => f.path === 'metadata/title.tex');
   const authorsFile = metadatas.find(f => f.path === 'metadata/authors.tex');
@@ -712,11 +715,11 @@ function composeMainTex(
   }
 
   // Sections in sorted numerical order (01_slug.tex, 02_slug.tex, ...)
-  // Add \FloatBarrier between sections to flush pending floats and prevent drifting across sections
+  // In two-column mode, avoid \FloatBarrier between sections as it forces premature column/page breaks
   for (let i = 0; i < sections.length; i++) {
     body.push(`\\input{${sections[i].path}}`);
-    if (i < sections.length - 1) {
-      body.push('\\FloatBarrier');
+    if (!isTwoColumn && i < sections.length - 1) {
+      // In single column only, optional barrier
     }
   }
 
@@ -735,17 +738,64 @@ function composeMainTex(
     if (m) referencedFloatPaths.add(m[1].trim());
   }
 
-  // Check if float figures are already rendered directly inside any section file (e.g. \includegraphics)
+  // Check if float figures or tables are already rendered directly inside any section file
   for (const f of floats) {
+    const fContent = f.content || '';
+
+    // Check figures: all \includegraphics references
     if (f.path.startsWith('floats/figures/')) {
-      const imgMatch = f.content?.match(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/);
-      if (imgMatch) {
-        const imgName = imgMatch[1].replace(/^.*[\/\\]/, '').toLowerCase().trim();
-        const alreadyInSections = sections.some(sec => {
-          const secContent = (sec.content || '').toLowerCase();
-          return secContent.includes(imgName);
+      const allImgMatches = Array.from(fContent.matchAll(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/g));
+      if (allImgMatches.length > 0) {
+        const hasAnyImgInSections = allImgMatches.some(m => {
+          const imgName = m[1].replace(/^.*[\/\\]/, '').toLowerCase().trim();
+          return sections.some(sec => (sec.content || '').toLowerCase().includes(imgName));
         });
-        if (alreadyInSections) {
+        if (hasAnyImgInSections) {
+          referencedFloatPaths.add(f.path);
+        }
+      }
+    }
+
+    // Check labels
+    const labelMatch = fContent.match(/\\label\{([^}]+)\}/);
+    if (labelMatch) {
+      const lbl = labelMatch[1].trim();
+      if (sections.some(sec => (sec.content || '').includes(lbl))) {
+        referencedFloatPaths.add(f.path);
+      }
+    }
+
+    // Check captions
+    const capMatch = fContent.match(/\\caption\{([^}]+)\}/);
+    if (capMatch) {
+      const rawCap = capMatch[1].replace(/\\cite\{[^}]*\}/g, '').replace(/[^a-zA-Z0-9]/g, ' ').trim().toLowerCase();
+      const probeCap = rawCap.substring(0, Math.min(35, rawCap.length)).trim();
+      if (probeCap.length >= 8) {
+        if (sections.some(sec => {
+          const secNorm = (sec.content || '').replace(/\\cite\{[^}]*\}/g, '').replace(/[^a-zA-Z0-9]/g, ' ').toLowerCase();
+          return secNorm.includes(probeCap);
+        })) {
+          referencedFloatPaths.add(f.path);
+        }
+      }
+    }
+
+    // Check tables: if table cell content or headers already match any section
+    if (f.path.startsWith('floats/tables/')) {
+      const words = fContent
+        .replace(/\\begin\{[^}]*\}|\\end\{[^}]*\}|\\hline|\\toprule|\\bottomrule|\\midrule/g, ' ')
+        .replace(/\\[a-zA-Z]+/g, ' ')
+        .replace(/[^a-zA-Z0-9]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 4);
+      const significantWords = words.slice(0, 10);
+      if (significantWords.length >= 3) {
+        const matchesSection = sections.some(sec => {
+          const secText = (sec.content || '').toLowerCase();
+          const matchCount = significantWords.filter(w => secText.includes(w.toLowerCase())).length;
+          return matchCount >= Math.min(3, significantWords.length);
+        });
+        if (matchesSection) {
           referencedFloatPaths.add(f.path);
         }
       }
