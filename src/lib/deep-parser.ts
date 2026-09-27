@@ -415,7 +415,12 @@ export class DeepDocumentParser {
           
           // Universal dynamic hierarchical prefix scan: e.g. "1.", "1.1", "1.1.1", "A.1", "I.A.1", "Section 3:"
           const prefixMatch = cleanLine.match(/^(?:\s*(?:(?:section|chapter|appendix|part)\s+)?((?:\d+|[ivxlcdm]+|[A-Za-z])(?:\.(?:\d+|[ivxlcdm]+|[A-Za-z]))*)(?:\.?[.:\s)]+))/i);
-          const isNumberedHeading = prefixMatch !== null && isValidSectionPrefix(prefixMatch[1], prefixMatch[0]) && cleanLine.length < 120 && !cleanLine.endsWith('.');
+          const numberedRemainder = prefixMatch ? cleanLine.substring(prefixMatch[0].length).trim() : '';
+          const hasNumberPunct = prefixMatch ? !!(prefixMatch[0].match(/[.:\)\]]+\s*$/) || [''])[0] : false;
+          // "10 participants were enrolled..." is a numbered sentence/list item, not a
+          // section: a bare number + whitespace followed by a lowercase word is prose.
+          const isNumberedHeading = prefixMatch !== null && isValidSectionPrefix(prefixMatch[1], prefixMatch[0]) && cleanLine.length < 120 && !cleanLine.endsWith('.') &&
+            !(hasNumberPunct === false && /^[a-z]/.test(numberedRemainder));
           // Support Title Case AND ALL CAPS headings (e.g. "RESULTS AND DISCUSSION", "EXPERIMENTAL SETUP")
           const isShortTitleCase = cleanLine.length < 80 && cleanLine.length > 3 && !cleanLine.endsWith('.') && !cleanLine.includes(',') && 
             // Must not be a single ALL-CAPS word under 6 chars (likely table header or acronym)
@@ -2001,6 +2006,19 @@ export class DeepDocumentParser {
                           level = lastHeadingLevel + 1;
                       }
                       const finalHeadingText = cleanText || text;
+                      // "10 participants were enrolled ..." is a numbered SENTENCE, not a
+                      // section. A bare number followed by whitespace (no "." ":" or ")")
+                      // plus a lowercase, multi-word remainder is prose — emit it as a
+                      // paragraph instead of stripping the number into a fake heading.
+                      const rawNumMatch = String(text || '').match(numericPrefix);
+                      if (rawNumMatch) {
+                        const rawHasPunct = /[.:\)\]]+\s*$/.test(rawNumMatch[0]);
+                        const rawRest = String(text || '').slice(rawNumMatch[0].length).trim();
+                        if (!rawHasPunct && /^[a-z]/.test(rawRest) && rawRest.split(/\s+/).length >= 3) {
+                          result.body.push({ type: 'paragraph', text: withCitations });
+                          continue;
+                        }
+                      }
                       const lastNode = result.body[result.body.length - 1];
                       if (lastNode && lastNode.type === 'heading') {
                         const normPrev = (lastNode.text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -2805,6 +2823,18 @@ export class DeepDocumentParser {
         const afterPrefix = f.text.substring(prefixMatch[0].length).trim();
         // A valid section heading MUST have a real title following the numbering prefix
         if (!afterPrefix || afterPrefix.length < 2 || !/[a-zA-Z]{2,}/.test(afterPrefix) || /^\([a-z0-9]\)/i.test(afterPrefix)) {
+          return null;
+        }
+
+        // A bare number followed by WHITESPACE only (no "." ":" or ")") is a numbered list
+        // item / sentence, not a section number: "10 participants were enrolled in the
+        // trial" must not become \section{participants were enrolled...}. Styling or an
+        // initial capital marks a real title; otherwise fall through to the canonical /
+        // HTML-tag / standalone priorities below so genuine headings are still recovered.
+        const trailingDelim = (prefixMatch[0].match(/[.:\)\]]+\s*$/) || [''])[0];
+        if (!trailingDelim &&
+            !f.isBold && (f.capRatio || 0) <= 0.3 &&
+            /^[a-z]/.test(afterPrefix)) {
           return null;
         }
 

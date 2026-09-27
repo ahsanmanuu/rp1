@@ -533,14 +533,14 @@ export class LatexAssembler {
             const figSrc = Array.isArray((n as any).images)
               ? (n as any).images.map((i: any) => String((i && (i.src || i.id)) || i || '').replace(/^.*[\/\\]/, '').toLowerCase().trim()).filter(Boolean).join('|')
               : '';
-            const figSig = String(n.text || n.html || '').replace(/\s+/g, ' ').trim().toLowerCase().substring(0, 120);
-            // An empty key disabled dedup entirely, so two figures that carry neither an id
-            // nor a caption were always emitted twice. Fall back to their source/content.
-            const figKey = figId ? `${n.type}:${figId}` : (figCap ? `${n.type}:${figCap}` : ((figSrc || figSig) ? `${n.type}:${figSrc || figSig}` : ''));
-            if (figKey && seenFiguresGlobal.has(figKey)) {
+            // An empty key disabled dedup entirely, so two figures that carry neither an
+            // id nor a caption were always emitted twice. Anonymous figures all resolve to
+            // the SAME \includegraphics target, so they must share one key.
+            const figKey = figId ? `${n.type}:${figId}` : (figSrc ? `${n.type}:${figSrc}` : (figCap ? `${n.type}:${figCap}` : `${n.type}:default`));
+            if (seenFiguresGlobal.has(figKey)) {
               continue;
             }
-            if (figKey) seenFiguresGlobal.add(figKey);
+            seenFiguresGlobal.add(figKey);
           }
           if (n.type === 'table') {
             const tableText = (n.text || n.html || '').replace(/\s+/g, ' ').trim();
