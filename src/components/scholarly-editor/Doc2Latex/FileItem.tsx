@@ -9,12 +9,21 @@ interface FileItemProps {
   onDelete?: (path: string) => void;
   onRename?: (path: string) => void;
   isReadOnly?: boolean;
+  isLocked?: boolean;
 }
 
-export const FileItem: React.FC<FileItemProps> = ({ f, activeFile, onClick, onDelete, onRename, isReadOnly = false }) => {
+export const FileItem: React.FC<FileItemProps> = ({ 
+  f, 
+  activeFile, 
+  onClick, 
+  onDelete, 
+  onRename, 
+  isReadOnly = false,
+  isLocked = false,
+}) => {
   const [hovered, setHovered] = useState(false);
   const isActive = activeFile === f.path;
-  const showActions = !isReadOnly && (hovered || isActive);
+  const showActions = !isReadOnly && !isLocked && (hovered || isActive);
 
   return (
     <motion.div 

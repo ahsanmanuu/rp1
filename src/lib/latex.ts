@@ -1043,7 +1043,11 @@ export function autoHealLatex(latex: string): string {
       );
     }
     if (!healed.includes("setkeys{Gin}")) bodyGuardLines.push("\\makeatletter\\ifx\\setkeys\\@undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.7\\textheight,keepaspectratio}\\fi\\makeatother");
-    const bodyGuards = bodyGuardLines.join("\n");
+    // Tag the block with the SAME marker robustPreambleInjector checks for, so the
+    // two guard blocks never stack (the injector skips itself when it is present).
+    const bodyGuards = (healed.includes("% StudioOverflowGuards") || bodyGuardLines.length === 0)
+      ? ""
+      : "% StudioOverflowGuards — injected by autoHealLatex for proper line breaking\n" + bodyGuardLines.join("\n");
 
     let patchedPre = patchedPreamble;
     let patchedB = healed;
@@ -1210,7 +1214,8 @@ export function autoHealLatex(latex: string): string {
     ];
     if (!dcl.includes("elsarticle")) ["title", "author", "affil", "affiliation", "email", "date", "keywords"].forEach(k => preParts.push(...(ext[k] || [])));
 
-    const bodyGuards = [
+    const bodyGuardLines2 = [
+      "% StudioOverflowGuards — injected by autoHealLatex for proper line breaking",
       "\\emergencystretch=8em",
       "\\hbadness=10000",
       "\\tolerance=2000",
@@ -1226,7 +1231,10 @@ export function autoHealLatex(latex: string): string {
       "\\fi",
       "\\ifx\\setkeys\\@undefined\\else\\setkeys{Gin}{max width=\\linewidth,max height=0.7\\textheight,keepaspectratio}\\fi",
       "\\makeatother"
-    ].join("\n");
+    ];
+    // Idempotent + shared marker: robustPreambleInjector skips itself when this
+    // marker is already in the document, so exactly one guard block is emitted.
+    const bodyGuards = clean.includes("% StudioOverflowGuards") ? "" : bodyGuardLines2.join("\n");
 
     const finalPre = preParts.join("\n").trim();
     

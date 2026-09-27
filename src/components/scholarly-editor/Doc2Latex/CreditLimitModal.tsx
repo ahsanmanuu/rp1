@@ -1,17 +1,90 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, ExternalLink, LayoutDashboard, X } from 'lucide-react';
+import { AlertTriangle, ExternalLink, LayoutDashboard, X, Clock, Sparkles, Shield, Zap } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-interface CreditLimitModalProps {
+export interface CreditLimitModalProps {
   isOpen: boolean;
   onClose: () => void;
+  reason?: 'project_limit' | 'ai_tokens_exhausted' | 'credits';
+  currentCount?: number;
+  max?: number;
+  reactivateAt?: string | null;
+  quotaResetAt?: string | null;
 }
 
-export default function CreditLimitModal({ isOpen, onClose }: CreditLimitModalProps) {
+export default function CreditLimitModal({
+  isOpen,
+  onClose,
+  reason = 'project_limit',
+  currentCount = 7,
+  max = 7,
+  reactivateAt = null,
+  quotaResetAt = null,
+}: CreditLimitModalProps) {
   const router = useRouter();
+  const [timeLeft, setTimeLeft] = useState<string>('');
+
+  // Countdown timer for AI Token refresh / reactivate
+  useEffect(() => {
+    if (!isOpen || reason !== 'ai_tokens_exhausted') return;
+
+    const targetDateStr = reactivateAt || quotaResetAt;
+    if (!targetDateStr) {
+      setTimeLeft('Quota resets at midnight UTC');
+      return;
+    }
+
+    const target = new Date(targetDateStr).getTime();
+
+    const updateTimer = () => {
+      const now = Date.now();
+      const diff = target - now;
+      if (diff <= 0) {
+        setTimeLeft('Refreshing now...');
+        return;
+      }
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+      setTimeLeft(`${hours}h ${minutes}m ${seconds}s`);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [isOpen, reason, reactivateAt, quotaResetAt]);
+
+  const handleSubscribePlan = () => {
+    router.push('/pricing');
+  };
+
+  const handleDashboard = () => {
+    router.push('/dashboard');
+  };
+
+  const isProjectLimit = reason === 'project_limit';
+  const isAiExhausted = reason === 'ai_tokens_exhausted';
+
+  const modalTitle = isProjectLimit
+    ? 'Free Project Limit Reached'
+    : isAiExhausted
+    ? 'Daily AI Tokens Exhausted'
+    : 'Free Credit Limit Reached';
+
+  const modalBadge = isProjectLimit
+    ? `${currentCount} / ${max} Projects Created`
+    : isAiExhausted
+    ? '0 LLM Tokens Remaining'
+    : '0 Credits Remaining';
+
+  const modalDescription = isProjectLimit
+    ? 'You have reached the maximum of 7 cumulative projects allowed on the Free Plan across all tools. To create, edit, compile, or copy-paste code, please subscribe to a Premium Plan.'
+    : isAiExhausted
+    ? 'You have consumed all your daily LLM tokens. Editor actions and paste options are paused. They will automatically reactivate once your quota refreshes or immediately when you subscribe to a Premium AI Plan.'
+    : 'Your free credit limit has been reached. Please upgrade to the Premium Plan to modify documents. You can still see, share, print, and download your existing files.';
 
   return (
     <AnimatePresence>
@@ -29,8 +102,8 @@ export default function CreditLimitModal({ isOpen, onClose }: CreditLimitModalPr
             alignItems: 'center',
             justifyContent: 'center',
             padding: '1.5rem',
-            backgroundColor: 'rgba(2, 6, 23, 0.85)',
-            backdropFilter: 'blur(12px)',
+            backgroundColor: 'rgba(2, 6, 23, 0.88)',
+            backdropFilter: 'blur(14px)',
           }}
         >
           <motion.div
@@ -40,27 +113,35 @@ export default function CreditLimitModal({ isOpen, onClose }: CreditLimitModalPr
             transition={{ type: 'spring', damping: 25, stiffness: 280 }}
             style={{
               position: 'relative',
-              background: 'linear-gradient(145deg, #1e1e38, #15152b)',
-              border: '1px solid rgba(249, 115, 22, 0.25)',
+              background: 'linear-gradient(145deg, #18182e, #0f0f20)',
+              border: isProjectLimit
+                ? '1px solid rgba(239, 68, 68, 0.35)'
+                : isAiExhausted
+                ? '1px solid rgba(168, 85, 247, 0.35)'
+                : '1px solid rgba(249, 115, 22, 0.35)',
               borderRadius: '24px',
               padding: '2.5rem',
-              maxWidth: '480px',
+              maxWidth: '500px',
               width: '100%',
-              boxShadow: '0 25px 60px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(249, 115, 22, 0.05)',
+              boxShadow: '0 25px 60px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.05)',
               textAlign: 'center',
               overflow: 'hidden',
             }}
           >
-            {/* Background Glow Effect */}
+            {/* Background Glow */}
             <div
               style={{
                 position: 'absolute',
-                top: '-50px',
+                top: '-60px',
                 left: '50%',
                 transform: 'translateX(-50%)',
-                width: '180px',
-                height: '180px',
-                background: 'radial-gradient(circle, rgba(249, 115, 22, 0.15) 0%, rgba(249, 115, 22, 0) 70%)',
+                width: '220px',
+                height: '220px',
+                background: isProjectLimit
+                  ? 'radial-gradient(circle, rgba(239, 68, 68, 0.18) 0%, rgba(239, 68, 68, 0) 70%)'
+                  : isAiExhausted
+                  ? 'radial-gradient(circle, rgba(168, 85, 247, 0.20) 0%, rgba(168, 85, 247, 0) 70%)'
+                  : 'radial-gradient(circle, rgba(249, 115, 22, 0.18) 0%, rgba(249, 115, 22, 0) 70%)',
                 pointerEvents: 'none',
               }}
             />
@@ -72,8 +153,8 @@ export default function CreditLimitModal({ isOpen, onClose }: CreditLimitModalPr
                 position: 'absolute',
                 top: '1.25rem',
                 right: '1.25rem',
-                background: 'rgba(255, 255, 255, 0.03)',
-                border: '1px solid rgba(255, 255, 255, 0.05)',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
                 borderRadius: '50%',
                 width: '32px',
                 height: '32px',
@@ -86,32 +167,44 @@ export default function CreditLimitModal({ isOpen, onClose }: CreditLimitModalPr
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.color = '#fff';
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.color = '#9ca3af';
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
               }}
               title="Close and View Only"
             >
               <X size={14} />
             </button>
 
-            {/* Warning Icon */}
+            {/* Icon */}
             <div
               style={{
-                width: '64px',
-                height: '64px',
-                background: 'radial-gradient(circle, rgba(249, 115, 22, 0.15) 0%, rgba(249, 115, 22, 0.03) 100%)',
-                border: '1px solid rgba(249, 115, 22, 0.25)',
+                width: '68px',
+                height: '68px',
+                background: isProjectLimit
+                  ? 'radial-gradient(circle, rgba(239, 68, 68, 0.2) 0%, rgba(239, 68, 68, 0.05) 100%)'
+                  : isAiExhausted
+                  ? 'radial-gradient(circle, rgba(168, 85, 247, 0.2) 0%, rgba(168, 85, 247, 0.05) 100%)'
+                  : 'radial-gradient(circle, rgba(249, 115, 22, 0.2) 0%, rgba(249, 115, 22, 0.05) 100%)',
+                border: isProjectLimit
+                  ? '1px solid rgba(239, 68, 68, 0.3)'
+                  : isAiExhausted
+                  ? '1px solid rgba(168, 85, 247, 0.3)'
+                  : '1px solid rgba(249, 115, 22, 0.3)',
                 borderRadius: '50%',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                margin: '0 auto 1.5rem',
+                margin: '0 auto 1.25rem',
               }}
             >
-              <AlertTriangle size={28} style={{ color: '#f97316' }} />
+              {isAiExhausted ? (
+                <Zap size={30} style={{ color: '#c084fc' }} />
+              ) : (
+                <AlertTriangle size={30} style={{ color: isProjectLimit ? '#f87171' : '#f97316' }} />
+              )}
             </div>
 
             {/* Title & Badge */}
@@ -119,84 +212,125 @@ export default function CreditLimitModal({ isOpen, onClose }: CreditLimitModalPr
               style={{
                 margin: '0 0 0.5rem',
                 color: '#fff',
-                fontSize: '1.35rem',
-                fontWeight: 800,
+                fontSize: '1.4rem',
+                fontWeight: 900,
                 fontFamily: 'var(--font-headline)',
                 letterSpacing: '-0.02em',
               }}
             >
-              Free Limit Reached
+              {modalTitle}
             </h2>
             <div
               style={{
                 display: 'inline-block',
-                background: 'rgba(249, 115, 22, 0.1)',
-                border: '1px solid rgba(249, 115, 22, 0.2)',
+                background: isProjectLimit
+                  ? 'rgba(239, 68, 68, 0.12)'
+                  : isAiExhausted
+                  ? 'rgba(168, 85, 247, 0.12)'
+                  : 'rgba(249, 115, 22, 0.12)',
+                border: isProjectLimit
+                  ? '1px solid rgba(239, 68, 68, 0.3)'
+                  : isAiExhausted
+                  ? '1px solid rgba(168, 85, 247, 0.3)'
+                  : '1px solid rgba(249, 115, 22, 0.3)',
                 borderRadius: '6px',
-                padding: '0.15rem 0.6rem',
-                fontSize: '0.62rem',
+                padding: '0.2rem 0.75rem',
+                fontSize: '0.65rem',
                 fontWeight: 900,
-                color: '#f97316',
+                color: isProjectLimit ? '#f87171' : isAiExhausted ? '#c084fc' : '#f97316',
                 textTransform: 'uppercase',
                 letterSpacing: '0.08em',
-                marginBottom: '1.25rem',
+                marginBottom: '1rem',
                 fontFamily: 'var(--font-headline)',
               }}
             >
-              0 Credits Remaining
+              {modalBadge}
             </div>
+
+            {/* Quota reset countdown for AI tokens */}
+            {isAiExhausted && timeLeft && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.4rem',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  borderRadius: '10px',
+                  padding: '0.5rem 0.8rem',
+                  margin: '0 auto 1.25rem',
+                  fontSize: '0.75rem',
+                  color: '#e2e8f0',
+                  fontWeight: 700,
+                  maxWidth: '300px',
+                }}
+              >
+                <Clock size={14} style={{ color: '#c084fc' }} />
+                <span>Auto-Reactivates in: <strong>{timeLeft}</strong></span>
+              </div>
+            )}
 
             {/* Description */}
             <p
               style={{
-                margin: '0 0 2rem',
-                color: '#9ca3af',
-                fontSize: '0.85rem',
-                lineHeight: '1.5',
+                margin: '0 0 1.75rem',
+                color: '#94a3b8',
+                fontSize: '0.86rem',
+                lineHeight: '1.55',
                 fontFamily: 'var(--font-body)',
               }}
             >
-              Your free credit limit has been reached. Please upgrade to the Premium Plan to modify documents. You can still see, share, print, and download all your existing projects and reports.
+              {modalDescription}
             </p>
 
-            {/* Button Actions */}
+            {/* Actions */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <button
-                onClick={() => router.push('/dashboard?upgrade=true')}
+                onClick={handleSubscribePlan}
                 style={{
                   width: '100%',
                   padding: '0.85rem',
-                  background: 'linear-gradient(90deg, #f97316, #ea580c)',
+                  background: isProjectLimit
+                    ? 'linear-gradient(90deg, #ef4444, #dc2626)'
+                    : isAiExhausted
+                    ? 'linear-gradient(90deg, #8b5cf6, #7c3aed)'
+                    : 'linear-gradient(90deg, #f97316, #ea580c)',
                   border: 'none',
                   borderRadius: '12px',
                   color: '#fff',
-                  fontSize: '0.8rem',
+                  fontSize: '0.85rem',
                   fontWeight: 900,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '0.5rem',
-                  boxShadow: '0 4px 15px rgba(249, 115, 22, 0.3)',
+                  boxShadow: isProjectLimit
+                    ? '0 4px 18px rgba(239, 68, 68, 0.35)'
+                    : isAiExhausted
+                    ? '0 4px 18px rgba(139, 92, 246, 0.35)'
+                    : '0 4px 18px rgba(249, 115, 22, 0.35)',
                   transition: 'opacity 0.2s',
                   fontFamily: 'var(--font-headline)',
-                  letterSpacing: '0.05em',
+                  letterSpacing: '0.04em',
                   textTransform: 'uppercase',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.92')}
                 onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
               >
-                <ExternalLink size={14} strokeWidth={2.5} />
-                Upgrade to Premium
+                <Sparkles size={15} strokeWidth={2.5} />
+                {isProjectLimit ? 'Subscribe to Plan (₹ INR)' : isAiExhausted ? 'Upgrade to Premium AI Plan' : 'Upgrade to Premium'}
+                <ExternalLink size={14} />
               </button>
 
               <div style={{ display: 'flex', gap: '0.75rem' }}>
                 <button
-                  onClick={() => router.push('/dashboard')}
+                  onClick={handleDashboard}
                   style={{
                     flex: 1,
                     padding: '0.75rem',
-                    background: 'rgba(255, 255, 255, 0.02)',
+                    background: 'rgba(255, 255, 255, 0.03)',
                     border: '1px solid rgba(255, 255, 255, 0.08)',
                     borderRadius: '10px',
                     color: '#e5e7eb',
@@ -211,11 +345,11 @@ export default function CreditLimitModal({ isOpen, onClose }: CreditLimitModalPr
                     fontFamily: 'var(--font-headline)',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.16)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
                     e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
                   }}
                 >
@@ -228,7 +362,7 @@ export default function CreditLimitModal({ isOpen, onClose }: CreditLimitModalPr
                   style={{
                     flex: 1,
                     padding: '0.75rem',
-                    background: 'rgba(255, 255, 255, 0.02)',
+                    background: 'rgba(255, 255, 255, 0.03)',
                     border: '1px solid rgba(255, 255, 255, 0.08)',
                     borderRadius: '10px',
                     color: '#9ca3af',
@@ -239,11 +373,11 @@ export default function CreditLimitModal({ isOpen, onClose }: CreditLimitModalPr
                     fontFamily: 'var(--font-headline)',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
                     e.currentTarget.style.color = '#fff';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
                     e.currentTarget.style.color = '#9ca3af';
                   }}
                 >

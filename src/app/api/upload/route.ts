@@ -2335,7 +2335,15 @@ async function runUploadProcessing(uploadId: string) {
       }
     });
     createdProjectId = project.id;
-    if (!resumeProjectId) await writeCheckpoint(uploadId, { projectId: project.id });
+    if (!resumeProjectId) {
+      try {
+        const { recordProjectCreation } = await import('@/lib/projectLimits');
+        await recordProjectCreation(session.user.id);
+      } catch (recErr) {
+        console.warn('[UPLOAD] Failed to record cumulative project creation:', recErr);
+      }
+      await writeCheckpoint(uploadId, { projectId: project.id });
+    }
 
     // Store complete untruncated source document to local project directory on disk
     // to guarantee 100% content fidelity for large 20MB files during Phase 2 template generation.
@@ -2491,28 +2499,14 @@ export async function POST(req: Request) {
     const session = await getServerSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    // Check project limits for Free tier
-    const user = await prisma.user.findUnique({
-      where: { id: (session.user as any).id },
-      select: { membership: true, membershipExpiresAt: true }
-    });
-
-    const now = new Date();
-    const isFreeOrExpired = !user || user.membership === 'free' || (user.membershipExpiresAt && new Date(user.membershipExpiresAt) <= now);
-
-    if (isFreeOrExpired) {
-      const [projectsCount, citationCount, reviewCount] = await Promise.all([
-        prisma.project.count({ where: { userId: (session.user as any).id } }),
-        prisma.citationProject.count({ where: { userId: (session.user as any).id } }),
-        prisma.paperReview.count({ where: { userId: (session.user as any).id } }),
-      ]);
-      const totalCount = projectsCount + citationCount + reviewCount;
-      if (totalCount >= 7) {
-        return NextResponse.json({ 
-          error: 'LIMIT_REACHED', 
-          message: 'Free membership is restricted to a total of 7 projects. Please upgrade to Premium.' 
-        }, { status: 403 });
-      }
+    // Check project limits for Free tier (cumulative non-decreasing limit across all tools)
+    const { assertProjectCreationAllowed } = await import('@/lib/projectLimits');
+    const limitCheck = await assertProjectCreationAllowed((session.user as any).id);
+    if (!limitCheck.allowed) {
+      return NextResponse.json({ 
+        error: 'LIMIT_REACHED', 
+        message: limitCheck.message || 'Free membership is restricted to a total of 7 projects. Please upgrade to Premium.' 
+      }, { status: 403 });
     }
 
     // PHASE 1 (fast): save the raw bytes + metadata to a durable UploadJob row

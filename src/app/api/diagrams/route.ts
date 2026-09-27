@@ -11,25 +11,14 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const { title = 'Untitled Diagram', content = '', structuredContent = '{}' } = body;
 
-    // Check project limits for Free tier
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { membership: true }
-    });
-
-    if (user?.membership === 'free' || !user?.membership) {
-      const [projectCount, citationCount, reviewCount] = await Promise.all([
-        prisma.project.count({ where: { userId: session.user.id } }),
-        prisma.citationProject.count({ where: { userId: session.user.id } }),
-        prisma.paperReview.count({ where: { userId: session.user.id } }),
-      ]);
-      const totalCount = projectCount + citationCount + reviewCount;
-      if (totalCount >= 7) {
-        return NextResponse.json({ 
-          error: 'LIMIT_REACHED', 
-          message: 'Free membership is restricted to a total of 7 projects. Please upgrade to Premium.' 
-        }, { status: 403 });
-      }
+    // Check project limits for Free tier (cumulative non-decreasing limit across all tools)
+    const { assertProjectCreationAllowed, recordProjectCreation } = await import('@/lib/projectLimits');
+    const limitCheck = await assertProjectCreationAllowed(session.user.id);
+    if (!limitCheck.allowed) {
+      return NextResponse.json({ 
+        error: 'LIMIT_REACHED', 
+        message: limitCheck.message || 'Free membership is restricted to a total of 7 projects across all tools. Please upgrade to Premium.' 
+      }, { status: 403 });
     }
 
     const project = await prisma.project.create({
@@ -43,6 +32,8 @@ export async function POST(req: Request) {
         latexContent: '',
       },
     });
+
+    await recordProjectCreation(session.user.id);
 
     return NextResponse.json({ projectId: project.id, project });
   } catch (error: any) {

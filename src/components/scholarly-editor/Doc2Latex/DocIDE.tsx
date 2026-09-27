@@ -12,7 +12,9 @@ import {
   X,
   Layout,
   FileText,
-  Command
+  Command,
+  Lock,
+  Sparkles
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { saveAs } from 'file-saver';
@@ -22,6 +24,7 @@ import { formatLatexCode, type EditorMood, EDITOR_MOODS } from '@/lib/studio-cor
 import ConsolePanel from '../ConsolePanel';
 import StudioErrorBoundary from '../StudioErrorBoundary';
 import { AiChatPanel } from '../AiChatPanel';
+import { useProjectLimit } from '@/hooks/useProjectLimit';
 
 // Modular Components
 import { DocSidebar } from './DocSidebar';
@@ -76,6 +79,20 @@ export default function DocIDE({ projectId }: { projectId: string }) {
   const { data: session, status } = useSession();
   const { settings, updatePanels, updatePages } = useLayoutSync(false);
 
+  // -- Project Limits & LLM Token Status --
+  const {
+    showLimitModal,
+    setShowLimitModal,
+    isProjectLimitReached,
+    isAiTokensExhausted,
+    isLocked,
+    lockReason,
+    count: projectCount,
+    max: projectMax,
+    reactivateAt,
+    quotaResetAt,
+  } = useProjectLimit();
+
   // -- Credit Limit & Modal State --
   const isOutOfCredits = status !== 'loading' && session?.user && (session.user.points ?? 0) <= 0 && session.user.membership === 'free';
   const [showCreditLimitModal, setShowCreditLimitModal] = useState(false);
@@ -84,13 +101,68 @@ export default function DocIDE({ projectId }: { projectId: string }) {
   useEffect(() => {
     if (status !== 'loading' && session?.user) {
       const outOfCredits = (session.user.points ?? 0) <= 0 && session.user.membership === 'free';
-      if (outOfCredits && !dismissedCreditModal) {
+      if ((outOfCredits || isLocked) && !dismissedCreditModal) {
         setShowCreditLimitModal(true);
-      } else {
+      } else if (!outOfCredits && !isLocked) {
         setShowCreditLimitModal(false);
       }
     }
-  }, [session, status, dismissedCreditModal]);
+  }, [session, status, dismissedCreditModal, isLocked]);
+
+  // Global Clipboard & Key Interceptor for Locked States (Blocks copy, cut, paste)
+  useEffect(() => {
+    if (!isLocked) return;
+
+    const blockClipboard = (e: ClipboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const isPaste = e.type === 'paste';
+      if (isPaste) {
+        toast.error(
+          lockReason === 'project_limit'
+            ? 'Pasting is disabled under the 7-project free limit. Please subscribe to a plan.'
+            : 'Pasting is paused while daily LLM tokens are exhausted. Quota will auto-refresh.',
+          { id: 'paste-blocked' }
+        );
+      } else {
+        toast.error(
+          lockReason === 'project_limit'
+            ? 'Copying is disabled under the 7-project free limit. Please subscribe to a plan.'
+            : 'Copying is paused while daily LLM tokens are exhausted.',
+          { id: 'copy-blocked' }
+        );
+      }
+      setShowCreditLimitModal(true);
+    };
+
+    const blockKeys = (e: KeyboardEvent) => {
+      const isMod = e.ctrlKey || e.metaKey;
+      if (isMod && (e.key === 'c' || e.key === 'C' || e.key === 'v' || e.key === 'V' || e.key === 'x' || e.key === 'X')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const action = (e.key === 'v' || e.key === 'V') ? 'Pasting' : 'Copying';
+        toast.error(
+          lockReason === 'project_limit'
+            ? `${action} is disabled under the 7-project free limit. Please subscribe to a plan.`
+            : `${action} is paused while daily LLM tokens are exhausted.`,
+          { id: 'key-blocked' }
+        );
+        setShowCreditLimitModal(true);
+      }
+    };
+
+    window.addEventListener('copy', blockClipboard, true);
+    window.addEventListener('cut', blockClipboard, true);
+    window.addEventListener('paste', blockClipboard, true);
+    window.addEventListener('keydown', blockKeys, true);
+
+    return () => {
+      window.removeEventListener('copy', blockClipboard, true);
+      window.removeEventListener('cut', blockClipboard, true);
+      window.removeEventListener('paste', blockClipboard, true);
+      window.removeEventListener('keydown', blockKeys, true);
+    };
+  }, [isLocked, lockReason]);
 
   // -- Filesystem & Project State --
   const [fs, setFs] = useState<StudioFS | null>(null);
@@ -1749,10 +1821,74 @@ export default function DocIDE({ projectId }: { projectId: string }) {
           compiling={compiling}
           projectId={projectId}
           isReadOnly={isOutOfCredits}
+          isLocked={isLocked}
+          lockReason={lockReason}
+          onLockedAction={() => setShowCreditLimitModal(true)}
           onShare={shareProject}
           showAiChat={showAiChat}
           onToggleAiChat={() => setShowAiChat(prev => !prev)}
         />
+
+        {/* TOP ALERT BANNER (LOCKED STATE) */}
+        {isLocked && (
+          <div style={{
+            margin: '0.4rem 0.5rem 0',
+            padding: '0.6rem 1rem',
+            background: lockReason === 'project_limit' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(168, 85, 247, 0.12)',
+            border: `1px solid ${lockReason === 'project_limit' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(168, 85, 247, 0.35)'}`,
+            borderRadius: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.75rem',
+            backdropFilter: 'blur(10px)',
+            zIndex: 50,
+            flexShrink: 0
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <div style={{
+                width: '28px', height: '28px', borderRadius: '50%',
+                background: lockReason === 'project_limit' ? '#ef4444' : '#8b5cf6',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+              }}>
+                <Lock size={14} color="#fff" />
+              </div>
+              <div>
+                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: lockReason === 'project_limit' ? '#f87171' : '#c084fc' }}>
+                  {lockReason === 'project_limit'
+                    ? 'Free Project Limit Reached (7/7 Projects Used)'
+                    : 'Daily LLM Token Quota Exhausted'}
+                </div>
+                <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>
+                  {lockReason === 'project_limit'
+                    ? 'All editing buttons, AI panel, and copy-paste are disabled under the free tier limit. Upgrade to a plan to continue.'
+                    : 'All buttons and pasting are paused until your daily token quota refreshes, or upgrade to a Premium AI Plan.'}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowCreditLimitModal(true)}
+              style={{
+                padding: '0.4rem 0.85rem',
+                background: lockReason === 'project_limit' ? 'linear-gradient(90deg, #ef4444, #dc2626)' : 'linear-gradient(90deg, #8b5cf6, #7c3aed)',
+                border: 'none',
+                borderRadius: '8px',
+                color: '#fff',
+                fontSize: '0.72rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                flexShrink: 0,
+                boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
+              }}
+            >
+              <Sparkles size={13} />
+              {lockReason === 'project_limit' ? 'Subscribe to Plan (₹ INR)' : 'Upgrade AI Plan'}
+            </button>
+          </div>
+        )}
 
          <div style={{ 
            display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', padding: '0.75rem', gap: '0.25rem',
@@ -1769,6 +1905,9 @@ export default function DocIDE({ projectId }: { projectId: string }) {
               handleFileUpload={handleFileUpload}
               exportProjectZip={exportProjectZip}
               isReadOnly={isOutOfCredits}
+              isLocked={isLocked}
+              lockReason={lockReason}
+              onLockedAction={() => setShowCreditLimitModal(true)}
               compiling={compiling}
             />
 
@@ -1981,7 +2120,17 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                          </div>
                       </div>
                     ) : (
-                      <div style={{ flex: 1, position: 'relative', height: '100%', width: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
+                      <div 
+                        onContextMenu={(e) => {
+                          if (isLocked) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toast.error('Context menu copy/paste is disabled under the plan limit.', { id: 'ctx-lock' });
+                            setShowCreditLimitModal(true);
+                          }
+                        }}
+                        style={{ flex: 1, position: 'relative', height: '100%', width: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden' }}
+                      >
                         <MonacoEditor 
                            key={activeFile}
                            path={activeFile}
@@ -2000,6 +2149,28 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                              if (code) {
                                ed.setValue(code);
                              }
+
+                             // Intercept Ctrl+C, Ctrl+V, Ctrl+X if locked
+                             try {
+                               ed.addCommand(mon.KeyMod.CtrlCmd | mon.KeyCode.KeyC, () => {
+                                 if (isLocked) {
+                                   toast.error(lockReason === 'project_limit' ? 'Copying is disabled under the 7-project free limit.' : 'Copying is paused while LLM tokens are exhausted.', { id: 'monaco-copy-lock' });
+                                   setShowCreditLimitModal(true);
+                                 }
+                               });
+                               ed.addCommand(mon.KeyMod.CtrlCmd | mon.KeyCode.KeyV, () => {
+                                 if (isLocked) {
+                                   toast.error(lockReason === 'project_limit' ? 'Pasting is disabled under the 7-project free limit.' : 'Pasting is paused while LLM tokens are exhausted.', { id: 'monaco-paste-lock' });
+                                   setShowCreditLimitModal(true);
+                                 }
+                               });
+                               ed.addCommand(mon.KeyMod.CtrlCmd | mon.KeyCode.KeyX, () => {
+                                 if (isLocked) {
+                                   toast.error(lockReason === 'project_limit' ? 'Cutting is disabled under the 7-project free limit.' : 'Cutting is paused while LLM tokens are exhausted.', { id: 'monaco-cut-lock' });
+                                   setShowCreditLimitModal(true);
+                                 }
+                               });
+                             } catch (e) {}
 
                              // Register LaTeX Language & Monarch Tokenizer for Multicolor Syntax Highlighting
                              try {
@@ -2112,7 +2283,8 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                              scrollbar: { vertical: 'visible', horizontal: 'visible', verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
                               automaticLayout: true,
                               wordWrap: 'on',
-                              readOnly: isOutOfCredits,
+                              readOnly: isOutOfCredits || isLocked,
+                              contextmenu: !isLocked,
                               autoClosingBrackets: 'languageDefined',
                               quickSuggestions: { other: true, comments: false, strings: false },
                            }}
@@ -2128,6 +2300,9 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                     apiEndpoint="/api/doc2latex/chat"
                     activeFile={activeFile}
                     fileCount={files.length}
+                    isLocked={isLocked}
+                    lockReason={lockReason}
+                    onUpgradeClick={() => setShowCreditLimitModal(true)}
                     buildContext={() => ({
                       activeFile,
                       fileContent: code,
@@ -2229,10 +2404,16 @@ export default function DocIDE({ projectId }: { projectId: string }) {
 
 
          <CreditLimitModal 
-           isOpen={showCreditLimitModal} 
+           isOpen={showCreditLimitModal || showLimitModal} 
+           reason={lockReason || (isOutOfCredits ? 'credits' : 'project_limit')}
+           currentCount={projectCount}
+           max={projectMax ?? 7}
+           reactivateAt={reactivateAt}
+           quotaResetAt={quotaResetAt}
            onClose={() => {
              setDismissedCreditModal(true);
              setShowCreditLimitModal(false);
+             setShowLimitModal(false);
            }}
          />
       </div>

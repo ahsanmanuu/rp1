@@ -272,7 +272,10 @@ ${_B}fi
 
   // 4. OVERFLOW GUARD INJECTION — inject AFTER the sieve, so guards are never stripped.
   // Prevents text, URLs, code, and verbatim from overflowing beyond the page margin.
-  // These are injected AFTER \begin{document} so they apply globally to the whole document.
+  // Injected immediately after \begin{document} (and before \maketitle) so hyperref,
+  // url and listings are already loaded but nothing has been typeset yet. The
+  // `% StudioOverflowGuards` marker makes this idempotent and lets latex.ts tag its
+  // own guard block with the same marker so the two copies never stack.
   const beginDocMatch = modified.match(/\\begin\s*\{\s*document\s*\}/);
   if (beginDocMatch && !modified.includes('% StudioOverflowGuards')) {
     // Detect if this is a two-column layout for specialized guards
@@ -304,24 +307,27 @@ ${_B}fi
       '  \\lstset{breaklines=true,breakatwhitespace=false,basicstyle=\\small\\ttfamily,',
       '    columns=flexible,keepspaces=true,breakindent=0pt}%',
       '\\fi',
-      // TWO-COLUMN SPECIFIC GUARDS: prevent blank pages and improve column balancing
-      isTwoColumn ? '\\twocolumn[%' : '',
-      isTwoColumn ? '  \\columnseprule=0pt' : '',
-      isTwoColumn ? '  \\columnsep=1em' : '',
-      isTwoColumn ? '  \\raggedcolumns' : '', // Better column balancing
-      isTwoColumn ? '  \\clubpenalty=1000' : '', // Suppress widows/orphans in columns
-      isTwoColumn ? '  \\widowpenalty=1000' : '',
-      isTwoColumn ? '  \\displaywidowpenalty=1000' : '',
-      isTwoColumn ? '%]' : '',
+      // TWO-COLUMN GUARDS: column tuning only. An injected \twocolumn[...] with an
+      // empty optional argument forces \clearpage and produces a blank first page on
+      // classes (IEEEtran, acmart, ...) that are already in two-column mode.
+      // \raggedcolumns is intentionally omitted: it is defined by multicol, not the
+      // two-column kernel, and errors out when the package is absent.
+      isTwoColumn ? '\\columnseprule=0pt' : '',
+      isTwoColumn ? '\\columnsep=1em' : '',
+      isTwoColumn ? '\\clubpenalty=1000' : '', // Suppress widows/orphans in columns
+      isTwoColumn ? '\\widowpenalty=1000' : '',
+      isTwoColumn ? '\\displaywidowpenalty=1000' : '',
       // Paragraph spacing control to prevent excessive whitespace
       '\\parskip=0pt plus 1pt',
       '\\parsep=0pt plus 1pt',
       '\\topsep=0pt plus 1pt',
       '\\partopsep=0pt plus 1pt',
-      // Float placement improvements to prevent floats causing page breaks
-      '\\floatpagefraction=0.8',
-      '\\textfraction=0.1',
-      '\\bottomfraction=0.8',
+      // Float placement. These are LaTeX MACROS (defaults .5/.2/.3), not registers:
+      // `\floatpagefraction=0.8` typesets ".5=0.8" onto page 1 before \maketitle.
+      // Always assign through \renewcommand.
+      '\\renewcommand{\\floatpagefraction}{0.8}',
+      '\\renewcommand{\\textfraction}{0.1}',
+      '\\renewcommand{\\bottomfraction}{0.8}',
       '\\makeatother',
     ].join('\n');
 

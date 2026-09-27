@@ -187,6 +187,16 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json();
 
+    // Check project limits for Free tier (cumulative non-decreasing limit across all tools)
+    const { assertProjectCreationAllowed, recordProjectCreation } = await import('@/lib/projectLimits');
+    const limitCheck = await assertProjectCreationAllowed(session.user.id);
+    if (!limitCheck.allowed) {
+      return NextResponse.json({ 
+        error: 'LIMIT_REACHED', 
+        message: limitCheck.message || 'Free membership is restricted to a total of 7 projects across all tools. Please upgrade to Premium.' 
+      }, { status: 403 });
+    }
+
     // Check if this is a direct pre-computed save action
     if (body.isSaveAction && body.review) {
       try {
@@ -201,6 +211,7 @@ export async function POST(req: NextRequest) {
             status: 'completed',
           },
         });
+        await recordProjectCreation(session.user.id);
         return NextResponse.json({
           success: true,
           reviewId: savedReview.id,
@@ -298,6 +309,8 @@ export async function POST(req: NextRequest) {
           status: 'completed',
         },
       });
+
+      await recordProjectCreation(session.user.id);
 
       return NextResponse.json({
         success: true,

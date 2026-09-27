@@ -1,7 +1,8 @@
 "use client";
 
+import React from 'react';
 import { 
-  Pencil, Sparkles, Zap, Command, RefreshCw, LayoutDashboard, Share2, Bot
+  Pencil, Sparkles, Zap, Command, RefreshCw, LayoutDashboard, Share2, Bot, Lock
 } from 'lucide-react';
 import Link from 'next/link';
 import ThemeSwitcher from '../ThemeSwitcher';
@@ -31,6 +32,9 @@ interface DocToolbarProps {
   saveToCloud?: () => void;
   isSyncing?: boolean;
   isReadOnly?: boolean;
+  isLocked?: boolean;
+  lockReason?: 'project_limit' | 'ai_tokens_exhausted' | 'credits' | null;
+  onLockedAction?: () => void;
   onShare?: () => void;
   showAiChat?: boolean;
   onToggleAiChat?: () => void;
@@ -54,10 +58,48 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
   compile,
   compiling,
   isReadOnly = false,
+  isLocked = false,
+  lockReason = null,
+  onLockedAction,
   onShare,
   showAiChat = false,
   onToggleAiChat,
 }) => {
+  const handleLockedClick = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    if (onLockedAction) {
+      onLockedAction();
+    }
+    if (lockReason === 'project_limit') {
+      toast.error('Free plan limit of 7 projects reached. Please subscribe to a plan to continue.', { id: 'project-limit-toast' });
+    } else if (lockReason === 'ai_tokens_exhausted') {
+      toast.error('Daily LLM tokens exhausted. Actions paused until quota refreshes or upgrade to premium.', { id: 'ai-tokens-toast' });
+    } else {
+      toast.error('Credit limit reached. Please upgrade to Premium.', { id: 'credits-toast' });
+    }
+  };
+
+  const effectivelyDisabled = isReadOnly || isLocked;
+
+  const statusLabel = isLocked
+    ? lockReason === 'project_limit'
+      ? '7/7 Projects (Locked)'
+      : lockReason === 'ai_tokens_exhausted'
+      ? 'Quota Exhausted'
+      : 'Locked'
+    : isReadOnly
+    ? 'Read-Only'
+    : 'Active';
+
+  const statusColor = isLocked
+    ? lockReason === 'project_limit'
+      ? '#ef4444'
+      : '#a855f7'
+    : isReadOnly
+    ? '#f97316'
+    : '#10b981';
+
   return (
     <header style={{ 
       height: '64px',
@@ -74,7 +116,7 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
       overflow: 'hidden',
     }}>
       {/* Accent top bar */}
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'var(--accent-gradient, var(--accent-primary))', opacity: 0.8 }} />
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: isLocked ? statusColor : 'var(--accent-gradient, var(--accent-primary))', opacity: 0.8 }} />
 
       {/* ── LEFT: Nav + Project Identity ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0, minWidth: 0 }}>
@@ -101,15 +143,15 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', minWidth: 0 }}>
           <div style={{
             width: '34px', height: '34px', flexShrink: 0,
-            background: 'var(--accent-primary)', borderRadius: '10px',
+            background: isLocked ? statusColor : 'var(--accent-primary)', borderRadius: '10px',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 0 16px var(--accent-glow)',
+            boxShadow: `0 0 16px ${isLocked ? statusColor : 'var(--accent-glow)'}`,
           }}>
-            <Command size={18} color="#fff" strokeWidth={2.5} />
+            {isLocked ? <Lock size={16} color="#fff" strokeWidth={2.5} /> : <Command size={18} color="#fff" strokeWidth={2.5} />}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-            {isEditingTitle && !isReadOnly ? (
+            {isEditingTitle && !effectivelyDisabled ? (
               <input
                 autoFocus
                 value={tempTitle}
@@ -127,6 +169,10 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
                 <h1
                   onClick={() => {
+                    if (isLocked) {
+                      handleLockedClick();
+                      return;
+                    }
                     if (isReadOnly) {
                       toast.error("Read-Only Mode: Upgrade to Premium to rename the project.");
                       return;
@@ -136,23 +182,23 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
                   }}
                   style={{
                     fontSize: '0.95rem', fontWeight: 900, color: 'var(--ide-title-text)',
-                    margin: 0, cursor: isReadOnly ? 'default' : 'pointer', fontFamily: 'var(--font-headline)',
+                    margin: 0, cursor: effectivelyDisabled ? 'pointer' : 'pointer', fontFamily: 'var(--font-headline)',
                     letterSpacing: '-0.02em', whiteSpace: 'nowrap',
                     overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '220px',
                   }}
                 >
                   {project?.title || 'Loading...'}
                 </h1>
-                {!isReadOnly && <Pencil size={11} style={{ opacity: 0.35, color: 'var(--accent-primary)', flexShrink: 0 }} />}
+                {!effectivelyDisabled && <Pencil size={11} style={{ opacity: 0.35, color: 'var(--accent-primary)', flexShrink: 0 }} />}
               </div>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: isReadOnly ? '#f97316' : '#10b981', boxShadow: `0 0 6px ${isReadOnly ? '#f97316' : '#10b981'}`, flexShrink: 0 }} />
+              <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: statusColor, boxShadow: `0 0 6px ${statusColor}`, flexShrink: 0 }} />
               <span style={{
-                fontSize: '0.58rem', fontWeight: 700, color: isReadOnly ? '#f97316' : 'var(--ide-subtitle-text)',
+                fontSize: '0.58rem', fontWeight: 700, color: statusColor,
                 letterSpacing: '0.05em', textTransform: 'uppercase', whiteSpace: 'nowrap',
               }}>
-                {isReadOnly ? 'Read-Only' : 'Active'}
+                {statusLabel}
               </span>
             </div>
           </div>
@@ -165,19 +211,22 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
         {/* AI Agent button */}
         {onToggleAiChat && (
           <button
-            onClick={onToggleAiChat}
-            title="Toggle AI Assistant"
+            onClick={isLocked ? handleLockedClick : onToggleAiChat}
+            title={isLocked ? "AI Agent is locked" : "Toggle AI Assistant"}
             style={{
-              background: showAiChat ? 'var(--accent-glow)' : 'var(--ide-btn-bg)',
-              border: '1px solid var(--ide-btn-border)',
-              color: 'var(--accent-primary)', cursor: 'pointer', display: 'flex',
+              background: isLocked ? 'rgba(255,255,255,0.03)' : (showAiChat ? 'var(--accent-glow)' : 'var(--ide-btn-bg)'),
+              border: `1px solid ${isLocked ? 'rgba(255,255,255,0.1)' : 'var(--ide-btn-border)'}`,
+              color: isLocked ? '#94a3b8' : 'var(--accent-primary)',
+              cursor: isLocked ? 'not-allowed' : 'pointer',
+              display: 'flex',
               alignItems: 'center', gap: '0.35rem', padding: '0.35rem 0.65rem',
               borderRadius: '7px', fontSize: '0.65rem', fontWeight: 800,
               whiteSpace: 'nowrap', flexShrink: 0,
+              opacity: isLocked ? 0.6 : 1,
               transition: 'all 0.2s',
             }}
           >
-            <Bot size={13} />
+            {isLocked ? <Lock size={12} /> : <Bot size={13} />}
             <span>AI AGENT</span>
           </button>
         )}
@@ -185,45 +234,50 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
         {/* Share button */}
         {onShare && (
           <button
-            onClick={onShare}
-            title="Generate and copy shared project link"
+            onClick={isLocked ? handleLockedClick : onShare}
+            title={isLocked ? "Locked under limit" : "Generate and copy shared project link"}
             style={{
               background: 'var(--ide-btn-bg)',
               border: '1px solid var(--ide-btn-border)',
-              color: 'var(--text-primary)',
-              cursor: 'pointer', display: 'flex',
+              color: isLocked ? '#94a3b8' : 'var(--text-primary)',
+              cursor: isLocked ? 'not-allowed' : 'pointer',
+              display: 'flex',
               alignItems: 'center', gap: '0.35rem', padding: '0.35rem 0.65rem',
               borderRadius: '7px', fontSize: '0.65rem', fontWeight: 800,
               whiteSpace: 'nowrap', flexShrink: 0,
+              opacity: isLocked ? 0.6 : 1,
               transition: 'all 0.2s',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-              e.currentTarget.style.borderColor = 'var(--accent-primary)';
+              if (!isLocked) {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                e.currentTarget.style.borderColor = 'var(--accent-primary)';
+              }
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = 'var(--ide-btn-bg)';
               e.currentTarget.style.borderColor = 'var(--ide-btn-border)';
             }}
           >
-            <Share2 size={13} style={{ color: 'var(--accent-primary)' }} />
+            <Share2 size={13} style={{ color: isLocked ? '#94a3b8' : 'var(--accent-primary)' }} />
             <span>SHARE</span>
           </button>
         )}
 
         {/* Beautify button */}
         <button
-          onClick={beautify}
-          disabled={!hasCode}
-          title={hasCode ? "Beautify LaTeX code" : "No code to beautify"}
+          onClick={isLocked ? handleLockedClick : beautify}
+          disabled={!hasCode && !isLocked}
+          title={isLocked ? "Locked under limit" : (hasCode ? "Beautify LaTeX code" : "No code to beautify")}
           style={{
-            background: !hasCode ? 'rgba(255,255,255,0.03)' : 'var(--ide-btn-bg)',
+            background: (!hasCode || isLocked) ? 'rgba(255,255,255,0.03)' : 'var(--ide-btn-bg)',
             border: '1px solid var(--ide-btn-border)',
-            color: !hasCode ? 'rgba(255,255,255,0.2)' : 'var(--accent-primary)',
-            cursor: !hasCode ? 'not-allowed' : 'pointer', display: 'flex',
+            color: (!hasCode || isLocked) ? 'rgba(255,255,255,0.2)' : 'var(--accent-primary)',
+            cursor: (!hasCode && !isLocked) ? 'not-allowed' : (isLocked ? 'not-allowed' : 'pointer'),
+            display: 'flex',
             alignItems: 'center', gap: '0.3rem', padding: '0.3rem 0.55rem',
             borderRadius: '7px', fontSize: '0.62rem', fontWeight: 800,
-            whiteSpace: 'nowrap', flexShrink: 0, opacity: !hasCode ? 0.4 : 1,
+            whiteSpace: 'nowrap', flexShrink: 0, opacity: (!hasCode || isLocked) ? 0.4 : 1,
           }}
         >
           <Sparkles size={13} />
@@ -231,12 +285,17 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
         </button>
 
         {/* Mood picker */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '5px',
-          background: 'var(--ide-group-bg)', padding: '0.3rem 0.6rem',
-          borderRadius: '20px', border: '1px solid var(--ide-group-border)',
-          flexShrink: 0,
-        }}>
+        <div 
+          onClick={isLocked ? handleLockedClick : undefined}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '5px',
+            background: 'var(--ide-group-bg)', padding: '0.3rem 0.6rem',
+            borderRadius: '20px', border: '1px solid var(--ide-group-border)',
+            flexShrink: 0,
+            cursor: isLocked ? 'not-allowed' : 'default',
+            opacity: isLocked ? 0.6 : 1,
+          }}
+        >
           <span style={{
             fontSize: '0.58rem', fontWeight: 900, color: 'var(--ide-btn-text)',
             letterSpacing: '0.08em', whiteSpace: 'nowrap',
@@ -246,7 +305,13 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
           {(Object.keys(EDITOR_MOODS) as EditorMood[]).map(m => (
             <div
               key={m}
-              onClick={() => setEditorMood(m)}
+              onClick={(e) => {
+                if (isLocked) {
+                  handleLockedClick(e);
+                  return;
+                }
+                setEditorMood(m);
+              }}
               title={`Switch to ${EDITOR_MOODS[m].name} Mood`}
               style={{
                 width: 18,
@@ -256,7 +321,7 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
                 border: editorMood === m
                   ? '2.5px solid var(--accent-primary)'
                   : '1.5px solid var(--ide-btn-border)',
-                cursor: 'pointer',
+                cursor: isLocked ? 'not-allowed' : 'pointer',
                 transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                 transform: editorMood === m ? 'scale(1.25)' : 'scale(1)',
                 boxShadow: editorMood === m
@@ -276,6 +341,7 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
           padding: '0.3rem 0.5rem', background: 'var(--ide-group-bg)',
           borderRadius: '10px', border: '1px solid var(--ide-group-border)',
           flexShrink: 0,
+          opacity: isLocked ? 0.65 : 1,
         }}>
           {/* Engine icon */}
           <Zap
@@ -283,20 +349,27 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
             strokeWidth={2}
             style={{
               color: autoEngine ? 'var(--accent-primary)' : 'var(--ide-icon-muted)',
-              cursor: 'pointer', transition: 'all 0.2s',
+              cursor: isLocked ? 'not-allowed' : 'pointer', transition: 'all 0.2s',
               opacity: autoEngine ? 1 : 0.5, flexShrink: 0,
             }}
-            onClick={() => setAutoEngine(!autoEngine)}
+            onClick={isLocked ? handleLockedClick : () => setAutoEngine(!autoEngine)}
           />
 
           {/* Engine select */}
           <select
             value={engine}
-            onChange={e => setEngine(e.target.value)}
+            disabled={isLocked}
+            onChange={e => {
+              if (isLocked) {
+                handleLockedClick();
+                return;
+              }
+              setEngine(e.target.value);
+            }}
             style={{
               background: 'transparent', color: 'var(--ide-select-text)',
               border: 'none', fontSize: '0.7rem', fontWeight: 700,
-              cursor: 'pointer', outline: 'none', fontFamily: 'var(--font-headline)',
+              cursor: isLocked ? 'not-allowed' : 'pointer', outline: 'none', fontFamily: 'var(--font-headline)',
             }}
           >
             <option value="tectonic">Tectonic</option>
@@ -307,9 +380,9 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
 
           {/* Auto toggle */}
           <div
-            onClick={() => setAutoEngine(!autoEngine)}
+            onClick={isLocked ? handleLockedClick : () => setAutoEngine(!autoEngine)}
             style={{
-              fontSize: '0.55rem', fontWeight: 900, cursor: 'pointer',
+              fontSize: '0.55rem', fontWeight: 900, cursor: isLocked ? 'not-allowed' : 'pointer',
               padding: '0.15rem 0.45rem', borderRadius: '5px',
               background: autoEngine ? 'var(--accent-glow)' : 'var(--ide-btn-bg)',
               color: autoEngine ? 'var(--accent-primary)' : 'var(--ide-btn-text)',
@@ -323,32 +396,34 @@ export const DocToolbar: React.FC<DocToolbarProps> = ({
 
           {/* Compile button */}
           <motion.button
-            whileHover={{ scale: isReadOnly ? 1 : 1.02 }}
-            whileTap={{ scale: isReadOnly ? 1 : 0.98 }}
-            onClick={isReadOnly ? () => toast.error("Read-Only Mode: Daily credit limit reached. Please upgrade to Premium.") : compile}
+            whileHover={{ scale: effectivelyDisabled ? 1 : 1.02 }}
+            whileTap={{ scale: effectivelyDisabled ? 1 : 0.98 }}
+            onClick={isLocked ? handleLockedClick : (isReadOnly ? () => toast.error("Read-Only Mode: Daily credit limit reached. Please upgrade to Premium.") : compile)}
             disabled={compiling}
             style={{
-              background: isReadOnly ? 'rgba(255,255,255,0.03)' : 'var(--accent-primary)',
-              color: isReadOnly ? 'rgba(255,255,255,0.2)' : '#fff',
-              border: 'none', padding: '0.38rem 0.85rem',
+              background: effectivelyDisabled ? 'rgba(255,255,255,0.04)' : 'var(--accent-primary)',
+              color: effectivelyDisabled ? 'rgba(255,255,255,0.25)' : '#fff',
+              border: effectivelyDisabled ? '1px solid rgba(255,255,255,0.08)' : 'none', padding: '0.38rem 0.85rem',
               borderRadius: '7px', fontWeight: 800, fontSize: '0.7rem',
-              cursor: compiling ? 'wait' : (isReadOnly ? 'not-allowed' : 'pointer'),
+              cursor: compiling ? 'wait' : (effectivelyDisabled ? 'not-allowed' : 'pointer'),
               display: 'flex', alignItems: 'center', gap: '0.4rem',
-              boxShadow: isReadOnly ? 'none' : '0 3px 12px var(--accent-glow)',
+              boxShadow: effectivelyDisabled ? 'none' : '0 3px 12px var(--accent-glow)',
               fontFamily: 'var(--font-headline)', letterSpacing: '0.02em',
               whiteSpace: 'nowrap', flexShrink: 0,
-              opacity: compiling ? 0.85 : (isReadOnly ? 0.6 : 1)
+              opacity: compiling ? 0.85 : (effectivelyDisabled ? 0.6 : 1)
             }}
           >
             {compiling
               ? <RefreshCw size={13} className="spinner" />
+              : isLocked
+              ? <Lock size={13} strokeWidth={2} />
               : <Command size={13} strokeWidth={2} />
             }
-            <span>{compiling ? 'BUILDING...' : 'BUILD'}</span>
+            <span>{compiling ? 'BUILDING...' : isLocked ? 'LOCKED' : 'BUILD'}</span>
           </motion.button>
         </div>
 
-        {/* Theme switcher – last, shrink-protected */}
+        {/* Theme switcher */}
         <div style={{ flexShrink: 0, position: 'relative' }}>
           <ThemeSwitcher />
         </div>

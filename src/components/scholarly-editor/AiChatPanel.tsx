@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Zap, ChevronRight, ChevronDown, Bot, Copy, Check, Pencil, Trash2, 
   RotateCcw, Sparkles, Code, FileCode, CheckCircle2, CornerDownLeft, 
-  Layers, MessageSquare, Terminal
+  Layers, MessageSquare, Terminal, Lock
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { ChatMessage, UseAiChatOptions } from '@/hooks/useAiChat';
@@ -19,6 +19,9 @@ export interface AiChatPanelProps extends UseAiChatOptions {
   afterApply?: () => void;
   activeFile?: string;
   fileCount?: number;
+  isLocked?: boolean;
+  lockReason?: 'project_limit' | 'ai_tokens_exhausted' | 'credits' | null;
+  onUpgradeClick?: () => void;
 }
 
 const QUICK_PROMPTS = [
@@ -37,6 +40,9 @@ export function AiChatPanel({
   afterApply,
   activeFile = 'main.tex',
   fileCount,
+  isLocked = false,
+  lockReason = null,
+  onUpgradeClick,
   ...chatOptions
 }: AiChatPanelProps) {
   const {
@@ -67,6 +73,11 @@ export function AiChatPanel({
   }, [messages.length]);
 
   const handleCopy = useCallback(async (content: string, blockKey?: string) => {
+    if (isLocked) {
+      toast.error('Copying is disabled under the current limit. Please subscribe to a plan to continue.', { id: 'chat-copy-disabled' });
+      onUpgradeClick?.();
+      return;
+    }
     try {
       if (navigator?.clipboard?.writeText) {
         await navigator.clipboard.writeText(content);
@@ -692,23 +703,30 @@ export function AiChatPanel({
               return (
                 <button
                   key={idx}
-                  onClick={() => send(qp.prompt)}
-                  disabled={sending}
+                  onClick={() => {
+                    if (isLocked) {
+                      toast.error('AI assistant is locked. Please upgrade your plan to proceed.');
+                      onUpgradeClick?.();
+                      return;
+                    }
+                    send(qp.prompt);
+                  }}
+                  disabled={sending || isLocked}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: '0.3rem',
                     padding: '0.25rem 0.55rem',
                     borderRadius: '20px',
-                    background: '#ffffff',
+                    background: isLocked ? 'rgba(0,0,0,0.03)' : '#ffffff',
                     border: '1px solid rgba(0,0,0,0.12)',
-                    color: '#334155',
+                    color: isLocked ? '#94a3b8' : '#334155',
                     fontSize: '0.65rem',
                     fontWeight: 600,
                     whiteSpace: 'nowrap',
-                    cursor: 'pointer',
+                    cursor: isLocked ? 'not-allowed' : 'pointer',
                     transition: 'all 0.2s',
-                    opacity: sending ? 0.5 : 1
+                    opacity: (sending || isLocked) ? 0.5 : 1
                   }}
                   onMouseEnter={e => {
                     e.currentTarget.style.background = '#e0e7ff';
@@ -799,7 +817,7 @@ export function AiChatPanel({
             )}
           </div>
 
-          {/* Interactive Multi-line Input Box */}
+          {/* Interactive Multi-line Input Box or Locked State Overlay */}
           <div style={{
             padding: '0.75rem',
             borderTop: '1px solid rgba(0,0,0,0.08)',
@@ -809,107 +827,153 @@ export function AiChatPanel({
             gap: '0.4rem',
             flexShrink: 0
           }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'flex-end',
-              gap: '0.4rem',
-              background: '#f8fafc',
-              border: '1px solid rgba(0,0,0,0.12)',
-              borderRadius: '12px',
-              padding: '0.4rem 0.6rem',
-              transition: 'all 0.2s',
-              boxShadow: 'none'
-            }}>
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    send();
-                  }
-                }}
-                placeholder="Ask about equations, bibliography, formatting..."
-                disabled={sending}
-                rows={1}
-                style={{
-                  flex: 1,
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#0f172a',
-                  fontSize: '0.8rem',
-                  outline: 'none',
-                  fontFamily: 'var(--font-headline)',
-                  lineHeight: 1.4,
-                  resize: 'none',
-                  minHeight: '28px',
-                  maxHeight: '130px',
-                  padding: '2px 0'
-                }}
-              />
-
-              {sending ? (
+            {isLocked ? (
+              <div style={{
+                padding: '0.85rem',
+                borderRadius: '12px',
+                background: lockReason === 'project_limit' ? 'rgba(239, 68, 68, 0.05)' : 'rgba(168, 85, 247, 0.05)',
+                border: `1px solid ${lockReason === 'project_limit' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(168, 85, 247, 0.2)'}`,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '0.5rem',
+                textAlign: 'center'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: lockReason === 'project_limit' ? '#dc2626' : '#7c3aed', fontWeight: 800, fontSize: '0.78rem' }}>
+                  <Lock size={15} />
+                  <span>{lockReason === 'project_limit' ? 'Free Project Limit Reached (7/7)' : 'Daily LLM Tokens Exhausted'}</span>
+                </div>
+                <p style={{ margin: 0, fontSize: '0.7rem', color: '#64748b', lineHeight: 1.45 }}>
+                  {lockReason === 'project_limit'
+                    ? 'Free membership is restricted to 7 cumulative projects. Subscribe to a plan to unlock the AI agent and document tools.'
+                    : 'All daily AI tokens are used. Assistant will automatically reactivate once the daily quota refreshes, or immediately upon upgrading to a Premium AI Plan.'}
+                </p>
                 <button
-                  onClick={abort}
-                  title="Abort AI Generation"
+                  onClick={onUpgradeClick}
                   style={{
-                    background: 'rgba(239, 68, 68, 0.15)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    color: '#dc2626',
+                    padding: '0.4rem 0.9rem',
+                    background: lockReason === 'project_limit' ? 'linear-gradient(90deg, #ef4444, #dc2626)' : 'linear-gradient(90deg, #8b5cf6, #7c3aed)',
+                    color: '#fff',
+                    border: 'none',
                     borderRadius: '8px',
-                    padding: '0.35rem 0.65rem',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '0.25rem',
-                    fontSize: '0.7rem',
-                    fontWeight: 700,
-                    flexShrink: 0,
-                    transition: 'all 0.2s'
+                    gap: '0.35rem',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.12)'
                   }}
                 >
-                  <X size={13} /> Abort
+                  <Sparkles size={12} />
+                  {lockReason === 'project_limit' ? 'Subscribe to Plan (₹ INR)' : 'Upgrade to Premium AI Plan'}
                 </button>
-              ) : (
-                <button
-                  onClick={() => send()}
-                  disabled={!input.trim()}
-                  title="Send message (Enter)"
-                  style={{
-                    background: input.trim()
-                      ? 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)'
-                      : '#f1f5f9',
-                    color: input.trim() ? '#fff' : '#94a3b8',
-                    border: input.trim() ? 'none' : '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    width: '32px',
-                    height: '32px',
-                    cursor: input.trim() ? 'pointer' : 'default',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                    boxShadow: input.trim() ? '0 4px 12px rgba(79, 70, 229, 0.3)' : 'none',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  <CornerDownLeft size={14} />
-                </button>
-              )}
-            </div>
+              </div>
+            ) : (
+              <>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  gap: '0.4rem',
+                  background: '#f8fafc',
+                  border: '1px solid rgba(0,0,0,0.12)',
+                  borderRadius: '12px',
+                  padding: '0.4rem 0.6rem',
+                  transition: 'all 0.2s',
+                  boxShadow: 'none'
+                }}>
+                  <textarea
+                    ref={textareaRef}
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        send();
+                      }
+                    }}
+                    placeholder="Ask about equations, bibliography, formatting..."
+                    disabled={sending}
+                    rows={1}
+                    style={{
+                      flex: 1,
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#0f172a',
+                      fontSize: '0.8rem',
+                      outline: 'none',
+                      fontFamily: 'var(--font-headline)',
+                      lineHeight: 1.4,
+                      resize: 'none',
+                      minHeight: '28px',
+                      maxHeight: '130px',
+                      padding: '2px 0'
+                    }}
+                  />
 
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '0 0.25rem',
-              fontSize: '0.62rem',
-              color: '#64748b'
-            }}>
-              <span>Return to send, Shift+Return for newline</span>
-              <span>Full context aware</span>
-            </div>
+                  {sending ? (
+                    <button
+                      onClick={abort}
+                      title="Abort AI Generation"
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.15)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        color: '#dc2626',
+                        borderRadius: '8px',
+                        padding: '0.35rem 0.65rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        flexShrink: 0,
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      <X size={13} /> Abort
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => send()}
+                      disabled={!input.trim()}
+                      title="Send message (Enter)"
+                      style={{
+                        background: input.trim()
+                          ? 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)'
+                          : '#f1f5f9',
+                        color: input.trim() ? '#fff' : '#94a3b8',
+                        border: input.trim() ? 'none' : '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        width: '32px',
+                        height: '32px',
+                        cursor: input.trim() ? 'pointer' : 'default',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        boxShadow: input.trim() ? '0 4px 12px rgba(79, 70, 229, 0.3)' : 'none',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      <CornerDownLeft size={14} />
+                    </button>
+                  )}
+                </div>
+
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '0 0.25rem',
+                  fontSize: '0.62rem',
+                  color: '#64748b'
+                }}>
+                  <span>Return to send, Shift+Return for newline</span>
+                  <span>Full context aware</span>
+                </div>
+              </>
+            )}
           </div>
         </motion.div>
       )}

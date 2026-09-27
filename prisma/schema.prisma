@@ -26,6 +26,7 @@ model User {
   memberSince   DateTime?          @db.Timestamptz  // first membership activation date
   aiDailyCapOverride Int?          // null = use plan default, number = custom daily token cap
   aiAgentReactivatesAt DateTime? @db.Timestamptz // when AI reactivates after cap hit (null = not capped)
+  lifetimeProjectsCount Int        @default(0)   // Lifetime total projects created (non-decreasing on deletion)
   createdAt     DateTime @db.Timestamptz           @default(now())
   updatedAt     DateTime @db.Timestamptz           @updatedAt
   accounts      Account[]

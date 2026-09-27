@@ -88,28 +88,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'BLOCKED', blockedUntil: result.blockedUntil?.toISOString() }, { status: 403 });
     }
 
-    // Check project limits for Free tier
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { membership: true, membershipExpiresAt: true }
-    });
-
-    const now = new Date();
-    const isFreeOrExpired = !user || user.membership === 'free' || (user.membershipExpiresAt && new Date(user.membershipExpiresAt) <= now);
-
-    if (isFreeOrExpired) {
-      const [projectCount, citationCount, reviewCount] = await Promise.all([
-        prisma.project.count({ where: { userId: session.user.id } }),
-        prisma.citationProject.count({ where: { userId: session.user.id } }),
-        prisma.paperReview.count({ where: { userId: session.user.id } }),
-      ]);
-      const totalCount = projectCount + citationCount + reviewCount;
-      if (totalCount >= 7) {
-        return NextResponse.json({ 
-          error: 'LIMIT_REACHED', 
-          message: 'Free membership is restricted to a total of 7 projects. Please upgrade to Premium.' 
-        }, { status: 403 });
-      }
+    // Check project limits for Free tier (cumulative non-decreasing limit across all tools)
+    const { assertProjectCreationAllowed, recordProjectCreation } = await import('@/lib/projectLimits');
+    const limitCheck = await assertProjectCreationAllowed(session.user.id);
+    if (!limitCheck.allowed) {
+      return NextResponse.json({
+        error: 'LIMIT_REACHED',
+        message: limitCheck.message || 'Free membership is restricted to a total of 7 projects. Please upgrade to Premium.'
+      }, { status: 403 });
     }
 
     const { name, projectType, templateName } = await req.json();
@@ -125,6 +111,7 @@ export async function POST(req: Request) {
       }
     });
 
+    await recordProjectCreation(session.user.id);
     await logToolUsage(session.user.id, 'latexify_studio', 'create_project');
 
     return NextResponse.json({ project });

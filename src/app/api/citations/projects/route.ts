@@ -49,6 +49,16 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Check project limits for Free tier (cumulative non-decreasing limit across all tools)
+    const { assertProjectCreationAllowed, recordProjectCreation } = await import('@/lib/projectLimits');
+    const limitCheck = await assertProjectCreationAllowed(user.id);
+    if (!limitCheck.allowed) {
+      return NextResponse.json({ 
+        error: 'LIMIT_REACHED', 
+        message: limitCheck.message || 'Free membership is restricted to a total of 7 projects across all tools. Please upgrade to Premium.' 
+      }, { status: 403 });
+    }
+
     const { name, style } = await req.json();
 
     const project = await prisma.citationProject.create({
@@ -58,6 +68,8 @@ export async function POST(req: NextRequest) {
         style: style || "apa-7"
       }
     });
+
+    await recordProjectCreation(user.id);
 
     return NextResponse.json({ project });
   } catch (error) {
