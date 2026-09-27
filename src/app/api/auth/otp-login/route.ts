@@ -35,6 +35,18 @@ export async function POST(req: NextRequest) {
       await prisma.userSession.deleteMany({
         where: { userId },
       });
+      const { pbAdmin, invalidateRecordCache } = await import("@/lib/pb");
+      const admPb = await pbAdmin();
+      const list = await admPb.collection("user_sessions").getFullList({
+        filter: `userId = "${userId}"`,
+        requestKey: null,
+        $autoCancel: false,
+      });
+      const ids = list.map((s: any) => s.id);
+      if (ids.length > 0) {
+        await Promise.all(ids.map((id: string) => admPb.collection("user_sessions").delete(id)));
+      }
+      invalidateRecordCache();
     } catch {}
 
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);

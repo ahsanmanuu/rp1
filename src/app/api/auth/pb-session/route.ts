@@ -48,9 +48,23 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Check direct PocketBase token validation as fallback before deciding 401
+  // Direct check in PocketBase user_sessions collection if adapter missed it
+  if (!sessionRecord && !dbError && token) {
+    try {
+      const { pbAdmin } = await import("@/lib/pb");
+      const admPb = await pbAdmin();
+      const directSession = await admPb.collection("user_sessions").getFirstListItem(`sessionToken = "${token}"`, { requestKey: null });
+      if (directSession) {
+        sessionRecord = directSession as any;
+      }
+    } catch {
+      // Record definitively does not exist in user_sessions
+    }
+  }
+
+  // Check direct PocketBase token validation ONLY as emergency fallback when DB threw a network/connection error
   let pbDirectUser: any = null;
-  if (!sessionRecord || dbError) {
+  if (dbError) {
     try {
       const { authFromToken } = await import("@/lib/pb");
       const pb = await authFromToken(token);
@@ -76,8 +90,8 @@ export async function GET(req: NextRequest) {
     }).catch(() => null);
   }
 
-  // Fallback to pbDirectUser if DB user is missing
-  if (!dbUser && pbDirectUser) {
+  // Fallback to pbDirectUser ONLY during transient DB connection outages
+  if (!dbUser && dbError && pbDirectUser) {
     dbUser = {
       id: pbDirectUser.id,
       email: pbDirectUser.email,
@@ -90,12 +104,19 @@ export async function GET(req: NextRequest) {
     };
   }
 
-  const sessionActive =
-    (!!sessionRecord && !!dbUser && new Date(sessionRecord.expiresAt).getTime() > Date.now()) ||
-    (!!pbDirectUser && !!dbUser);
+  // Session is active ONLY if:
+  // 1. Database is healthy and sessionRecord exists and has not expired, and dbUser exists, OR
+  // 2. DB experienced a temporary connection error (dbError) but pbDirectUser is valid (to avoid transient blips)
+  const isExpired = sessionRecord?.expiresAt ? new Date(sessionRecord.expiresAt).getTime() <= Date.now() : false;
+  const sessionActive = (!dbError && !!sessionRecord && !isExpired && !!dbUser) || (dbError && !!pbDirectUser && !!dbUser);
 
-  // Logged out, expired, or truly invalid token → unauthenticated
+  // Logged out, evicted by another device, expired, or invalid session → unauthenticated (401)
   if (!sessionActive || !dbUser) {
+    try {
+      const { invalidateRecordCache } = await import("@/lib/pb");
+      invalidateRecordCache(token);
+    } catch {}
+
     const response = NextResponse.json({ user: null, authenticated: false }, { status: 401 });
     const AUTH_COOKIE_NAMES = ['pb_token', 'admin_session', 'next-auth.session-token', '__Secure-next-auth.session-token'];
     AUTH_COOKIE_NAMES.forEach(c => {

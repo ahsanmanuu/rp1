@@ -29,6 +29,11 @@ export default function LoginPage() {
       const urlParams = new URLSearchParams(window.location.search);
       const emailParam = urlParams.get('email');
       const savedEmail = localStorage.getItem('remembered_email');
+      const evictedParam = urlParams.get('evicted');
+
+      if (evictedParam === 'true') {
+        setError("Your session was terminated because your account was logged in from another device.");
+      }
       
       if (emailParam) {
         setEmail(emailParam);
@@ -55,10 +60,15 @@ export default function LoginPage() {
   const handleForceLogin = async () => {
     setModalLoading(true);
     try {
+      let mId = machineId;
+      if (!mId && typeof window !== 'undefined') {
+        mId = localStorage.getItem('machine_id') || "";
+      }
+
       const logoutRes = await fetch("/api/auth/logout-all-devices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, machineId }),
+        body: JSON.stringify({ email, password, machineId: mId }),
       });
 
       if (!logoutRes.ok) {
@@ -68,7 +78,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/pb-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, machineId }),
+        body: JSON.stringify({ email, password, machineId: mId, force: true }),
       });
 
       if (!res.ok) {
@@ -119,13 +129,23 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     try {
+      let mId = machineId;
+      if (!mId && typeof window !== 'undefined') {
+        mId = localStorage.getItem('machine_id') || "";
+      }
       const res = await fetch("/api/auth/otp-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, otpId, otp: otpCode, machineId }),
+        body: JSON.stringify({ email, otpId, otp: otpCode, machineId: mId }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (res.status === 409) {
+          setDupSessionDetails(data.sessionDetails || []);
+          setShowDupModal(true);
+          setLoading(false);
+          return;
+        }
         setError(data.error || "Invalid or expired code");
       } else {
         await update({ user: data.user, token: data.token });
@@ -155,10 +175,20 @@ export default function LoginPage() {
       }
     }
 
+    let mId = machineId;
+    if (!mId && typeof window !== 'undefined') {
+      mId = localStorage.getItem('machine_id') || "";
+      if (!mId) {
+        mId = 'mch_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+        localStorage.setItem('machine_id', mId);
+      }
+      setMachineId(mId);
+    }
+
     const res = await fetch("/api/auth/pb-login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, machineId }),
+      body: JSON.stringify({ email, password, machineId: mId }),
     });
 
     if (!res.ok) {

@@ -859,14 +859,24 @@ export function autoHealLatex(latex: string): string {
     if (!hasPackage(patchedPreamble, "placeins")) usepackageGuards.push("\\usepackage{placeins}");
     if (!hasPackage(patchedPreamble, "enumitem")) usepackageGuards.push("\\usepackage{enumitem}");
     if (!hasPackage(patchedPreamble, "rotating")) usepackageGuards.push("\\usepackage{rotating,pdflscape}");
-    if (!hasPackage(patchedPreamble, "algorithm")) {
+    // The legacy `algorithmic` package is stripped from the preamble above, so the
+    // algorithmic ENVIRONMENT must be guaranteed by algpseudocode — even when the
+    // float package `algorithm` is already present (otherwise the guard below is
+    // skipped and \begin{algorithmic} stays undefined → "Environment undefined").
+    const hasAlgoFloat = hasPackage(patchedPreamble, "algorithm");
+    const hasAlgpseudo = hasPackage(patchedPreamble, "algpseudocode");
+    if (!hasAlgpseudo) {
+      if (!hasAlgoFloat) {
+        usepackageGuards.push(
+          "\\makeatletter",
+          "\\let\\c@algorithm\\relax",
+          "\\let\\algorithm\\relax",
+          "\\let\\endalgorithm\\relax",
+          "\\makeatother"
+        );
+      }
       usepackageGuards.push(
-        "\\makeatletter",
-        "\\let\\c@algorithm\\relax",
-        "\\let\\algorithm\\relax",
-        "\\let\\endalgorithm\\relax",
-        "\\makeatother",
-        "\\usepackage{algorithm,algpseudocode}",
+        hasAlgoFloat ? "\\usepackage{algpseudocode}" : "\\usepackage{algorithm,algpseudocode}",
         "\\providecommand{\\algorithmicrequire}{\\textbf{Require:}}",
         "\\providecommand{\\algorithmicensure}{\\textbf{Ensure:}}",
         "\\renewcommand{\\algorithmicrequire}{\\textbf{Input:}}",
@@ -1088,8 +1098,9 @@ export function autoHealLatex(latex: string): string {
     
     patchedB = patchedB.replace(blockPattern, (match, envName) => {
         if (match.includes("adjustbox") || match.includes("\\resizebox") || match.includes("max size")) return match;
-        // Avoid wrapping algorithm if it's a float, but minipages are safe
-        if (envName === "algorithm") return match; 
+        // Never box these two: `algorithm` is already a float, and `algorithmic` is a
+        // LIST environment — putting a list inside adjustbox breaks item layout.
+        if (envName === "algorithm" || envName === "algorithmic") return match; 
         return `\\begin{adjustbox}{max width=\\linewidth, max height=0.7\\textheight, keepaspectratio}\n${match}\n\\end{adjustbox}`;
     });
 
@@ -1160,15 +1171,22 @@ export function autoHealLatex(latex: string): string {
       pkgs.set(p, `\\usepackage{${p}}`)
     );
     
-    if (isA || clean.includes("\\begin{algorithmic}") || clean.includes("\\begin{algorithm}")) { 
-        pkgs.set("algorithm", "\\usepackage{algorithm}"); 
-        pkgs.set("algpseudocode", "\\usepackage{algpseudocode}");
-        pkgs.set("algorithmic", "\\usepackage{algorithmic}");
-    }
-    else if (clean.includes("\\SetAlgoVlined") || clean.includes("\\SetKwInput")) { pkgs.set("algorithm2e", "\\usepackage[ruled,vlined,linesnumbered]{algorithm2e}"); }
+    // Package detection must also see SHIELDED blocks: algorithm/table/equation bodies
+    // are pulled out into `mathShield` before `clean` is built, so `clean` alone never
+    // contains \begin{algorithmic} and these guards would silently never fire.
+    const detectSrc = `${clean}\n${mathShield.join("\n")}`;
 
-    if (clean.includes("\\begin{tabularx}")) pkgs.set("tabularx", "\\usepackage{tabularx}");
-    if (clean.includes("\\setlist") || clean.includes("\\begin{description}")) pkgs.set("enumitem", "\\usepackage{enumitem}");
+    if (isA || detectSrc.includes("\\begin{algorithmic}") || detectSrc.includes("\\begin{algorithm}")) { 
+        pkgs.set("algorithm", "\\usepackage{algorithm}"); 
+        // algpseudocode PROVIDES the algorithmic environment. Loading the separate
+        // `algorithmic` package alongside it redefines \algorithmic etc. and aborts
+        // compilation with "Command ... already defined".
+        pkgs.set("algpseudocode", "\\usepackage{algpseudocode}");
+    }
+    else if (detectSrc.includes("\\SetAlgoVlined") || detectSrc.includes("\\SetKwInput")) { pkgs.set("algorithm2e", "\\usepackage[ruled,vlined,linesnumbered]{algorithm2e}"); }
+
+    if (detectSrc.includes("\\begin{tabularx}")) pkgs.set("tabularx", "\\usepackage{tabularx}");
+    if (detectSrc.includes("\\setlist") || detectSrc.includes("\\begin{description}")) pkgs.set("enumitem", "\\usepackage{enumitem}");
 
 
     const dclName = dcl.match(/\{([^}]*)\}/)?.[1] || "";
@@ -1256,7 +1274,13 @@ export function autoHealLatex(latex: string): string {
     }
 
 
-    const res = `${finalPre}\n\\begin{document}\n${bodyGuards}\n${finalBody}\n\\end{document}`;
+    let res = `${finalPre}\n\\begin{document}\n${bodyGuards}\n${finalBody}\n\\end{document}`;
+    // Restore the math/documentation shield here too. The document branch already did
+    // this; without it, every shielded block (algorithm, table, figure, equation, $$…$$)
+    // survives as a literal __MATH_SHIELD_n__ token and the content is silently dropped.
+    mathShield.forEach((val, i) => {
+      res = res.replace(`__MATH_SHIELD_${i}__`, val);
+    });
     const finalRes = applyFinalSanitizationSieve(res);
     return finalRes.replace(/[\u200B\u200C\u200D\uFEFF]/g, "").replace(/[\u202F\u00A0]/g, " ");
   }

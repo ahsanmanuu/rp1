@@ -11,6 +11,7 @@ const SUITES = [
   { name: 'bibtex-parity',     file: 'verify-bibtex.cjs' },
   { name: 'report-no-latex',   file: 'test-report-no-latex.cjs' },
   { name: 'golden-doc',        file: 'golden-doc.cjs' },
+  { name: 'render-verify',     file: 'test_verification_suite.cjs' },
 ];
 
 let failed = 0;

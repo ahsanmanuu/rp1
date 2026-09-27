@@ -71,10 +71,20 @@ export default function RegisterPage() {
         }
       }
 
+      let mId = machineId;
+      if (!mId && typeof window !== 'undefined') {
+        mId = localStorage.getItem('machine_id') || "";
+        if (!mId) {
+          mId = 'mch_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+          localStorage.setItem('machine_id', mId);
+        }
+        setMachineId(mId);
+      }
+
       const loginRes = await fetch("/api/auth/pb-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, machineId }),
+        body: JSON.stringify({ email, password, machineId: mId }),
       });
 
       if (!loginRes.ok) {

@@ -2184,7 +2184,9 @@ export class DeepDocumentParser {
               }
 
               if (!tableCaption) {
-                tableCaption = `Table (${rowCount} rows × ${colCount} cols)`;
+                // Leave the caption empty. Inventing "Table (N rows x M cols)" prints that
+                // placeholder as the literal caption text of every uncaptioned table.
+                tableCaption = '';
               }
               entry.caption = tableCaption;
               if (tableCaption && consumedCaptionTexts) consumedCaptionTexts.add(tableCaption.trim());

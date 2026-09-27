@@ -530,7 +530,13 @@ export class LatexAssembler {
           if (n.type === 'figure' || n.type === 'image' || n.type === 'chart' || n.type === 'figure-group') {
             const figId = String(n.id || '').replace(/^.*[\/\\]/, '').toLowerCase().trim();
             const figCap = String(n.caption || '').toLowerCase().trim();
-            const figKey = figId ? `${n.type}:${figId}` : (figCap ? `${n.type}:${figCap}` : '');
+            const figSrc = Array.isArray((n as any).images)
+              ? (n as any).images.map((i: any) => String((i && (i.src || i.id)) || i || '').replace(/^.*[\/\\]/, '').toLowerCase().trim()).filter(Boolean).join('|')
+              : '';
+            const figSig = String(n.text || n.html || '').replace(/\s+/g, ' ').trim().toLowerCase().substring(0, 120);
+            // An empty key disabled dedup entirely, so two figures that carry neither an id
+            // nor a caption were always emitted twice. Fall back to their source/content.
+            const figKey = figId ? `${n.type}:${figId}` : (figCap ? `${n.type}:${figCap}` : ((figSrc || figSig) ? `${n.type}:${figSrc || figSig}` : ''));
             if (figKey && seenFiguresGlobal.has(figKey)) {
               continue;
             }
@@ -1289,7 +1295,7 @@ export class LatexAssembler {
         const hasRealCaption = rawCaption.length > 3 && !/^(?:Figure|Fig\.?|Image|Chart|Diagram|Photo)\s*$/i.test(rawCaption.trim());
         const cleaned = hasRealCaption ? LatexAssembler.cleanFigureCaption(rawCaption) : '';
         const caption = LatexAssembler.escapeText(cleaned, mathBlocks);
-        const captionLine = caption ? `\\caption{${caption}}\n` : `\\caption{}\n`;
+        const captionLine = caption ? `\\caption{${caption}}\n` : '';
         const labelIdx = (node as any).labelIdx ?? Math.random().toString(36).substring(2, 7);
         const label = `fig:${String(labelIdx).replace(/[^a-z0-9]/gi, '_')}`;
         const twoCol = (node as any).twoColumn === true;
@@ -1308,7 +1314,7 @@ export class LatexAssembler {
         const hasRealCaption = rawCaption.length > 3 && !/^(?:Chart|Figure|Fig\.?)\s*$/i.test(rawCaption.trim());
         const cleaned = hasRealCaption ? LatexAssembler.cleanFigureCaption(rawCaption) : '';
         const caption = LatexAssembler.escapeText(cleaned, mathBlocks);
-        const captionLine = caption ? `\\caption{${caption}}\n` : `\\caption{}\n`;
+        const captionLine = caption ? `\\caption{${caption}}\n` : '';
         const labelIdx = (node as any).labelIdx ?? Math.random().toString(36).substring(2, 7);
         const label = `chart:${String(labelIdx).replace(/[^a-z0-9]/gi, '_')}`;
         const twoCol = (node as any).twoColumn === true;
@@ -2402,9 +2408,16 @@ export class LatexAssembler {
     // Final cleanup of any potential double-escaped math delimiters
     let finalResult = sanitized.replace(/\\\$\\textbackslash\s+/g, '$\\');
     // Balance math mode delimiters to prevent leaked math mode breaking subsequent environments (\bibitem, \section, etc.)
+    // When the count is odd there is exactly one unpaired `$` — drop THAT delimiter.
+    // Appending a closing `$` (the old behaviour) would leave the tail of the
+    // paragraph inside math mode, so it renders without line breaks/justification
+    // and blows past the margin.
     const dollarCount = (finalResult.match(/(?<!\\)\$/g) || []).length;
     if (dollarCount % 2 !== 0) {
-      finalResult += '$';
+      let lastUnescaped = -1;
+      const dollarRX = /(?<!\\)\$/g;
+      while (dollarRX.exec(finalResult) !== null) lastUnescaped = dollarRX.lastIndex - 1;
+      if (lastUnescaped >= 0) finalResult = finalResult.slice(0, lastUnescaped) + finalResult.slice(lastUnescaped + 1);
     }
     return finalResult;
   }

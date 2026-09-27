@@ -25,7 +25,7 @@ function AutoLogoutWatcher() {
       // 10-30 minute upload with a redirect to the login page.
       !(typeof window !== "undefined" && (window as any).__uploadInFlight)
     ) {
-      router.push("/");
+      router.push("/login?evicted=true");
     }
     prevStatus.current = status;
   }, [status, router]);
@@ -36,8 +36,8 @@ function AutoLogoutWatcher() {
 export const NextAuthProvider = ({ children }: { children: React.ReactNode }) => {
   return (
     <SessionProvider
-      // Poll every 120s — low overhead on localhost while keeping session refreshed
-      refetchInterval={120}
+      // Poll every 30s to keep session status fresh and evict invalidated sessions promptly
+      refetchInterval={30}
       refetchOnWindowFocus={true}
     >
       <AutoLogoutWatcher />

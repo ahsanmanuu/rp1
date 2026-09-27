@@ -25,7 +25,11 @@
     "../src/lib/assembler.ts",
     "../src/lib/agent-gateway/**/*.ts",
     "../src/lib/deep-parser.ts",
-    "../src/lib/latex-image-audit.ts"
+    "../src/lib/latex-image-audit.ts",
+    "../src/lib/ai-modular-mapping.ts",
+    "../src/lib/academic-sections.ts",
+    "../src/lib/latex.ts",
+    "../src/lib/studio-core/compiler-utils.ts"
   ],
   "exclude": ["node_modules"]
 }

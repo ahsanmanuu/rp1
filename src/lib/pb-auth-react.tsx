@@ -38,7 +38,7 @@ interface SessionProviderProps {
   refetchOnWindowFocus?: boolean;
 }
 
-export function SessionProvider({ children, refetchInterval = 120, refetchOnWindowFocus = false }: SessionProviderProps) {
+export function SessionProvider({ children, refetchInterval = 30, refetchOnWindowFocus = true }: SessionProviderProps) {
   const [data, setData] = useState<PbServerSession | null>(null);
   const [status, setStatus] = useState<SessionStatus>(() => {
     if (typeof window !== "undefined") {
@@ -138,7 +138,10 @@ export function SessionProvider({ children, refetchInterval = 120, refetchOnWind
         setStatus("unauthenticated");
         statusRef.current = "unauthenticated";
         sessionTokenRef.current = null;
-        if (typeof window !== "undefined") localStorage.removeItem("auth-token");
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("auth-token");
+          localStorage.removeItem("pb_token");
+        }
       } else {
         const hasStoredToken = typeof window !== "undefined" && !!localStorage.getItem("auth-token");
         if (!hasStoredToken) {
@@ -192,6 +195,7 @@ export function SessionProvider({ children, refetchInterval = 120, refetchOnWind
 
     let mounted = true;
     const currentToken = sessionTokenRef.current;
+    const currentUserId = data?.user?.id;
 
     const unsub = pbSubscribe("user_sessions", "*", (e) => {
       try {
@@ -199,12 +203,25 @@ export function SessionProvider({ children, refetchInterval = 120, refetchOnWind
         // If session was deleted (force logout from another device)
         if (e.action === "delete") {
           const deletedToken = e.record?.sessionToken;
-          if (deletedToken === currentToken) {
+          const deletedUserId = e.record?.userId;
+          const isOurSession = deletedToken && deletedToken === currentToken;
+          const isOurUser = deletedUserId && currentUserId && deletedUserId === currentUserId;
+
+          if (isOurSession) {
+            console.log("[PB Session Provider] Active session was terminated remotely. Logging out.");
             setData(null);
             setStatus("unauthenticated");
+            statusRef.current = "unauthenticated";
             sessionTokenRef.current = null;
+            if (typeof window !== "undefined") {
+              localStorage.removeItem("auth-token");
+              localStorage.removeItem("pb_token");
+            }
             // Clear cookie via logout endpoint
             fetch("/api/auth/pb-logout", { method: "POST", signal: AbortSignal.timeout(10000) }).catch(() => {});
+          } else if (isOurUser) {
+            // Verify our session status with the server immediately
+            update();
           }
         }
       } catch (subErr) {
@@ -218,7 +235,7 @@ export function SessionProvider({ children, refetchInterval = 120, refetchOnWind
       mounted = false;
       unsub();
     };
-  }, [status]);
+  }, [status, data?.user?.id, update]);
 
   return (
     <SessionContext.Provider value={{ data, status, update }}>

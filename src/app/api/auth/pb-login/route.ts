@@ -34,7 +34,7 @@ const LOCK_RECOVERY_WINDOW_MS = 30 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password, machineId } = await req.json();
+    const { email, password, machineId, force } = await req.json();
     if (!email || !password) {
       return NextResponse.json({ error: "Missing email or password" }, { status: 400 });
     }
@@ -192,17 +192,99 @@ export async function POST(req: NextRequest) {
     const ipAddress = geo.ipAddress || getClientIp(req);
     const location = geo.location || "Unknown Location";
     const userAgent = geo.userAgent || req.headers.get("user-agent") || "unknown";
-    let clientMachineId = machineId || "unknown";
-    if (clientMachineId === "unknown") {
+    let clientMachineId = machineId || "";
+    if (!clientMachineId || clientMachineId === "unknown") {
       const crypto = await import("crypto");
       clientMachineId = "fp_" + crypto.createHash("md5").update(`${ipAddress}-${userAgent}`).digest("hex");
     }
 
-    // Clean up expired user sessions for this user so fresh login completes smoothly
+    // ── Check for active sessions on other devices ──────────────────────────
+    let activeSessions: any[] = [];
     try {
-      await prisma.userSession.deleteMany({
-        where: { userId, expiresAt: { lt: new Date() } },
+      activeSessions = await prisma.userSession.findMany({
+        where: { userId },
       });
+    } catch (fetchErr) {
+      console.warn("[AUTH pb-login] Prisma findMany sessions failed, trying direct PB:", fetchErr);
+    }
+
+    if (!activeSessions || activeSessions.length === 0) {
+      try {
+        const { pbAdmin } = await import("@/lib/pb");
+        const admPb = await pbAdmin();
+        const list = await admPb.collection("user_sessions").getFullList({
+          filter: `userId = "${userId}"`,
+          requestKey: null,
+          $autoCancel: false,
+        });
+        activeSessions = list as any[];
+      } catch {}
+    }
+
+    const nowMs = Date.now();
+    const validSessions = (activeSessions || []).filter((s: any) => {
+      if (!s) return false;
+      if (s.expiresAt) {
+        const exp = new Date(s.expiresAt).getTime();
+        if (exp <= nowMs) return false;
+      }
+      return true;
+    });
+
+    const conflictingSessions = validSessions.filter(
+      (s: any) => s.machineId && s.machineId !== clientMachineId
+    );
+
+    if (conflictingSessions.length > 0 && !force) {
+      const sessionDetails = conflictingSessions.map((s: any) => ({
+        ipAddress: s.ipAddress || "Unknown IP",
+        location: s.location || "Unknown Location",
+        machineId: s.machineId || "Unknown Device",
+        createdAt: s.createdAt || s.created || s.lastActiveAt || new Date().toISOString(),
+      }));
+
+      console.warn(`[AUTH pb-login] Duplicate session blocked for user ${cleanEmail} on machine ${clientMachineId}. Conflicting devices:`, sessionDetails);
+
+      return NextResponse.json(
+        {
+          error: "ALREADY_LOGGED_IN",
+          sessionDetails,
+        },
+        { status: 409 }
+      );
+    }
+
+    // ── Session cleanup ─────────────────────────────────────────────────────
+    try {
+      if (force) {
+        // Clear all previous sessions for this user across devices
+        await prisma.userSession.deleteMany({
+          where: { userId },
+        });
+        const { pbAdmin, invalidateRecordCache } = await import("@/lib/pb");
+        const admPb = await pbAdmin();
+        const list = await admPb.collection("user_sessions").getFullList({
+          filter: `userId = "${userId}"`,
+          requestKey: null,
+          $autoCancel: false,
+        });
+        const ids = list.map((s: any) => s.id);
+        if (ids.length > 0) {
+          await Promise.all(ids.map((id: string) => admPb.collection("user_sessions").delete(id)));
+        }
+        invalidateRecordCache();
+      } else {
+        // Clear old sessions on this same machine or expired sessions
+        await prisma.userSession.deleteMany({
+          where: {
+            userId,
+            OR: [
+              { machineId: clientMachineId },
+              { expiresAt: { lt: new Date() } },
+            ],
+          },
+        });
+      }
     } catch (cleanErr) {
       console.warn("[AUTH pb-login] Session cleanup warning (non-fatal):", cleanErr);
     }

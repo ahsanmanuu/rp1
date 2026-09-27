@@ -1342,6 +1342,13 @@ export function applyStructureCorrections(
           return;
         }
 
+        // AI section titles are inserted verbatim. Run them through the same noise
+        // filters parser headings get, otherwise an author/designation/style-instruction
+        // string returned by the model is emitted as a real \section/\subsection.
+        const aiTitle = String(s.title || '').trim();
+        if (!aiTitle || isAuthorOrAffilNoise(aiTitle)) return;
+        if (/<[^>]*>/.test(aiTitle) || /[\d.]+\s*point\s*,?\s*bold/i.test(aiTitle) || /within the text/i.test(aiTitle)) return;
+
         const anchor = prevBodyIdx;
         // Clamp inserted depth: a heading can never be deeper than one level
         // below its predecessor (no orphan subsubsections at the document top).

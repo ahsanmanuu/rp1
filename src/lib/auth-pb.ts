@@ -109,6 +109,7 @@ export async function getServerSession(): Promise<PbServerSession | null> {
       return null;
     });
 
+    let dbError = false;
     const fetchDbSession = async () => {
       try {
         return await prisma.userSession.findUnique({
@@ -117,6 +118,7 @@ export async function getServerSession(): Promise<PbServerSession | null> {
         });
       } catch (dbErr: any) {
         console.error("[AUTH] Database session validation query failed:", dbErr?.message || dbErr);
+        dbError = true;
         return null;
       }
     };
@@ -124,20 +126,41 @@ export async function getServerSession(): Promise<PbServerSession | null> {
     [pb, sessionRecord] = await Promise.all([pbPromise, fetchDbSession()]);
 
     // If DB session lookup returned null, retry once after a short delay (e.g. during HMR or PB reconnect)
-    if (!sessionRecord && token) {
+    if (!sessionRecord && !dbError && token) {
       await new Promise(r => setTimeout(r, 400));
       sessionRecord = await fetchDbSession();
     }
 
+    // Direct check in PocketBase collection if prisma adapter missed it
+    if (!sessionRecord && !dbError && token) {
+      try {
+        const { pbAdmin } = await import("./pb");
+        const admPb = await pbAdmin();
+        const directRecord = await admPb.collection("user_sessions").getFirstListItem(`sessionToken = "${token}"`, { requestKey: null });
+        if (directRecord) {
+          sessionRecord = directRecord as any;
+        }
+      } catch {}
+    }
+
+    // If DB is healthy and session record does not exist -> session was revoked or logged out remotely
+    if (!sessionRecord && !dbError) {
+      try {
+        const { invalidateRecordCache } = await import("./pb");
+        invalidateRecordCache(token);
+      } catch {}
+      return null;
+    }
+
     // Verify session hasn't expired if DB record exists
-    if (sessionRecord?.expiresAt && new Date(sessionRecord.expiresAt).getTime() < Date.now()) {
+    if (sessionRecord?.expiresAt && new Date(sessionRecord.expiresAt).getTime() <= Date.now()) {
       return null;
     }
 
     const pbRecord: any = pb?.authStore?.record;
 
     // If neither DB session nor valid PocketBase record exists, user is unauthenticated
-    if ((!sessionRecord || !sessionRecord.user) && (!pbRecord || !pb?.authStore?.isValid)) {
+    if (!sessionRecord && (!pbRecord || !pb?.authStore?.isValid)) {
       return null;
     }
 
