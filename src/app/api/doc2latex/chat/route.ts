@@ -16,11 +16,25 @@ export async function POST(req: NextRequest) {
     const { messages, activeFile, fileContent, allFiles } = await req.json();
     const geo = await getClientGeoInfo(req);
 
+    const sanitizedFiles = Array.isArray(allFiles)
+      ? allFiles
+          .filter((f: any) => typeof f?.path === 'string' && /\.(tex|bib|cls|sty|txt|md|json)$/i.test(f.path))
+          .map((f: any) => ({
+            path: f.path,
+            content: typeof f.content === 'string'
+              ? (f.content.startsWith('data:') ? '' : f.content.slice(0, 30000))
+              : '',
+          }))
+      : [];
+    const sanitizedFileContent = typeof fileContent === 'string'
+      ? fileContent.slice(0, 80000)
+      : '';
+
     const result = await routeToAgent({
       agent: 'chat',
       messages: messages || [],
       context: {
-        activeFile, fileContent, allFiles, userId: (session.user as any).id,
+        activeFile, fileContent: sanitizedFileContent, allFiles: sanitizedFiles, userId: (session.user as any).id,
         userEmail: (session.user as any).email || undefined,
         ipAddress: geo.ipAddress || undefined,
         location: geo.location || undefined,

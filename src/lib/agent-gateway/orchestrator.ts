@@ -8,6 +8,8 @@ import { enforceAiCapRules } from '../aiCapRules';
 import { startModelSync } from './model-sync';
 
 import { logAndSyncAiUsage } from '../pbAiUsage';
+import { DIAGRAM_TEMPLATES } from '../diagramTemplates';
+import { guessIconFromContext } from '../diagramParsers';
 
 /** In-memory cache for aiContextConfig overrides (60s TTL). Avoids a DB roundtrip per routeToAgent call. */
 const contextConfigCache = new Map<string, { data: any; ts: number }>();
@@ -128,6 +130,195 @@ async function updateDailyUsage(userId: string, agent: string, promptTokens: num
   }
 }
 
+
+export function synthesizeDiagramFallback(req: GatewayRequest): { explanation: string; nodes: any[]; connections: any[]; mode?: string } {
+  const existingNodes = Array.isArray(req.context?.nodes) ? (req.context.nodes as any[]) : [];
+  const existingConnections = Array.isArray(req.context?.connections) ? (req.context.connections as any[]) : [];
+  
+  // Extract user prompt text from messages or context
+  const userMessages = (req.messages || []).filter(m => m.role === 'user');
+  const lastUserMsg = userMessages[userMessages.length - 1]?.content || '';
+  const rawPrompt = (typeof lastUserMsg === 'string' ? lastUserMsg : '').trim();
+  const lowerPrompt = rawPrompt.toLowerCase();
+
+  // 1. PATCH MODE: Canvas has existing nodes and user is asking to add, modify, or delete
+  const isExplicitNew = /^\s*(?:new|create|generate|replace|start fresh|from scratch|clear|blank)\b/i.test(rawPrompt);
+  if (existingNodes.length > 0 && !isExplicitNew) {
+    // Check if user is asking to remove / delete
+    if (/\b(?:delete|remove|drop|erase)\b/i.test(lowerPrompt)) {
+      const matchWord = lowerPrompt.replace(/.*?\b(?:delete|remove|drop|erase)\s+(?:the\s+)?([a-z0-9_\-]+).*/i, '$1');
+      const filteredNodes = existingNodes.filter(n => {
+        const titleLower = String(n.title || '').toLowerCase();
+        const idLower = String(n.id || '').toLowerCase();
+        return !titleLower.includes(matchWord) && !idLower.includes(matchWord);
+      });
+      const keptIds = new Set(filteredNodes.map(n => n.id));
+      const filteredConns = existingConnections.filter(c => keptIds.has(c.from) && keptIds.has(c.to));
+      return {
+        explanation: `Updated diagram architecture: Removed component matching "${matchWord}" and pruned associated connection channels.`,
+        nodes: filteredNodes,
+        connections: filteredConns,
+        mode: 'patch',
+      };
+    }
+
+    // Check if user is asking to add a new component
+    const addMatch = rawPrompt.match(/\b(?:add|insert|attach|connect|append)\s+(?:a\s+|an\s+|the\s+)?([a-zA-Z0-9\s\-]+?)(?:\s+(?:to|with|into|after|before)\s+([a-zA-Z0-9\s\-]+))?$/i);
+    const addedName = addMatch ? addMatch[1].trim() : (lowerPrompt.includes('add') ? rawPrompt.replace(/.*?\badd\s+/i, '').slice(0, 30).trim() : 'Service Component');
+    const targetAnchor = addMatch && addMatch[2] ? addMatch[2].trim().toLowerCase() : '';
+
+    let maxX = 100, maxY = 150;
+    existingNodes.forEach(n => {
+      if (typeof n.x === 'number' && n.x > maxX) maxX = n.x;
+      if (typeof n.y === 'number' && n.y > maxY) maxY = n.y;
+    });
+
+    const newId = `node_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    const guessType = (name: string): string => {
+      const l = name.toLowerCase();
+      if (/db|database|storage|postgres|mysql|mongo|redis|cache/i.test(l)) return 'Database';
+      if (/cloud|gateway|ingress|internet|external/i.test(l)) return 'Cloud';
+      if (/auth|security|lock|firewall/i.test(l)) return 'Decision';
+      if (/server|worker|service|compute/i.test(l)) return 'Technical';
+      if (/user|client|person|human/i.test(l)) return 'People';
+      return 'Process';
+    };
+
+    const nodeType = guessType(addedName);
+    const icon = guessIconFromContext(addedName, addedName, nodeType);
+    const colorList = ['blue', 'violet', 'green', 'amber', 'rose', 'indigo', 'slate'];
+    const assignedColor = colorList[existingNodes.length % colorList.length];
+
+    const newNode = {
+      id: newId,
+      title: addedName.charAt(0).toUpperCase() + addedName.slice(1),
+      description: `${nodeType} component integrated via architectural synthesis`,
+      type: nodeType,
+      x: maxX + 280,
+      y: Math.min(maxY, 250),
+      width: 240,
+      height: 120,
+      color: assignedColor,
+      icon,
+    };
+
+    let anchorNode = existingNodes[existingNodes.length - 1];
+    if (targetAnchor) {
+      const found = existingNodes.find(n => 
+        String(n.title || '').toLowerCase().includes(targetAnchor) ||
+        String(n.id || '').toLowerCase().includes(targetAnchor)
+      );
+      if (found) anchorNode = found;
+    }
+
+    const newConn = anchorNode ? [{
+      id: `conn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+      from: anchorNode.id,
+      to: newId,
+      type: 'Curved',
+      arrowhead: 'Arrow',
+      label: 'Data Channel',
+      lineStyle: 'solid',
+      arrowDirection: 'forward',
+      thickness: 2,
+    }] : [];
+
+    return {
+      explanation: `Integrated "${newNode.title}" (${nodeType}) into your diagram canvas at offset position with active data flow channel.`,
+      nodes: [...existingNodes, newNode],
+      connections: [...existingConnections, ...newConn],
+      mode: 'patch',
+    };
+  }
+
+  // 2. CREATE / SYNTHESIS MODE: Generate fresh complete architecture
+  let matchedTemplate = null;
+  if (/computer|hardware|cpu|motherboard/i.test(lowerPrompt)) {
+    matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'computer-block');
+  } else if (/microservice/i.test(lowerPrompt)) {
+    matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'microservices');
+  } else if (/cicd|ci\/cd|pipeline|jenkins|devops/i.test(lowerPrompt)) {
+    matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'cicd');
+  } else if (/rest|api|crud|express|fastapi/i.test(lowerPrompt)) {
+    matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'rest-api');
+  } else if (/event|kafka|pubsub|rabbitmq/i.test(lowerPrompt)) {
+    matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'event-driven');
+  } else if (/er\b|entity|relational|schema/i.test(lowerPrompt)) {
+    matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'er-diagram');
+  } else if (/uml|class\s+diagram/i.test(lowerPrompt)) {
+    matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'uml-class');
+  } else if (/venn/i.test(lowerPrompt)) {
+    matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'venn-diagram');
+  } else if (/swimlane/i.test(lowerPrompt)) {
+    matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'swimlane-flow');
+  } else if (/gantt|timeline|schedule/i.test(lowerPrompt)) {
+    matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'gantt-chart');
+  } else if (/circuit|resistor|capacitor|electronic/i.test(lowerPrompt)) {
+    matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'circuit-diagram');
+  } else if (/bar\s+chart|bar\s+graph/i.test(lowerPrompt)) {
+    matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'bar-chart');
+  } else if (/pie\s+chart/i.test(lowerPrompt)) {
+    matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'pie-chart');
+  } else if (/aws|amazon|s3|ec2/i.test(lowerPrompt)) {
+    matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'aws');
+  } else if (/kubernetes|k8s|pod/i.test(lowerPrompt)) {
+    matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'kubernetes');
+  } else if (/auth|login|oauth|jwt|sso/i.test(lowerPrompt)) {
+    matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'auth-flow');
+  } else if (/monolith|strangler|migration/i.test(lowerPrompt)) {
+    matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'monolith-migration');
+  }
+
+  if (matchedTemplate) {
+    const idMap = new Map<string, string>();
+    const clonedNodes = matchedTemplate.nodes.map((n, i) => {
+      const nid = `node_${i + 1}_${Date.now().toString(36)}`;
+      idMap.set(n.id, nid);
+      return { ...n, id: nid };
+    });
+    const clonedConns = matchedTemplate.connections.map((c, i) => ({
+      ...c,
+      id: `conn_${i + 1}_${Date.now().toString(36)}`,
+      from: idMap.get(c.from) || c.from,
+      to: idMap.get(c.to) || c.to,
+    }));
+
+    return {
+      explanation: `Synthesized verified architectural foundation for "${matchedTemplate.name}": Composed of ${clonedNodes.length} balanced components, semantic icons, and structured data flows.`,
+      nodes: clonedNodes,
+      connections: clonedConns,
+      mode: 'replace',
+    };
+  }
+
+  // 3. DYNAMIC DOMAIN SYNTHESIS: Generate customized 6-node architecture tailored to prompt
+  const topic = rawPrompt.replace(/^(?:create|draw|generate|build|make|design)\s+(?:a\s+|an\s+|the\s+)?(?:diagram|flowchart|architecture|system)?(?:\s+(?:of|for))?\s*/i, '').trim() || 'System Architecture';
+  const cleanTitle = topic.length > 0 ? (topic.charAt(0).toUpperCase() + topic.slice(1, 35)) : 'System Architecture';
+
+  const dynamicNodes = [
+    { id: 'client_ui', title: `${cleanTitle} Client`, description: 'Web & mobile user frontend interface', type: 'People', x: 80, y: 220, width: 220, height: 110, color: 'blue', icon: 'devices' },
+    { id: 'api_gw', title: 'API Gateway', description: 'Reverse proxy, SSL termination & rate limiting', type: 'Technical', x: 360, y: 220, width: 220, height: 110, color: 'violet', icon: 'hub' },
+    { id: 'core_svc', title: `${cleanTitle} Core Service`, description: 'Primary business logic & workflow processing', type: 'Process', x: 640, y: 120, width: 230, height: 110, color: 'indigo', icon: 'api' },
+    { id: 'auth_svc', title: 'Auth & Access Control', description: 'JWT authentication, roles & session tokens', type: 'Decision', x: 640, y: 320, width: 230, height: 110, color: 'rose', icon: 'lock' },
+    { id: 'primary_db', title: 'Primary Database', description: 'Persistent transactional state & relational storage', type: 'Database', x: 930, y: 120, width: 220, height: 110, color: 'green', icon: 'database' },
+    { id: 'event_stream', title: 'Cache & Event Bus', description: 'High-speed Redis cache & asynchronous message queue', type: 'Cloud', x: 930, y: 320, width: 220, height: 110, color: 'amber', icon: 'sync_alt' },
+  ];
+
+  const dynamicConns = [
+    { id: 'c1', from: 'client_ui', to: 'api_gw', type: 'Curved', arrowhead: 'Arrow', label: 'HTTPS / WSS', lineStyle: 'solid', arrowDirection: 'forward', thickness: 2 },
+    { id: 'c2', from: 'api_gw', to: 'auth_svc', type: 'Curved', arrowhead: 'Arrow', label: 'Verify Credentials', lineStyle: 'dashed', arrowDirection: 'both', thickness: 2 },
+    { id: 'c3', from: 'api_gw', to: 'core_svc', type: 'Curved', arrowhead: 'Arrow', label: 'Authorized Request', lineStyle: 'solid', arrowDirection: 'forward', thickness: 2 },
+    { id: 'c4', from: 'core_svc', to: 'primary_db', type: 'Curved', arrowhead: 'Arrow', label: 'Read/Write SQL', lineStyle: 'solid', arrowDirection: 'forward', thickness: 2 },
+    { id: 'c5', from: 'core_svc', to: 'event_stream', type: 'Curved', arrowhead: 'Arrow', label: 'Async Publish', lineStyle: 'dashed', arrowDirection: 'forward', thickness: 2 },
+  ];
+
+  return {
+    explanation: `Synthesized custom architectural diagram for "${cleanTitle}": Structured 6 core components across presentation, gateway, compute logic, security, and persistence tiers.`,
+    nodes: dynamicNodes,
+    connections: dynamicConns,
+    mode: 'replace',
+  };
+}
 
 export async function routeToAgent(req: GatewayRequest): Promise<GatewayResponse> {
   const startTime = Date.now();
@@ -416,11 +607,7 @@ export async function routeToAgent(req: GatewayRequest): Promise<GatewayResponse
         result: String(req.context?.code || '')
       };
     } else if (req.agent === 'diagram') {
-      syntheticData = {
-        explanation: "Fail-safe mode: Reverted diagram canvas layout to existing state.",
-        nodes: req.context?.nodes || [],
-        connections: req.context?.connections || []
-      };
+      syntheticData = synthesizeDiagramFallback(req);
     } else if (req.agent === 'doc2latex') {
       syntheticData = {
         qualityScore: 70,

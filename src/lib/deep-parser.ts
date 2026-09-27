@@ -748,6 +748,7 @@ export class DeepDocumentParser {
     // Universal Side-by-Side Image Grouping Pass
     const groupedBody: ContentNode[] = [];
     let pendingGroup: ContentNode[] = [];
+    let pendingHadSubfigPara = false;
 
     // Collect all image sources already inside existing figure-group nodes
     const groupedSrcs = new Set<string>();
@@ -759,50 +760,98 @@ export class DeepDocumentParser {
       }
     }
 
+    const extractFigOrdinal = (caption: string): number | null => {
+      const m = (caption || '').match(/(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo|Graph)\s*(?:\(|\b)(\d+(?:\.\d+)*|[IVXLCDMivxlcdm]+\b)(?:\)|\b)/i);
+      if (!m) return null;
+      const numMatch = m[1].match(/\d+/);
+      if (numMatch) return parseInt(numMatch[0], 10);
+      return null;
+    };
+
     const flushPendingGroup = () => {
-      if (pendingGroup.length === 0) return;
+      if (pendingGroup.length === 0) {
+        pendingHadSubfigPara = false;
+        return;
+      }
       if (pendingGroup.length === 1) {
         groupedBody.push(pendingGroup[0]);
-      } else {
-        // Determine overall main caption for the entire group:
-        // Prefer the most descriptive, non-generic caption from the group
-        let overallCaption = '';
-        const realCaps = pendingGroup
-          .map(n => n.caption?.trim() || '')
-          .filter(c => c.length > 0 && !/^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\s*$/i.test(c));
-
-        if (realCaps.length > 0) {
-          const prefixed = realCaps.find(c => /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\b/i.test(c) && c.length > 10);
-          overallCaption = prefixed || realCaps.sort((a, b) => b.length - a.length)[0];
-        } else {
-          overallCaption = 'Figure';
-        }
-
-        // If overallCaption contains subfigure markers like (a), (b), extract per-image subcaptions
-        let groupSubCaps: string[] = [];
-        if (/\(\s*[a-z]\s*\)/i.test(overallCaption)) {
-          const parts = overallCaption.split(/\s*(?:\(\s*[a-z]\s*\))\s*/gi).map(p => p.trim()).filter(Boolean);
-          if (parts.length - 1 >= pendingGroup.length) {
-            groupSubCaps = parts.slice(1);
-          }
-        }
-
-        const images = pendingGroup.map((n, idx) => ({
-          src: String(n.id || n.url || '').replace(/\\/g, '/'),
-          caption: (n as any).subCaption || groupSubCaps[idx] || (n.caption !== overallCaption && !/^(?:Figure|Chart|Fig\b\.?)\s*$/i.test(n.caption || '') ? n.caption : '') || ''
-        }));
-
-        const groupNode: ContentNode = {
-          type: 'figure-group',
-          id: `fig_group_${Math.random().toString(36).substring(2, 7)}`,
-          text: overallCaption,
-          caption: overallCaption,
-          images: images as any,
-          level: 1
-        } as any;
-        groupedBody.push(groupNode);
+        pendingGroup = [];
+        pendingHadSubfigPara = false;
+        return;
       }
+
+      // Check if nodes have distinct, non-matching figure ordinals (e.g. Figure 1 vs Figure 2)
+      const ordinals = pendingGroup.map(n => extractFigOrdinal(n.caption || ''));
+      const hasConflictingOrdinals = ordinals.some((o1, idx1) =>
+        o1 !== null && ordinals.some((o2, idx2) => idx2 > idx1 && o2 !== null && o2 !== o1)
+      );
+      // Check if nodes have distinct explicit figure prefixes ("Figure 1" vs "Figure 2")
+      const explicitPrefixes = pendingGroup.map(n => {
+        const m = (n.caption || '').match(/^\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo)\s*[\dIVX\.\-A-Za-z]+/i);
+        return m ? m[0].toLowerCase().trim() : '';
+      }).filter(Boolean);
+      const hasConflictingPrefixes = new Set(explicitPrefixes).size > 1;
+
+      // Positive subfigure evidence check:
+      const hasSubfigLabels = pendingGroup.some(n =>
+        /\(\s*[a-z0-9]\s*\)|\[\s*[a-z0-9]\s*\]|\b[a-z0-9]\)\s*[:.\-]/i.test(n.caption || '') ||
+        Boolean((n as any).subCaption)
+      );
+      const hasSharedSubOrdinal = ordinals.length > 1 && ordinals.every(o => o !== null && o === ordinals[0]);
+      const hasOverallSubMarker = pendingGroup.some(n => /\(\s*[a-z]\s*\)/i.test(n.caption || ''));
+      const isGenuineSubfig = !hasConflictingOrdinals && !hasConflictingPrefixes &&
+        (pendingHadSubfigPara || hasSubfigLabels || hasSharedSubOrdinal || hasOverallSubMarker);
+
+      if (!isGenuineSubfig) {
+        // These are distinct standalone figures that happen to appear consecutively.
+        // Emit each individually to preserve independent captions, numbering, and section placement!
+        for (const singleNode of pendingGroup) {
+          groupedBody.push(singleNode);
+        }
+        pendingGroup = [];
+        pendingHadSubfigPara = false;
+        return;
+      }
+
+      // Determine overall main caption for the entire group:
+      // Prefer the most descriptive, non-generic caption from the group
+      let overallCaption = '';
+      const realCaps = pendingGroup
+        .map(n => n.caption?.trim() || '')
+        .filter(c => c.length > 0 && !/^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\s*$/i.test(c));
+
+      if (realCaps.length > 0) {
+        const prefixed = realCaps.find(c => /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\b/i.test(c) && c.length > 10);
+        overallCaption = prefixed || realCaps.sort((a, b) => b.length - a.length)[0];
+      } else {
+        overallCaption = 'Figure';
+      }
+
+      // If overallCaption contains subfigure markers like (a), (b), extract per-image subcaptions
+      let groupSubCaps: string[] = [];
+      if (/\(\s*[a-z]\s*\)/i.test(overallCaption)) {
+        const parts = overallCaption.split(/\s*(?:\(\s*[a-z]\s*\))\s*/gi).map(p => p.trim()).filter(Boolean);
+        if (parts.length - 1 >= pendingGroup.length) {
+          groupSubCaps = parts.slice(1);
+        }
+      }
+
+      const images = pendingGroup.map((n, idx) => ({
+        src: String(n.id || n.url || '').replace(/\\/g, '/'),
+        caption: (n as any).subCaption || groupSubCaps[idx] || (n.caption !== overallCaption && !/^(?:Figure|Chart|Fig\b\.?)\s*$/i.test(n.caption || '') ? n.caption : '') || ''
+      }));
+
+      const groupNode: ContentNode = {
+        type: 'figure-group',
+        id: `fig_group_${Math.random().toString(36).substring(2, 7)}`,
+        text: overallCaption,
+        caption: overallCaption,
+        images: images as any,
+        level: 1
+      } as any;
+      groupedBody.push(groupNode);
       pendingGroup = [];
+      pendingHadSubfigPara = false;
     };
 
     for (const node of result.body) {
@@ -819,9 +868,23 @@ export class DeepDocumentParser {
           // Skip this node — it is already contained within an existing figure-group
           continue;
         }
+        // If pendingGroup already has images, check if the new image has a distinct figure number
+        if (pendingGroup.length > 0) {
+          const newOrd = extractFigOrdinal(node.caption || '');
+          const prevOrd = extractFigOrdinal(pendingGroup[pendingGroup.length - 1].caption || '');
+          const newPrefix = (node.caption || '').match(/^\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo)\s*[\dIVX\.\-A-Za-z]+/i)?.[0].toLowerCase().trim() || '';
+          const prevPrefix = (pendingGroup[pendingGroup.length - 1].caption || '').match(/^\s*(?:Figure|Fig\b\.?|Image|Chart|Diagram|Photo)\s*[\dIVX\.\-A-Za-z]+/i)?.[0].toLowerCase().trim() || '';
+
+          if ((newOrd !== null && prevOrd !== null && newOrd !== prevOrd) ||
+              (newPrefix && prevPrefix && newPrefix !== prevPrefix)) {
+            flushPendingGroup();
+          }
+        }
         pendingGroup.push(node);
-      } else if (isEmptyPara || isSubfigPara) {
-        // Keep accumulating (skip empty paragraph or subfigure label lines)
+      } else if (isSubfigPara) {
+        pendingHadSubfigPara = true;
+      } else if (isEmptyPara) {
+        // Keep accumulating (skip empty paragraph)
       } else {
         flushPendingGroup();
         groupedBody.push(node);
@@ -2130,35 +2193,7 @@ export class DeepDocumentParser {
                 : tableEl;
 
               if (!tableCaption) {
-                let prevSib = tableEl.previousElementSibling || tableBlock.previousElementSibling;
-                for (let h = 0; h < 6 && prevSib; h++, prevSib = prevSib.previousElementSibling) {
-                  const pText = (prevSib.textContent || '').trim();
-                  if (isTableCapText(pText)) {
-                    tableCaption = pText;
-                    consumedCaptions.add(prevSib);
-                    break;
-                  }
-                }
-              }
-
-              if (!tableCaption && result.body.length > 0) {
-                const lastNode = result.body[result.body.length - 1];
-                if (lastNode && lastNode.type === 'paragraph' && isTableCapText(lastNode.text || '')) {
-                  tableCaption = (lastNode.text || '').trim();
-                  result.body.pop();
-                }
-              }
-
-              if (!tableCaption) {
-                let nextSib = tableEl.nextElementSibling || tableBlock.nextElementSibling;
-                for (let h = 0; h < 6 && nextSib; h++, nextSib = nextSib.nextElementSibling) {
-                  const nText = (nextSib.textContent || '').trim();
-                  if (isTableCapText(nText)) {
-                    tableCaption = nText;
-                    consumedCaptions.add(nextSib);
-                    break;
-                  }
-                }
+                tableCaption = this.findCaption(tableEl, consumedCaptions, 'table', tablePositions, consumedCaptionTexts);
               }
 
               // Standard HTML <table> vs Plain-text table elements
@@ -2223,33 +2258,7 @@ export class DeepDocumentParser {
                       emittedImageSrcs.add(normSrc);
                       let figCaption = entry.caption;
                       if (!figCaption) {
-                          let sib = el0.nextElementSibling;
-                          for (let h = 0; h < 5 && sib; h++, sib = sib.nextElementSibling) {
-                              const t = sib.textContent?.trim() || '';
-                              if (/^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\.?\s*[\d.]+/i.test(t) && !this.isFigureCaptionProse(t)) {
-                                  figCaption = t;
-                                  consumedCaptions.add(sib);
-                                  break;
-                              }
-                          }
-                      }
-                      if (!figCaption) {
-                          let sib = el0.previousElementSibling;
-                          for (let h = 0; h < 5 && sib; h++, sib = sib.previousElementSibling) {
-                              const t = sib.textContent?.trim() || '';
-                              if (/^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\.?\s*[\d.]+/i.test(t) && !this.isFigureCaptionProse(t)) {
-                                  figCaption = t;
-                                  consumedCaptions.add(sib);
-                                  break;
-                              }
-                          }
-                      }
-                      if (!figCaption && result.body.length > 0) {
-                          const lastNode = result.body[result.body.length - 1];
-                          if (lastNode && lastNode.type === 'paragraph' && /^(?:Fig(?:ure)?|Image|Photo|Chart|Diagram)\.?\s*[\d.]+/i.test(lastNode.text || '') && !this.isFigureCaptionProse(lastNode.text || '')) {
-                              figCaption = (lastNode.text || '').trim();
-                              result.body.pop();
-                          }
+                          figCaption = this.findCaption(el0, consumedCaptions, 'figure', figurePositions, consumedCaptionTexts);
                       }
                   result.stats.chartCount++;
                   result.body.push({ type: 'chart', id: src, caption: figCaption || '' } as any);
@@ -2356,33 +2365,7 @@ export class DeepDocumentParser {
                 !this.isFigureCaptionProse(t);
 
               if (!groupCaption) {
-                let sib = el0.nextElementSibling || imgBlock.nextElementSibling;
-                for (let h = 0; h < 6 && sib; h++, sib = sib.nextElementSibling) {
-                  const t = sib.textContent?.trim() || '';
-                  if (isFigCapText(t)) {
-                    groupCaption = t;
-                    consumedCaptions.add(sib);
-                    break;
-                  }
-                }
-              }
-              if (!groupCaption) {
-                let sib = el0.previousElementSibling || imgBlock.previousElementSibling;
-                for (let h = 0; h < 6 && sib; h++, sib = sib.previousElementSibling) {
-                  const t = sib.textContent?.trim() || '';
-                  if (isFigCapText(t)) {
-                    groupCaption = t;
-                    consumedCaptions.add(sib);
-                    break;
-                  }
-                }
-              }
-              if (!groupCaption && result.body.length > 0) {
-                const lastNode = result.body[result.body.length - 1];
-                if (lastNode && lastNode.type === 'paragraph' && isFigCapText(lastNode.text || '')) {
-                  groupCaption = (lastNode.text || '').trim();
-                  result.body.pop();
-                }
+                groupCaption = this.findCaption(el0, consumedCaptions, 'figure', figurePositions, consumedCaptionTexts);
               }
 
               const validImgs: Array<{ src: string; caption: string; isChart: boolean }> = [];
@@ -3093,14 +3076,18 @@ export class DeepDocumentParser {
           const capOrdinal = captionOrdinal(t);
           const farEl = farSibling(candidate, isForward ? 1 : -1);
           const farPos = farEl ? typePositions.get(farEl) : undefined;
-          // Only skip this caption if the far element is the corresponding figure/table
-          // (i.e., the caption's ordinal matches the far element's position AND the far element
-          // is within a reasonable distance from the caption). This prevents double-counting
-          // while still allowing captions to be found even if the position mapping is slightly off.
           const thisPos = typePositions.get(el);
-          // Only skip if the caption matches a different far element that is directly adjacent (i < 2)
-          const belongsToFar = (capOrdinal !== null && farPos !== undefined && capOrdinal === farPos && farPos !== thisPos && i < 2);
-          if (!belongsToFar) {
+          // Strict ordinal ownership: if this caption explicitly names an ordinal (e.g. "Figure 2")
+          // that does NOT match this element's position, and another element with that ordinal exists,
+          // it strictly belongs to the other element and must NEVER be stolen by this element!
+          let belongsToOther = false;
+          if (capOrdinal !== null && thisPos !== undefined && capOrdinal !== thisPos) {
+            const hasTargetElement = Array.from(typePositions.values()).includes(capOrdinal);
+            if (hasTargetElement || farPos === capOrdinal) {
+              belongsToOther = true;
+            }
+          }
+          if (!belongsToOther) {
             processed.add(candidate);
             if (consumedTexts) consumedTexts.add(t);
             const prefixMatch = t.match(rx);
@@ -3152,8 +3139,12 @@ export class DeepDocumentParser {
         } else if (tag === 'p' || tag === 'div') {
           const textVal = next.textContent?.trim() || '';
           const isMatchingCaption = rx.test(textVal);
-          if ((textVal.length > 500 && !isMatchingCaption) || (textVal.length > 250 && !isMatchingCaption && !textVal.includes('   '))) {
-            next = null;
+          const isSubfigLabel = /^\s*(?:\([a-z0-9]\)\s*)+$/i.test(textVal) || /^\s*(?:\([a-z0-9]\)[^()]{0,40}\s*){2,}$/i.test(textVal);
+          if (!isMatchingCaption && !isSubfigLabel) {
+            const words = textVal.split(/\s+/).filter(Boolean);
+            if (textVal.length > 80 || words.length > 12 || (words.length > 5 && /[.!?]$/.test(textVal))) {
+              next = null;
+            }
           }
         }
       }
@@ -3165,8 +3156,12 @@ export class DeepDocumentParser {
         } else if (tag === 'p' || tag === 'div') {
           const textVal = prev.textContent?.trim() || '';
           const isMatchingCaption = rx.test(textVal);
-          if ((textVal.length > 500 && !isMatchingCaption) || (textVal.length > 250 && !isMatchingCaption && !textVal.includes('   '))) {
-            prev = null;
+          const isSubfigLabel = /^\s*(?:\([a-z0-9]\)\s*)+$/i.test(textVal) || /^\s*(?:\([a-z0-9]\)[^()]{0,40}\s*){2,}$/i.test(textVal);
+          if (!isMatchingCaption && !isSubfigLabel) {
+            const words = textVal.split(/\s+/).filter(Boolean);
+            if (textVal.length > 80 || words.length > 12 || (words.length > 5 && /[.!?]$/.test(textVal))) {
+              prev = null;
+            }
           }
         }
       }
@@ -3194,7 +3189,7 @@ export class DeepDocumentParser {
         const normClean = rawT.toLowerCase().replace(/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+\s*/i, '').replace(/[.:\s]+$/, '').trim();
         const isList = ['ol', 'ul', 'li'].includes(cand.tagName.toLowerCase()) || Boolean(cand.querySelector('li'));
         const isCanonicalL1 = !isList && this.FORCED_LEVEL1.has(normClean);
-        const isProse = rawT.endsWith('.') && words.length > 8 && !/^[A-Z]/.test(rawT);
+        const isProse = (rawT.endsWith('.') && words.length > 6) || words.length > 12 || /\.\s+[A-Z]/.test(rawT);
         const isRealTitle = rawT.length >= 3 && rawT.length <= 160 && !isCanonicalL1 && !isProse && words.length <= 18 &&
           !/^(?:abstract|introduction|background|methodology|proposed|results|discussion|conclusion|references|acknowledg)\b/i.test(normClean);
         if (isRealTitle || isList) {
@@ -3232,7 +3227,7 @@ export class DeepDocumentParser {
         const normClean = rawT.toLowerCase().replace(/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+\s*/i, '').replace(/[.:\s]+$/, '').trim();
         const isList = ['ol', 'ul', 'li'].includes(cand.tagName.toLowerCase()) || Boolean(cand.querySelector('li'));
         const isCanonicalL1 = !isList && this.FORCED_LEVEL1.has(normClean);
-        const isProse = rawT.endsWith('.') && words.length > 12 && !/^[A-Z]/.test(rawT);
+        const isProse = (rawT.endsWith('.') && words.length > 8) || words.length > 15 || /\.\s+[A-Z]/.test(rawT);
         const isRealTitle = rawT.length >= 3 && rawT.length <= 500 && !isCanonicalL1 && !isProse && words.length <= 60 &&
           !/^(?:abstract|introduction|literature review|related work|background|methodology|experiments|results|discussion|conclusion|references|acknowledg)\b/i.test(normClean);
         if (isRealTitle || isList) {

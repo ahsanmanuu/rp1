@@ -495,10 +495,29 @@ export async function POST(req: Request) {
             const normalizeFloatText = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
             const getImgBaseName = (src: string) => src.trim().replace(/^.*[\/\\]/, '').replace(/\.[a-zA-Z0-9]+$/, '').toLowerCase();
 
+            const extractOrdinalFromText = (t: string, type: 'figure' | 'table'): number | null => {
+              const rx = type === 'figure'
+                ? /(?:Figure|Fig\b\.?|Image|Chart|Diagram)\s*(?:\(|\b)(\d+)/i
+                : /(?:Table|Tab\b\.?)\s*(?:\(|\b)(\d+)/i;
+              const m = t.match(rx);
+              return m ? parseInt(m[1], 10) : null;
+            };
+
+            const wordsOverlap = (textA: string, textB: string): boolean => {
+              const wordsA = textA.toLowerCase().replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(w => w.length > 3);
+              const wordsB = textB.toLowerCase().replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(w => w.length > 3);
+              if (wordsA.length === 0 || wordsB.length === 0) return false;
+              const common = wordsA.filter(w => wordsB.includes(w)).length;
+              return common >= Math.min(3, Math.ceil(Math.min(wordsA.length, wordsB.length) * 0.45));
+            };
+
             const globalIncludedImages = new Set<string>();
             const globalIncludedLabels = new Set<string>();
             const globalIncludedCaptions = new Set<string>();
             const globalIncludedTables = new Set<string>();
+            const globalIncludedFigureOrdinals = new Set<number>();
+            const globalIncludedTableOrdinals = new Set<number>();
+            const globalRawCaptions: string[] = [];
 
             // Pre-populate with everything in extractedComponents (both sections and float files)
             for (const [fPath, fContent] of Object.entries(extractedComponents)) {
@@ -515,7 +534,14 @@ export async function POST(req: Request) {
               }
               const capMatches = Array.from(fContent.matchAll(/\\caption\{([^}]+)\}/g));
               for (const cm of capMatches) {
-                const clean = normalizeFloatText(cm[1].replace(/^(?:Figure|Fig\.?|Table|Tab\.?|Algorithm)\s*[\dIVX\.\-A-Z]*[:.\-–—\s]*/i, ''));
+                const rawCapText = cm[1].trim();
+                globalRawCaptions.push(rawCapText);
+                const figOrd = extractOrdinalFromText(rawCapText, 'figure');
+                if (figOrd !== null) globalIncludedFigureOrdinals.add(figOrd);
+                const tabOrd = extractOrdinalFromText(rawCapText, 'table');
+                if (tabOrd !== null) globalIncludedTableOrdinals.add(tabOrd);
+
+                const clean = normalizeFloatText(rawCapText.replace(/^(?:Figure|Fig\.?|Table|Tab\.?|Algorithm)\s*[\dIVX\.\-A-Z]*[:.\-–—\s]*/i, ''));
                 if (clean.length > 8) globalIncludedCaptions.add(clean.substring(0, 50));
               }
               if (fPath.startsWith('floats/tables/') || fPath.startsWith('tables/')) {
@@ -532,13 +558,14 @@ export async function POST(req: Request) {
 
               while ((match = floatRegex.exec(detContent)) !== null) {
                 const floatBlock = match[0].trim();
+                const isTable = /^\\begin\{table/i.test(floatBlock);
+                const isFigure = /^\\begin\{figure/i.test(floatBlock);
 
-                // 1. Image match check
-                const imgMatch = floatBlock.match(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/);
-                const imgFile = imgMatch ? imgMatch[1].trim() : null;
-                const imgBase = imgFile ? getImgBaseName(imgFile) : null;
-                if (imgBase && globalIncludedImages.has(imgBase)) {
-                  continue; // Figure/chart already exists in document! Never duplicate!
+                // 1. Image match check (checks all images in subfigures/groups)
+                const imgMatches = Array.from(floatBlock.matchAll(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/g));
+                const floatImgs = imgMatches.map(m => getImgBaseName(m[1])).filter(Boolean);
+                if (floatImgs.length > 0 && floatImgs.some(b => globalIncludedImages.has(b))) {
+                  continue; // Any image in this figure/chart already exists in document! Never duplicate!
                 }
 
                 // 2. Label match check
@@ -548,16 +575,31 @@ export async function POST(req: Request) {
                   continue; // Label already exists in document! Never duplicate!
                 }
 
-                // 3. Caption match check
+                // 3. Caption and Ordinal match check
                 const capMatch = floatBlock.match(/\\caption\{([^}]+)\}/);
                 const rawCap = capMatch ? capMatch[1].trim() : '';
-                const cleanCap = normalizeFloatText(rawCap.replace(/^(?:Figure|Fig\.?|Table|Tab\.?|Algorithm)\s*[\dIVX\.\-A-Z]*[:.\-–—\s]*/i, ''));
-                if (cleanCap.length > 8 && globalIncludedCaptions.has(cleanCap.substring(0, 50))) {
-                  continue; // Caption already exists in document! Never duplicate!
+                if (rawCap) {
+                  if (isFigure) {
+                    const figOrd = extractOrdinalFromText(rawCap, 'figure');
+                    if (figOrd !== null && globalIncludedFigureOrdinals.has(figOrd)) {
+                      continue; // Figure with this ordinal already exists!
+                    }
+                  } else if (isTable) {
+                    const tabOrd = extractOrdinalFromText(rawCap, 'table');
+                    if (tabOrd !== null && globalIncludedTableOrdinals.has(tabOrd)) {
+                      continue; // Table with this ordinal already exists!
+                    }
+                  }
+                  const cleanCap = normalizeFloatText(rawCap.replace(/^(?:Figure|Fig\.?|Table|Tab\.?|Algorithm)\s*[\dIVX\.\-A-Z]*[:.\-–—\s]*/i, ''));
+                  if (cleanCap.length > 8) {
+                    if (globalIncludedCaptions.has(cleanCap.substring(0, 50)) ||
+                        globalRawCaptions.some(ex => wordsOverlap(cleanCap, ex))) {
+                      continue; // Caption already exists in document! Never duplicate!
+                    }
+                  }
                 }
 
                 // 4. Table content snippet check
-                const isTable = /^\\begin\{table/i.test(floatBlock);
                 if (isTable) {
                   const cleanBlock = normalizeFloatText(floatBlock.replace(/\s+/g, ' '));
                   const snippet = cleanBlock.substring(0, 100);
@@ -573,15 +615,15 @@ export async function POST(req: Request) {
                   const fPath = fim[1];
                   const comp = extractedComponents[fPath] || extractedComponents[`${fPath}.tex`];
                   if (!comp) continue;
-                  if (imgBase && getImgBaseName(comp).includes(imgBase)) { alreadyHandledByInput = true; break; }
+                  if (floatImgs.some(b => getImgBaseName(comp).includes(b))) { alreadyHandledByInput = true; break; }
                   if (label && comp.includes(`\\label{${label}}`)) { alreadyHandledByInput = true; break; }
-                  if (cleanCap.length > 8 && normalizeFloatText(comp).includes(cleanCap.substring(0, 40))) { alreadyHandledByInput = true; break; }
+                  if (rawCap && wordsOverlap(rawCap, comp)) { alreadyHandledByInput = true; break; }
                 }
                 if (alreadyHandledByInput) continue;
 
                 // Truly missing float: safely place it inline right after its referencing paragraph
                 let insertIdx = -1;
-                const numMatch = (rawCap + ' ' + (label || '') + ' ' + (imgFile || '')).match(/(?:figure|fig\.?|table|tab\.?|image|algorithm|alg\.?)[_:\s.-]*(\d+|[IVXLCDM]+)/i);
+                const numMatch = (rawCap + ' ' + (label || '') + ' ' + floatImgs.join(' ')).match(/(?:figure|fig\.?|table|tab\.?|image|algorithm|alg\.?)[_:\s.-]*(\d+|[IVXLCDM]+)/i);
 
                 if (numMatch) {
                   const num = numMatch[1];
@@ -606,9 +648,20 @@ export async function POST(req: Request) {
                 }
 
                 // Register into global sets so subsequent sections never rescue this same float!
-                if (imgBase) globalIncludedImages.add(imgBase);
+                for (const b of floatImgs) globalIncludedImages.add(b);
                 if (label) globalIncludedLabels.add(label);
-                if (cleanCap.length > 8) globalIncludedCaptions.add(cleanCap.substring(0, 50));
+                if (rawCap) {
+                  globalRawCaptions.push(rawCap);
+                  const cleanCap = normalizeFloatText(rawCap.replace(/^(?:Figure|Fig\.?|Table|Tab\.?|Algorithm)\s*[\dIVX\.\-A-Z]*[:.\-–—\s]*/i, ''));
+                  if (cleanCap.length > 8) globalIncludedCaptions.add(cleanCap.substring(0, 50));
+                  if (isFigure) {
+                    const figOrd = extractOrdinalFromText(rawCap, 'figure');
+                    if (figOrd !== null) globalIncludedFigureOrdinals.add(figOrd);
+                  } else if (isTable) {
+                    const tabOrd = extractOrdinalFromText(rawCap, 'table');
+                    if (tabOrd !== null) globalIncludedTableOrdinals.add(tabOrd);
+                  }
+                }
                 if (isTable) {
                   const cleanBlock = normalizeFloatText(floatBlock.replace(/\s+/g, ' '));
                   if (cleanBlock.length > 20) globalIncludedTables.add(cleanBlock.substring(0, 100));

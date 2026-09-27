@@ -1560,19 +1560,35 @@ export class LatexAssembler {
       });
     });
 
-    // Balanced column spec:
-    // If a column has long prose (> 25 chars), allocate >{\raggedright\arraybackslash}X.
-    // If the table has few columns (<= 3) and text > 15, allocate X.
+    const totalEstimatedWidth = colMaxLen.reduce((a, b) => a + b, 0);
+    const rowCount = rows.length;
     const isTwoColMode = (node as any).twoColumn === true;
-    const xThreshold = isTwoColMode ? 18 : 25;
-    const specsList = colMaxLen.map((len) => {
-      if (isTwoColMode && totalGridCols >= 4) return '>{\\raggedright\\arraybackslash}X';
-      if (len > xThreshold) return '>{\\raggedright\\arraybackslash}X';
-      if (len > 15 && totalGridCols <= 3) return '>{\\raggedright\\arraybackslash}X';
+
+    // In two-column mode, tables with >= 4 columns, or with multi-word long headers / text-heavy cells,
+    // must span both columns (table*) so that columns do not collapse or collide.
+    const twoColWide = isTwoColMode && (
+      totalGridCols >= 4 ||
+      (totalGridCols >= 3 && (totalEstimatedWidth > 28 || colMaxLen.some(l => l > 12))) ||
+      (totalGridCols >= 2 && (totalEstimatedWidth > 36 || colMaxLen.some(l => l > 18))) ||
+      colMaxLen.some(l => l > 25) ||
+      totalEstimatedWidth > 40
+    );
+
+    // Balanced column spec:
+    // In two-column single-column mode, width is very narrow (~240pt).
+    // All columns with text or headers longer than 6 characters MUST wrap using X to prevent collisions!
+    // In table* (full textwidth) or single-column document mode, columns > 14 chars wrap using X.
+    const isSingleColInTwoCol = isTwoColMode && !twoColWide;
+    const xThreshold = isSingleColInTwoCol ? 6 : (isTwoColMode ? 14 : 20);
+    const specsList = colMaxLen.map((len, idx) => {
+      if (idx === 0 && len > xThreshold) return '>{\\raggedright\\arraybackslash}X';
+      if (len > xThreshold) return '>{\\centering\\arraybackslash}X';
+      if (isSingleColInTwoCol && totalGridCols >= 3) return '>{\\centering\\arraybackslash}X';
       return 'c';
     });
+
     // ALWAYS ensure at least one X column in tabularx tables so \linewidth constraint is enforced
-    if (!specsList.includes('>{\\raggedright\\arraybackslash}X')) {
+    if (!specsList.some(s => s.includes('X'))) {
       let maxLenIdx = 0;
       let maxLen = -1;
       for (let idx = 0; idx < colMaxLen.length; idx++) {
@@ -1584,7 +1600,7 @@ export class LatexAssembler {
       if (maxLen <= 0 && colMaxLen.length > 1) {
         maxLenIdx = 1;
       }
-      specsList[maxLenIdx] = '>{\\raggedright\\arraybackslash}X';
+      specsList[maxLenIdx] = maxLenIdx === 0 ? '>{\\raggedright\\arraybackslash}X' : '>{\\centering\\arraybackslash}X';
     }
     const spec = specsList.join('|');
     const fullSpec = `|${spec}|`;
@@ -1670,15 +1686,6 @@ export class LatexAssembler {
     const captionLine = caption ? `\\caption{${caption}}\n` : '';
 
     // Force tabularx line-wrapping for all multi-column or text-bearing tables to prevent right-margin overflow
-    const totalEstimatedWidth = colMaxLen.reduce((a, b) => a + b, 0);
-    const rowCount = rows.length;
-    // In two-column mode, tables with >= 4 columns or text-heavy cells (> 40 chars) must span both columns (table*)
-    const twoColWide = isTwoColMode && (
-      totalGridCols >= 4 ||
-      (totalGridCols >= 3 && (totalEstimatedWidth > 40 || colMaxLen.some(l => l > 20))) ||
-      colMaxLen.some(l => l > 45) ||
-      totalEstimatedWidth > 60
-    );
     const tableEnv = twoColWide ? 'table*' : 'table';
     const tablePlacement = twoColWide ? '[!t]' : '[!htbp]';
     const tabularEnv = 'tabularx';
@@ -1687,10 +1694,12 @@ export class LatexAssembler {
     const activeSpec = fullSpec;
 
     // In two-column mode or tall tables, reduce padding and font size to prevent margin and page overflow
-    const colSepCmd = (isTwoColMode && totalGridCols >= 3) ? '\\setlength{\\tabcolsep}{3pt}\n' : (totalGridCols >= 5 ? '\\setlength{\\tabcolsep}{4pt}\n' : '');
+    const colSepCmd = isSingleColInTwoCol
+      ? '\\setlength{\\tabcolsep}{2.5pt}\n'
+      : ((isTwoColMode && totalGridCols >= 3) ? '\\setlength{\\tabcolsep}{3.5pt}\n' : (totalGridCols >= 5 ? '\\setlength{\\tabcolsep}{4pt}\n' : ''));
     const fontSizeCmd = rowCount > 35
       ? '{\\scriptsize\n'
-      : (rowCount > 25 || (isTwoColMode && (totalGridCols >= 4 || totalEstimatedWidth > 60)))
+      : (rowCount > 25 || (isTwoColMode && (totalGridCols >= 4 || totalEstimatedWidth > 50)))
         ? '{\\footnotesize\n'
         : ((rowCount > 15 || (isTwoColMode && totalGridCols >= 3) || totalGridCols >= 6) ? '{\\small\n' : '');
     const fontSizeEnd = fontSizeCmd ? '\n}' : '';

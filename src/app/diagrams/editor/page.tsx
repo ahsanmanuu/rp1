@@ -718,9 +718,16 @@ function DiagramStudio() {
     saveTimer.current = setTimeout(() => saveToServer(n, c), 2000);
   }, [saveToServer]);
 
-  // Trigger auto-save when chatMessages change
+  // Trigger auto-save and local memory backup when chatMessages change
   useEffect(() => {
     if (!projectId) return;
+    // Persist to localStorage for 100% resilient instant context memory
+    try {
+      if (typeof window !== 'undefined' && chatMessages.length > 0) {
+        localStorage.setItem(`diagram_chat_${projectId}`, JSON.stringify(chatMessages));
+      }
+    } catch {}
+
     // Skip saving if it's the initial default message
     if (chatMessages.length === 1 && chatMessages[0].role === 'assistant' && chatMessages[0].content.startsWith("Hello! I'm your AI Systems Architect")) {
       return;

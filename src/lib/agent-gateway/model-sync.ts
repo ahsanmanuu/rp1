@@ -57,7 +57,8 @@ async function fetchOpenRouterFreeModels(): Promise<string[]> {
       if (!id) continue;
       const promptPrice = parseFloat(m?.pricing?.prompt);
       const completionPrice = parseFloat(m?.pricing?.completion);
-      if ((promptPrice === 0 || isNaN(promptPrice)) && (completionPrice === 0 || isNaN(completionPrice))) {
+      const isFreeTag = id.endsWith(':free') || id.includes('/free');
+      if (isFreeTag || ((promptPrice === 0 || isNaN(promptPrice)) && (completionPrice === 0 || isNaN(completionPrice)))) {
         if (!models.includes(id)) models.push(id);
       }
     }
@@ -67,6 +68,8 @@ async function fetchOpenRouterFreeModels(): Promise<string[]> {
       'google/gemini-2.5-flash-001',
       'google/gemini-2.0-flash-lite-001',
       'mistral/mistral-small-3.1-24b-instruct',
+      'meta-llama/llama-3.3-70b-instruct:free',
+      'google/gemini-2.0-flash-exp:free',
     ];
   } catch {
     return [
@@ -74,6 +77,8 @@ async function fetchOpenRouterFreeModels(): Promise<string[]> {
       'google/gemini-2.5-flash-001',
       'google/gemini-2.0-flash-lite-001',
       'mistral/mistral-small-3.1-24b-instruct',
+      'meta-llama/llama-3.3-70b-instruct:free',
+      'google/gemini-2.0-flash-exp:free',
     ];
   }
 }

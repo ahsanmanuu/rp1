@@ -2307,11 +2307,26 @@ export default function DocIDE({ projectId }: { projectId: string }) {
                     isLocked={isLocked}
                     lockReason={lockReason}
                     onUpgradeClick={() => setShowCreditLimitModal(true)}
-                    buildContext={() => ({
-                      activeFile,
-                      fileContent: code,
-                      allFiles: files.map(f => ({ path: f.path, content: f.path === activeFile ? codeRef.current : f.content })),
-                    })}
+                    buildContext={() => {
+                      const TEXT_FILE_REGEX = /\.(tex|bib|cls|sty|txt|md|json)$/i;
+                      const sanitizedFiles = files
+                        .filter(f => TEXT_FILE_REGEX.test(f.path))
+                        .map(f => {
+                          const raw = f.path === activeFile ? (codeRef.current || code) : (f.content || '');
+                          if (raw.startsWith('data:') || raw.length > 500000) {
+                            return { path: f.path, content: '' };
+                          }
+                          return {
+                            path: f.path,
+                            content: raw.length > 25000 ? raw.slice(0, 25000) + '\n% ... [truncated for AI chat budget]' : raw,
+                          };
+                        });
+                      return {
+                        activeFile,
+                        fileContent: code.length > 60000 ? code.slice(0, 60000) + '\n% ... [active file truncated for AI chat budget]' : code,
+                        allFiles: sanitizedFiles,
+                      };
+                    }}
                     onApplyEdits={async (edits) => {
                       let currentCode = code;
                       let codeChanged = false;

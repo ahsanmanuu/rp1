@@ -655,7 +655,7 @@ function anchorSnippetBefore(nodes: any[], node: any): string {
   return '';
 }
 
-function composeMainTex(
+export function composeMainTex(
   templateId: string,
   templateMainTex: string | undefined,
   files: AiModularFile[],
@@ -870,17 +870,27 @@ function composeMainTex(
 
   // Build set of all float paths already referenced inside any section file content or body
   const referencedFloatPaths = new Set<string>();
+  const registerRefPath = (p: string) => {
+    const clean = p.trim().replace(/^\.\//, '');
+    referencedFloatPaths.add(clean);
+    if (clean.endsWith('.tex')) {
+      referencedFloatPaths.add(clean.replace(/\.tex$/, ''));
+    } else {
+      referencedFloatPaths.add(`${clean}.tex`);
+    }
+  };
+
   for (const f of sections) {
     const content = f.content || '';
     const inputRe = /\\input\s*\{\s*([^}]+)\s*\}/g;
     let m: RegExpExecArray | null;
     while ((m = inputRe.exec(content)) !== null) {
-      referencedFloatPaths.add(m[1].trim());
+      registerRefPath(m[1]);
     }
   }
   for (const line of body) {
     const m = line.match(/\\input\s*\{\s*([^}]+)\s*\}/);
-    if (m) referencedFloatPaths.add(m[1].trim());
+    if (m) registerRefPath(m[1]);
   }
 
   // Check if float figures or tables are already rendered directly inside any section file
@@ -895,7 +905,7 @@ function composeMainTex(
           sections.some(sec => fileNameRefMatches(sec.content || '', m[1]))
         );
         if (hasAnyImgInSections) {
-          referencedFloatPaths.add(f.path);
+          registerRefPath(f.path);
         }
       }
     }
@@ -905,7 +915,7 @@ function composeMainTex(
     if (labelMatch) {
       const lbl = labelMatch[1].trim();
       if (sections.some(sec => (sec.content || '').includes(lbl))) {
-        referencedFloatPaths.add(f.path);
+        registerRefPath(f.path);
       }
     }
 
@@ -919,7 +929,7 @@ function composeMainTex(
           const secNorm = (sec.content || '').replace(/\\cite\{[^}]*\}/g, '').replace(/[^a-zA-Z0-9]/g, ' ').toLowerCase();
           return secNorm.includes(probeCap);
         })) {
-          referencedFloatPaths.add(f.path);
+          registerRefPath(f.path);
         }
       }
     }
@@ -940,7 +950,7 @@ function composeMainTex(
           return matchCount >= Math.min(3, significantWords.length);
         });
         if (matchesSection) {
-          referencedFloatPaths.add(f.path);
+          registerRefPath(f.path);
         }
       }
     }
@@ -949,23 +959,32 @@ function composeMainTex(
   // Any floats not inlined inside sections are included safely before references
   // (Exclude equations — equations must remain inline within their original sections and never dumped at the end!)
   for (const f of floats) {
-    if (f.path.startsWith('floats/equations/') || referencedFloatPaths.has(f.path)) continue;
+    const normP = f.path.replace(/\.tex$/, '');
+    if (f.path.startsWith('floats/equations/') || referencedFloatPaths.has(f.path) || referencedFloatPaths.has(normP)) continue;
     const origin = floatOrigins?.get(f.path);
     const host = origin ? sections.find((s) => s.path === origin.sectionPath) : undefined;
     let placed = false;
     if (origin && host) {
-      const insPoint = origin.anchor ? paragraphInsertIndex(host.content || '', origin.anchor) : -1;
+      const hostText = host.content || '';
+      if (hostText.includes(`{${f.path}}`) || hostText.includes(`{${normP}}`)) {
+        registerRefPath(f.path);
+        continue;
+      }
+      const insPoint = origin.anchor ? paragraphInsertIndex(hostText, origin.anchor) : -1;
       if (insPoint !== -1) {
         const snippet = `\\input{${f.path}}`;
-        const content = host.content || '';
-        host.content = content.slice(0, insPoint) + `\n\n${snippet}\n\n` + content.slice(insPoint);
+        host.content = hostText.slice(0, insPoint) + `\n\n${snippet}\n\n` + hostText.slice(insPoint);
       } else {
-        host.content = `${(host.content || '').trim()}\n\n\\input{${f.path}}\n`;
+        host.content = `${hostText.trim()}\n\n\\input{${f.path}}\n`;
       }
+      registerRefPath(f.path);
       placed = true;
     }
     if (!placed) {
-      body.push(`\\input{${f.path}}`);
+      if (!body.some(b => b.includes(`{${f.path}}`) || b.includes(`{${normP}}`))) {
+        body.push(`\\input{${f.path}}`);
+        registerRefPath(f.path);
+      }
     }
   }
 
@@ -1162,12 +1181,14 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
   const isTwoColumn = templateId.includes('ieee') || templateId.includes('acm') || /\btwocolumn\b/i.test(templateMainTex || '') || /\bIEEEtran\b/.test(templateMainTex || '');
 
   // Map body nodes to existing float files to avoid duplicate inline float environments
-  // Initialized once globally across the full body so float numbering is consistent
+  // Uses content-aware matching (image names, captions, labels) to bind nodes to the true float files
   const nodeToFloatPath = new Map<any, string>();
+  const claimedFloatPaths = new Set<string>();
   let figCnt = 0, tabCnt = 0, algoCnt = 0, eqCnt = 0;
   const seenFigureKeys = new Set<string>();
   const seenTableKeys = new Set<string>();
   const seenEquationKeys = new Set<string>();
+
   for (const n of body) {
     if (n.type === 'figure' || n.type === 'image' || n.type === 'chart' || n.type === 'figure-group') {
       const figId = String(n.id || '').replace(/^.*[\/\\]/, '').toLowerCase().trim();
@@ -1177,15 +1198,57 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
         continue;
       }
       if (figKey) seenFigureKeys.add(figKey);
-      figCnt++;
-      const p = `floats/figures/${figCnt}.tex`;
-      if (floatsRes.files.some(f => f.path === p)) {
-        nodeToFloatPath.set(n, p);
+
+      // Content-aware matching to bind n to the correct AI float file
+      const targetBases: string[] = [];
+      if (n.type === 'figure-group' && Array.isArray((n as any).images)) {
+        for (const im of (n as any).images) {
+          const b = String(im.src || '').replace(/^.*[\/\\]/, '').replace(/\.[a-zA-Z0-9]+$/, '').toLowerCase();
+          if (b) targetBases.push(b);
+        }
       } else {
+        const rawSrc = String(n.id || (n as any).url || (n as any).src || '');
+        const b = rawSrc.replace(/^.*[\/\\]/, '').replace(/\.[a-zA-Z0-9]+$/, '').toLowerCase();
+        if (b) targetBases.push(b);
+      }
+
+      let matchedFloatFile = floatsRes.files.find(f => {
+        if (!f.path.startsWith('floats/figures/') || claimedFloatPaths.has(f.path)) return false;
+        const fContent = f.content || '';
+        // 1. Check image filenames:
+        if (targetBases.length > 0 && targetBases.some((tb: string) => fileNameRefMatches(fContent, tb))) {
+          return true;
+        }
+        // 2. Check caption match:
+        if (figCap && figCap.length > 8) {
+          const capMatch = fContent.match(/\\caption\{([^}]+)\}/);
+          if (capMatch) {
+            const rawFloatCap = capMatch[1].toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
+            const words = figCap.replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter((w: string) => w.length > 3);
+            if (words.length > 0) {
+              const matchedWords = words.filter((w: string) => rawFloatCap.includes(w)).length;
+              if (matchedWords >= Math.min(3, words.length)) return true;
+            }
+          }
+        }
+        return false;
+      });
+
+      if (matchedFloatFile) {
+        claimedFloatPaths.add(matchedFloatFile.path);
+        nodeToFloatPath.set(n, matchedFloatFile.path);
+      } else {
+        figCnt++;
+        let p = `floats/figures/${figCnt}.tex`;
+        while (floatsRes.files.some(f => f.path === p)) {
+          figCnt++;
+          p = `floats/figures/${figCnt}.tex`;
+        }
         const assembledNode = n.type === 'figure-group'
           ? LatexAssembler.assembleFigureGroup({ ...n, twoColumn: isTwoColumn }, mathBlocks)
           : LatexAssembler.assembleNode({ ...n, twoColumn: isTwoColumn }, mathBlocks);
         floatsRes.files.push({ path: p, content: assembledNode });
+        claimedFloatPaths.add(p);
         nodeToFloatPath.set(n, p);
         console.log(`[AI-MODULAR] Backfilled missing figure float: ${p}`);
       }
@@ -1197,13 +1260,48 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
         continue;
       }
       if (tableKey) seenTableKeys.add(tableKey);
-      tabCnt++;
-      const p = `floats/tables/${tabCnt}.tex`;
-      if (floatsRes.files.some(f => f.path === p)) {
-        nodeToFloatPath.set(n, p);
+
+      // Content-aware matching for tables
+      let matchedTableFile = floatsRes.files.find(f => {
+        if (!f.path.startsWith('floats/tables/') || claimedFloatPaths.has(f.path)) return false;
+        const fContent = f.content || '';
+        // 1. Check caption:
+        if (tableCap && tableCap.length > 6) {
+          const capMatch = fContent.match(/\\caption\{([^}]+)\}/);
+          if (capMatch) {
+            const rawFloatCap = capMatch[1].toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
+            const words = tableCap.replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter((w: string) => w.length > 3);
+            if (words.length > 0) {
+              const matchedWords = words.filter((w: string) => rawFloatCap.includes(w)).length;
+              if (matchedWords >= Math.min(3, words.length)) return true;
+            }
+          }
+        }
+        // 2. Check table cell content:
+        if (tableText.length > 20) {
+          const snippetWords = tableText.toLowerCase().replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter((w: string) => w.length > 4);
+          if (snippetWords.length >= 3) {
+            const fLower = fContent.toLowerCase();
+            const matchedWords = snippetWords.slice(0, 10).filter((w: string) => fLower.includes(w)).length;
+            if (matchedWords >= 3) return true;
+          }
+        }
+        return false;
+      });
+
+      if (matchedTableFile) {
+        claimedFloatPaths.add(matchedTableFile.path);
+        nodeToFloatPath.set(n, matchedTableFile.path);
       } else {
+        tabCnt++;
+        let p = `floats/tables/${tabCnt}.tex`;
+        while (floatsRes.files.some(f => f.path === p)) {
+          tabCnt++;
+          p = `floats/tables/${tabCnt}.tex`;
+        }
         const assembledNode = LatexAssembler.assembleTable({ ...n, twoColumn: isTwoColumn }, mathBlocks);
         floatsRes.files.push({ path: p, content: assembledNode });
+        claimedFloatPaths.add(p);
         nodeToFloatPath.set(n, p);
         console.log(`[AI-MODULAR] Backfilled missing table float: ${p}`);
       }

@@ -299,9 +299,20 @@ export function useDiagramAgent({
     setStreamingText('');
     setTokenCount(0);
 
-    // Build the full multi-turn conversation payload for 100% accuracy
-    const historyPayload = history.map(h => ({ role: h.role, content: h.content }));
-    historyPayload.push({ role: 'user', content: text, image } as any);
+    // Filter out previous fail-safe errors or unhelpful system messages from conversation history
+    const filteredHistory = history.filter(h => 
+      !h.content.startsWith('Fail-safe mode:') && 
+      !h.content.startsWith('AI_CAP_BLOCKED:') &&
+      !h.content.startsWith('⚠️ All AI models are currently busy') &&
+      !h.content.startsWith('ERROR:')
+    );
+
+    const lastEntry = filteredHistory[filteredHistory.length - 1];
+    const historyPayload = filteredHistory.map(h => ({ role: h.role, content: h.content }));
+    // Avoid duplicate user message if already present at tail
+    if (!lastEntry || lastEntry.role !== 'user' || lastEntry.content !== text) {
+      historyPayload.push({ role: 'user', content: text, image } as any);
+    }
 
     // Capture current canvas state via refs (avoids stale-closure problem)
     const currentNodes = nodesRef.current;

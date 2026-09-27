@@ -3,6 +3,7 @@ import { AGENT_REGISTRY } from '@/lib/agent-gateway/registry';
 import { getActiveProviders, startModelSync } from '@/lib/agent-gateway/model-sync';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { streamText } from 'ai';
+import { routeToAgent } from '@/lib/agent-gateway';
 
 startModelSync();
 import { prisma } from '@/lib/prisma';
@@ -225,57 +226,98 @@ export async function POST(req: NextRequest) {
         await logAndSyncAiUsage(userId, 'diagram', 'diagram-stream', 0, promptTokens, completionTokens);
       };
 
-      for (const modelName of FALLBACK_MODELS) {
-        if (req.signal?.aborted) {
-          enqueue(sseError('Request aborted'));
-          controller.close();
-          return;
-        }
+      for (const activeProv of providers) {
+        if (!activeProv.apiKey || activeProv.models.length === 0) continue;
+        const curProvider = createOpenAICompatible({
+          name: activeProv.name,
+          baseURL: activeProv.baseUrl,
+          apiKey: activeProv.apiKey,
+        });
 
-        try {
-          console.log(`[DiagramStream] Trying model: ${modelName}`);
-          const model = provider.chatModel(modelName);
-
-          const result = streamText({
-            model,
-            system: systemPrompt,
-            messages: userMessages,
-            temperature: agentConfig.temperature,
-            maxOutputTokens: agentConfig.maxTokens,
-            abortSignal: req.signal,
-            maxRetries: 0,
-          });
-
-          let charsStreamed = 0;
-          for await (const textPart of result.textStream) {
-            if (req.signal?.aborted) break;
-            enqueue(sseChunk('token', textPart));
-            charsStreamed += textPart.length;
-          }
-
-          if (charsStreamed < 10) {
-            throw new Error(`Model returned empty or too short response (${charsStreamed} chars)`);
-          }
-
-          // Log usage
-          try {
-            const usage = await result.usage;
-            logUsage(usage.inputTokens || 0, usage.outputTokens || 0);
-          } catch { /* best-effort */ }
-
-          enqueue(sseDone());
-          controller.close();
-          console.log(`[DiagramStream] Completed with model: ${modelName}`);
-          return;
-        } catch (err: any) {
+        for (const modelName of activeProv.models) {
           if (req.signal?.aborted) {
             enqueue(sseError('Request aborted'));
             controller.close();
             return;
           }
-          const status = err?.statusCode ?? err?.status ?? '?';
-          console.warn(`[DiagramStream] Model ${modelName} failed (${status}): ${err?.message}`);
+
+          try {
+            console.log(`[DiagramStream] Trying ${activeProv.name}/${modelName}`);
+            const model = curProvider.chatModel(modelName);
+
+            const result = streamText({
+              model,
+              system: systemPrompt,
+              messages: userMessages,
+              temperature: agentConfig.temperature,
+              maxOutputTokens: agentConfig.maxTokens,
+              abortSignal: req.signal,
+              maxRetries: 0,
+            });
+
+            let charsStreamed = 0;
+            for await (const textPart of result.textStream) {
+              if (req.signal?.aborted) break;
+              enqueue(sseChunk('token', textPart));
+              charsStreamed += textPart.length;
+            }
+
+            if (charsStreamed < 10) {
+              throw new Error(`Model returned empty or too short response (${charsStreamed} chars)`);
+            }
+
+            // Log usage
+            try {
+              const usage = await result.usage;
+              logUsage(usage.inputTokens || 0, usage.outputTokens || 0);
+            } catch { /* best-effort */ }
+
+            enqueue(sseDone());
+            controller.close();
+            console.log(`[DiagramStream] Completed with ${activeProv.name}/${modelName}`);
+            return;
+          } catch (err: any) {
+            if (req.signal?.aborted) {
+              enqueue(sseError('Request aborted'));
+              controller.close();
+              return;
+            }
+            const status = err?.statusCode ?? err?.status ?? '?';
+            console.warn(`[DiagramStream] Model ${activeProv.name}/${modelName} failed (${status}): ${err?.message}`);
+            // If auth/key failure, immediately skip remaining models of this dead provider
+            const isAuthFail = Number(err?.statusCode) === 401 || Number(err?.statusCode) === 403 || /invalid api key|user not found|unauthorized/i.test(err?.message || '');
+            if (isAuthFail) {
+              console.warn(`[DiagramStream] Provider ${activeProv.name} authentication failed. Moving to next provider.`);
+              break;
+            }
+          }
         }
+      }
+
+      // If all remote models fail, engage Architectural Synthesis Engine for 100% resilient response
+      try {
+        console.log('[DiagramStream] All remote models unavailable. Engaging Architectural Synthesis Engine...');
+        const gatewayRes = await routeToAgent({
+          agent: 'diagram',
+          messages: userMessages,
+          context: {
+            ...context,
+            userId,
+          },
+        });
+        if (gatewayRes.success && gatewayRes.data) {
+          const jsonPayload = JSON.stringify(gatewayRes.data, null, 2);
+          const chunkSize = 120;
+          for (let i = 0; i < jsonPayload.length; i += chunkSize) {
+            if (req.signal?.aborted) break;
+            enqueue(sseChunk('token', jsonPayload.slice(i, i + chunkSize)));
+          }
+          enqueue(sseDone());
+          controller.close();
+          return;
+        }
+      } catch (synthErr) {
+        console.error('[DiagramStream] Architectural synthesis fallback error:', synthErr);
       }
 
       enqueue(sseError('All AI models failed. Please try again in a moment.'));

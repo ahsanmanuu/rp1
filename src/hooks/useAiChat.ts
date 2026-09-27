@@ -106,29 +106,62 @@ export function useAiChat({ projectId, storageKey, apiEndpoint, buildContext }: 
     const timeoutId = setTimeout(() => controller.abort(), 300000);
 
     try {
-      // Sanitize multi-turn history for clean LLM context memory
-      const sanitizedMessages = updated
-        .filter(m => !m.content.startsWith('ERROR:'))
-        .map(m => {
+      // Sanitize multi-turn history with sliding window and smart compression for robust context memory
+      const nonErrorMessages = updated.filter(m => !m.content.startsWith('ERROR:') && !m.content.includes('Payload Too Large'));
+      // Keep up to latest 12 messages to balance rich conversational memory with payload budget
+      const recentWindow = nonErrorMessages.slice(-12);
+
+      const compressHistory = (msgs: ChatMessage[]) => {
+        return msgs.map((m, idx) => {
+          let text = m.content;
           if (m.role === 'assistant') {
             const parsed = parseMessageJson(m.content);
             if (parsed && parsed.explanation) {
               const editSummary = parsed.edits && parsed.edits.length > 0
                 ? ` [Applied ${parsed.edits.length} workspace edit(s)]`
                 : '';
-              return { role: 'assistant' as const, content: parsed.explanation + editSummary };
+              text = parsed.explanation + editSummary;
             }
           }
-          return m;
+          // Compress older turns to preserve intent without huge raw code dumps
+          if (idx < msgs.length - 4 && text.length > 1200) {
+            text = text.slice(0, 1000) + ' ... [context preserved]';
+          }
+          return { role: m.role, content: text };
         });
+      };
 
+      let sanitizedMessages = compressHistory(recentWindow);
       const ctx = buildContext ? await buildContext() : {};
-      const res = await fetch(apiEndpoint, {
+
+      let res = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: sanitizedMessages, ...ctx }),
         signal: controller.signal,
       });
+
+      // Automatic 413 / payload overflow recovery: condense context and retry once seamlessly
+      if (res.status === 413) {
+        console.warn('[useAiChat] HTTP 413 received. Auto-condensing context and retrying...');
+        const ultraCompactMessages = compressHistory(nonErrorMessages.slice(-4));
+        const compactCtx: Record<string, any> = { ...ctx };
+        if (compactCtx.fileContent && typeof compactCtx.fileContent === 'string' && compactCtx.fileContent.length > 30000) {
+          compactCtx.fileContent = compactCtx.fileContent.slice(0, 30000) + '\n% [condensed for size]';
+        }
+        if (Array.isArray(compactCtx.allFiles)) {
+          compactCtx.allFiles = compactCtx.allFiles.slice(0, 10).map((f: any) => ({
+            path: f.path,
+            content: typeof f.content === 'string' ? f.content.slice(0, 5000) : ''
+          }));
+        }
+        res = await fetch(apiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: ultraCompactMessages, ...compactCtx }),
+          signal: controller.signal,
+        });
+      }
 
       clearTimeout(timeoutId);
       let data: any;

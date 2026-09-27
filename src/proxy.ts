@@ -28,7 +28,7 @@ function isHardeningEnabled(): boolean {
 // JSON payload cap (protects against oversized JSON DoS). File uploads use
 // multipart/form-data and are explicitly exempt so workflows are never broken.
 const MAX_JSON_BODY_BYTES =
-  (Number(process.env.SECURITY_MAX_JSON_BODY_MB) || 5) * 1024 * 1024;
+  (Number(process.env.SECURITY_MAX_JSON_BODY_MB) || 50) * 1024 * 1024;
 
 // Rate-limit profiles. GET/HEAD are nearly unlimited (dashboards poll heavily);
 // mutating methods get a generous sustained rate with a small burst.
@@ -211,14 +211,20 @@ export async function proxy(request: NextRequest) {
         return blockedResponse(requestId, 400, 'Bad Request');
       }
 
-      // 2) JSON body-size cap (multipart/file uploads are exempt).
+      // 2) JSON body-size cap (multipart/file uploads are exempt; AI studio & diagram routes have generous ceiling).
       const contentType = request.headers.get('content-type') || '';
       if (method !== 'GET' && method !== 'HEAD' && contentType.includes('application/json')) {
         const len = Number(request.headers.get('content-length'));
-        if (!Number.isNaN(len) && len > MAX_JSON_BODY_BYTES) {
+        const isAiStudioRoute = pathname.startsWith('/api/doc2latex') ||
+          pathname.startsWith('/api/latex-studio') ||
+          pathname.startsWith('/api/diagrams') ||
+          pathname.startsWith('/api/agent-gateway') ||
+          pathname.startsWith('/api/projects');
+        const allowedLimit = isAiStudioRoute ? Math.max(MAX_JSON_BODY_BYTES, 60 * 1024 * 1024) : MAX_JSON_BODY_BYTES;
+        if (!Number.isNaN(len) && len > allowedLimit) {
           await audit(requestId, ip, method, pathname, 'blocked-body-size', {
             bytes: len,
-            limit: MAX_JSON_BODY_BYTES,
+            limit: allowedLimit,
           });
           return blockedResponse(requestId, 413, 'Payload Too Large');
         }
