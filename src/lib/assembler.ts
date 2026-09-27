@@ -1139,37 +1139,51 @@ export class LatexAssembler {
         const rawText = node.text || "Untitled Section";
         const isStarred = (node as any).sectionStyle === 'starred';
         
-        // Comprehensive prefix stripping: removes "1. ", "1.1 ", "Section 1: ", "A. ", "I. ", "1.1.1 - "
-        // to prevent double-numbering in compiled PDFs across all templates.
         let finalText = rawText.trim();
-        const headingPrefix = /^(?:\s*(?:section|subsection|subsubsection|chapter|appendix|part)\s+)?(?:\[?\s*(?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*\s*\]?\.?[:.\-–—\s)]+)+/i;
-        
-        if (headingPrefix.test(finalText)) {
-          const cleanText = finalText.replace(headingPrefix, "").trim();
-          if (cleanText.length >= 2) finalText = cleanText;
+        // Separate prefix matchers to accurately classify levels without stripping English words (like "A Novel..."):
+        const numPrefix = /^(?:\s*(?:section|subsection|subsubsection|chapter|appendix|part)\s+)?(\d+(?:\.\d+)*)\.?[.:\s\-–—)]+\s*/i;
+        const romanPrefix = /^(?:\s*(?:section|subsection|subsubsection|chapter|appendix|part)\s+)?([IVXLCDM]+)\.[.:\s\-–—)]+\s*/i;
+        const alphaPrefix = /^(?:\s*(?:section|subsection|subsubsection|chapter|appendix|part)\s+)?([A-Z])\.[.:\s\-–—)]+\s*/;
+        const parenPrefix = /^(?:\s*(?:section|subsection|subsubsection|chapter|appendix|part)\s+)?(?:\(?(\d+|[a-zA-Z])\))\s*/i;
+
+        const numMatch = finalText.match(numPrefix);
+        const romanMatch = finalText.match(romanPrefix);
+        const alphaMatch = finalText.match(alphaPrefix);
+        const parenMatch = finalText.match(parenPrefix);
+
+        let inferredLevel: number | null = null;
+        if (numMatch) {
+          const numPart = numMatch[1];
+          inferredLevel = Math.min(3, numPart.split('.').length);
+          const clean = finalText.slice(numMatch[0].length).trim();
+          if (clean.length >= 2) finalText = clean;
+        } else if (romanMatch) {
+          inferredLevel = 1;
+          const clean = finalText.slice(romanMatch[0].length).trim();
+          if (clean.length >= 2) finalText = clean;
+        } else if (alphaMatch) {
+          inferredLevel = 2;
+          const clean = finalText.slice(alphaMatch[0].length).trim();
+          if (clean.length >= 2) finalText = clean;
+        } else if (parenMatch) {
+          inferredLevel = 3;
+          const clean = finalText.slice(parenMatch[0].length).trim();
+          if (clean.length >= 2) finalText = clean;
         }
         
-        // 🛡️ FORCED LEVEL-1: canonical academic section names always use \section
         // 🛡️ FORCED LEVEL-1: canonical academic section names always use \section
         const FORCED_L1 = FORCED_LEVEL1_SECTIONS;
         const normalizedFinal = finalText.toLowerCase().replace(/^(?:\d+[\s\.]+|[ivxlcdm]+[\s\.]+|[a-g][\s\.]+)+/i, '').trim();
         const isCanonicalL1Check = isCanonicalL1Heading(normalizedFinal);
 
-        const rawTrimmed = rawText.trim();
-        const subSubMatch = rawTrimmed.match(/^(?:section|subsection|subsubsection)?\s*(\d+\.\d+\.\d+(?:\.\d+)*)/i);
-        const subMatch = rawTrimmed.match(/^(?:section|subsection|subsubsection)?\s*(\d+\.\d+)/i);
         let level: number;
-        if (subSubMatch) {
-          level = 3;
-        } else if (subMatch) {
-          level = 2;
+        if (inferredLevel !== null) {
+          level = inferredLevel;
         } else if (isCanonicalL1Check) {
           level = 1;
         } else if (node.level && [1, 2, 3].includes(node.level)) {
           level = node.level;
         } else {
-          // Contextual default when level is undefined and heading is non-canonical:
-          // Default to subsection (level 2) to preserve hierarchical depth instead of flattening all to section
           level = 2;
         }
         
@@ -1495,6 +1509,16 @@ export class LatexAssembler {
 
     if (rows.length === 0) return '';
 
+    // Filter out degenerate single-cell / single-row callout boxes or headings:
+    // If table has at most 1 cell or 1 row with <= 1 col, demote to plain text paragraph.
+    if (rows.length <= 1 && totalGridCols <= 1) {
+      const cellText = rows.map(r => r.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n\n');
+      if (cellText) {
+        return LatexAssembler.escapeText(cellText, mathBlocks) + '\n\n';
+      }
+      return '';
+    }
+
     // Measure max content length per column to decide column type
     const colMaxLen = Array(totalGridCols).fill(0);
     const colSpanLenTracker = Array(totalGridCols).fill(0);
@@ -1623,6 +1647,8 @@ export class LatexAssembler {
       return rowData.join(' & ') + ' \\\\' + hline;
     }).filter(Boolean).join('\n');
 
+    if (!tableRows || tableRows.replace(/\\hline|\\multicolumn|\s|&|\\\\/g, '').trim().length === 0) return '';
+
     // UNIVERSAL TABLE CAPTION CLEANING:
     let cleanedCaption = (node.caption || '').trim();
     if (cleanedCaption) {
@@ -1630,7 +1656,7 @@ export class LatexAssembler {
     }
     const caption = LatexAssembler.escapeText(cleanedCaption, mathBlocks);
     const labelKey = `tab:${(caption || 'table').toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20)}`;
-    const captionLine = caption ? `\\caption{${caption}}\n` : `\\caption{}\n`;
+    const captionLine = caption ? `\\caption{${caption}}\n` : '';
 
     // Force tabularx line-wrapping for all multi-column or text-bearing tables to prevent right-margin overflow
     const totalEstimatedWidth = colMaxLen.reduce((a, b) => a + b, 0);
@@ -2586,6 +2612,31 @@ export class ModularLatexAssembler {
       );
     }
 
+    if (isTwoColumn) {
+      preamble.push(
+        "",
+        "% --- TWO-COLUMN FLOAT & COLUMN BALANCE TUNING ---",
+        "\\catcode`\\@=11",
+        "\\renewcommand{\\topfraction}{0.95}",
+        "\\renewcommand{\\bottomfraction}{0.85}",
+        "\\renewcommand{\\textfraction}{0.05}",
+        "\\renewcommand{\\floatpagefraction}{0.85}",
+        "\\renewcommand{\\dbltopfraction}{0.95}",
+        "\\renewcommand{\\dblfloatpagefraction}{0.85}",
+        "\\setcounter{topnumber}{9}",
+        "\\setcounter{bottomnumber}{9}",
+        "\\setcounter{totalnumber}{20}",
+        "\\setcounter{dbltopnumber}{9}",
+        "\\@ifundefined{abstract}{}{%",
+        "  \\renewenvironment{abstract}{%",
+        "    \\par\\noindent\\textbf{Abstract}---\\ignorespaces",
+        "  }{\\par\\vspace{0.8em}}",
+        "}",
+        "\\catcode`\\@=12"
+      );
+      pkgReg.add("dblfloatfix");
+    }
+
     const authorStyle = mapping.authorStyle || (isAcm ? 'acm' : isIeee ? 'ieee' : isElsevier ? 'elsevier' : isLncs ? 'standard' : 'standard');
     const needsAuthBlk = (authorStyle === 'standard' || authorStyle === 'nature' || authorStyle === 'science') && 
                          !isSciRep && !isNature && !isAcm && !isIeee && !isElsevier && !isLncs;
@@ -2819,12 +2870,12 @@ export class ModularLatexAssembler {
     } else if (isNature) {
       header.push('\\maketitle');
       if (files['metadata/affiliations.tex']) header.push('\\input{metadata/affiliations.tex}');
-      if (abstractEsc) header.push('\\input{metadata/abstract.tex}');
-      if (kwText) header.push('\\input{metadata/keywords.tex}');
+      if (files['metadata/abstract.tex'] || abstractEsc) header.push('\\input{metadata/abstract.tex}');
+      if (files['metadata/keywords.tex'] || kwText) header.push('\\input{metadata/keywords.tex}');
     } else {
       header.push('\\maketitle');
-      if (abstractEsc) header.push('\\input{metadata/abstract.tex}');
-      if (kwText) header.push('\\input{metadata/keywords.tex}');
+      if (files['metadata/abstract.tex'] || abstractEsc) header.push('\\input{metadata/abstract.tex}');
+      if (files['metadata/keywords.tex'] || kwText) header.push('\\input{metadata/keywords.tex}');
     }
 
     // --- 3. BODY CONTENT & SECTION SPLITTING ---

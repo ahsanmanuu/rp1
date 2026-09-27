@@ -279,7 +279,7 @@ const METADATA_PATHS = new Set([
 
 // Section files may \input our own verified float files (wiring floats into
 // their natural position) — every other \input/\include is forbidden.
-const SECTION_ALLOWED_INPUT_RE = /\\input\s*\{floats\/(?:figures|tables|algorithms)\/\d+\.tex\}/;
+const SECTION_ALLOWED_INPUT_RE = /\\input\s*\{floats\/(?:figures|tables|algorithms|equations)\/\d+\.tex\}/g;
 
 /** Balanced \begin{env}/\end{env} nesting over ANY environment names. */
 function envPairsBalanced(latex: string): boolean {

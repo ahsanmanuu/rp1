@@ -290,7 +290,33 @@ function resolveMathBlocksInText(str: string, mathBlocks: any[]): string {
     const mb = mathBlocks[parseInt(idxStr)];
     if (!mb) return '';
     const raw = typeof mb === 'string' ? mb : (mb?.latex || mb?.tex || mb?.raw || '');
-    return raw || '';
+    if (!raw) return '';
+    return (raw.includes('\\begin{equation}') || raw.includes('$') || raw.includes('\\[')) ? raw : `$${raw}$`;
+  });
+}
+
+function cleanSectionHeadingLatex(content: string): string {
+  return content.replace(/\\(section|subsection|subsubsection)\*?\{([^}]+)\}/g, (match, cmd, title) => {
+    let clean = title.trim();
+    const numPrefix = /^(?:\s*(?:section|subsection|subsubsection)\s+)?\d+(?:\.\d+)*\.?[:.\-–—\s)]+\s*/i;
+    const romanPrefix = /^(?:\s*(?:section|subsection|subsubsection)\s+)?[IVXLCDM]+\.[.:\s\-–—)]+\s*/i;
+    const alphaPrefix = /^(?:\s*(?:section|subsection|subsubsection)\s+)?[A-Z]\.[.:\s\-–—)]+\s*/;
+    const parenPrefix = /^(?:\s*(?:section|subsection|subsubsection)\s+)?(?:\(?\d+\)|\(?[a-zA-Z]\))\s+/;
+
+    if (numPrefix.test(clean)) {
+      clean = clean.replace(numPrefix, '').trim();
+    } else if (romanPrefix.test(clean)) {
+      clean = clean.replace(romanPrefix, '').trim();
+    } else if (alphaPrefix.test(clean)) {
+      clean = clean.replace(alphaPrefix, '').trim();
+    } else if (parenPrefix.test(clean)) {
+      clean = clean.replace(parenPrefix, '').trim();
+    }
+
+    if (clean.length >= 2) {
+      return `\\${cmd}{${clean}}`;
+    }
+    return match;
   });
 }
 
@@ -722,6 +748,32 @@ function composeMainTex(
   }
 
   const isTwoColumn = isIeee || isAcm || /\btwocolumn\b/i.test(preText) || /\bsigconf\b/i.test(preText) || /\bIEEEtran\b/.test(preText);
+  if (isTwoColumn) {
+    if (!preText.includes('\\topfraction')) {
+      preamble.push(
+        "\\catcode`\\@=11",
+        "\\renewcommand{\\topfraction}{0.95}",
+        "\\renewcommand{\\bottomfraction}{0.85}",
+        "\\renewcommand{\\textfraction}{0.05}",
+        "\\renewcommand{\\floatpagefraction}{0.85}",
+        "\\renewcommand{\\dbltopfraction}{0.95}",
+        "\\renewcommand{\\dblfloatpagefraction}{0.85}",
+        "\\setcounter{topnumber}{9}",
+        "\\setcounter{bottomnumber}{9}",
+        "\\setcounter{totalnumber}{20}",
+        "\\setcounter{dbltopnumber}{9}",
+        "\\@ifundefined{abstract}{}{%",
+        "  \\renewenvironment{abstract}{%",
+        "    \\par\\noindent\\textbf{Abstract}---\\ignorespaces",
+        "  }{\\par\\vspace{0.8em}}",
+        "}",
+        "\\catcode`\\@=12"
+      );
+    }
+    if (!preText.includes('dblfloatfix') && !preText.includes('stfloats')) {
+      preamble.push('\\usepackage{dblfloatfix}');
+    }
+  }
   const body: string[] = ['\\begin{document}'];
   if (isTwoColumn) body.push('\\sloppy');
 
@@ -842,8 +894,9 @@ function composeMainTex(
   }
 
   // Any floats not inlined inside sections are included safely before references
+  // (Exclude equations — equations must remain inline within their original sections and never dumped at the end!)
   for (const f of floats) {
-    if (!referencedFloatPaths.has(f.path)) {
+    if (!f.path.startsWith('floats/equations/') && !referencedFloatPaths.has(f.path)) {
       body.push(`\\input{${f.path}}`);
     }
   }
@@ -1245,18 +1298,21 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
                 break;
               }
             }
+            const snippetToInsert = fn.type === 'equation'
+              ? (LatexAssembler.assembleNode(fn, mathBlocks) || `\\input{${floatPath}}`)
+              : `\\input{${floatPath}}`;
             let placed = false;
             if (prevNodeText) {
               const pIdx = matchedFile.content.indexOf(prevNodeText);
               if (pIdx !== -1) {
                 const nextNewline = matchedFile.content.indexOf('\n\n', pIdx);
                 const insPoint = nextNewline !== -1 ? nextNewline + 2 : matchedFile.content.length;
-                matchedFile.content = matchedFile.content.slice(0, insPoint) + `\n\\input{${floatPath}}\n\n` + matchedFile.content.slice(insPoint);
+                matchedFile.content = matchedFile.content.slice(0, insPoint) + `\n\n${snippetToInsert}\n\n` + matchedFile.content.slice(insPoint);
                 placed = true;
               }
             }
             if (!placed) {
-              matchedFile.content = `${matchedFile.content.trim()}\n\n\\input{${floatPath}}\n`;
+              matchedFile.content = `${matchedFile.content.trim()}\n\n${snippetToInsert}\n`;
             }
           }
         }
@@ -1274,15 +1330,25 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     }
   }
 
-  // Universal in-text citation linking on all AI-generated section files
+  // Universal in-text citation linking, section heading number cleaning, and math resolution
   const docRefs = Array.isArray(structured?.references) && structured.references.length > 0
     ? structured.references
     : (Array.isArray(verdict?.references) ? verdict.references : []);
-  if (docRefs.length > 0) {
-    const rawRefs = docRefs.map((r: any) => typeof r === 'string' ? r : r?.text || '').filter(Boolean);
-    for (const sf of sectionFiles) {
+  const rawRefs = docRefs.map((r: any) => typeof r === 'string' ? r : r?.text || '').filter(Boolean);
+
+  for (const sf of sectionFiles) {
+    if (rawRefs.length > 0) {
       sf.content = LatexAssembler.linkCitationsInLatex(sf.content, rawRefs);
     }
+    // Clean heading numbers like \section{1. Introduction} -> \section{Introduction}
+    sf.content = cleanSectionHeadingLatex(sf.content);
+    // Resolve any remaining MATHBLOCKX markers to actual LaTeX equations
+    sf.content = resolveMathBlocksInText(sf.content, mathBlocksPre);
+  }
+
+  // Also resolve math blocks in all float files
+  for (const f of floatsRes.files) {
+    f.content = resolveMathBlocksInText(f.content, mathBlocksPre);
   }
 
   // Re-sort section files in numerical order
@@ -1294,11 +1360,13 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
   // ── Universal Fail-Safe Metadata & Bibliography Backfill ──
   const hasTitle = files.some(f => f.path === 'metadata/title.tex');
   const hasAuthors = files.some(f => f.path === 'metadata/authors.tex');
+  const hasAbstract = files.some(f => f.path === 'metadata/abstract.tex');
+  const hasKeywords = files.some(f => f.path === 'metadata/keywords.tex');
   const hasBib = files.some(f => f.path === 'references/bibliography.tex');
   const hasBibFile = files.some(f => f.path === 'references/references.bib' || f.path === 'references.bib');
   const docHasReferences = docRefs.length > 0;
 
-  if (!hasTitle || !hasAuthors || (docHasReferences && (!hasBib || !hasBibFile))) {
+  if (!hasTitle || !hasAuthors || !hasAbstract || !hasKeywords || (docHasReferences && (!hasBib || !hasBibFile))) {
     console.warn(`[AI-MODULAR] Backfilling missing frontmatter or bibliography files deterministically.`);
     const det = ModularLatexAssembler.assemble(structured as any, templateId, templateMainTex);
     if (!hasTitle && det.files['metadata/title.tex']) {
@@ -1307,11 +1375,13 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     if (!hasAuthors && det.files['metadata/authors.tex']) {
       files.push({ path: 'metadata/authors.tex', content: det.files['metadata/authors.tex'] });
     }
-    if (!files.some(f => f.path === 'metadata/abstract.tex') && det.files['metadata/abstract.tex']) {
+    if (!hasAbstract && det.files['metadata/abstract.tex']) {
       files.push({ path: 'metadata/abstract.tex', content: det.files['metadata/abstract.tex'] });
+      console.log('[AI-MODULAR] Backfilled missing metadata/abstract.tex from deterministic assembler.');
     }
-    if (!files.some(f => f.path === 'metadata/keywords.tex') && det.files['metadata/keywords.tex']) {
+    if (!hasKeywords && det.files['metadata/keywords.tex']) {
       files.push({ path: 'metadata/keywords.tex', content: det.files['metadata/keywords.tex'] });
+      console.log('[AI-MODULAR] Backfilled missing metadata/keywords.tex from deterministic assembler.');
     }
     if (docHasReferences && !hasBib && det.files['references/bibliography.tex']) {
       files.push({ path: 'references/bibliography.tex', content: det.files['references/bibliography.tex'] });

@@ -697,6 +697,39 @@ export class DeepDocumentParser {
         });
     }
 
+    // ── ABSTRACT RESCUE PASS ───────────────────────────────────────────────
+    // If result.abstract was not captured, search body nodes to rescue it
+    if (!result.abstract || result.abstract.trim().length === 0) {
+      // 1. Check if a heading in body contains "Abstract" or "Summary"
+      const absHeadingIdx = result.body.findIndex(n =>
+        n.type === 'heading' && /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:abstract|summary)\b/i.test((n.text || '').trim())
+      );
+      if (absHeadingIdx !== -1) {
+        const absParas: string[] = [];
+        let j = absHeadingIdx + 1;
+        while (j < result.body.length && result.body[j].type === 'paragraph') {
+          const pt = (result.body[j].text || '').trim();
+          if (pt) absParas.push(pt);
+          j++;
+        }
+        if (absParas.length > 0) {
+          result.abstract = absParas.join('\n\n').trim();
+          // Remove the abstract heading and paragraphs from body so it is not duplicated as a section
+          result.body.splice(absHeadingIdx, 1 + absParas.length);
+        }
+      } else {
+        // 2. Check if an early paragraph in body starts with "Abstract" or "Summary"
+        const firstPIdx = result.body.findIndex(n => n.type === 'paragraph');
+        if (firstPIdx !== -1 && firstPIdx < 3) {
+          const pText = (result.body[firstPIdx].text || '').trim();
+          if (/^(?:abstract|summary)\s*[:.\-–—\s]/i.test(pText)) {
+            result.abstract = pText.replace(/^(?:abstract|summary)\s*[:.\-–—\s]*/i, '').trim();
+            result.body.splice(firstPIdx, 1);
+          }
+        }
+      }
+    }
+
     // Phase 4.5: NLP Metadata Enrichment
     const allDocText = result.body.map(n => n.text).join(' ');
     if (result.keywords.length === 0) {
@@ -1052,8 +1085,11 @@ export class DeepDocumentParser {
 
       // Table cells often contain the words "Abstract"/"Keywords" (e.g. style-guide tables) —
       // abstract/keyword detection must never fire on table elements.
-      const hasAbstractLabel = lower === 'abstract' || /^abstract[\s:.\-_—–]/.test(lower) ||
-        (el.querySelector('strong, b') !== null && /^(?:abstract|summary)[\s:.\-_—–]?/i.test((el.querySelector('strong, b')?.textContent || '').trim()));
+      const cleanLowerForAbstract = lower.replace(/^(?:(?:\d+|[ivxlcdm]+)\.?\s*)/i, '').trim();
+      const hasAbstractLabel = cleanLowerForAbstract === 'abstract' ||
+        cleanLowerForAbstract === 'summary' ||
+        /^(?:abstract|summary)[\s:.\-_—–]/.test(cleanLowerForAbstract) ||
+        (el.querySelector('strong, b') !== null && /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:abstract|summary)[\s:.\-_—–]?/i.test((el.querySelector('strong, b')?.textContent || '').trim()));
       if (tagName !== 'table' && hasAbstractLabel) {
           nextRole = 'abstract';
           foundAbstract = true;
@@ -1149,7 +1185,7 @@ export class DeepDocumentParser {
              f.text.length < 120 && f.text.length > 2 &&
              !/^(?:step|case|example|note|input|output|recall|proof|remark|definition|where|phase|stage|condition|rule|theorem|lemma|proposition|corollary|epoch|acc|accuracy|sen|sensitivity|spec|specificity|prec|precision|rec|recall|f1|f-score|tp|tn|fp|fn|auc|iou|dice|loss|val_loss|val_acc|lr|batch|dataset|layer|optimizer|train|test|val|validation|metric|value|description|parameter|unit|score|std|mean|total)\b/i.test(f.text.trim()) &&
              !/^(?:Fig(?:ure)?|Table|Tab|Algorithm|Equation|Chart)\b/i.test(f.text.trim())) ||
-            /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:introduction|related\s+work|related\s+works|literature\s+review|literature\s+survey|review\s+of\s+literature|survey\s+of\s+literature|background|methodology|methods|materials\s+and\s+methods|conclusion|conclusions|abstract|acknowledgments|acknowledgements|references|bibliography|overview|implementation|proposed|experimental|experiments|results|discussion|system)/i.test(f.text) ||
+            /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:introduction|related\s+work|related\s+works|literature\s+review|literature\s+survey|review\s+of\s+literature|survey\s+of\s+literature|background|methodology|methods|materials\s+and\s+methods|conclusion|conclusions|acknowledgments|acknowledgements|references|bibliography|overview|implementation|proposed|experimental|experiments|results|discussion|system)/i.test(f.text) ||
             /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(f.text) ||
             DeepDocumentParser.FORCED_LEVEL1.has(f.text.trim().toLowerCase().replace(/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i, '').replace(/[.:\s]*$/, '').trim()) ||
             CANONICAL_SECTION_WHITELIST.some(c => f.text.trim().toLowerCase().replace(/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i, '').replace(/[.:\s]*$/, '').trim().startsWith(c))
@@ -1157,7 +1193,7 @@ export class DeepDocumentParser {
         ))) {
           const detectedLvl = this.detectHeading(el, f.text, manifest);
           const isNumberedHeading = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\[|\()?((?:\d+|[ivxlcdm]+|[a-z])(?:\.(?:\d+|[ivxlcdm]+|[a-z]))*)(?:\]|\))?[.:\s)]/i.test(f.text);
-          const isStandardSectionName = /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:introduction|related\s+work|related\s+works|literature\s+review|literature\s+survey|review\s+of\s+literature|survey\s+of\s+literature|background|methodology|methods|materials\s+and\s+methods|conclusion|conclusions|abstract|acknowledgments|acknowledgements|references|bibliography|overview|implementation|proposed|experimental|experiments|results|discussion|system)/i.test(f.text);
+          const isStandardSectionName = /^(?:(?:\d+|[ivxlcdm]+)\.?\s*)?(?:introduction|related\s+work|related\s+works|literature\s+review|literature\s+survey|review\s+of\s+literature|survey\s+of\s+literature|background|methodology|methods|materials\s+and\s+methods|conclusion|conclusions|acknowledgments|acknowledgements|references|bibliography|overview|implementation|proposed|experimental|experiments|results|discussion|system)/i.test(f.text);
           const isCaptionText = /^\s*(?:Fig(?:ure)?|Chart|Diagram|Photo|Image|Table|Tab\b\.?|Algorithm|Alg\.?|Graph)\.?\s*(?:(?:\(|\b)(?:[\dIVXLCDM]+(?:\.[\dIVXLCDM]+)*|[a-zA-Z])(?:\)|\b))?[:.\-–—\s]/i.test(f.text.trim()) &&
             !DeepDocumentParser.isFigureCaptionProse(f.text.trim()) &&
             !DeepDocumentParser.isTableCaptionProse(f.text.trim());
@@ -1333,7 +1369,7 @@ export class DeepDocumentParser {
       }
 
       // 1. Apply override/continuation heuristics to nextRole first
-      if (currentRole === 'abstract' && nextRole === 'paragraph' && i < currentStart + 25 && f.wordCount > 5) {
+      if (currentRole === 'abstract' && nextRole === 'paragraph' && i < currentStart + 25 && f.wordCount >= 2 && !/^(?:keywords|index terms)/i.test(f.text)) {
           nextRole = 'abstract';
       } else if ((currentRole as string) === 'algorithm' && ['paragraph', 'list', 'table'].includes(nextRole)) {
           const isActualHeading = this.detectHeading(el, f.text, manifest) !== null ||
@@ -1921,23 +1957,39 @@ export class DeepDocumentParser {
                     } else {
                       let level = this.detectHeading(entry.elements[0], text, manifest) || 2;
                       const numericPrefix = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\d+)(?:\.\d+)*\.?[.:\s)]+\s*/i;
-                      const alphaRomanPrefix = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:[a-zA-Z](?:\.\d+)+|[ivxlcdm]{2,}|[a-zA-Z]|[ivxlcdm])\.?[.:)]+\s+/i;
-                      const prefixMatchText = cleanText.match(numericPrefix) ||
-                          (alphaRomanPrefix.test(cleanText) ? cleanText.match(alphaRomanPrefix) : null);
-                      if (prefixMatchText) {
-                          const withoutNumber = cleanText.slice(prefixMatchText[0].length).trim();
-                          const numPart = prefixMatchText[0].match(/\d+(?:\.\d+)*/)?.[0];
-                          if (numPart) {
-                              level = Math.min(3, numPart.split('.').length);
-                          }
-                          if (withoutNumber && withoutNumber.length > 2) {
-                              cleanText = withoutNumber;
-                          }
+                      const romanPrefix = /^(?:\s*(?:section|chapter|appendix|part)\s+)?([IVXLCDM]+)\.?[.:\s)]+\s*/i;
+                      const alphaPrefix = /^(?:\s*(?:section|chapter|appendix|part)\s+)?([A-Z])\.[.:\s)]+\s+/i;
+                      const parenPrefix = /^(?:\s*(?:section|chapter|appendix|part)\s+)?(?:\(?(\d+|[a-z])\))\s+/i;
+
+                      const numMatch = cleanText.match(numericPrefix);
+                      const romanMatch = cleanText.match(romanPrefix);
+                      const alphaMatch = cleanText.match(alphaPrefix);
+                      const parenMatch = cleanText.match(parenPrefix);
+
+                      if (numMatch) {
+                        const numPart = numMatch[0].match(/\d+(?:\.\d+)*/)?.[0];
+                        if (numPart) {
+                          level = Math.min(3, numPart.split('.').length);
+                        }
+                        const withoutNum = cleanText.slice(numMatch[0].length).trim();
+                        if (withoutNum && withoutNum.length > 2) cleanText = withoutNum;
+                      } else if (romanMatch) {
+                        level = 1;
+                        const withoutNum = cleanText.slice(romanMatch[0].length).trim();
+                        if (withoutNum && withoutNum.length > 2) cleanText = withoutNum;
+                      } else if (alphaMatch) {
+                        level = 2;
+                        const withoutNum = cleanText.slice(alphaMatch[0].length).trim();
+                        if (withoutNum && withoutNum.length > 2) cleanText = withoutNum;
+                      } else if (parenMatch) {
+                        level = 3;
+                        const withoutNum = cleanText.slice(parenMatch[0].length).trim();
+                        if (withoutNum && withoutNum.length > 2) cleanText = withoutNum;
                       } else {
-                          const normClean = cleanText.toLowerCase().replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-z][.\s]+)+\s*/i, '').replace(/[.\s:]+$/, '').trim();
-                          if (DeepDocumentParser.FORCED_LEVEL1.has(normClean)) {
-                              level = 1;
-                          }
+                        const normClean = cleanText.toLowerCase().replace(/^(?:\d+[.\s]+|[ivxlcdm]+[.\s]+|[a-z][.\s]+)+\s*/i, '').replace(/[.\s:]+$/, '').trim();
+                        if (DeepDocumentParser.FORCED_LEVEL1.has(normClean)) {
+                          level = 1;
+                        }
                       }
                       // First heading in the document is always a main section
                       if (lastHeadingLevel === 0 && level > 1 && /^(?:1(?:\.0)?\b|introduction|background|overview)/i.test(cleanText)) {
@@ -2102,9 +2154,12 @@ export class DeepDocumentParser {
               // UNIVERSAL: A table must actually contain rows and columns to be emitted.
               // Degenerate detections (tab-stopped layout/prose lines, empty shells) are
               // demoted to plain paragraphs so they neither pollute the table count nor
-              // render as empty tables.
+              // UNIVERSAL: A table must actually contain rows and columns to be emitted.
+              // Degenerate detections (tab-stopped layout/prose lines, single-cell callout boxes, empty shells) are
+              // demoted to plain paragraphs so they neither pollute the table count nor
+              // render as empty tables with horizontal lines.
               let { rowCount, colCount } = this.tableHtmlDimensions(tableHtml);
-              if ((rowCount === 0 || colCount === 0) && entry.elements.length > 0) {
+              if ((rowCount === 0 || colCount === 0 || (rowCount <= 1 && colCount <= 1)) && entry.elements.length > 0) {
                   const recoveredHtml = this.convertPlainTextTableToHtml(entry.elements);
                   const recoveredDims = this.tableHtmlDimensions(recoveredHtml);
                   if (recoveredDims.rowCount > 0 && recoveredDims.colCount > 0) {
@@ -2113,7 +2168,16 @@ export class DeepDocumentParser {
                     colCount = recoveredDims.colCount;
                   }
               }
-              if (rowCount === 0 || colCount === 0) {
+
+              // A genuine academic table must have real tabular multi-cell structure:
+              // At least 2 rows AND at least 2 columns, or if 1 row, at least 3 distinct columns.
+              // Single-cell (1x1) or single-row single-column elements are Word callouts, styled headings,
+              // or boxed text — demoting them prevents irrelevant tables with horizontal lines from appearing.
+              const isGenuineTable = (rowCount >= 2 && colCount >= 2) ||
+                (rowCount >= 2 && colCount >= 1 && tableHtml.includes('<td')) ||
+                (rowCount === 1 && colCount >= 3);
+
+              if (!isGenuineTable || rowCount === 0 || colCount === 0) {
                   const fallbackText = entry.elements.map((e: Element) => e.textContent || '').join('\n').trim();
                   if (fallbackText) result.body.push({ type: 'paragraph', text: fallbackText });
                   continue;
@@ -2744,10 +2808,14 @@ export class DeepDocumentParser {
 
         const cleanPrefix = prefixMatch[1];
         const parts = cleanPrefix.split('.');
-        const level = Math.min(3, parts.length);
+        let level = Math.min(3, parts.length);
         
-        // Safety guard for single-character prefixes (e.g., "A", "I", "V")
-        if (parts.length === 1 && /^[a-z]$/i.test(cleanPrefix)) {
+        // Roman numerals (I, II, III, IV, etc.) are always level 1 top-level sections
+        if (parts.length === 1 && /^[ivxlcdm]+$/i.test(cleanPrefix)) {
+          level = 1;
+        } else if (parts.length === 1 && /^[a-z]$/i.test(cleanPrefix)) {
+          // Capital letters A., B., C. are IEEE/scholarly subsections (level 2)
+          level = 2;
           const fullMatch = prefixMatch[0];
           const hasPunctuation = /[.:)]/.test(fullMatch);
           if (!hasPunctuation) {
@@ -2755,6 +2823,9 @@ export class DeepDocumentParser {
             const isHeadingLike = f.wordCount < 10 && (f.isBold || f.capRatio > 0.3);
             if (!isHeadingLike) return null;
           }
+        } else if (parts.length === 1 && /^\(?\d+\)?$/.test(cleanPrefix) && prefixMatch[0].includes(')')) {
+          // Parenthesized numbers like 1), 2) are subsubsections (level 3)
+          level = 3;
         }
         return level;
       }

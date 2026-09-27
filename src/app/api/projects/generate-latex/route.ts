@@ -721,6 +721,40 @@ export async function POST(req: Request) {
                 fullLatex = fullLatex.replace(/\\begin\{document\}/, '\\input{metadata/authors.tex}\n\\begin{document}');
               }
             }
+
+            // Universal Fail-Safe: ensure abstract & keywords inputs exist in mainTex across all template types
+            if (!fullLatex.includes('metadata/abstract.tex') && extractedComponents['metadata/abstract.tex']) {
+              if (mappedTpl.includes('elsevier')) {
+                if (fullLatex.includes('\\end{frontmatter}')) {
+                  fullLatex = fullLatex.replace(/\\end\{frontmatter\}/, '\\input{metadata/abstract.tex}\n\\end{frontmatter}');
+                }
+              } else if (mappedTpl.includes('acm')) {
+                if (fullLatex.includes('\\maketitle')) {
+                  fullLatex = fullLatex.replace(/\\maketitle/, '\\input{metadata/abstract.tex}\n\\maketitle');
+                }
+              } else {
+                if (fullLatex.includes('\\maketitle')) {
+                  fullLatex = fullLatex.replace(/\\maketitle/, '\\maketitle\n\\input{metadata/abstract.tex}');
+                } else if (fullLatex.includes('\\begin{document}')) {
+                  fullLatex = fullLatex.replace(/\\begin\{document\}/, '\\begin{document}\n\\input{metadata/abstract.tex}');
+                }
+              }
+            }
+            if (!fullLatex.includes('metadata/keywords.tex') && extractedComponents['metadata/keywords.tex']) {
+              if (mappedTpl.includes('elsevier')) {
+                if (fullLatex.includes('\\end{frontmatter}')) {
+                  fullLatex = fullLatex.replace(/\\end\{frontmatter\}/, '\\input{metadata/keywords.tex}\n\\end{frontmatter}');
+                }
+              } else if (mappedTpl.includes('acm')) {
+                if (fullLatex.includes('\\maketitle')) {
+                  fullLatex = fullLatex.replace(/\\maketitle/, '\\input{metadata/keywords.tex}\n\\maketitle');
+                }
+              } else if (fullLatex.includes('metadata/abstract.tex')) {
+                fullLatex = fullLatex.replace(/\\input\{metadata\/abstract\.tex\}/, '\\input{metadata/abstract.tex}\n\\input{metadata/keywords.tex}');
+              } else if (fullLatex.includes('\\maketitle')) {
+                fullLatex = fullLatex.replace(/\\maketitle/, '\\maketitle\n\\input{metadata/keywords.tex}');
+              }
+            }
           } catch (hybridErr: any) {
             console.warn('[GENERATE-LATEX] Non-critical hybrid fallback merge notice:', hybridErr?.message || hybridErr);
           }
