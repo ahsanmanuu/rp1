@@ -202,16 +202,33 @@ export function applyFinalSanitizationSieve(content: string): string {
   sanitized = sanitized.replace(/\\texttimes\b/g, "\\ensuremath{\\times}");
   sanitized = sanitized.replace(/\\textellipsis\b/g, "\\dots");
 
-  // Delimiter mismatch fix: strip illegal '$' from display math environments
+  // Math mode cleanup helper: strip illegal '$', fix variable circumflex/hats, caret text commands, and plaintext powers
+  const cleanMathBody = (mathStr: string): string => {
+    return mathStr
+      .replace(/(?<!\\)\$/g, '')
+      .replace(/([a-zA-Z])\s*(?:[\u02C6\u0302]|\\textasciicircum|\\\^)\s*([a-zA-Z0-9_]+)/g, '\\hat{$1}_{$2}')
+      .replace(/([a-zA-Z])[\u02C6\u0302]/g, '\\hat{$1}')
+      .replace(/\\hat\{([a-zA-Z])\}\s*([a-zA-Z0-9])\b/g, '\\hat{$1}_{$2}')
+      .replace(/\\textasciicircum\b/g, '^')
+      .replace(/\\\^\{?([a-zA-Z0-9])\}?/g, '\\hat{$1}')
+      .replace(/\\\^/g, '^')
+      .replace(/[\u02C6\u0302]/g, '^')
+      .replace(/(\([a-zA-Z0-9_+\-/*\s\\\{\}\^]+\))(\d+)(?=\s*[=+\-*/^_<>\\]|\s*$)/g, '$1^$2');
+  };
+
+  // Delimiter mismatch fix & math normalization in display and inline math environments
   const mathEnvs = ['equation', 'align', 'gather', 'multline', 'eqnarray', 'displaymath'];
   mathEnvs.forEach(env => {
     const envRegex = new RegExp(`(\\\\begin\\s*\\{\\s*${env}\\*?\\s*\\})([\\s\\S]*?)(\\\\end\\s*\\{\\s*${env}\\*?\\s*\\})`, 'g');
     sanitized = sanitized.replace(envRegex, (_match, begin, body, end) => {
-      return begin + body.replace(/\$/g, '') + end;
+      return begin + cleanMathBody(body) + end;
     });
   });
   sanitized = sanitized.replace(/(\\\[)([\s\S]*?)(\\\])/g, (_match, begin, body, end) => {
-    return begin + body.replace(/\$/g, '') + end;
+    return begin + cleanMathBody(body) + end;
+  });
+  sanitized = sanitized.replace(/(\\\()([\s\S]*?)(\\\))/g, (_match, begin, body, end) => {
+    return begin + cleanMathBody(body) + end;
   });
 
   // 1. Scrub orphaned "color color" artifacts
@@ -303,6 +320,19 @@ export function applyFinalSanitizationSieve(content: string): string {
     if (!preamble.includes('{authblk}')) {
       preamble = preamble.trimEnd() + '\n\\usepackage{authblk}\n';
     }
+  }
+
+  // Nature class uses \spacing{1} in \@maketitle which requires setspace or \spacing definition
+  if (docClass.includes('nature') && !preamble.includes('setspace')) {
+    preamble = '\\RequirePackage{setspace}\n' + preamble;
+  }
+  if (!preamble.includes('\\providecommand{\\spacing}')) {
+    preamble = preamble.trimEnd() + '\n\\providecommand{\\spacing}[1]{}\n';
+  }
+
+  // Crash-proof textasciicircum and ^ accents in math mode across all engines
+  if (!preamble.includes('orig@textasciicircum')) {
+    preamble = preamble.trimEnd() + '\n\\makeatletter\n\\@ifundefined{orig@textasciicircum}{\\let\\orig@textasciicircum\\textasciicircum}{}\n\\DeclareRobustCommand{\\textasciicircum}{\\ifmmode ^\\else \\orig@textasciicircum\\fi}\n\\@ifundefined{orig@caretaccent}{\\let\\orig@caretaccent\\^}{}\n\\DeclareRobustCommand{\\^}[1]{\\ifmmode\\hat{#1}\\else\\orig@caretaccent{#1}\\fi}\n\\makeatother\n';
   }
 
   // Inject universal subfigure fallback

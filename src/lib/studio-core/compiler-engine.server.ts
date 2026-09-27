@@ -2468,20 +2468,80 @@ export async function runDoc2LatexCompiler(
 export async function compileWithYtoTech(engine: string, files: FilePayload[], mainFile: string): Promise<{ pdfBase64: string | null, log: string }> {
   try {
     const normMain = normalizePath(mainFile);
-    const resources = files.map(f => {
+    const resources: Array<{ path: string; file?: string; content?: string; main: boolean }> = [];
+    const seenResourcePaths = new Set<string>();
+
+    for (const f of files) {
       const isMain = normalizePath(f.path) === normMain;
       const isBinary = isBinaryFile(f.path);
       const c = f.content;
+      const normP = normalizePath(f.path);
       
       if (isBinary) {
-          const b64 = c.startsWith('data:') ? (c.split(',')[1] || '') : c;
-          const validB64 = (b64 && b64.length >= 50) ? b64 : FALLBACK_100X100_PNG_B64;
-          return { path: f.path, file: validB64, main: isMain };
+        let b64 = c.startsWith('data:') ? (c.split(',')[1] || '') : c;
+        let buf: any = Buffer.from(b64, 'base64');
+        const ext = path.extname(f.path).toLowerCase().replace(/^\./, '') || 'png';
+
+        if (buf.length < 50) {
+          buf = ext === 'png' ? FALLBACK_100X100_PNG : FALLBACK_100X100_JPG;
+        } else if (ext === 'png') {
+          // Verify and sanitize PNG chunks to prevent libpng "writepng: reading chunk type failed"
+          try {
+            buf = await sharp(buf).png().toBuffer();
+          } catch {
+            try {
+              buf = await sharp(buf).flatten({ background: '#ffffff' }).png().toBuffer();
+            } catch {
+              buf = FALLBACK_100X100_PNG;
+            }
+          }
+        } else if (ext === 'jpg' || ext === 'jpeg') {
+          const isJpeg = buf.length > 3 && buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF;
+          if (!isJpeg) {
+            try {
+              buf = await sharp(buf).flatten({ background: '#ffffff' }).jpeg({ quality: 90 }).toBuffer();
+            } catch {
+              buf = FALLBACK_100X100_JPG;
+            }
+          }
+        }
+
+        const validB64 = buf.toString('base64');
+        if (!seenResourcePaths.has(normP)) {
+          seenResourcePaths.add(normP);
+          resources.push({ path: f.path, file: validB64, main: isMain });
+        }
+
+        // Add dual alias (.png <-> .jpg) so pdflatex finds the image regardless of extension in \includegraphics
+        if (ext === 'png') {
+          const jpgPath = f.path.replace(/\.png$/i, '.jpg');
+          const normJpg = normalizePath(jpgPath);
+          if (!seenResourcePaths.has(normJpg)) {
+            try {
+              const jpgBuf = await sharp(buf).flatten({ background: '#ffffff' }).jpeg({ quality: 90 }).toBuffer();
+              seenResourcePaths.add(normJpg);
+              resources.push({ path: jpgPath, file: jpgBuf.toString('base64'), main: false });
+            } catch {}
+          }
+        } else if (ext === 'jpg' || ext === 'jpeg') {
+          const pngPath = f.path.replace(/\.jpe?g$/i, '.png');
+          const normPng = normalizePath(pngPath);
+          if (!seenResourcePaths.has(normPng)) {
+            try {
+              const pngBuf = await sharp(buf).png().toBuffer();
+              seenResourcePaths.add(normPng);
+              resources.push({ path: pngPath, file: pngBuf.toString('base64'), main: false });
+            } catch {}
+          }
+        }
       } else {
-          const text = c.startsWith('data:') ? Buffer.from(c.split(',')[1] || '', 'base64').toString('utf8') : c;
-          return { path: f.path, content: text, main: isMain };
+        const text = c.startsWith('data:') ? Buffer.from(c.split(',')[1] || '', 'base64').toString('utf8') : c;
+        if (!seenResourcePaths.has(normP)) {
+          seenResourcePaths.add(normP);
+          resources.push({ path: f.path, content: text, main: isMain });
+        }
       }
-    });
+    }
 
     const compiler = engine.includes('lua') ? 'lualatex' : engine.includes('xe') ? 'xelatex' : 'pdflatex';
     const controller = new AbortController();

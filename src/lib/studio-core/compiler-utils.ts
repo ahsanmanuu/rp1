@@ -64,6 +64,13 @@ export function robustPreambleInjector(content: string): string {
   const _dcMatch = modified.match(/\\documentclass\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/);
   const _isCustomClass = _dcMatch ? !STANDARD_CLASSES.has(_dcMatch[1].toLowerCase()) : false;
 
+  // Nature class uses \spacing{1} in \@maketitle which requires setspace or \spacing definition
+  if (_dcMatch && _dcMatch[1].toLowerCase() === 'nature') {
+    if (!modified.includes('setspace') && !modified.includes('\\providecommand{\\spacing}')) {
+      modified = '\\RequirePackage{setspace}\n\\providecommand{\\spacing}[1]{}\n' + modified;
+    }
+  }
+
   // 1. NUCLEAR 30.0 GLOBAL HARMONIZATION (\zimg Support) - Injected for ALL document classes
   if (!modified.includes('NuclearTrackerV30')) {
      const _B = "\u005c"; // Literal backslash
@@ -71,6 +78,7 @@ export function robustPreambleInjector(content: string): string {
 % --- NUCLEAR 30.0 CORE DEFINITIONS (NuclearTrackerV30) ---
 ${_B}PassOptionsToPackage{export}{graphicx}
 ${_B}PassOptionsToPackage{export}{adjustbox}
+${_B}providecommand{${_B}spacing}[1]{}
 ${_B}ifdefined${_B}NuclearTrackerV30${_B}else
   ${_B}def${_B}NuclearTrackerV30{1}
   ${_B}usepackage{iftex} % MANDATORY Engine Guard
@@ -154,9 +162,16 @@ ${_B}ifdefined${_B}NuclearTrackerV30${_B}else
     }
   ${_B}fi
 
-  % --- TABLE & LINENO HARMONIZATION ---
+  % --- TABLE, LINENO & MATH CRASH-PROOFING HARMONIZATION ---
   ${_B}makeatletter
+  ${_B}providecommand{${_B}spacing}[1]{}%
   ${_B}AtBeginDocument{
+    ${_B}providecommand{${_B}spacing}[1]{}%
+    % --- Crash-proof textasciicircum and ^ in math mode ---
+    ${_B}@ifundefined{orig@textasciicircum}{${_B}let${_B}orig@textasciicircum${_B}textasciicircum}{}%
+    ${_B}DeclareRobustCommand{${_B}textasciicircum}{${_B}ifmmode ^${_B}else ${_B}orig@textasciicircum${_B}fi}%
+    ${_B}@ifundefined{orig@caretaccent}{${_B}let${_B}orig@caretaccent${_B}^}{}%
+    ${_B}DeclareRobustCommand{${_B}^}[1]{${_B}ifmmode${_B}hat{#1}${_B}else${_B}orig@caretaccent{#1}${_B}fi}%
     ${_B}ifdefined${_B}nolinenumbers
       ${_B}ifdefined${_B}tabular
         ${_B}let${_B}oldtabular${_B}tabular

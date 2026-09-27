@@ -1032,8 +1032,20 @@ export class LatexAssembler {
       s = s.replace(rx, rep);
     }
 
-    // 3. Plaintext equation powers (e.g. (a + b)2 -> (a + b)^2, a2 + b2 -> a^2 + b^2, m2, cm3, 10-3)
-    s = s.replace(/(\([a-zA-Z0-9_+\-/*\s]+\))(\d+)(?=\s*[=+\-*/^_<>\\]|\s*$)/g, '$1^$2');
+    // 3. Caret, circumflex, and math-accent normalization
+    // Convert subscript/variable circumflex: yˆi -> \hat{y}_i, yˆ -> \hat{y}
+    s = s.replace(/([a-zA-Z])\s*[\u02C6\u0302]\s*([a-zA-Z0-9_]+)/g, '\\hat{$1}_{$2}');
+    s = s.replace(/([a-zA-Z])\s*\\textasciicircum\s*([a-zA-Z0-9_]+)/g, '\\hat{$1}_{$2}');
+    s = s.replace(/([a-zA-Z])\s*\\\^\s*([a-zA-Z0-9_]+)/g, '\\hat{$1}_{$2}');
+    s = s.replace(/([a-zA-Z])[\u02C6\u0302]/g, '\\hat{$1}');
+    s = s.replace(/\\hat\{([a-zA-Z])\}\s*([a-zA-Z0-9])\b/g, '\\hat{$1}_{$2}');
+    s = s.replace(/\\textasciicircum/g, '^');
+    s = s.replace(/\\^\{?([a-zA-Z0-9])\}?/g, '\\hat{$1}');
+    s = s.replace(/\\^/g, '^');
+    s = s.replace(/[\u02C6\u0302]/g, '^');
+
+    // 4. Plaintext equation powers (e.g. (a + b)2 -> (a + b)^2, (y_i - \hat{y}_i)2 -> (y_i - \hat{y}_i)^2, a2 + b2 -> a^2 + b^2, m2, cm3, 10-3)
+    s = s.replace(/(\([a-zA-Z0-9_+\-/*\s\\\{\}\^]+\))(\d+)(?=\s*[=+\-*/^_<>\\]|\s*$)/g, '$1^$2');
     s = s.replace(/\b([a-zA-Z])(\d+)(?=\s*[=+\-*/^_<>\\]|\s*$)/g, '$1^$2');
     s = s.replace(/\b(cm|mm|km|nm|Wb|m)(\d+)\b/g, '$1^{$2}');
 
@@ -1565,8 +1577,9 @@ export class LatexAssembler {
     const isTwoColMode = (node as any).twoColumn === true;
 
     // In two-column mode, tables with >= 4 columns, or with multi-word long headers / text-heavy cells,
+    // or any table with >= 6 columns in any document,
     // must span both columns (table*) so that columns do not collapse or collide.
-    const twoColWide = isTwoColMode && (
+    const twoColWide = (isTwoColMode || totalGridCols >= 7 || totalEstimatedWidth > 50) && (
       totalGridCols >= 4 ||
       (totalGridCols >= 3 && (totalEstimatedWidth > 28 || colMaxLen.some(l => l > 12))) ||
       (totalGridCols >= 2 && (totalEstimatedWidth > 36 || colMaxLen.some(l => l > 18))) ||
@@ -1579,8 +1592,18 @@ export class LatexAssembler {
     // All columns with text or headers longer than 6 characters MUST wrap using X to prevent collisions!
     // In table* (full textwidth) or single-column document mode, columns > 14 chars wrap using X.
     const isSingleColInTwoCol = isTwoColMode && !twoColWide;
-    const xThreshold = isSingleColInTwoCol ? 6 : (isTwoColMode ? 14 : 20);
+    const xThreshold = isSingleColInTwoCol ? 6 : (totalGridCols >= 6 ? 8 : (isTwoColMode ? 14 : 20));
+
+    // When a table has many columns (>= 7) and all cells are compact (<= 16 chars),
+    // use standard 'tabular' with adjustbox scaling so LaTeX scales the table smoothly
+    // without negative tabularx column widths or overfull hboxes.
+    const useStandardTabular = totalGridCols >= 7 && colMaxLen.every(l => l <= 16);
+    const tabularEnv = useStandardTabular ? 'tabular' : 'tabularx';
+    const targetWidth = twoColWide ? '\\textwidth' : (isTwoColMode ? '\\columnwidth' : '\\linewidth');
+    const widthParam = tabularEnv === 'tabularx' ? `{${targetWidth}}` : '';
+
     const specsList = colMaxLen.map((len, idx) => {
+      if (useStandardTabular) return idx === 0 ? 'l' : 'c';
       if (idx === 0 && len > xThreshold) return '>{\\raggedright\\arraybackslash}X';
       if (len > xThreshold) return '>{\\centering\\arraybackslash}X';
       if (isSingleColInTwoCol && totalGridCols >= 3) return '>{\\centering\\arraybackslash}X';
@@ -1588,7 +1611,7 @@ export class LatexAssembler {
     });
 
     // ALWAYS ensure at least one X column in tabularx tables so \linewidth constraint is enforced
-    if (!specsList.some(s => s.includes('X'))) {
+    if (!useStandardTabular && !specsList.some(s => s.includes('X'))) {
       let maxLenIdx = 0;
       let maxLen = -1;
       for (let idx = 0; idx < colMaxLen.length; idx++) {
@@ -1604,6 +1627,7 @@ export class LatexAssembler {
     }
     const spec = specsList.join('|');
     const fullSpec = `|${spec}|`;
+    const activeSpec = fullSpec;
 
     // Track active rowspans across rows
     const rowspanTracker: number[] = Array(totalGridCols).fill(0);
@@ -1688,20 +1712,23 @@ export class LatexAssembler {
     // Force tabularx line-wrapping for all multi-column or text-bearing tables to prevent right-margin overflow
     const tableEnv = twoColWide ? 'table*' : 'table';
     const tablePlacement = twoColWide ? '[!t]' : '[!htbp]';
-    const tabularEnv = 'tabularx';
-    const targetWidth = twoColWide ? '\\textwidth' : (isTwoColMode ? '\\columnwidth' : '\\linewidth');
-    const widthParam = `{${targetWidth}}`;
-    const activeSpec = fullSpec;
 
     // In two-column mode or tall tables, reduce padding and font size to prevent margin and page overflow
-    const colSepCmd = isSingleColInTwoCol
-      ? '\\setlength{\\tabcolsep}{2.5pt}\n'
-      : ((isTwoColMode && totalGridCols >= 3) ? '\\setlength{\\tabcolsep}{3.5pt}\n' : (totalGridCols >= 5 ? '\\setlength{\\tabcolsep}{4pt}\n' : ''));
-    const fontSizeCmd = rowCount > 35
+    const colSepCmd = totalGridCols >= 9
+      ? '\\setlength{\\tabcolsep}{1.5pt}\n'
+      : (totalGridCols >= 7
+        ? '\\setlength{\\tabcolsep}{2.5pt}\n'
+        : (isSingleColInTwoCol
+          ? '\\setlength{\\tabcolsep}{2.5pt}\n'
+          : ((isTwoColMode && totalGridCols >= 3) ? '\\setlength{\\tabcolsep}{3.5pt}\n' : (totalGridCols >= 5 ? '\\setlength{\\tabcolsep}{4pt}\n' : ''))));
+
+    const fontSizeCmd = totalGridCols >= 9
       ? '{\\scriptsize\n'
-      : (rowCount > 25 || (isTwoColMode && (totalGridCols >= 4 || totalEstimatedWidth > 50)))
+      : (totalGridCols >= 7 || rowCount > 35
         ? '{\\footnotesize\n'
-        : ((rowCount > 15 || (isTwoColMode && totalGridCols >= 3) || totalGridCols >= 6) ? '{\\small\n' : '');
+        : (rowCount > 25 || (isTwoColMode && (totalGridCols >= 4 || totalEstimatedWidth > 50)))
+          ? '{\\footnotesize\n'
+          : ((rowCount > 15 || (isTwoColMode && totalGridCols >= 3) || totalGridCols >= 6) ? '{\\small\n' : ''));
     const fontSizeEnd = fontSizeCmd ? '\n}' : '';
     const hasWrappedCells = specsList.some(s => s.includes('X'));
     const extraRowHeightCmd = hasWrappedCells ? '\\setlength{\\extrarowheight}{2pt}\n' : '';
@@ -2499,7 +2526,7 @@ export class ModularLatexAssembler {
     const isElsevier = templateId.includes('elsevier') || tpl?.assetFolder === 'elsevier';
     const isLncs = templateId.includes('lncs') || tpl?.publisher === 'Springer';
     const isSciRep = templateId.includes('scirep') || tpl?.assetFolder === 'scirep';
-    const isNature = tpl?.assetFolder === 'nature';
+    const isNature = tpl?.assetFolder === 'nature' || templateId.includes('nature') || (typeof docClass === 'string' && docClass.includes('{nature}'));
 
     const isTwoColumn = isIeee || isAcm || (
       tpl?.mapping?.columnLayout === 'double'
@@ -2559,6 +2586,10 @@ export class ModularLatexAssembler {
     pkgReg.add("siunitx");
     pkgReg.add("cleveref");
 
+    if (isNature) {
+      pkgReg.add("setspace");
+    }
+
     const mapping = tpl?.mapping || {};
     
     // Standardize to algorithm and algpseudocode because our generator output is always algpseudocode-compatible
@@ -2591,7 +2622,8 @@ export class ModularLatexAssembler {
     }
     preamble.push(
       "",
-      "% --- UNIVERSAL METADATA FALLBACKS ---",
+      "% --- UNIVERSAL METADATA & MACRO FALLBACKS ---",
+      "\\providecommand{\\spacing}[1]{}",
       "\\providecommand{\\email}[1]{\\texttt{#1}}",
       "\\providecommand{\\ead}[1]{\\texttt{#1}}",
       "\\providecommand{\\corref}[1]{}",
@@ -2600,6 +2632,14 @@ export class ModularLatexAssembler {
       "\\providecommand{\\institution}[1]{#1}",
       "\\providecommand{\\city}[1]{#1}",
       "\\providecommand{\\country}[1]{#1}",
+      "",
+      "% --- UNIVERSAL MATH & ACCENT ROBUSTNESS ---",
+      "\\catcode`\\@=11",
+      "\\@ifundefined{orig@textasciicircum}{\\let\\orig@textasciicircum\\textasciicircum}{}",
+      "\\DeclareRobustCommand{\\textasciicircum}{\\ifmmode ^\\else \\orig@textasciicircum\\fi}",
+      "\\@ifundefined{orig@caretaccent}{\\let\\orig@caretaccent\\^}{}",
+      "\\DeclareRobustCommand{\\^}[1]{\\ifmmode\\hat{#1}\\else\\orig@caretaccent{#1}\\fi}",
+      "\\catcode`\\@=12",
       "",
       "% --- UNIVERSAL SUBFIGURE FALLBACK ---",
       "\\catcode`\\@=11",
