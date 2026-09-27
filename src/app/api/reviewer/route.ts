@@ -348,11 +348,14 @@ export async function DELETE(req: NextRequest) {
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
+    const { freezeProjectCountOnDeletion } = await import('@/lib/projectLimits');
+    const frozenCount = await freezeProjectCountOnDeletion(session.user.id, id);
+
     await prisma.paperReview.delete({
       where: { id, userId: session.user.id },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, count: frozenCount });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

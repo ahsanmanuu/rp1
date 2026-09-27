@@ -22,6 +22,7 @@ import AiSubscriptionCard from "@/components/dashboard/AiSubscriptionCard";
 import AiPlanSubscribeModal from "@/components/dashboard/AiPlanSubscribeModal";
 import ProjectLimitModal from "@/components/ProjectLimitModal";
 import AiLimitModal from "@/components/AiLimitModal";
+import { broadcastProjectDeleted } from "@/hooks/useProjectActivityTracker";
 import { safeDynamicImport } from "@/lib/safeImport";
 const ProjectStats = dynamic(() => safeDynamicImport(() => import("@/components/ProjectStats").then(m => m.ProjectStats)), { ssr: false });
 const ChatWidget = dynamic(() => safeDynamicImport(() => import("@/components/ChatWidget")), { ssr: false });
@@ -390,14 +391,40 @@ export default function DashboardPage() {
     ? Math.max(0, Math.ceil((new Date(membership.membershipExpiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : null;
 
-  // Refetch membership (and thus project count) when PB projects change in realtime
+  // Refetch membership and quotas when projects change in realtime or across tabs
   const prevProjectsCountRef = useRef(pbAllProjects.length);
   useEffect(() => {
     if (pbAllProjects.length !== prevProjectsCountRef.current) {
       prevProjectsCountRef.current = pbAllProjects.length;
       refetchMembership();
+      refetchQuota();
     }
-  }, [pbAllProjects.length, refetchMembership]);
+  }, [pbAllProjects.length, refetchMembership, refetchQuota]);
+
+  useEffect(() => {
+    const handleCounterUpdated = () => {
+      refetchMembership();
+      refetchQuota();
+    };
+
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel('project_counter_sync');
+      channel.onmessage = (event) => {
+        if (event.data?.type === 'COUNT_UPDATED') {
+          refetchMembership();
+          refetchQuota();
+        }
+      };
+    } catch {}
+
+    window.addEventListener('project_counter_updated', handleCounterUpdated);
+
+    return () => {
+      window.removeEventListener('project_counter_updated', handleCounterUpdated);
+      if (channel) channel.close();
+    };
+  }, [refetchMembership, refetchQuota]);
 
   // Sync reminderInfo from membership hook data
   useEffect(() => {
@@ -729,8 +756,32 @@ export default function DashboardPage() {
     pbLatexProjects.slice(0, 5),
   [pbLatexProjects]);
 
-  const liveProjectsCount = useMemo(() => pbDoc2Latex.length + pbLatexProjects.length, [pbDoc2Latex, pbLatexProjects]);
-  const displayProjectsCount = typeof membership.projectsCount === 'number' ? membership.projectsCount : pbAllProjects.length;
+  const userScopedCounterKey = session?.user?.id ? `user_lifetime_projects_count_${session.user.id}` : null;
+  const maxProjectsCountRef = useRef(0);
+
+  useEffect(() => {
+    if (userScopedCounterKey && typeof window !== 'undefined') {
+      const stored = parseInt(localStorage.getItem(userScopedCounterKey) || '0', 10);
+      if (!isNaN(stored) && stored > maxProjectsCountRef.current) {
+        maxProjectsCountRef.current = stored;
+      }
+    }
+  }, [userScopedCounterKey]);
+
+  const rawProjectCount = typeof membership.projectsCount === 'number' && membership.projectsCount > 0
+    ? membership.projectsCount
+    : (typeof quotaStatus?.projects?.count === 'number' && quotaStatus.projects.count > 0
+      ? quotaStatus.projects.count
+      : 0);
+  const displayProjectsCount = Math.max(maxProjectsCountRef.current, rawProjectCount);
+  if (displayProjectsCount > maxProjectsCountRef.current) {
+    maxProjectsCountRef.current = displayProjectsCount;
+    if (userScopedCounterKey && typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(userScopedCounterKey, String(displayProjectsCount));
+      } catch {}
+    }
+  }
 
   const handleDownloadZip = async (p: any) => {
     if (!session?.user?.email) return;
@@ -812,8 +863,11 @@ export default function DashboardPage() {
         const res = await fetch(`/api/projects/${id}/delete`, { method: 'DELETE' });
         if (!res.ok) throw new Error('Failed to delete from server');
       }
+      broadcastProjectDeleted(id);
       setProjects(ps => ps.filter(p => p.id !== id));
       if (selectedProject?.id === id) setSelectedProject(null);
+      refetchMembership();
+      refetchQuota();
     } catch (err: any) {
       console.error(err);
       alert(`Error: ${err.message}`);

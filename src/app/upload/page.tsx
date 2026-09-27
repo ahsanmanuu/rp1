@@ -18,6 +18,7 @@ import { toast, Toaster } from "react-hot-toast";
 import LatexifyLogo from "@/components/LatexifyLogo";
 import ProjectLimitModal from "@/components/ProjectLimitModal";
 import { useProjectLimit } from "@/hooks/useProjectLimit";
+import { useProjectActivityTracker, broadcastProjectDeleted } from "@/hooks/useProjectActivityTracker";
 import { countCitationsFromHtml } from "@/lib/citationCounting";
 import { StudioFS } from "@/lib/studio-fs";
 import { authFetch } from "@/lib/authFetch";
@@ -56,6 +57,7 @@ function UploadContent() {
   const [projects, setProjects] = useState<any[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
   const { showLimitModal, setShowLimitModal } = useProjectLimit();
+  useProjectActivityTracker({ projectId: projectData?.id, tool: 'doc2latex', enabled: !!projectData?.id });
 
   // Fetch reports and projects — only after session is confirmed
   useEffect(() => {
@@ -2385,6 +2387,7 @@ const PremiumHistoryCard = ({ title, date, stats, type, onClick, projectId, onDe
         if (!res.ok) throw new Error('Delete failed');
       }
       toast.success(isReportType ? 'Report deleted' : 'Project deleted');
+      broadcastProjectDeleted(projectId);
       if (onDeleted) onDeleted(projectId);
     } catch {
       toast.error('Could not complete deletion');

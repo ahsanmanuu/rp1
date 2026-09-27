@@ -126,11 +126,16 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
 
         if (data.success) {
           clearAuthFailed(ENDPOINT_KEY);
-          setState({
-            data: data as MembershipData,
-            loading: false,
-            error: null,
-            isStale: false,
+          setState(prev => {
+            const prevCount = prev.data?.projectsCount || 0;
+            const incomingCount = typeof data.projectsCount === 'number' ? data.projectsCount : 0;
+            const finalProjectsCount = Math.max(prevCount, incomingCount);
+            return {
+              data: { ...(data as MembershipData), projectsCount: finalProjectsCount },
+              loading: false,
+              error: null,
+              isStale: false,
+            };
           });
 
           const newPlan = data.membership || 'free';
@@ -205,6 +210,34 @@ export function useMembershipRealtime(options: UseMembershipOptions = {}) {
           filter: `userId = "${userIdRef.current}"`,
         }));
       } catch {}
+
+      // Listen to cross-tab project counter updates
+      const handleCounterUpdated = (e: any) => {
+        if (typeof e?.detail?.count === 'number') {
+          setState(prev => prev.data ? {
+            ...prev,
+            data: { ...prev.data, projectsCount: e.detail.count }
+          } : prev);
+        }
+        if (mountedRef.current) fetchRef.current?.(true, true);
+      };
+
+      try {
+        const channel = new BroadcastChannel('project_counter_sync');
+        channel.onmessage = (event) => {
+          if (event.data?.type === 'COUNT_UPDATED' && typeof event.data?.count === 'number') {
+            setState(prev => prev.data ? {
+              ...prev,
+              data: { ...prev.data, projectsCount: event.data.count }
+            } : prev);
+            if (mountedRef.current) fetchRef.current?.(true, true);
+          }
+        };
+        unsubFns.push(() => channel.close());
+      } catch {}
+
+      window.addEventListener('project_counter_updated', handleCounterUpdated);
+      unsubFns.push(() => window.removeEventListener('project_counter_updated', handleCounterUpdated));
 
       unsubRef.current = () => { for (const fn of unsubFns) { try { fn(); } catch {} } };
     }

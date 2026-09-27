@@ -15,6 +15,7 @@ import {
   Edit3, Sparkles 
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { broadcastProjectDeleted } from '@/hooks/useProjectActivityTracker';
 
 function LaTeXStudioLogo() {
   return (
@@ -182,6 +183,10 @@ export default function LaTeXStudioLanding() {
     try {
       const finalFs = fs || new StudioFS(session?.user?.email || 'guest');
       await finalFs.deleteProject(id);
+      try {
+        await fetch(`/api/projects/${id}/delete`, { method: 'DELETE' });
+      } catch {}
+      broadcastProjectDeleted(id);
       setProjects(ps => ps.filter(p => p.id !== id));
     } catch (err: any) {
       console.error('Failed to delete local project:', err);

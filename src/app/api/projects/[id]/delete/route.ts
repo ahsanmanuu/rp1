@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from '@/lib/auth-pb';
+import { freezeProjectCountOnDeletion } from '@/lib/projectLimits';
+
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession();
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
 
@@ -20,6 +22,10 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // CRITICAL: Freeze user's lifetime project counter BEFORE deletion
+    // Project count MUST NEVER decrease when an active project is deleted.
+    const frozenCount = await freezeProjectCountOnDeletion(session.user.id, id);
+
     // Delete associated ReportHistory entries to prevent orphaned reports
     await prisma.reportHistory.deleteMany({
       where: { projectId: id }
@@ -29,11 +35,13 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       where: { id }
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, count: frozenCount });
 
   } catch (error: any) {
     console.error('Delete Project Error:', error);
     return NextResponse.json({ error: error.message || 'Error deleting project' }, { status: 500 });
   }
 }
+
+export { DELETE as POST };
 

@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from '@/lib/auth-pb';
+import { freezeProjectCountOnDeletion } from '@/lib/projectLimits';
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession();
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
 
@@ -30,15 +31,20 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // Freeze counter before report deletion
+    const frozenCount = await freezeProjectCountOnDeletion(session.user.id, report.projectId || id);
+
     await prisma.reportHistory.delete({
       where: { id: report.id }
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, count: frozenCount });
 
   } catch (error: any) {
     console.error('Delete Report Error:', error);
     return NextResponse.json({ error: error.message || 'Error deleting report' }, { status: 500 });
   }
 }
+
+export { DELETE as POST };
 

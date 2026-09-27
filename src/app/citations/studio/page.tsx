@@ -13,6 +13,7 @@ import {
 import { toast } from "react-hot-toast";
 import { saveAs } from "file-saver";
 import { Document, Packer, Paragraph, TextRun, AlignmentType } from "docx";
+import { useProjectActivityTracker } from "@/hooks/useProjectActivityTracker";
 
 // --- TYPES ---
 interface Contributor {
@@ -131,6 +132,12 @@ export default function CitationGeneratorPage() {
   const accentGreen = "#00a86b";
   const [serverProjectId, setServerProjectId] = useState<string | null>(null);
 
+  const activityTracker = useProjectActivityTracker({
+    projectId: serverProjectId,
+    tool: "ai_citation_generator",
+    enabled: !!serverProjectId,
+  });
+
   useEffect(() => {
     if (!session?.user?.id) return;
     
@@ -181,6 +188,9 @@ export default function CitationGeneratorPage() {
     setIsSearching(true);
     setSearchResults(null);
     try {
+      if (serverProjectId) {
+        activityTracker.triggerSearchCitation(serverProjectId);
+      }
       const res = await fetch('/api/citations/autocite', { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' }, 
@@ -210,6 +220,9 @@ export default function CitationGeneratorPage() {
     setCitations([newCitation, ...citations]);
     setSearchResults(null);
     setQuery("");
+    if (serverProjectId) {
+      activityTracker.triggerSearchCitation(serverProjectId);
+    }
     toast.success("Added to list");
   };
 

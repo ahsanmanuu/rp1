@@ -94,7 +94,7 @@ export function useProjectLimit(): ProjectLimitState {
 
       setIsProjectLimitReached(projectLimitReached);
       setIsAiTokensExhausted(aiExhausted);
-      setCount(typeof data.count === "number" ? data.count : 0);
+      setCount(prev => Math.max(prev, typeof data.count === "number" ? data.count : 0));
       setMax(data.max ?? (data.isPremium ? null : 7));
       setIsPremium(!!data.isPremium);
       setMembership(data.membership || "free");
@@ -174,13 +174,33 @@ export function useProjectLimit(): ProjectLimitState {
       }
     };
 
+    const handleCounterUpdated = (e: any) => {
+      if (typeof e?.detail?.count === "number") {
+        setCount(e.detail.count);
+      }
+      checkLimit();
+    };
+
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel("project_counter_sync");
+      channel.onmessage = (event) => {
+        if (event.data?.type === "COUNT_UPDATED" && typeof event.data?.count === "number") {
+          setCount(event.data.count);
+          checkLimit();
+        }
+      };
+    } catch {}
+
     window.addEventListener("project-limit-triggered", handleProjectLimitTriggered);
     window.addEventListener("ai-cap-triggered", handleAiCapTriggered);
     window.addEventListener("user-plan-updated", handlePlanUpdated);
+    window.addEventListener("project_counter_updated", handleCounterUpdated);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       if (wakeTimer) clearTimeout(wakeTimer);
+      if (channel) channel.close();
       if (pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
@@ -192,6 +212,7 @@ export function useProjectLimit(): ProjectLimitState {
       window.removeEventListener("project-limit-triggered", handleProjectLimitTriggered);
       window.removeEventListener("ai-cap-triggered", handleAiCapTriggered);
       window.removeEventListener("user-plan-updated", handlePlanUpdated);
+      window.removeEventListener("project_counter_updated", handleCounterUpdated);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [isAuthenticated, checkLimit]);

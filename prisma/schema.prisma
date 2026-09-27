@@ -27,6 +27,8 @@ model User {
   aiDailyCapOverride Int?          // null = use plan default, number = custom daily token cap
   aiAgentReactivatesAt DateTime? @db.Timestamptz // when AI reactivates after cap hit (null = not capped)
   lifetimeProjectsCount Int        @default(0)   // Lifetime total projects created (non-decreasing on deletion)
+  countedProjectIds   String?      @default("[]") // JSON array of project IDs counted towards user counter
+  deletedProjectIds   String?      @default("[]") // JSON array of deleted project IDs (must never be counted)
   createdAt     DateTime @db.Timestamptz           @default(now())
   updatedAt     DateTime @db.Timestamptz           @updatedAt
   accounts      Account[]
@@ -113,6 +115,7 @@ model Project {
   content            String?               @default("")
   structuredContent  String?               @default("{}")
   firstPdfDownloaded Boolean               @default(false)
+  isCounted          Boolean               @default(true)
   createdAt          DateTime @db.Timestamptz              @default(now())
   updatedAt          DateTime @db.Timestamptz              @updatedAt
   user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)

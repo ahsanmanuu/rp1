@@ -31,6 +31,7 @@ import ConsolePanel from '../ConsolePanel';
 import StudioErrorBoundary from '../StudioErrorBoundary';
 import EditorLoadingOverlay from '../EditorLoadingOverlay';
 import { type DiagnosticError } from '@/lib/studio-core/compiler-utils';
+import { useProjectActivityTracker } from '@/hooks/useProjectActivityTracker';
 
 // UI Components
 const MonacoEditor = dynamic(() => import('@monaco-editor/react').then(m => m.default), { ssr: false, loading: () => <div style={{ flex: 1, background: '#0a0a0a' }} /> });
@@ -91,6 +92,7 @@ function FileItem({ f, activeFile, onClick, onDelete, onRename }: { f: any, acti
 
 export default function MigratorIDE({ projectId }: { projectId: string }) {
   const { data: session, status } = useSession();
+  const activityTracker = useProjectActivityTracker({ projectId, tool: 'template_migrator', enabled: !!projectId });
   
   const [fs, setFs] = useState<StudioFS | null>(null);
   const [project, setProject] = useState<StudioProject | null>(null);
@@ -535,6 +537,7 @@ export default function MigratorIDE({ projectId }: { projectId: string }) {
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         throw new Error('No internet connection. Please check your network and try again.');
       }
+      activityTracker.triggerCompile();
       const response = await fetch('/api/latex-studio/compile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

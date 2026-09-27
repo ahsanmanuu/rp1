@@ -107,7 +107,19 @@ export function useGlobalQuotas(options: UseGlobalQuotasOptions = {}) {
 
       clearAuthFailed(ENDPOINT_KEY);
       cacheRef.current = { data, expiry: Date.now() + CACHE_TTL };
-      setStatus(data);
+      setStatus(prev => {
+        if (!prev) return data;
+        const prevCount = prev.projects?.count || 0;
+        const incCount = data.projects?.count || 0;
+        const finalCount = Math.max(prevCount, incCount);
+        return {
+          ...data,
+          projects: {
+            ...data.projects,
+            count: finalCount,
+          },
+        };
+      });
       setError(null);
 
       if (data.projects.limitReached && !hasShownProjectModalRef.current) {
@@ -158,14 +170,50 @@ export function useGlobalQuotas(options: UseGlobalQuotasOptions = {}) {
       }
     };
 
+    const handleCounterUpdated = (e: any) => {
+      const newCount = e?.detail?.count;
+      if (typeof newCount === 'number') {
+        setStatus(prev => prev ? {
+          ...prev,
+          projects: {
+            ...prev.projects,
+            count: newCount,
+            limitReached: prev.membership.planType === 'free' && newCount >= 7,
+          }
+        } : null);
+      }
+      fetchStatus(true);
+    };
+
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel('project_counter_sync');
+      channel.onmessage = (event) => {
+        if (event.data?.type === 'COUNT_UPDATED' && typeof event.data?.count === 'number') {
+          const newCount = event.data.count;
+          setStatus(prev => prev ? {
+            ...prev,
+            projects: {
+              ...prev.projects,
+              count: newCount,
+              limitReached: prev.membership.planType === 'free' && newCount >= 7,
+            }
+          } : null);
+          fetchStatus(true);
+        }
+      };
+    } catch {}
+
     window.addEventListener('project-limit-triggered', handleProjectLimitTriggered);
     window.addEventListener('ai-cap-triggered', handleAiCapTriggered);
     window.addEventListener('open-ai-subscription', handleOpenAiSubscription);
+    window.addEventListener('project_counter_updated', handleCounterUpdated);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       clearTimeout(initialTimer);
       if (wakeTimer) clearTimeout(wakeTimer);
+      if (channel) channel.close();
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
@@ -173,6 +221,7 @@ export function useGlobalQuotas(options: UseGlobalQuotasOptions = {}) {
       window.removeEventListener('project-limit-triggered', handleProjectLimitTriggered);
       window.removeEventListener('ai-cap-triggered', handleAiCapTriggered);
       window.removeEventListener('open-ai-subscription', handleOpenAiSubscription);
+      window.removeEventListener('project_counter_updated', handleCounterUpdated);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [enabled, pollIntervalMs, fetchStatus]);

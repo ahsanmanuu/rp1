@@ -86,10 +86,9 @@ export async function GET(req: NextRequest) {
 
     const plan = effectiveAiPlanId ? await prisma.aiCapPlan.findUnique({ where: { id: effectiveAiPlanId } }) : null;
 
-    const projectCount = await prisma.project.count({ where: { userId } });
-    const citationCount = await prisma.citationProject.count({ where: { userId } });
-    const reviewCount = await prisma.paperReview.count({ where: { userId } });
-    const totalProjects = projectCount + citationCount + reviewCount;
+    const { getEffectiveProjectCount } = await import('@/lib/projectLimits');
+    const projectStatus = await getEffectiveProjectCount(userId);
+    const totalProjects = projectStatus.count;
 
     const defaultCap = plan?.name === 'pro' ? 50000 : plan?.name === 'enterprise' ? 200000 : 10000;
     const dailyCap = user.aiDailyCapOverride || (plan?.dailyTokenCap && plan.dailyTokenCap > 0 ? plan.dailyTokenCap : defaultCap);
@@ -112,8 +111,8 @@ export async function GET(req: NextRequest) {
       },
       projects: {
         count: totalProjects,
-        max: user.membership === 'free' ? 7 : null,
-        limitReached: user.membership === 'free' && totalProjects >= 7,
+        max: projectStatus.max,
+        limitReached: projectStatus.limitReached,
       },
       ai: {
         planId: plan?.id ?? null,

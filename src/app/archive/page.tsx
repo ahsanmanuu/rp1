@@ -14,6 +14,7 @@ import {
   ArrowUpRight, X, RotateCcw, Clock, Cloud, HardDrive,
   ExternalLink
 } from "lucide-react";
+import { broadcastProjectDeleted } from "@/hooks/useProjectActivityTracker";
 
 function ArchiveContent() {
   const { data: session, status } = useSession();
@@ -60,6 +61,7 @@ function ArchiveContent() {
     try {
       const res = await fetch(`/api/projects/${id}/delete`, { method: 'DELETE' });
       if (!res.ok) throw new Error("Delete failed");
+      broadcastProjectDeleted(id);
     } catch (err: any) {
       console.error("Delete failed:", err);
       alert("Failed to delete project.");

@@ -20,6 +20,7 @@ import { DIAGRAM_TEMPLATES, DiagramTemplate } from '@/lib/diagramTemplates';
 import type { NodeColor, NodeType, ConnType, Arrowhead, DiagramNode, DiagramConnection, EditorMode, PortSide } from '@/lib/diagramTypes';
 import ProjectLimitModal from '@/components/ProjectLimitModal';
 import { useProjectLimit } from '@/hooks/useProjectLimit';
+import { useProjectActivityTracker } from '@/hooks/useProjectActivityTracker';
 import ThemeSwitcher from '@/components/scholarly-editor/ThemeSwitcher';
 import toast from 'react-hot-toast';
 
@@ -498,6 +499,12 @@ function DiagramStudio() {
   const [connections, setConnections] = useState<DiagramConnection[]>([]);
   const { showLimitModal, setShowLimitModal } = useProjectLimit();
 
+  const activityTracker = useProjectActivityTracker({
+    projectId,
+    tool: 'ai_diagram_studio',
+    enabled: !!projectId,
+  });
+
   // ── UI State ──────────────────────────────────────────────────────────────────
   const [selectedNode, setSelectedNode]   = useState<string | null>(null);
   const [draggingId, setDraggingId]       = useState<string | null>(null);
@@ -678,6 +685,9 @@ function DiagramStudio() {
         }),
       });
       setSaveStatus('saved');
+      if (projectId) {
+        activityTracker.triggerDraw(projectId);
+      }
       if (showToast) {
         toast.success("Saved to History & Cloud!");
       }
@@ -1518,6 +1528,9 @@ function DiagramStudio() {
       debouncedSave(next, connections);
       return next;
     });
+    if (projectId) {
+      activityTracker.triggerDraw(projectId);
+    }
     setSelectedNode(newNode.id);
   }, [nodes, connections, debouncedSave, pushHistory]);
 
@@ -1550,6 +1563,9 @@ function DiagramStudio() {
       debouncedSave(next, connections);
       return next;
     });
+    if (projectId) {
+      activityTracker.triggerDraw(projectId);
+    }
     setSelectedNode(newNode.id);
   }, [nodes, connections, debouncedSave, pushHistory]);
 

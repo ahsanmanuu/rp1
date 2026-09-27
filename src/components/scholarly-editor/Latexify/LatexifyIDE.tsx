@@ -33,6 +33,7 @@ import StudioErrorBoundary from '../StudioErrorBoundary';
 import EditorLoadingOverlay from '../EditorLoadingOverlay';
 import { AiChatPanel } from '../AiChatPanel';
 import { type DiagnosticError, parseLog } from '@/lib/studio-core/compiler-utils';
+import { useProjectActivityTracker } from '@/hooks/useProjectActivityTracker';
 
 // UI Components
 const MonacoEditor = dynamic(() => import('@monaco-editor/react').then(m => m.default), { ssr: false, loading: () => <div style={{ flex: 1, background: '#0a0a0a' }} /> });
@@ -41,6 +42,7 @@ const ScholarlyViewer = dynamic(() => import('../ScholarlyPDFViewer').then(m => 
 export default function LatexifyIDE({ projectId }: { projectId: string }) {
   const { data: session, status } = useSession();
   const { settings, updatePanels, updatePages } = useLayoutSync(false);
+  const activityTracker = useProjectActivityTracker({ projectId, tool: 'latexify_studio', enabled: !!projectId });
   
   const [fs, setFs] = useState<StudioFS | null>(null);
   const [project, setProject] = useState<StudioProject | null>(null);
@@ -628,6 +630,7 @@ export default function LatexifyIDE({ projectId }: { projectId: string }) {
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         throw new Error('No internet connection. Please check your network and try again.');
       }
+      activityTracker.triggerCompile();
       const response = await fetch('/api/latex-studio/compile', {
         method: 'POST',
         body: formData

@@ -151,7 +151,9 @@ export async function GET(req: NextRequest) {
       prisma.project.count({ where: { userId, projectType: "DIAGRAM" } })
     ]);
 
-    const projectsCount = projectCount + citationCount + reviewCount;
+    const { getEffectiveProjectCount } = await import('@/lib/projectLimits');
+    const effectiveProjectStatus = await getEffectiveProjectCount(userId);
+    const projectsCount = effectiveProjectStatus.count;
 
     // Detect plan change and write lifecycle log
     const cacheKey = `membership_${userId}`;

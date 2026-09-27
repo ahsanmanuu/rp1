@@ -14,6 +14,7 @@ import {
 import { ScholarlyNavbar } from "@/components/Navigation/ScholarlyNavbar";
 import ProjectLimitModal from "@/components/ProjectLimitModal";
 import { useProjectLimit } from "@/hooks/useProjectLimit";
+import { useProjectActivityTracker, broadcastProjectDeleted } from "@/hooks/useProjectActivityTracker";
 
 /**
  * safeStr — converts ANY value to a safe, renderable string for JSX.
@@ -161,6 +162,12 @@ export default function ReviewerPage() {
   const [historyMode, setHistoryMode] = useState<'auto' | 'manual'>('auto');
   const containerRef = useRef<HTMLDivElement>(null);
   const { showLimitModal, setShowLimitModal } = useProjectLimit();
+
+  const activityTracker = useProjectActivityTracker({
+    projectId: currentReviewId,
+    tool: 'ai_peer_reviewer',
+    enabled: !!currentReviewId,
+  });
 
   useEffect(() => {
     if (containerRef.current) {
@@ -472,6 +479,9 @@ export default function ReviewerPage() {
       setRecommendedJournals(data.journals || []);
       setCurrentReviewId(data.reviewId);
       setResult(data.review);
+      if (data.reviewId) {
+        activityTracker.triggerCompile(data.reviewId);
+      }
       toast.success("Neural Audit Complete");
       clearPendingReview();
       if (historyMode === 'auto') {
@@ -626,6 +636,7 @@ export default function ReviewerPage() {
                                  try {
                                    const res = await fetch(`/api/reviewer?id=${h.id}`, { method: 'DELETE' });
                                    if (res.ok) {
+                                     broadcastProjectDeleted(h.id);
                                      toast.success("Review deleted successfully");
                                      fetchHistory();
                                    }
@@ -1388,6 +1399,7 @@ export default function ReviewerPage() {
               if (currentReviewId) {
                 try {
                   await fetch(`/api/reviewer?id=${currentReviewId}`, { method: 'DELETE' });
+                  broadcastProjectDeleted(currentReviewId);
                   toast.success("Deleted review from active database.");
                 } catch {}
               }
@@ -1434,6 +1446,9 @@ export default function ReviewerPage() {
                 toast.dismiss(toastId);
                 if (data.success) {
                   setCurrentReviewId(data.reviewId);
+                  if (data.reviewId) {
+                    activityTracker.triggerCompile(data.reviewId);
+                  }
                   toast.success("Successfully saved to cloud history");
                   fetchHistory();
                 } else {

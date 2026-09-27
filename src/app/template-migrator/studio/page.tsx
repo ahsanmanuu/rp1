@@ -33,6 +33,7 @@ import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import ProjectLimitModal from '@/components/ProjectLimitModal';
 import { useProjectLimit } from '@/hooks/useProjectLimit';
+import { useProjectActivityTracker } from '@/hooks/useProjectActivityTracker';
 
 // Dynamic import for Monaco to avoid SSR issues
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false });
@@ -44,6 +45,7 @@ export default function TemplateMigratorPage() {
   const [step, setStep] = useState<MigrationStep>('intake');
   const [zipFile, setZipFile] = useState<File | null>(null);
   const { showLimitModal, setShowLimitModal } = useProjectLimit();
+  useProjectActivityTracker({ tool: 'template_migrator' });
   // Migration State
   const [migratedContent] = useState<any>(null);
   const [activeFile, setActiveFile] = useState('main.tex');

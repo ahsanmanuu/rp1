@@ -25,6 +25,7 @@ import ConsolePanel from '../ConsolePanel';
 import StudioErrorBoundary from '../StudioErrorBoundary';
 import { AiChatPanel } from '../AiChatPanel';
 import { useProjectLimit } from '@/hooks/useProjectLimit';
+import { useProjectActivityTracker } from '@/hooks/useProjectActivityTracker';
 
 // Modular Components
 import { DocSidebar } from './DocSidebar';
@@ -92,6 +93,8 @@ export default function DocIDE({ projectId }: { projectId: string }) {
     reactivateAt,
     quotaResetAt,
   } = useProjectLimit();
+
+  const activityTracker = useProjectActivityTracker({ projectId, tool: 'doc2latex', enabled: !!projectId });
 
   // -- Credit Limit & Modal State --
   const isOutOfCredits = status !== 'loading' && session?.user && (session.user.points ?? 0) <= 0 && session.user.membership === 'free';
@@ -1636,6 +1639,7 @@ export default function DocIDE({ projectId }: { projectId: string }) {
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         throw new Error('No internet connection. Please check your network and try again.');
       }
+      activityTracker.triggerCompile();
       const response = await fetch('/api/latex-studio/compile', {
         method: 'POST',
         body: formData

@@ -5,6 +5,7 @@ const PB_USER_FIELDS = [
   'points', 'theme', 'status', 'role', 'membership',
   'membershipExpiresAt', 'blockedUntil', 'blacklistReason',
   'aiDailyCapOverride', 'aiAgentReactivatesAt', 'lifetimeProjectsCount',
+  'countedProjectIds', 'deletedProjectIds',
   'aiCapPlanId', 'aiPlanStartsAt', 'aiPlanExpiresAt', 'aiPlanExpiryWarnedAt',
 ] as const;
 
@@ -117,6 +118,8 @@ export async function ensurePbUserCollectionFields(): Promise<void> {
       aiDailyCapOverride: { type: 'number' },
       aiAgentReactivatesAt: { type: 'date' },
       lifetimeProjectsCount: { type: 'number' },
+      countedProjectIds: { type: 'text' },
+      deletedProjectIds: { type: 'text' },
       aiCapPlanId: { type: 'text' },
       aiPlanStartsAt: { type: 'date' },
       aiPlanExpiresAt: { type: 'date' },

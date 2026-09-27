@@ -211,6 +211,9 @@ export async function GET(req: NextRequest) {
       prisma.paperReview.count({ where: { userId } }),
     ]);
 
+    const { getEffectiveProjectCount } = await import('@/lib/projectLimits');
+    const effectiveProjectStatus = await getEffectiveProjectCount(userId);
+
     const membershipSummary = {
       planType: membership,
       planName: membership === "free" ? "Free Tier" : "Premium Access",
@@ -223,7 +226,7 @@ export async function GET(req: NextRequest) {
       durationDays: durationDays(memberSince ? new Date(memberSince) : null, membershipExpiresAt),
       subscriptionCount,
       totalDays,
-      projectsCount: projectCount + citationCount + reviewCount,
+      projectsCount: effectiveProjectStatus.count,
       points: user.points,
       showReminder: membershipReminderShown,
       daysLeft: membershipReminderShown ? remainingDays(membershipExpiresAt) : undefined,

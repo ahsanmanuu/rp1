@@ -19,6 +19,7 @@ import {
   Table, Image as ImageIcon, Code, Sigma, BookOpen,
   Archive, ExternalLink, Clock, Layers, LayoutPanelLeft
 } from "lucide-react";
+import { broadcastProjectDeleted } from "@/hooks/useProjectActivityTracker";
 
 const safeParse = (str: string) => {
   try { return JSON.parse(str || "{}"); } catch { return {}; }
@@ -145,6 +146,7 @@ function HistoryContent() {
         const res = await fetch(`/api/projects/${id}/delete`, { method: 'DELETE' });
         if (!res.ok) throw new Error("Server delete failed");
       }
+      broadcastProjectDeleted(id);
       setProjects(prev => prev.filter(p => p.id !== id));
       if (selectedProject?.id === id) setSelectedProject(null);
       toast.success("Project deleted", { id: tId });
