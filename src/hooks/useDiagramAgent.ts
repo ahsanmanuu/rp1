@@ -319,12 +319,13 @@ export function useDiagramAgent({
     const currentConns = connectionsRef.current;
 
     try {
+      const activeProjId = typeof window !== 'undefined' ? (localStorage.getItem('last_active_project_id') || undefined) : undefined;
       const res = await fetch('/api/diagrams/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages:  historyPayload,
-          context:   { nodes: currentNodes, connections: currentConns },
+          context:   { nodes: currentNodes, connections: currentConns, activeProjectId: activeProjId },
         }),
         signal: abortRef.current.signal,
       });
@@ -628,7 +629,7 @@ export function useDiagramAgent({
           body:    JSON.stringify({
             agent:    'diagram',
             messages: historyPayload,
-            context:  { nodes: currentNodes, connections: currentConns },
+            context:  { nodes: currentNodes, connections: currentConns, activeProjectId: typeof window !== 'undefined' ? (localStorage.getItem('last_active_project_id') || undefined) : undefined },
           }),
         });
         const fallbackData = await fallbackRes.json();

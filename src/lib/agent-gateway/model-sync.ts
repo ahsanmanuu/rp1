@@ -64,21 +64,21 @@ async function fetchOpenRouterFreeModels(): Promise<string[]> {
     }
 
     return models.length > 0 ? models : [
-      'google/gemini-2.0-flash-001',
-      'google/gemini-2.5-flash-001',
-      'google/gemini-2.0-flash-lite-001',
-      'mistral/mistral-small-3.1-24b-instruct',
-      'meta-llama/llama-3.3-70b-instruct:free',
-      'google/gemini-2.0-flash-exp:free',
+      'stealth/space-bunny-alpha',
+      'qwen/qwen3.8-27b:free',
+      'nvidia/nemotron-3.5-lightning:free',
+      'thinkingmachines/inkling:free',
+      'cohere/north-mini-code:free',
+      'google/gemini-2.5-flash',
     ];
   } catch {
     return [
-      'google/gemini-2.0-flash-001',
-      'google/gemini-2.5-flash-001',
-      'google/gemini-2.0-flash-lite-001',
-      'mistral/mistral-small-3.1-24b-instruct',
-      'meta-llama/llama-3.3-70b-instruct:free',
-      'google/gemini-2.0-flash-exp:free',
+      'stealth/space-bunny-alpha',
+      'qwen/qwen3.8-27b:free',
+      'nvidia/nemotron-3.5-lightning:free',
+      'thinkingmachines/inkling:free',
+      'cohere/north-mini-code:free',
+      'google/gemini-2.5-flash',
     ];
   }
 }
@@ -86,22 +86,49 @@ async function fetchOpenRouterFreeModels(): Promise<string[]> {
 async function syncFreeModels(): Promise<ProviderConfig[]> {
   const providers: ProviderConfig[] = [];
 
-  const openCodeKey = process.env.OPENCODE_API_KEY || '';
   const openRouterKey = process.env.OPENROUTER_API_KEY || '';
+  const openCodeKey = process.env.OPENCODE_API_KEY || '';
 
-  // Fetch the two remote model catalogs in parallel — a sequential pair of
-  // network round-trips on every cold start costs ~16s of wall-clock time.
+  // Fetch remote model catalogs in parallel
   const [openCodeModels, openRouterModels] = await Promise.all([
     openCodeKey ? fetchOpenCodeFreeModels(openCodeKey) : Promise.resolve<string[]>([]),
     openRouterKey ? fetchOpenRouterFreeModels() : Promise.resolve<string[]>([]),
   ]);
 
-  if (openCodeKey) {
-    providers.push({ name: 'opencode', apiKey: openCodeKey, baseUrl: 'https://opencode.ai/zen/v1', models: openCodeModels });
-  }
-
   if (openRouterKey) {
     providers.push({ name: 'openrouter', apiKey: openRouterKey, baseUrl: 'https://openrouter.ai/api/v1', models: openRouterModels });
+  }
+
+  // Always register Pollinations.ai as a high-speed, zero-key resilient AI provider
+  providers.push({
+    name: 'pollinations',
+    apiKey: 'pollinations',
+    baseUrl: 'https://text.pollinations.ai/openai',
+    models: ['openai', 'openai-fast'],
+  });
+
+  const groqKey = process.env.GROQ_API_KEY || '';
+  if (groqKey) {
+    providers.push({
+      name: 'groq',
+      apiKey: groqKey,
+      baseUrl: 'https://api.groq.com/openai/v1',
+      models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
+    });
+  }
+
+  const openAiKey = process.env.OPENAI_API_KEY || '';
+  if (openAiKey) {
+    providers.push({
+      name: 'openai',
+      apiKey: openAiKey,
+      baseUrl: 'https://api.openai.com/v1',
+      models: ['gpt-4o-mini', 'gpt-4o'],
+    });
+  }
+
+  if (openCodeKey) {
+    providers.push({ name: 'opencode', apiKey: openCodeKey, baseUrl: 'https://opencode.ai/zen/v1', models: openCodeModels });
   }
 
   const geminiKey = process.env.GEMINI_API_KEY || '';
@@ -110,7 +137,7 @@ async function syncFreeModels(): Promise<ProviderConfig[]> {
       name: 'gemini',
       apiKey: geminiKey,
       baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-      models: ['gemini-2.0-flash-exp', 'gemini-2.5-flash', 'gemini-2.0-flash-lite'],
+      models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash-lite'],
     });
   }
 

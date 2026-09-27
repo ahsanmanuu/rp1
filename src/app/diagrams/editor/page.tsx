@@ -1751,44 +1751,47 @@ function DiagramStudio() {
     }
     if (!text || aiLoading) return;
 
-    // Gallery Matching Interception
+    // Only trigger template gallery if explicitly requested via "load template" or "use template"
     const lower = text.toLowerCase();
+    const isExplicitTemplateCmd = /^(?:load|use|apply|insert)\s+template\b/i.test(lower);
     let matchedTemplate: DiagramTemplate | null = null;
 
-    if (lower.includes('computer block') || lower.includes('block diagram') || (lower.includes('computer') && lower.includes('diagram') && !lower.includes('network') && !lower.includes('cloud'))) {
-      matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'computer-block') || null;
-    } else if (lower.includes('microservices') || lower.includes('microservice') || lower.includes('service mesh')) {
-      matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'microservices') || null;
-    } else if (lower.includes('cicd') || lower.includes('ci/cd') || lower.includes('pipeline') || lower.includes('deployment flow')) {
-      matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'cicd') || null;
-    } else if (lower.includes('rest api') || lower.includes('api flow') || (lower.includes('api') && lower.includes('load balancer'))) {
-      matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'rest-api') || null;
-    } else if (lower.includes('event driven') || lower.includes('kafka') || lower.includes('event-driven') || lower.includes('broker') || lower.includes('pub sub')) {
-      matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'event-driven') || null;
-    } else if (lower.includes('database schema') || lower.includes('database erd') || lower.includes('entity relationship') || lower.includes('er-diagram') || lower.includes('erd')) {
-      matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'er-diagram') || null;
-    } else if (lower.includes('uml class') || lower.includes('class diagram') || lower.includes('uml diagram')) {
-      matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'uml-class') || null;
-    } else if (lower.includes('venn diagram') || lower.includes('venn chart') || lower.includes('overlap')) {
-      matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'venn-diagram') || null;
-    } else if (lower.includes('swimlane') || lower.includes('swim lane') || lower.includes('process lane')) {
-      matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'swimlane-flow') || null;
-    } else if (lower.includes('gantt') || lower.includes('project schedule') || lower.includes('timeline bar')) {
-      matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'gantt-chart') || null;
-    } else if (lower.includes('circuit') || lower.includes('schematic') || lower.includes('resistor') || lower.includes('capacitor') || lower.includes('ground wire')) {
-      matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'circuit-diagram') || null;
-    } else if (lower.includes('bar diagram') || lower.includes('bar chart') || lower.includes('cost comparison')) {
-      matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'bar-chart') || null;
-    } else if (lower.includes('pie chart') || lower.includes('pie diagram') || lower.includes('market share')) {
-      matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'pie-chart') || null;
-    } else if (lower.includes('aws') || lower.includes('cloudfront') || lower.includes('aurora') || lower.includes('s3 bucket')) {
-      matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'aws') || null;
-    } else if (lower.includes('kubernetes') || lower.includes('k8s') || lower.includes('ingress') || lower.includes('cluster')) {
-      matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'kubernetes') || null;
-    } else if (lower.includes('auth flow') || lower.includes('login') || lower.includes('authentication') || lower.includes('jwt')) {
-      matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'auth-flow') || null;
-    } else if (lower.includes('monolith migration') || lower.includes('strangler fig') || lower.includes('strangler migration') || lower.includes('monolith to microservices')) {
-      matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'monolith-migration') || null;
+    if (isExplicitTemplateCmd) {
+      if (lower.includes('computer') || lower.includes('cpu')) {
+        matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'computer-block') || null;
+      } else if (lower.includes('microservice')) {
+        matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'microservices') || null;
+      } else if (lower.includes('cicd') || lower.includes('pipeline')) {
+        matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'cicd') || null;
+      } else if (lower.includes('rest') || lower.includes('api')) {
+        matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'rest-api') || null;
+      } else if (lower.includes('event') || lower.includes('kafka')) {
+        matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'event-driven') || null;
+      } else if (lower.includes('database') || lower.includes('erd')) {
+        matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'er-diagram') || null;
+      } else if (lower.includes('uml') || lower.includes('class')) {
+        matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'uml-class') || null;
+      } else if (lower.includes('venn')) {
+        matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'venn-diagram') || null;
+      } else if (lower.includes('swimlane')) {
+        matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'swimlane-flow') || null;
+      } else if (lower.includes('gantt') || lower.includes('timeline')) {
+        matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'gantt-chart') || null;
+      } else if (lower.includes('circuit')) {
+        matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'circuit-diagram') || null;
+      } else if (lower.includes('bar')) {
+        matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'bar-chart') || null;
+      } else if (lower.includes('pie')) {
+        matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'pie-chart') || null;
+      } else if (lower.includes('aws')) {
+        matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'aws') || null;
+      } else if (lower.includes('kubernetes') || lower.includes('k8s')) {
+        matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'kubernetes') || null;
+      } else if (lower.includes('auth') || lower.includes('login')) {
+        matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'auth-flow') || null;
+      } else if (lower.includes('monolith')) {
+        matchedTemplate = DIAGRAM_TEMPLATES.find(t => t.id === 'monolith-migration') || null;
+      }
     }
 
     if (matchedTemplate) {
@@ -1796,21 +1799,18 @@ function DiagramStudio() {
       setChatImage(null);
       setChatMessages(prev => [...prev, { role: 'user', content: text }]);
       
-      const explanation = `I have recognized your request as a standard architectural pattern! I am picking our premium Systems Architect Gallery template: **${matchedTemplate.name}** to serve as your foundation. 🚀
-
-Reconstructing and assembling this verified architecture pattern on your canvas in a buttery-smooth, animated, progressive staggered manner...`;
+      const explanation = `Loaded Systems Architect Gallery template: **${matchedTemplate.name}**. Assembling verified layout on your canvas...`;
       
       setTimeout(() => {
         setChatMessages(prev => [...prev, { role: 'assistant', content: explanation }]);
         applyTemplateStaggered(matchedTemplate!);
-      }, 350);
+      }, 300);
       return;
     }
+
     setChatInput('');
     setChatImage(null);
-    // Build the full history including the NEW user message before calling sendMessage.
-    // We cannot rely on chatMessages here because setChatMessages is async — the new
-    // user turn has NOT been appended to chatMessages yet at this point in the call.
+    // Build full history including the new user message before calling sendMessage
     const fullHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [
       ...chatMessages,
       { role: 'user', content: text },

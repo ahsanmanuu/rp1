@@ -4,6 +4,7 @@ import { getActiveProviders, startModelSync } from '@/lib/agent-gateway/model-sy
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { streamText } from 'ai';
 import { routeToAgent } from '@/lib/agent-gateway';
+import { sortProviders, recordProviderFailure, callPollinationsDirect } from '@/lib/agent-gateway/provider';
 
 startModelSync();
 import { prisma } from '@/lib/prisma';
@@ -102,24 +103,34 @@ export async function POST(req: NextRequest) {
     console.warn(`[AiContextConfig] Failed to fetch prompt overrides for diagram agent:`, dbErr);
   }
 
-  // Load user's latest active project's file context for enhanced prompt context
+  // Load user's active project file context for enhanced prompt context
   try {
-    const latestProj = await prisma.project.findFirst({
-      where: { userId },
-      orderBy: { updatedAt: 'desc' },
-      select: { id: true, title: true }
-    });
-    if (latestProj) {
+    const targetProjId = (context as any)?.projectId || (context as any)?.activeProjectId;
+    let targetProj = null;
+    if (targetProjId) {
+      targetProj = await prisma.project.findFirst({
+        where: { id: targetProjId, userId },
+        select: { id: true, title: true }
+      });
+    }
+    if (!targetProj) {
+      targetProj = await prisma.project.findFirst({
+        where: { userId },
+        orderBy: { updatedAt: 'desc' },
+        select: { id: true, title: true }
+      });
+    }
+    if (targetProj) {
       const files = await prisma.projectFile.findMany({
-        where: { projectId: latestProj.id },
+        where: { projectId: targetProj.id },
         select: { filename: true, content: true },
-        take: 5
+        take: 6
       });
       if (files.length > 0) {
-        let docContext = `\n\n### ACTIVE USER RESEARCH PROJECT CONTEXT:\nProject Name: "${latestProj.title}"\n`;
+        let docContext = `\n\n### ACTIVE USER RESEARCH PROJECT CONTEXT:\nProject Name: "${targetProj.title}"\n`;
         files.forEach((f: { filename: string; content: string | null }) => {
           if (f.filename.endsWith('.tex') || f.filename.endsWith('.bib') || f.filename.endsWith('.md')) {
-            docContext += `File: "${f.filename}" (${(f.content || '').length} chars):\n\`\`\`latex\n${(f.content || '').substring(0, 1500)}\n\`\`\`\n`;
+            docContext += `File: "${f.filename}" (${(f.content || '').length} chars):\n\`\`\`latex\n${(f.content || '').substring(0, 2000)}\n\`\`\`\n`;
           }
         });
         systemPrompt += docContext;
@@ -155,7 +166,8 @@ export async function POST(req: NextRequest) {
   // ── Auto-configure provider from model-sync ──────────────────────────────
   // Models are periodically synced from OpenCode Zen and OpenRouter.
   // Tries each provider's free models in order with zero built-in retries.
-  const providers = await getActiveProviders();
+  const rawProviders = await getActiveProviders();
+  const providers = sortProviders(rawProviders);
   const activeProvider = providers[0] || { name: 'none', apiKey: '', baseUrl: '', models: [] };
   const FALLBACK_MODELS = activeProvider.models.length > 0
     ? activeProvider.models
@@ -245,12 +257,13 @@ export async function POST(req: NextRequest) {
             console.log(`[DiagramStream] Trying ${activeProv.name}/${modelName}`);
             const model = curProvider.chatModel(modelName);
 
+            const effectiveMaxTokens = activeProv.name === 'openrouter' ? Math.min(agentConfig.maxTokens, 2048) : agentConfig.maxTokens;
             const result = streamText({
               model,
               system: systemPrompt,
               messages: userMessages,
               temperature: agentConfig.temperature,
-              maxOutputTokens: agentConfig.maxTokens,
+              maxOutputTokens: effectiveMaxTokens,
               abortSignal: req.signal,
               maxRetries: 0,
             });
@@ -282,12 +295,18 @@ export async function POST(req: NextRequest) {
               controller.close();
               return;
             }
-            const status = err?.statusCode ?? err?.status ?? '?';
-            console.warn(`[DiagramStream] Model ${activeProv.name}/${modelName} failed (${status}): ${err?.message}`);
-            // If auth/key failure, immediately skip remaining models of this dead provider
-            const isAuthFail = Number(err?.statusCode) === 401 || Number(err?.statusCode) === 403 || /invalid api key|user not found|unauthorized/i.test(err?.message || '');
-            if (isAuthFail) {
-              console.warn(`[DiagramStream] Provider ${activeProv.name} authentication failed. Moving to next provider.`);
+            const statusCode = Number(err?.statusCode ?? err?.status);
+            console.warn(`[DiagramStream] Model ${activeProv.name}/${modelName} failed (${statusCode || 'ERR'}): ${err?.message}`);
+            // If auth/quota/account failure, immediately skip remaining models of this dead provider
+            const isProviderFail =
+              statusCode === 401 ||
+              statusCode === 402 ||
+              statusCode === 403 ||
+              statusCode === 429 ||
+              /invalid api key|user not found|unauthorized|rate limit|quota|insufficient.*funds|free tier.*only be used|reported as leaked|fewer max_tokens/i.test(err?.message || '');
+            if (isProviderFail) {
+              console.warn(`[DiagramStream] Provider ${activeProv.name} failed (${statusCode || err?.message}). Auto-switching to next provider immediately.`);
+              recordProviderFailure(activeProv.name, statusCode, err?.message);
               break;
             }
           }
