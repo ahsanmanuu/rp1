@@ -602,11 +602,65 @@ function stripFloatInputsToExisting(content: string, existingFloats: Set<string>
   });
 }
 
+function normalizeAnchorText(s: string): string {
+  return s
+    .replace(/\\([{}%&#_$~^])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+    .replace(/^(?:\\[a-zA-Z]+\s*)+/, '')
+    .replace(/^(?:[-*]\s+|[0-9]+[.)]\s+)/, '')
+    .trim();
+}
+
+function paragraphInsertIndex(content: string, anchorText: string): number {
+  const anchor = normalizeAnchorText(anchorText);
+  if (!anchor) return -1;
+  const bounds: Array<[number, number]> = [];
+  const sepRe = /\n{2,}/g;
+  let prevEnd = 0;
+  let m: RegExpExecArray | null;
+  while ((m = sepRe.exec(content)) !== null) {
+    bounds.push([prevEnd, m.index]);
+    prevEnd = m.index + m[0].length;
+  }
+  bounds.push([prevEnd, content.length]);
+  for (const [start, end] of bounds) {
+    if (normalizeAnchorText(content.slice(start, end)).startsWith(anchor)) {
+      const sep = /^\n{2,}/.exec(content.slice(end));
+      return sep ? end + sep[0].length : content.length;
+    }
+  }
+  return -1;
+}
+
+function fileNameRefMatches(content: string, ref: string): boolean {
+  const name = String(ref || '').replace(/^.*[\\\/]/, '').toLowerCase().trim();
+  if (!name) return false;
+  const text = content.toLowerCase();
+  const dot = name.lastIndexOf('.');
+  const base = dot > 0 ? name.substring(0, dot) : name;
+  if (!base) return false;
+  if (dot > 0 && text.includes(name)) return true;
+  const esc = base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[^a-z0-9_])${esc}(?:\\.[a-z0-9]+)?(?![a-z0-9_])`, 'i').test(text);
+}
+
+function anchorSnippetBefore(nodes: any[], node: any): string {
+  const idx = nodes.indexOf(node);
+  for (let pi = idx - 1; pi >= 0; pi--) {
+    const t = nodes[pi]?.text;
+    if (t && t.trim().length > 20) return t.trim().slice(0, 40);
+  }
+  return '';
+}
+
 function composeMainTex(
   templateId: string,
   templateMainTex: string | undefined,
   files: AiModularFile[],
   verdict?: Record<string, any>,
+  floatOrigins?: Map<string, { sectionPath: string; anchor: string }>,
 ): string {
   const metadatas = files.filter((f) => f.path.startsWith('metadata/') && f.path.endsWith('.tex'));
   const isReferencesSection = (f: AiModularFile) => {
@@ -837,10 +891,9 @@ function composeMainTex(
     if (f.path.startsWith('floats/figures/')) {
       const allImgMatches = Array.from(fContent.matchAll(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/g));
       if (allImgMatches.length > 0) {
-        const hasAnyImgInSections = allImgMatches.some(m => {
-          const imgName = m[1].replace(/^.*[\/\\]/, '').toLowerCase().trim();
-          return sections.some(sec => (sec.content || '').toLowerCase().includes(imgName));
-        });
+        const hasAnyImgInSections = allImgMatches.some(m =>
+          sections.some(sec => fileNameRefMatches(sec.content || '', m[1]))
+        );
         if (hasAnyImgInSections) {
           referencedFloatPaths.add(f.path);
         }
@@ -896,7 +949,22 @@ function composeMainTex(
   // Any floats not inlined inside sections are included safely before references
   // (Exclude equations — equations must remain inline within their original sections and never dumped at the end!)
   for (const f of floats) {
-    if (!f.path.startsWith('floats/equations/') && !referencedFloatPaths.has(f.path)) {
+    if (f.path.startsWith('floats/equations/') || referencedFloatPaths.has(f.path)) continue;
+    const origin = floatOrigins?.get(f.path);
+    const host = origin ? sections.find((s) => s.path === origin.sectionPath) : undefined;
+    let placed = false;
+    if (origin && host) {
+      const insPoint = origin.anchor ? paragraphInsertIndex(host.content || '', origin.anchor) : -1;
+      if (insPoint !== -1) {
+        const snippet = `\\input{${f.path}}`;
+        const content = host.content || '';
+        host.content = content.slice(0, insPoint) + `\n\n${snippet}\n\n` + content.slice(insPoint);
+      } else {
+        host.content = `${(host.content || '').trim()}\n\n\\input{${f.path}}\n`;
+      }
+      placed = true;
+    }
+    if (!placed) {
       body.push(`\\input{${f.path}}`);
     }
   }
@@ -1184,6 +1252,8 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     return LatexAssembler.assembleNode({ ...n, twoColumn: isTwoColumn }, mathBlocks);
   };
 
+  const floatOrigins = new Map<string, { sectionPath: string; anchor: string }>();
+
   for (let idx = 0; idx < sectionGroups.length; idx++) {
     const g = sectionGroups[idx];
     const secNum = idx + 1;
@@ -1196,6 +1266,15 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
       f.path.startsWith(expectedPrefix) ||
       (f.path.startsWith('sections/') && f.path.includes(safeTitle))
     );
+
+    const targetPath = `sections/${secNum.toString().padStart(2, '0')}_${safeTitle}.tex`;
+    const hostPath = matchedFile ? matchedFile.path : targetPath;
+    for (const fn of g.nodes) {
+      const fp = nodeToFloatPath.get(fn);
+      if (fp && !fp.startsWith('floats/equations/')) {
+        floatOrigins.set(fp, { sectionPath: hostPath, anchor: anchorSnippetBefore(g.nodes, fn) });
+      }
+    }
 
     const sourceGroupProse = g.nodes.map((n: any) => n.text || '').join('\n').trim();
 
@@ -1215,22 +1294,22 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
           const floatPath = nodeToFloatPath.get(fn);
           if (!floatPath) continue;
           const floatBase = floatPath.replace(/\.tex$/, '');
-          let hasRef = matchedFile.content.includes(floatPath) ||
-                         matchedFile.content.includes(floatBase) ||
-                         (fn.id && matchedFile.content.includes(String(fn.id)));
+          const floatRefRe = new RegExp(`\\{\\s*${floatBase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s*\\.tex)?\\s*\\}`);
+          let hasRef = floatRefRe.test(matchedFile.content) ||
+                         (fn.id && fileNameRefMatches(matchedFile.content, String(fn.id)));
 
           // Check if float's image is already inlined in the section content
           if (!hasRef && (fn.type === 'figure' || fn.type === 'image' || fn.type === 'chart')) {
             const rawSrc = fn.src || (fn as any).url || '';
             const filename = rawSrc ? rawSrc.replace(/^.*[\\\/]/, '').trim() : '';
-            if (filename && matchedFile.content.includes(filename)) {
+            if (filename && fileNameRefMatches(matchedFile.content, filename)) {
               hasRef = true;
             }
             const images = (fn as any).images as Array<{ src: string }> | undefined;
             if (!hasRef && Array.isArray(images) && images.length > 0) {
               const anyImgPresent = images.some(img => {
                 const f = img?.src ? img.src.replace(/^.*[\\\/]/, '').trim() : '';
-                return f && matchedFile.content.includes(f);
+                return f && fileNameRefMatches(matchedFile.content, f);
               });
               if (anyImgPresent) hasRef = true;
             }
@@ -1290,28 +1369,14 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
           }
 
           if (!hasRef) {
-            const fnIdx = g.nodes.indexOf(fn);
-            let prevNodeText = '';
-            for (let pi = fnIdx - 1; pi >= 0; pi--) {
-              if (g.nodes[pi]?.text && g.nodes[pi].text.trim().length > 20) {
-                prevNodeText = g.nodes[pi].text.trim().slice(0, 40);
-                break;
-              }
-            }
+            const prevNodeText = anchorSnippetBefore(g.nodes, fn);
             const snippetToInsert = fn.type === 'equation'
               ? (LatexAssembler.assembleNode(fn, mathBlocks) || `\\input{${floatPath}}`)
               : `\\input{${floatPath}}`;
-            let placed = false;
-            if (prevNodeText) {
-              const pIdx = matchedFile.content.indexOf(prevNodeText);
-              if (pIdx !== -1) {
-                const nextNewline = matchedFile.content.indexOf('\n\n', pIdx);
-                const insPoint = nextNewline !== -1 ? nextNewline + 2 : matchedFile.content.length;
-                matchedFile.content = matchedFile.content.slice(0, insPoint) + `\n\n${snippetToInsert}\n\n` + matchedFile.content.slice(insPoint);
-                placed = true;
-              }
-            }
-            if (!placed) {
+            const insPoint = prevNodeText ? paragraphInsertIndex(matchedFile.content, prevNodeText) : -1;
+            if (insPoint !== -1) {
+              matchedFile.content = matchedFile.content.slice(0, insPoint) + `\n\n${snippetToInsert}\n\n` + matchedFile.content.slice(insPoint);
+            } else {
               matchedFile.content = `${matchedFile.content.trim()}\n\n${snippetToInsert}\n`;
             }
           }
@@ -1319,7 +1384,6 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
       }
     } else {
       // AI completely skipped this section file! Deterministically generate it!
-      const targetPath = `sections/${secNum.toString().padStart(2, '0')}_${safeTitle}.tex`;
       console.warn(`[AI-MODULAR] AI omitted section "${rawTitle}". Deterministically creating ${targetPath}.`);
       const backfilledNodes = [g.heading, ...g.nodes];
       const backfilledContent = backfilledNodes.map(assembleBackfilledNode).join('\n\n');
@@ -1440,7 +1504,7 @@ export async function runModularAiMapping(input: ModularMappingInput): Promise<M
     return null;
   }
 
-  const mainTex = composeMainTex(templateId, templateMainTex, files, verdict);
+  const mainTex = composeMainTex(templateId, templateMainTex, files, verdict, floatOrigins);
   return {
     mainTex,
     files,

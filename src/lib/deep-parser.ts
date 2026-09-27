@@ -3116,7 +3116,7 @@ export class DeepDocumentParser {
               if (sibCont && sibCont !== el && !processed.has(sibCont) && ['p', 'div'].includes(sibCont.tagName.toLowerCase())) {
                 const sibRaw = sibCont.textContent || '';
                 const sibText = sibRaw.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
-                if (sibText.length > 0 && sibText.length < 600 && !rx.test(sibText) && !/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i.test(sibText) && !this.FORCED_LEVEL1.has(sibText.toLowerCase()) && !this.isFigureCaptionProse(sibText) && !this.isTableCaptionProse(sibText) && sibText.split(/\s+/).length <= 60) {
+                if (sibText.length > 0 && sibText.length < 600 && !rx.test(sibText) && !/^(?:\d+[\.\s]+|[ivxlcdm]+[\.\s]+)+/i.test(sibText) && !/^[\u2022\u00b7*•\-]\s*/.test(sibText) && !sibCont.querySelector('li, ul, ol, h1, h2, h3, h4, h5, h6, table, img, figure') && !this.FORCED_LEVEL1.has(sibText.toLowerCase()) && !this.isFigureCaptionProse(sibText) && !this.isTableCaptionProse(sibText) && sibText.split(/\s+/).length <= 60 && !(sibText.split(/\s+/).length >= 6 && /^[A-Z]/.test(sibText) && /[.!?]\s*$/.test(sibText) && /^(?:The|This|These|Those|We|Our|It|They|He|She|Here|There|In|As|For|With|By|From|On|At|However|Therefore|Moreover|Furthermore|Additionally|Consequently|Although|Whereas|According|Due|Results?|Experiments?|Evaluation)\b/i.test(sibText))) {
                   processed.add(sibCont);
                   if (consumedTexts) consumedTexts.add(sibText);
                   afterPrefix = sibText;

@@ -767,7 +767,7 @@ export class LatexAssembler {
                 return;
             }
 
-            const isLevel1 = (node.level === 1) || FORCED_L1_ASSEMBLER.has(normHeading);
+            const isLevel1 = LatexAssembler.resolveHeading(text, node.level).level === 1;
             if (isLevel1) {
                 flushSection();
                 currentSectionTitle = text || "section";
@@ -1134,6 +1134,54 @@ export class LatexAssembler {
     return `\\author{${authorBlocks.join(' \\and\n')}}`;
   }
 
+  public static resolveHeading(rawText: string, nodeLevel?: number): { level: number; text: string } {
+    let finalText = (rawText || "Untitled Section").trim();
+    // Separate prefix matchers to accurately classify levels without stripping English words (like "A Novel..."):
+    const numPrefix = /^(?:\s*(?:section|subsection|subsubsection|chapter|appendix|part)\s+)?(\d+(?:\.\d+)*)\.?[.:\s\-–—)]+\s*/i;
+    const romanPrefix = /^(?:\s*(?:section|subsection|subsubsection|chapter|appendix|part)\s+)?([IVXLCDM]+)\.[.:\s\-–—)]+\s*/i;
+    const alphaPrefix = /^(?:\s*(?:section|subsection|subsubsection|chapter|appendix|part)\s+)?([A-Z])\.[.:\s\-–—)]+\s*/;
+    const parenPrefix = /^(?:\s*(?:section|subsection|subsubsection|chapter|appendix|part)\s+)?(?:\(?(\d+|[a-zA-Z])\))\s*/i;
+
+    const numMatch = finalText.match(numPrefix);
+    const romanMatch = finalText.match(romanPrefix);
+    const alphaMatch = finalText.match(alphaPrefix);
+    const parenMatch = finalText.match(parenPrefix);
+
+    let inferredLevel: number | null = null;
+    if (numMatch) {
+      const numPart = numMatch[1];
+      inferredLevel = Math.min(3, numPart.split('.').length);
+      const clean = finalText.slice(numMatch[0].length).trim();
+      if (clean.length >= 2) finalText = clean;
+    } else if (romanMatch) {
+      inferredLevel = 1;
+      const clean = finalText.slice(romanMatch[0].length).trim();
+      if (clean.length >= 2) finalText = clean;
+    } else if (alphaMatch) {
+      inferredLevel = 2;
+      const clean = finalText.slice(alphaMatch[0].length).trim();
+      if (clean.length >= 2) finalText = clean;
+    } else if (parenMatch) {
+      inferredLevel = 3;
+      const clean = finalText.slice(parenMatch[0].length).trim();
+      if (clean.length >= 2) finalText = clean;
+    }
+
+    const normalizedFinal = finalText.toLowerCase().replace(/^(?:\d+[\s\.]+|[ivxlcdm]+[\s\.]+|[a-g][\s\.]+)+/i, '').trim();
+
+    let level: number;
+    if (inferredLevel !== null) {
+      level = inferredLevel;
+    } else if (isCanonicalL1Heading(normalizedFinal)) {
+      level = 1;
+    } else if (nodeLevel && [1, 2, 3].includes(nodeLevel)) {
+      level = nodeLevel;
+    } else {
+      level = 2;
+    }
+    return { level, text: finalText };
+  }
+
   public static assembleNode(node: ContentNode, mathBlocks: any[]): string {
     // AI-generated component override: validated fragments (structure-latex
     // pass) replace the deterministic output for that component. Fragments
@@ -1145,53 +1193,9 @@ export class LatexAssembler {
         const rawText = node.text || "Untitled Section";
         const isStarred = (node as any).sectionStyle === 'starred';
         
-        let finalText = rawText.trim();
-        // Separate prefix matchers to accurately classify levels without stripping English words (like "A Novel..."):
-        const numPrefix = /^(?:\s*(?:section|subsection|subsubsection|chapter|appendix|part)\s+)?(\d+(?:\.\d+)*)\.?[.:\s\-–—)]+\s*/i;
-        const romanPrefix = /^(?:\s*(?:section|subsection|subsubsection|chapter|appendix|part)\s+)?([IVXLCDM]+)\.[.:\s\-–—)]+\s*/i;
-        const alphaPrefix = /^(?:\s*(?:section|subsection|subsubsection|chapter|appendix|part)\s+)?([A-Z])\.[.:\s\-–—)]+\s*/;
-        const parenPrefix = /^(?:\s*(?:section|subsection|subsubsection|chapter|appendix|part)\s+)?(?:\(?(\d+|[a-zA-Z])\))\s*/i;
-
-        const numMatch = finalText.match(numPrefix);
-        const romanMatch = finalText.match(romanPrefix);
-        const alphaMatch = finalText.match(alphaPrefix);
-        const parenMatch = finalText.match(parenPrefix);
-
-        let inferredLevel: number | null = null;
-        if (numMatch) {
-          const numPart = numMatch[1];
-          inferredLevel = Math.min(3, numPart.split('.').length);
-          const clean = finalText.slice(numMatch[0].length).trim();
-          if (clean.length >= 2) finalText = clean;
-        } else if (romanMatch) {
-          inferredLevel = 1;
-          const clean = finalText.slice(romanMatch[0].length).trim();
-          if (clean.length >= 2) finalText = clean;
-        } else if (alphaMatch) {
-          inferredLevel = 2;
-          const clean = finalText.slice(alphaMatch[0].length).trim();
-          if (clean.length >= 2) finalText = clean;
-        } else if (parenMatch) {
-          inferredLevel = 3;
-          const clean = finalText.slice(parenMatch[0].length).trim();
-          if (clean.length >= 2) finalText = clean;
-        }
+        const { level, text: finalText } = LatexAssembler.resolveHeading(rawText, node.level);
         
-        // 🛡️ FORCED LEVEL-1: canonical academic section names always use \section
-        const FORCED_L1 = FORCED_LEVEL1_SECTIONS;
         const normalizedFinal = finalText.toLowerCase().replace(/^(?:\d+[\s\.]+|[ivxlcdm]+[\s\.]+|[a-g][\s\.]+)+/i, '').trim();
-        const isCanonicalL1Check = isCanonicalL1Heading(normalizedFinal);
-
-        let level: number;
-        if (inferredLevel !== null) {
-          level = inferredLevel;
-        } else if (isCanonicalL1Check) {
-          level = 1;
-        } else if (node.level && [1, 2, 3].includes(node.level)) {
-          level = node.level;
-        } else {
-          level = 2;
-        }
         
         const cmd = level === 1 ? 'section' : level === 2 ? 'subsection' : 'subsubsection';
         const unnumberedList = [
@@ -1222,18 +1226,18 @@ export class LatexAssembler {
              }
         }
 
-        // 2. MISSED EQUATION DETECTION (Lines like "a + b = c (1)")
+        // 2. CAPTION-ONLY PARAGRAPH: Tables and figures carry their own native \caption{}.
+        // Suppress standalone caption lines to avoid duplicate rendered captions in the PDF.
+        if (/^(?:Table|Figure|Fig\.?|Algorithm|Chart|Image|Diagram|Graph)(?:\s+(?:[\d]+(?:\.\d+)*|[IVXLCDM]+))?\s*[:.;\-–—]/i.test(text) && text.length < 200 && !text.includes('\n')) {
+             return "";
+        }
+
+        // 3. MISSED EQUATION DETECTION (Lines like "a + b = c (1)")
         const eqMatch = text.match(/^([\s\S]+?)\s*\((\d+)\)$/);
         if (eqMatch && eqMatch[1].includes('=') && eqMatch[1].length < 150) {
              const content = eqMatch[1].trim();
              const label = eqMatch[2];
              return `\n\\begin{equation}\n${LatexAssembler.escapeText(content, mathBlocks)}\n\\label{eq:${label}}\n\\end{equation}\n`;
-        }
-
-        // 3. CAPTION-ONLY PARAGRAPH: Tables and figures carry their own native \caption{}.
-        // Suppress standalone caption lines to avoid duplicate rendered captions in the PDF.
-        if (/^(?:Table|Figure|Fig\.?|Algorithm|Chart|Image|Diagram|Graph)(?:\s+(?:[\d]+(?:\.\d+)*|[IVXLCDM]+))?\s*[:.;\-–—]/i.test(text) && text.length < 200 && !text.includes('\n')) {
-             return "";
         }
 
         const mathMatch = text.match(/MATHBLOCKX(\d+)XMARKER/i);
@@ -1246,7 +1250,8 @@ export class LatexAssembler {
             const inner = raw.trim().replace(/^\$+|\$+$/g, '').trim().replace(/^\\begin\{equation\}|\\end\{equation\}$/g, '').trim();
             // Short inline math check: < 30 chars and doesn't contain complex operators or multiline, and no explicit equation label in text
             const hasExplicitEqNum = /(?:\(\d+\)|\[\d+\])/.test(text);
-            const isShortInline = inner.length < 30 && !/(?:\\frac|\\sum|\\int|\\prod|\\begin\{|\\\\)/.test(inner) && !hasExplicitEqNum;
+            const wasDisplayOrNumbered = /(?:\$\$|\\\[|\\begin\{|\\\\|&|\\(?:label|tag)\b)/.test(raw);
+            const isShortInline = inner.length < 30 && !/(?:\\frac|\\sum|\\int|\\prod|\\begin\{|\\\\)/.test(inner) && !hasExplicitEqNum && !wasDisplayOrNumbered;
             if (isShortInline) {
                 return `\n\n$${inner}$\n\n`;
             }
@@ -2395,7 +2400,7 @@ export class LatexAssembler {
             .replace(/^\$/, '').replace(/\$$/, '')
             .trim();
         
-        if (!inner) return '';
+        if (!inner) return '\\[\\]';
         return `$${inner}$`;
     });
 
@@ -3039,11 +3044,8 @@ export class ModularLatexAssembler {
               }
             }
             if (n.type === 'equation') {
-                const windowSize = 5;
-                const startIdx = Math.max(0, dedupedNodes.length - windowSize);
-                const recent = dedupedNodes.slice(startIdx);
-                if (recent.some(last => last.type === 'equation' && last.latex === n.latex)) {
-                    continue; // skip duplicate equation in close proximity
+                if (dedupedNodes.some(last => last.type === 'equation' && last.latex === n.latex)) {
+                    continue; // skip duplicate equation already emitted in this section
                 }
             }
             
@@ -3239,7 +3241,7 @@ export class ModularLatexAssembler {
             }
 
             // Prevent child subsections (level 2, 3) from being erroneously promoted to Level 1 section files
-            const isLevel1 = (node.level === 1) || (!node.level && isCanonicalSectionL1(normHeading));
+            const isLevel1 = LatexAssembler.resolveHeading(text, node.level).level === 1;
             if (isLevel1) {
                 flushSection();
                 currentSectionTitle = text || "section";
