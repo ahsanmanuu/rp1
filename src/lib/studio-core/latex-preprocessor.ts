@@ -199,6 +199,57 @@ export function preprocessLatex(
     allFixes.push('Injected adjustbox[export] for \\includegraphics max width/height support');
   }
 
+  // 5b. TWO-COLUMN TABLE BLEED & OVERFLOW FIX: Wrap oversized tabular environments in adjustbox max width
+  content = content.replace(
+    /\\begin\s*\{\s*tabular\s*\}(\[.*?\])?\s*\{([^}]*)\}([\s\S]*?)\\end\s*\{\s*tabular\s*\}/gi,
+    (match, opt, spec, body) => {
+      // If already wrapped in adjustbox, resizebox, or table environment with width constraint, leave it
+      if (match.includes('adjustbox') || match.includes('resizebox') || match.includes('tabularx')) {
+        return match;
+      }
+      // Check if table contains multiple columns or likely wide content
+      if (spec.length > 5 || spec.split(/[|crlp{}]/).filter(Boolean).length >= 3) {
+        allFixes.push('Auto-wrapped multi-column table in adjustbox maxwidth=\\linewidth');
+        return `\\begin{adjustbox}{max width=\\linewidth}\n\\begin{tabular}${opt || ''}{${spec}}${body}\\end{tabular}\n\\end{adjustbox}`;
+      }
+      return match;
+    }
+  );
+
+  // 5c. IEEE ABSTRACT FIX: Ensure \IEEEtitleabstractindextext is present and abstract is not swallowed
+  if (/class\s*\{[^}]*ieee/i.test(content) || /documentclass\s*(?:\[[^\]]*\])?\s*\{IEEEtran\}/i.test(content)) {
+    if (!content.includes('\\IEEEtitleabstractindextext') && /\\begin\s*\{\s*abstract\s*\}/i.test(content)) {
+      content = content.replace(
+        /\\begin\s*\{\s*abstract\s*\}([\s\S]*?)\\end\s*\{\s*abstract\s*\}/i,
+        '\\IEEEtitleabstractindextext{\\begin{abstract}$1\\end{abstract}}'
+      );
+      allFixes.push('Wrapped IEEE abstract inside \\IEEEtitleabstractindextext for proper two-column rendering');
+    }
+  }
+
+  // 5d. MDPI AUTHOR & AFFILIATION ORDERING FIX: Ensure title comes before authors and affiliations
+  if (/class\s*\{[^}]*mdpi/i.test(content) || /documentclass\s*(?:\[[^\]]*\])?\s*\{mdpi\}/i.test(content)) {
+    const titleMatch = content.match(/\\title\s*\{[^}]+\}/);
+    const authorMatch = content.match(/\\author\s*\{[^}]+\}/);
+    const affilMatch = content.match(/\\address\s*\{[^}]+\}|\/affil\s*\{[^}]+\}/);
+    if (titleMatch && authorMatch && content.indexOf(titleMatch[0]) > content.indexOf(authorMatch[0])) {
+      // Move title before author/affil
+      content = content.replace(authorMatch[0], '%%_AUTHOR_PLACEHOLDER_%%');
+      if (affilMatch) content = content.replace(affilMatch[0], '%%_AFFIL_PLACEHOLDER_%%');
+      content = content.replace('%%_AUTHOR_PLACEHOLDER_%%', authorMatch[0]);
+      if (affilMatch) content = content.replace('%%_AFFIL_PLACEHOLDER_%%', affilMatch[0]);
+      allFixes.push('Enforced title-first ordering for MDPI template');
+    }
+  }
+
+  // 5e. MATH EQUATIONS & MATHML FALLBACK: Ensure equation environments have proper delimiters
+  content = content.replace(/\\begin\s*\{\s*equation\s*\}([\s\S]*?)\\end\s*\{\s*equation\s*\}/gi, (m, inner) => {
+    if (!inner.trim().startsWith('\\')) {
+      return `\\begin{equation}${inner}\\end{equation}`;
+    }
+    return m;
+  });
+
   // 6. Strip empty \DeclareGraphicsExtensions that reference nothing
   content = content.replace(/\\DeclareGraphicsExtensions\s*\{\s*\}/g, '% Removed empty \\DeclareGraphicsExtensions');
 

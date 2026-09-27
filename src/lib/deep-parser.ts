@@ -677,6 +677,26 @@ export class DeepDocumentParser {
       }
     }
 
+    // ── EQUATION RESCUE PASS ───────────────────────────────────────────────
+    // If we have mathBlocks but they haven't been resolved into body nodes (e.g. missing
+    // MATHBLOCKX markers from client extraction), inject them as equation nodes
+    // so they are not lost during LaTeX assembly.
+    const resolvedEqCount = result.body.filter(n => n.type === 'equation').length;
+    if (mathBlocks && mathBlocks.length > 0 && resolvedEqCount === 0) {
+        console.log(`[PARSER] Rescuing ${mathBlocks.length} missing math blocks into document body.`);
+        mathBlocks.forEach((mb) => {
+            const rawLatex = typeof mb === 'string' ? mb : (mb?.latex || mb?.tex || '');
+            if (rawLatex && rawLatex.length > 3) {
+                const isDisplay = typeof mb === 'object' ? mb.isDisplay : true;
+                result.body.push({
+                    type: 'equation',
+                    text: rawLatex,
+                    latex: isDisplay ? `\\begin{equation}\n${rawLatex}\n\\end{equation}` : `$${rawLatex}$`
+                });
+            }
+        });
+    }
+
     // Phase 4.5: NLP Metadata Enrichment
     const allDocText = result.body.map(n => n.text).join(' ');
     if (result.keywords.length === 0) {

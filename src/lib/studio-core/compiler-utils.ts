@@ -275,6 +275,9 @@ ${_B}fi
   // These are injected AFTER \begin{document} so they apply globally to the whole document.
   const beginDocMatch = modified.match(/\\begin\s*\{\s*document\s*\}/);
   if (beginDocMatch && !modified.includes('% StudioOverflowGuards')) {
+    // Detect if this is a two-column layout for specialized guards
+    const isTwoColumn = /\\begin\s*\{\s*document\s*\}[^}]*\\twocolumn|\\documentclass\s*(?:\[[^\]]*\])?\s*\{[^}]*\\b(ieeetran|svjour3|acmallarge|acmsmall|acmlarge|acmtog)\b[^}]*\}/i.test(modified);
+
     const overflowGuards = [
       '% StudioOverflowGuards — injected by Latexify compiler for proper line breaking',
       '\\emergencystretch=8em',            // Extra stretch budget for lines that can\'t fit
@@ -301,6 +304,24 @@ ${_B}fi
       '  \\lstset{breaklines=true,breakatwhitespace=false,basicstyle=\\small\\ttfamily,',
       '    columns=flexible,keepspaces=true,breakindent=0pt}%',
       '\\fi',
+      // TWO-COLUMN SPECIFIC GUARDS: prevent blank pages and improve column balancing
+      isTwoColumn ? '\\twocolumn[%' : '',
+      isTwoColumn ? '  \\columnseprule=0pt' : '',
+      isTwoColumn ? '  \\columnsep=1em' : '',
+      isTwoColumn ? '  \\raggedcolumns' : '', // Better column balancing
+      isTwoColumn ? '  \\clubpenalty=1000' : '', // Suppress widows/orphans in columns
+      isTwoColumn ? '  \\widowpenalty=1000' : '',
+      isTwoColumn ? '  \\displaywidowpenalty=1000' : '',
+      isTwoColumn ? '%]' : '',
+      // Paragraph spacing control to prevent excessive whitespace
+      '\\parskip=0pt plus 1pt',
+      '\\parsep=0pt plus 1pt',
+      '\\topsep=0pt plus 1pt',
+      '\\partopsep=0pt plus 1pt',
+      // Float placement improvements to prevent floats causing page breaks
+      '\\floatpagefraction=0.8',
+      '\\textfraction=0.1',
+      '\\bottomfraction=0.8',
       '\\makeatother',
     ].join('\n');
 
